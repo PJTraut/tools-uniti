@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from uniti.core.document import Document
 
 
@@ -101,3 +103,46 @@ def test_read_line_handles_mixed_eol_and_final_line(tmp_path: Path):
     with Document.open(path) as doc:
         assert doc.read_lines(0, 4) == ["a", "b", "c", "d"]
         assert doc.read_lines(0, 4, keep_eol=True) == ["a\r\n", "b\n", "c\r", "d"]
+
+
+def test_document_save_writes_edits_and_clears_modified(tmp_path: Path):
+    path = tmp_path / "save.txt"
+    path.write_text("abc\n", encoding="utf-8")
+    with Document.open(path) as doc:
+        doc.insert(1, "X")
+        assert doc.modified
+        result = doc.save()
+        assert result == path
+        assert not doc.modified
+    assert path.read_bytes() == b"aXbc\n"
+
+
+def test_document_save_as_updates_logical_path_and_output_encoding(tmp_path: Path):
+    source = tmp_path / "source.txt"
+    target = tmp_path / "target.txt"
+    source.write_text("café\n", encoding="utf-8")
+    with Document.open(source) as doc:
+        result = doc.save(target, encoding="windows-1252", eol="CRLF")
+        assert result == target
+        assert doc.path == target
+        assert doc.encoding_info.detected == "utf-8"
+        assert doc.encoding_info.output_encoding == "windows-1252"
+        assert doc.output_eol == "CRLF"
+        doc.insert(doc.total_chars(), "fin")
+        doc.save()
+    assert target.read_bytes() == b"caf\xe9\r\nfin"
+
+
+def test_failed_document_save_keeps_modified_state_and_path(tmp_path: Path):
+    from uniti.core.save import UnrepresentableCharacterError
+
+    source = tmp_path / "source-fail.txt"
+    target = tmp_path / "target-fail.txt"
+    source.write_text("abc", encoding="utf-8")
+    with Document.open(source) as doc:
+        doc.insert(3, " ₹")
+        with pytest.raises(UnrepresentableCharacterError):
+            doc.save(target, encoding="windows-1252")
+        assert doc.modified
+        assert doc.path == source
+        assert not target.exists()

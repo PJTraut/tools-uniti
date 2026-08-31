@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import replace as dataclass_replace
 from pathlib import Path
 
 from .byte_source import ByteSource
@@ -11,6 +12,7 @@ from .document_lines import DocumentLineIndex
 from .lines import LineIndex
 from .offsets import OffsetMapper
 from .pieces import EditStore, PieceTable
+from .save import EOLName, SaveOptions, save_document
 
 
 class Document:
@@ -26,11 +28,13 @@ class Document:
         document_line_index: DocumentLineIndex,
     ) -> None:
         self._source = source
+        self._path = source.path
         self._encoding_info = encoding_info
         self._offset_mapper = offset_mapper
         self._source_line_index = source_line_index
         self._piece_table = piece_table
         self._document_line_index = document_line_index
+        self._output_eol: EOLName | None = None
         self._modified = False
         self._closed = False
 
@@ -81,7 +85,7 @@ class Document:
 
     @property
     def path(self) -> Path:
-        return self._source.path
+        return self._path
 
     @property
     def encoding_info(self) -> EncodingInfo:
@@ -102,6 +106,10 @@ class Document:
         """Progressive line index for the current edited document."""
 
         return self._document_line_index
+
+    @property
+    def output_eol(self) -> EOLName | None:
+        return self._output_eol
 
     @property
     def modified(self) -> bool:
@@ -174,6 +182,39 @@ class Document:
             self.read_line(line, keep_eol=keep_eol)
             for line in range(first, first + count)
         ]
+
+    def save(
+        self,
+        destination: str | os.PathLike[str] | None = None,
+        *,
+        encoding: str | None = None,
+        eol: EOLName | None = None,
+    ) -> Path:
+        self._ensure_open()
+        target = self._path if destination is None else Path(destination)
+        output_encoding = (
+            encoding
+            or self._encoding_info.output_encoding
+            or self._encoding_info.detected
+        )
+        output_eol = self._output_eol if eol is None else eol
+        result = save_document(
+            self._source,
+            self._piece_table,
+            source_encoding=self._encoding_info.detected,
+            source_bom=self._encoding_info.bom,
+            destination=target,
+            options=SaveOptions(encoding=output_encoding, eol=output_eol),
+        )
+        self._path = result
+        self._encoding_info = dataclass_replace(
+            self._encoding_info,
+            output_encoding=output_encoding,
+        )
+        if eol is not None:
+            self._output_eol = eol
+        self._modified = False
+        return result
 
     def total_chars(self) -> int:
         self._ensure_open()
