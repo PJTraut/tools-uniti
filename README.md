@@ -16,3 +16,32 @@ Phase 1A establishes:
 - streaming byte-preserving copy/save primitives.
 
 The piece table, global sparse offset index, custom `UNITITextView`, and regex UI follow after these contracts are proven.
+
+## Phase 1A status
+
+The initial headless core now proves the low-level file contracts. It does **not** yet contain an editor viewport or editing model.
+
+Implemented in Phase 1A:
+
+- `ByteSource`: mmap-preferred immutable byte access with bounded-read fallback;
+- first-pass encoding metadata/detection;
+- bounded loss-aware decoding with invalid-byte records;
+- local byte↔character boundary mapping for decoded windows;
+- streaming LF/CRLF/CR analysis;
+- atomic byte-preserving streaming copy/save primitive;
+- `scripts/core_probe.py` for headless inspection.
+
+Next implementation slice:
+
+1. sparse document-wide offset checkpoints;
+2. compact line index;
+3. hybrid piece table + Unicode edit store;
+4. document facade that composes those services.
+
+Only after those contracts are stable should the custom PySide6 `UNITITextView` become authoritative UI work.
+
+### Core probe
+
+```bash
+PYTHONPATH=src python scripts/core_probe.py path/to/file.txt --window 256
+```
