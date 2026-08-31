@@ -25,7 +25,7 @@ from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.core.file_identity import ExternalFileChangedError
-from uniti.resources import PriorityWorkerPool, WorkPriority
+from uniti.resources import ResourceManager, WorkPriority
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
 from uniti.ui.find_replace import FindReplacePanel
@@ -50,11 +50,14 @@ class UNITIMainWindow(QMainWindow):
         *,
         recovery_manager: RecoveryManager | None = None,
         settings_store: SettingsStore | None = None,
+        resource_manager: ResourceManager | None = None,
     ) -> None:
         super().__init__(parent)
         self._recovery_manager = recovery_manager
         self._settings_store = settings_store
         self._settings = settings_store.load() if settings_store is not None else Settings()
+        self._owns_resources = resource_manager is None
+        self._resources = resource_manager or ResourceManager()
         self.setWindowTitle("UNITI")
         self.resize(1100, 760)
         self._tabs = QTabWidget(self)
@@ -67,7 +70,9 @@ class UNITIMainWindow(QMainWindow):
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
         central_layout.addWidget(self._tabs, 1)
-        self._find_replace = FindReplacePanel(lambda: self.current_view, central)
+        self._find_replace = FindReplacePanel(
+            lambda: self.current_view, central, resource_manager=self._resources
+        )
         self._find_replace.streamReplaceCommitted.connect(
             self._reload_after_stream_replace
         )
@@ -77,10 +82,7 @@ class UNITIMainWindow(QMainWindow):
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
 
-        self._eol_pool = PriorityWorkerPool(
-            max_workers=1,
-            thread_name_prefix="uniti-eol",
-        )
+        self._eol_pool = self._resources.workers
         self._eol_jobs: dict[Future, weakref.ReferenceType] = {}
         self._eol_reports: dict[int, EOLReport] = {}
         self._eol_timer = QTimer(self)
@@ -239,7 +241,7 @@ class UNITIMainWindow(QMainWindow):
         return view
 
     def open_path(self, path: str | Path) -> UNITITextView:
-        document = Document.open(path)
+        document = Document.open(path, resource_manager=self._resources)
         try:
             view = self._add_document(document)
         except Exception:
@@ -299,6 +301,10 @@ class UNITIMainWindow(QMainWindow):
     def _on_current_changed(self, _index: int) -> None:
         self._find_replace.document_changed()
         view = self.current_view
+        for index in range(self._tabs.count()):
+            widget = self._tabs.widget(index)
+            if isinstance(widget, UNITITextView):
+                widget.document.set_resource_active(widget is view)
         if view is None:
             self._status.clear_document()
             self.setWindowTitle("UNITI")
@@ -373,7 +379,9 @@ class UNITIMainWindow(QMainWindow):
         index = self._tabs.currentIndex()
         path = view.document.path
         try:
-            document = Document.open(path, encoding=encoding)
+            document = Document.open(
+                path, encoding=encoding, resource_manager=self._resources
+            )
         except Exception as exc:
             QMessageBox.critical(self, "Reinterpret Failed", str(exc))
             return
@@ -400,7 +408,7 @@ class UNITIMainWindow(QMainWindow):
             return
         old_document = view.document
         try:
-            replacement = Document.open(path)
+            replacement = Document.open(path, resource_manager=self._resources)
         except Exception as exc:
             QMessageBox.critical(
                 self,
@@ -596,7 +604,10 @@ class UNITIMainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.close_all_documents(force=False):
             self._find_replace.shutdown()
-            self._eol_pool.shutdown(wait=False, cancel_pending=True)
+            if self._recovery_manager is not None:
+                self._recovery_manager.shutdown()
+            if self._owns_resources:
+                self._resources.shutdown(wait=False)
             event.accept()
         else:
             event.ignore()

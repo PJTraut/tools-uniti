@@ -38,3 +38,11 @@ def test_project_declares_uniti_console_entrypoint():
 
     project = tomllib.loads(Path("pyproject.toml").read_text())
     assert project["project"]["scripts"]["uniti"] == "uniti.app.application:main"
+
+
+def test_application_constructs_one_resource_manager_for_desktop_runtime():
+    from pathlib import Path
+
+    source = Path("src/uniti/app/application.py").read_text()
+    assert "ResourceManager" in source
+    assert "resource_manager=resources" in source

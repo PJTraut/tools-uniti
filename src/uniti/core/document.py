@@ -7,6 +7,10 @@ import os
 from collections.abc import Callable, Iterator
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
+from typing import TYPE_CHECKING, Hashable
+
+if TYPE_CHECKING:
+    from uniti.resources.manager import ResourceManager
 
 from .byte_source import ByteSource
 from .encoding import EncodingInfo, detect_encoding, matching_bom
@@ -30,6 +34,8 @@ class Document:
         source_line_index: LineIndex,
         piece_table: PieceTable,
         document_line_index: DocumentLineIndex,
+        resource_manager: "ResourceManager | None" = None,
+        cache_owner: Hashable | None = None,
     ) -> None:
         self._source = source
         self._path = source.path
@@ -50,6 +56,8 @@ class Document:
         self._edit_listeners: list[Callable[[EditOperation], None]] = []
         self._save_listeners: list[Callable[[Path], None]] = []
         self._metadata_listeners: list[Callable[[str, EOLName | None], None]] = []
+        self._resource_manager = resource_manager
+        self._cache_owner = cache_owner
         self._closed = False
 
     @classmethod
@@ -58,6 +66,7 @@ class Document:
         path: str | os.PathLike[str],
         *,
         encoding: str | None = None,
+        resource_manager: "ResourceManager | None" = None,
     ) -> "Document":
         source = ByteSource.open(path)
         try:
@@ -72,7 +81,13 @@ class Document:
                     output_encoding=encoding,
                 )
             selected = encoding_info.detected
-            mapper = OffsetMapper(source, selected)
+            cache_owner = object()
+            mapper = OffsetMapper(
+                source,
+                selected,
+                resource_manager=resource_manager,
+                cache_owner=cache_owner,
+            )
             source_line_index = LineIndex(source, selected)
             edit_store = EditStore()
             piece_table = PieceTable(source, selected, mapper, edit_store)
@@ -84,6 +99,8 @@ class Document:
                 source_line_index,
                 piece_table,
                 document_line_index,
+                resource_manager,
+                cache_owner,
             )
         except Exception:
             source.close()
@@ -138,6 +155,10 @@ class Document:
         """Monotonic logical-text revision used to invalidate derived results."""
 
         return self._revision
+
+    def set_resource_active(self, active: bool) -> None:
+        if self._resource_manager is not None and self._cache_owner is not None:
+            self._resource_manager.set_owner_active(self._cache_owner, active)
 
     @property
     def modified(self) -> bool:
@@ -523,6 +544,8 @@ class Document:
     def close(self) -> None:
         if self._closed:
             return
+        if self._resource_manager is not None and self._cache_owner is not None:
+            self._resource_manager.evict_owner(self._cache_owner)
         self._source.close()
         self._closed = True
 

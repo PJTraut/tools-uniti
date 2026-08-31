@@ -91,4 +91,17 @@ def test_main_window_reloads_document_after_streamed_replace_all():
     source = MAIN.read_text()
     assert "_reload_after_stream_replace" in source
     assert "streamReplaceCommitted.connect" in source
-    assert "Document.open(path)" in source
+    assert "Document.open(path" in source
+
+
+def test_main_window_uses_shared_resource_manager_for_workers_and_tab_priority():
+    source = MAIN.read_text()
+    assert "ResourceManager" in source
+    assert "resource_manager" in source
+    assert "self._resources.workers" in source
+    assert "set_resource_active" in source
+
+
+def test_main_window_flushes_and_shuts_down_recovery_manager_on_application_close():
+    source = MAIN.read_text()
+    assert "self._recovery_manager.shutdown()" in source

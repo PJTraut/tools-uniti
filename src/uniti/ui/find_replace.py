@@ -29,7 +29,7 @@ from uniti.regex.replace import (
 )
 from uniti.regex.results import MatchIndex, MatchRecord
 from uniti.regex.search import SearchOptions, resolve_captures, search_document
-from uniti.resources import CancellationToken, PriorityWorkerPool, WorkPriority
+from uniti.resources import CancellationToken, PriorityWorkerPool, ResourceManager, WorkPriority
 from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 
@@ -41,10 +41,22 @@ class FindReplacePanel(QFrame):
 
     streamReplaceCommitted = Signal(object, str, int)
 
-    def __init__(self, view_provider: Callable[[], object | None], parent=None) -> None:
+    def __init__(
+        self,
+        view_provider: Callable[[], object | None],
+        parent=None,
+        *,
+        resource_manager: ResourceManager | None = None,
+    ) -> None:
         super().__init__(parent)
         self._view_provider = view_provider
-        self._pool = PriorityWorkerPool(max_workers=1, thread_name_prefix="uniti-regex")
+        self._resource_manager = resource_manager
+        self._owns_pool = resource_manager is None
+        self._pool = (
+            PriorityWorkerPool(max_workers=1, thread_name_prefix="uniti-regex")
+            if resource_manager is None
+            else resource_manager.workers
+        )
         self._future: Future | None = None
         self._token: CancellationToken | None = None
         self._job_kind: str | None = None
@@ -519,4 +531,5 @@ class FindReplacePanel(QFrame):
         self.cancel_search()
         if self._target_view is not None:
             self._target_view.setEnabled(True)
-        self._pool.shutdown(wait=False, cancel_pending=True)
+        if self._owns_pool:
+            self._pool.shutdown(wait=False, cancel_pending=True)

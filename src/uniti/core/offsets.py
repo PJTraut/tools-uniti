@@ -5,6 +5,10 @@ from __future__ import annotations
 from bisect import bisect_left, bisect_right
 from collections import OrderedDict
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Hashable
+
+if TYPE_CHECKING:
+    from uniti.resources.manager import ResourceManager
 
 from .byte_source import ByteSource
 from .decoder import DecodedSpan, decode_span, iter_decoded_spans
@@ -45,6 +49,8 @@ class OffsetMapper:
         encoding: str,
         *,
         checkpoint_bytes: int = 65_536,
+        resource_manager: "ResourceManager | None" = None,
+        cache_owner: Hashable | None = None,
     ) -> None:
         if checkpoint_bytes <= 0:
             raise ValueError("checkpoint_bytes must be positive")
@@ -58,6 +64,8 @@ class OffsetMapper:
         self._complete = start >= source.size
         self._span_cache: OrderedDict[tuple[int, int], DecodedSpan] = OrderedDict()
         self._span_cache_limit = 4
+        self._resource_manager = resource_manager
+        self._cache_owner = cache_owner
 
     @property
     def indexed_byte_end(self) -> int:
@@ -99,8 +107,23 @@ class OffsetMapper:
             self._checkpoints.append(checkpoint)
         self._complete = self._indexed_byte_end >= self._source.size
 
+    @staticmethod
+    def _span_size(span: DecodedSpan) -> int:
+        return 128 + len(span.text) * 4 + len(span.char_boundaries) * 8 + len(span.errors) * 64
+
     def _cache_span(self, span: DecodedSpan) -> None:
         key = (span.byte_start, span.byte_end)
+        if self._resource_manager is not None and self._cache_owner is not None:
+            from uniti.resources.cache import CachePriority
+
+            self._resource_manager.put_cache(
+                self._cache_owner,
+                ("offset-span",) + key,
+                span,
+                size_bytes=self._span_size(span),
+                priority=CachePriority.INDEX,
+            )
+            return
         self._span_cache[key] = span
         self._span_cache.move_to_end(key)
         while len(self._span_cache) > self._span_cache_limit:
@@ -112,10 +135,17 @@ class OffsetMapper:
             raise ValueError("mapping interval is not indexed")
         end_checkpoint = self._checkpoints[index + 1]
         key = (checkpoint.byte_offset, end_checkpoint.byte_offset)
-        cached = self._span_cache.get(key)
-        if cached is not None:
-            self._span_cache.move_to_end(key)
-            return cached
+        if self._resource_manager is not None and self._cache_owner is not None:
+            cached = self._resource_manager.get_cache(
+                self._cache_owner, ("offset-span",) + key
+            )
+            if cached is not None:
+                return cached
+        else:
+            cached = self._span_cache.get(key)
+            if cached is not None:
+                self._span_cache.move_to_end(key)
+                return cached
         span = decode_span(
             self._source,
             checkpoint.byte_offset,

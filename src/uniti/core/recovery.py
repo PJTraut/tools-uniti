@@ -94,21 +94,31 @@ class RecoveryJournal:
         if self._closed:
             raise ValueError("RecoveryJournal is closed")
 
-    def _write_record(self, record: dict[str, object]) -> None:
+    def _write_record(
+        self, record: dict[str, object], *, durable: bool = True
+    ) -> None:
         self._ensure_open()
         self._handle.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
         self._handle.write("\n")
         self._handle.flush()
-        os.fsync(self._handle.fileno())
+        if durable:
+            os.fsync(self._handle.fileno())
 
-    def append(self, operation: EditOperation) -> None:
+    def flush(self, *, durable: bool = True) -> None:
+        self._ensure_open()
+        self._handle.flush()
+        if durable:
+            os.fsync(self._handle.fileno())
+
+    def append(self, operation: EditOperation, *, durable: bool = True) -> None:
         self._write_record(
             {
                 "type": "edit",
                 "start": operation.start,
                 "deleted": operation.deleted_text,
                 "inserted": operation.inserted_text,
-            }
+            },
+            durable=durable,
         )
 
     def update_metadata(
@@ -116,17 +126,19 @@ class RecoveryJournal:
         *,
         output_encoding: str,
         output_eol: str | None,
+        durable: bool = True,
     ) -> None:
         self._write_record(
             {
                 "type": "metadata",
                 "output_encoding": output_encoding,
                 "output_eol": output_eol,
-            }
+            },
+            durable=durable,
         )
 
-    def mark_clean(self) -> None:
-        self._write_record({"type": "clean"})
+    def mark_clean(self, *, durable: bool = True) -> None:
+        self._write_record({"type": "clean"}, durable=durable)
 
     def close(self) -> None:
         if self._closed:

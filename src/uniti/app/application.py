@@ -19,6 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     from uniti.app.paths import AppPaths
     from uniti.app.recovery_manager import RecoveryManager
     from uniti.app.settings import SettingsStore
+    from uniti.resources import ResourceManager
     from uniti.ui.main_window import UNITIMainWindow
 
     arguments = list(sys.argv if argv is None else argv)
@@ -26,11 +27,13 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication.instance() or QApplication([program])
     paths = AppPaths.current()
     paths.ensure()
+    resources = ResourceManager()
     recovery_manager = RecoveryManager(paths.recovery_dir)
     settings_store = SettingsStore(paths.settings_file)
     window = UNITIMainWindow(
         recovery_manager=recovery_manager,
         settings_store=settings_store,
+        resource_manager=resources,
     )
     window.recover_startup_sessions()
     for raw_path in arguments[1:]:
@@ -40,4 +43,7 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:
             QMessageBox.critical(window, "Open Failed", f"{path}\n\n{exc}")
     window.show()
-    return int(app.exec())
+    try:
+        return int(app.exec())
+    finally:
+        resources.shutdown(wait=True)

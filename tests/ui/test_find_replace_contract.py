@@ -88,3 +88,9 @@ def test_find_replace_offscreen_smoke_when_pyside6_available(tmp_path: Path):
         panel.shutdown()
         view.close()
         panel.close()
+
+
+def test_find_replace_accepts_shared_resource_manager_instead_of_owning_worker_pool():
+    source = PANEL.read_text()
+    assert "resource_manager" in source
+    assert "resource_manager.workers" in source

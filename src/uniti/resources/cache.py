@@ -43,6 +43,22 @@ class CacheManager:
     def budget_bytes(self) -> int:
         return self._budget_bytes
 
+    def set_budget(self, budget_bytes: int) -> int:
+        if budget_bytes < 0:
+            raise ValueError("budget_bytes must be non-negative")
+        with self._lock:
+            self._budget_bytes = budget_bytes
+            return self._evict_locked(budget_bytes)
+
+    def set_priority(self, key: Hashable, priority: CachePriority) -> bool:
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return False
+            entry.priority = priority
+            entry.last_access = next(self._clock)
+            return True
+
     @property
     def used_bytes(self) -> int:
         with self._lock:

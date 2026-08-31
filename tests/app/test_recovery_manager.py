@@ -138,3 +138,32 @@ def test_recovery_persists_output_eol_changes_after_journal_start(tmp_path: Path
     finally:
         second.detach(recovered, clean=True)
         recovered.close()
+
+
+def test_recovery_journal_io_does_not_block_edit_listener(tmp_path: Path, monkeypatch):
+    import time
+    from uniti.core.recovery import RecoveryJournal
+
+    source = tmp_path / "async.txt"
+    source.write_text("abc", encoding="utf-8")
+    original_append = RecoveryJournal.append
+
+    def slow_append(self, operation, *, durable=True):
+        time.sleep(0.15)
+        return original_append(self, operation, durable=durable)
+
+    monkeypatch.setattr(RecoveryJournal, "append", slow_append)
+    manager = RecoveryManager(tmp_path / "recovery")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        started = time.perf_counter()
+        document.insert(3, "X")
+        elapsed = time.perf_counter() - started
+        assert elapsed < 0.08
+        manager.flush(document)
+        assert len(manager.discover()) == 1
+    finally:
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()

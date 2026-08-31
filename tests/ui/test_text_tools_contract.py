@@ -52,7 +52,7 @@ def test_main_window_background_eol_analysis_uses_independent_byte_source():
     source = MAIN.read_text()
     assert "analyze_eol" in source
     assert "ByteSource.open" in source
-    assert "PriorityWorkerPool" in source
+    assert "self._resources.workers" in source
 
 
 def test_text_tools_offscreen_smoke_when_pyside6_available(tmp_path: Path):
