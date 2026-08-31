@@ -120,14 +120,16 @@ def _iter_engine_matches(
         _check_cancelled(cancelled)
         if eof:
             try:
-                iterator = _finditer(
-                    compiled,
-                    buffer,
-                    pos=search_pos,
-                    partial=False,
-                    timeout=options.timeout,
+                matches = list(
+                    _finditer(
+                        compiled,
+                        buffer,
+                        pos=search_pos,
+                        partial=False,
+                        timeout=options.timeout,
+                    )
                 )
-                for match in iterator:
+                for match in matches:
                     _check_cancelled(cancelled)
                     record = _record_match(match, buffer_start)
                     yield record, match
@@ -142,14 +144,16 @@ def _iter_engine_matches(
 
         unsafe_start = len(buffer)
         try:
-            iterator = _finditer(
-                compiled,
-                buffer,
-                pos=search_pos,
-                partial=True,
-                timeout=options.timeout,
+            matches = list(
+                _finditer(
+                    compiled,
+                    buffer,
+                    pos=search_pos,
+                    partial=True,
+                    timeout=options.timeout,
+                )
             )
-            for match in iterator:
+            for match in matches:
                 _check_cancelled(cancelled)
                 if match.partial:
                     unsafe_start = min(unsafe_start, match.start())

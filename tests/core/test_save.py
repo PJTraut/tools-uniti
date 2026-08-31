@@ -103,3 +103,16 @@ def test_encoding_conversion_writes_representable_text(tmp_path: Path):
     finally:
         source.close()
     assert target.read_bytes() == b"caf\xe9"
+
+
+def test_atomic_write_text_chunks_normalizes_eol_across_chunk_boundaries(tmp_path: Path):
+    from uniti.core.save import atomic_write_text_chunks
+
+    target = tmp_path / "chunks.txt"
+    atomic_write_text_chunks(
+        iter(["a\r", "\nb\r", "c\n"]),
+        target,
+        encoding="utf-8",
+        eol="LF",
+    )
+    assert target.read_bytes() == b"a\nb\nc\n"

@@ -212,3 +212,59 @@ def save_document(
             except FileNotFoundError:
                 pass
         raise
+
+
+def atomic_write_text_chunks(
+    chunks: Iterator[str],
+    destination: str | os.PathLike[str],
+    *,
+    encoding: str,
+    eol: EOLName | None = None,
+    bom: bytes | None = None,
+) -> Path:
+    """Strictly encode text chunks through the UNITI atomic-save discipline."""
+
+    target = Path(destination)
+    fd: int | None = None
+    temp_path: Path | None = None
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{target.name}.",
+            suffix=".uniti-tmp",
+            dir=target.parent,
+        )
+        temp_path = Path(temp_name)
+        with os.fdopen(fd, "wb") as handle:
+            fd = None
+            prefix = bom
+            if prefix is None and _normalize_encoding(encoding) == "utf-8-sig":
+                prefix = _UTF8_BOM
+            if prefix:
+                handle.write(prefix)
+            stream: Iterator[str] = chunks
+            if eol is not None:
+                try:
+                    target_eol = _EOL_TEXT[eol]
+                except KeyError as exc:
+                    raise ValueError(f"unsupported EOL policy: {eol}") from exc
+                stream = _normalized_eol_chunks(stream, target_eol)
+            encoder = codecs.getincrementalencoder(_content_encoding(encoding))(errors="strict")
+            for text in stream:
+                handle.write(_strict_encode(encoder, text, encoding))
+            tail = _strict_encode(encoder, "", encoding, final=True)
+            if tail:
+                handle.write(tail)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, target)
+        temp_path = None
+        return target
+    except Exception:
+        if fd is not None:
+            os.close(fd)
+        if temp_path is not None:
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
+        raise

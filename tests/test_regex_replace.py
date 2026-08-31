@@ -34,3 +34,47 @@ def test_replace_all_is_single_undo_step(tmp_path: Path):
         assert doc.read(0, doc.total_chars()) == "x1 x22 x333"
         doc.redo()
         assert doc.read(0, doc.total_chars()) == "[1] [22] [333]"
+
+
+def test_stream_replace_to_file_handles_many_matches_without_mutating_document(tmp_path: Path):
+    from uniti.regex.replace import stream_replace_to_file
+
+    path = tmp_path / "stream-source.txt"
+    target = tmp_path / "stream-target.txt"
+    path.write_text(("x1\n" * 20_000) + "end", encoding="utf-8")
+    with Document.open(path) as doc:
+        result = stream_replace_to_file(
+            doc,
+            compile_pattern(r"x(\d+)"),
+            r"[\1]",
+            target,
+            options=SearchOptions(window_chars=127),
+        )
+        assert result.count == 20_000
+        assert not doc.modified
+        assert not doc.can_undo
+        assert doc.read(0, 3) == "x1\n"
+    with target.open("r", encoding="utf-8") as handle:
+        assert handle.read(8) == "[1]\n[1]\n"
+        handle.seek(0, 2)
+        size = handle.tell()
+        handle.seek(size - 3)
+        assert handle.read() == "end"
+
+
+def test_stream_replace_to_file_applies_output_encoding_and_eol(tmp_path: Path):
+    from uniti.regex.replace import stream_replace_to_file
+
+    path = tmp_path / "stream-encoding.txt"
+    target = tmp_path / "stream-encoding-target.txt"
+    path.write_text("café\nfoo\n", encoding="utf-8")
+    with Document.open(path) as doc:
+        stream_replace_to_file(
+            doc,
+            compile_pattern("foo"),
+            "bar",
+            target,
+            encoding="windows-1252",
+            eol="CRLF",
+        )
+    assert target.read_bytes() == b"caf\xe9\r\nbar\r\n"
