@@ -30,3 +30,11 @@ def test_project_versions_are_canonical():
     assert uniti.__version__ == "0.1a9"
     assert uniti.__display_version__ == "v0.001a9"
     assert Path("VERSION").read_text().strip() == "v0.001a9"
+
+
+def test_project_declares_uniti_console_entrypoint():
+    import tomllib
+    from pathlib import Path
+
+    project = tomllib.loads(Path("pyproject.toml").read_text())
+    assert project["project"]["scripts"]["uniti"] == "uniti.app.application:main"

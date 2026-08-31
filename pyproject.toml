@@ -12,6 +12,9 @@ dependencies = [
     "regex==2026.5.9",
 ]
 
+[project.scripts]
+uniti = "uniti.app.application:main"
+
 [project.optional-dependencies]
 ui = ["PySide6>=6.8"]
 dev = ["pytest>=9"]
