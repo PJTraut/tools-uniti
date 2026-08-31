@@ -105,6 +105,36 @@ def _decode_payload(
     return decoded, 0, encoding, events
 
 
+def _stable_char_byte_length(
+    raw: bytes,
+    byte_offset: int,
+    encoding: str,
+) -> int:
+    normalized = encoding.lower().replace("_", "-")
+    if normalized in {"utf-8", "utf-8-sig"}:
+        length = _utf8_sequence_length(raw[byte_offset])
+        if length is None:
+            raise UnicodeError("valid UTF-8 character has no stable sequence length")
+        return length
+    if normalized in {"windows-1252", "cp1252", "latin-1", "iso-8859-1", "ascii"}:
+        return 1
+    if normalized in {"utf-16-le", "utf-16-be"}:
+        byteorder = "little" if normalized.endswith("le") else "big"
+        if byte_offset + 2 > len(raw):
+            raise UnicodeError("truncated UTF-16 code unit")
+        first = int.from_bytes(raw[byte_offset : byte_offset + 2], byteorder)
+        if 0xD800 <= first <= 0xDBFF:
+            if byte_offset + 4 > len(raw):
+                raise UnicodeError("truncated UTF-16 surrogate pair")
+            second = int.from_bytes(raw[byte_offset + 2 : byte_offset + 4], byteorder)
+            if 0xDC00 <= second <= 0xDFFF:
+                return 4
+        return 2
+    if normalized in {"utf-32-le", "utf-32-be"}:
+        return 4
+    return -1
+
+
 def decode_span(
     source: ByteSource,
     start: int,
@@ -117,6 +147,22 @@ def decode_span(
     decoded, prefix_length, roundtrip_encoding, decode_events = _decode_payload(
         raw, start, encoding
     )
+
+    content = raw[prefix_length:]
+    normalized_roundtrip = roundtrip_encoding.lower().replace("_", "-")
+    if (
+        not decode_events
+        and normalized_roundtrip in {"utf-8", "utf-8-sig"}
+        and content.isascii()
+    ):
+        return DecodedSpan(
+            text=decoded,
+            byte_start=start,
+            byte_end=start + length,
+            encoding=encoding,
+            errors=(),
+            char_boundaries=tuple(range(prefix_length, len(raw) + 1)),
+        )
 
     display: list[str] = []
     errors: list[DecodeError] = []
@@ -148,8 +194,11 @@ def decode_span(
             boundaries.append(byte_count)
             continue
 
-        encoded = char.encode(roundtrip_encoding, errors="strict")
-        byte_count += len(encoded)
+        byte_length = _stable_char_byte_length(raw, byte_count, roundtrip_encoding)
+        if byte_length < 0:
+            encoded = char.encode(roundtrip_encoding, errors="strict")
+            byte_length = len(encoded)
+        byte_count += byte_length
         display.append(char)
         boundaries.append(byte_count)
 

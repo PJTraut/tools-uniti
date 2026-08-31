@@ -85,3 +85,12 @@ def test_invalidate_rebuilds_only_from_containing_line(tmp_path: Path):
         assert [index.line_start(i) for i in range(5)] == [0, 3, 6, 8, 11]
     finally:
         source.close()
+
+
+def test_document_line_end_returns_content_end_without_eol(tmp_path: Path):
+    from uniti.core.document import Document
+
+    path = tmp_path / "line-end.txt"
+    path.write_bytes(b"aa\r\nbb\ncc\rdd")
+    with Document.open(path) as document:
+        assert [document.line_end(i) for i in range(4)] == [2, 6, 9, 12]

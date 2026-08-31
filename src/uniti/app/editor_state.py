@@ -53,8 +53,8 @@ class EditorState:
     def _column(self) -> int:
         line = self.document.line_for_char(self.cursor)
         start = self.document.line_start(line)
-        text = self.document.read_line(line)
-        return min(self.cursor - start, len(text))
+        end = self.document.line_end(line)
+        return min(self.cursor - start, end - start)
 
     def _move_vertical(self, delta: int, *, selecting: bool = False) -> None:
         line = self.document.line_for_char(self.cursor)
@@ -66,10 +66,10 @@ class EditorState:
             return
         try:
             start = self.document.line_start(target_line)
-            text = self.document.read_line(target_line)
+            end = self.document.line_end(target_line)
         except ValueError:
             return
-        target = start + min(self._preferred_column, len(text))
+        target = start + min(self._preferred_column, end - start)
         self._set_cursor(target, selecting=selecting, vertical=True)
 
     def move_up(self, *, selecting: bool = False) -> None:
@@ -84,8 +84,7 @@ class EditorState:
 
     def move_end(self, *, selecting: bool = False) -> None:
         line = self.document.line_for_char(self.cursor)
-        start = self.document.line_start(line)
-        self._set_cursor(start + len(self.document.read_line(line)), selecting=selecting)
+        self._set_cursor(self.document.line_end(line), selecting=selecting)
 
     def select_all(self) -> None:
         self.anchor = 0

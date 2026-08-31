@@ -338,6 +338,24 @@ class Document:
         self._ensure_open()
         return self._document_line_index.line_for_char(char_offset)
 
+    def line_end(self, line: int) -> int:
+        """Return the logical content end for *line* without materializing it."""
+
+        self._ensure_open()
+        start = self._document_line_index.line_start(line)
+        try:
+            next_start = self._document_line_index.line_start(line + 1)
+        except ValueError:
+            return self._piece_table.total_chars()
+
+        probe_start = max(start, next_start - 2)
+        tail = self._piece_table.read(probe_start, next_start)
+        if tail.endswith("\r\n"):
+            return next_start - 2
+        if tail.endswith(("\r", "\n")):
+            return next_start - 1
+        return next_start
+
     def read_line(self, line: int, *, keep_eol: bool = False) -> str:
         self._ensure_open()
         start = self._document_line_index.line_start(line)
