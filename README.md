@@ -1,47 +1,42 @@
 # UNITI
 
-**Current project version:** `v0.001a1`
-**Python package version:** `0.1a1`
+**Current project version:** `v0.001a2`
+**Python package version:** `0.1a2`
 
 **Unicode Intelligent Text Interchange** — a focused, cross-platform power text editor.
 
-The project is being built from the frozen UNITI Architecture v0.1. The first implementation slice proves the byte-oriented core before any custom Qt viewport work.
+UNITI is being built from the frozen Architecture v0.1. The current work is still the Qt-independent text engine; the custom viewport deliberately comes later.
 
 ## Current build scope
 
-Phase 1A establishes:
+Phase 1A established the immutable byte and decoding foundation. Phase 1B adds the first editable document model without making open time proportional to file size.
 
-- immutable file-backed byte access without whole-file copies;
-- encoding metadata and deterministic first-pass detection;
-- error-preserving lazy decoding;
-- byte/local-character mapping within decoded windows;
-- EOL analysis over byte streams;
-- streaming byte-preserving copy/save primitives.
+Implemented through `v0.001a2`:
 
-The piece table, global sparse offset index, custom `UNITITextView`, and regex UI follow after these contracts are proven.
+- mmap-preferred immutable `ByteSource` with bounded-read fallback;
+- deterministic first-pass UTF/legacy encoding metadata;
+- loss-aware bounded decoding with exact invalid-byte spans;
+- safe progressive decoded windows across UTF-8/16/32 character boundaries;
+- sparse progressive source byte↔character checkpoints;
+- compact progressive immutable-source line index backed by `array("Q")`;
+- append-only Unicode `EditStore`;
+- lazy hybrid source/edit `PieceTable`;
+- `Document` facade for lazy open, bounded reads, insert, delete and replace;
+- encoding-aware EOL analysis;
+- atomic byte-preserving streaming source copy/save primitive.
 
-## Phase 1A status
+### Important line-index distinction
 
-The initial headless core now proves the low-level file contracts. It does **not** yet contain an editor viewport or editing model.
+`Document.source_line_index` indexes the **immutable source bytes**. It is intentionally not exposed as an edited-document line index: inserted text has no original byte coordinate, so presenting those source offsets as current document line positions would be incorrect. A piece-aware edited-document line layer belongs above the piece table in a later phase.
 
-Implemented in Phase 1A:
+## Next implementation slice
 
-- `ByteSource`: mmap-preferred immutable byte access with bounded-read fallback;
-- first-pass encoding metadata/detection;
-- bounded loss-aware decoding with invalid-byte records;
-- local byte↔character boundary mapping for decoded windows;
-- encoding-aware streaming LF/CRLF/CR analysis;
-- atomic byte-preserving streaming copy/save primitive;
-- `scripts/core_probe.py` for headless inspection.
+1. piece-aware current-document line/navigation model;
+2. bounded document view extraction suitable for a virtual viewport;
+3. edit transactions / undo-redo primitives;
+4. then the first PySide6 `UNITITextView` proof.
 
-Next implementation slice:
-
-1. sparse document-wide offset checkpoints;
-2. compact line index;
-3. hybrid piece table + Unicode edit store;
-4. document facade that composes those services.
-
-Only after those contracts are stable should the custom PySide6 `UNITITextView` become authoritative UI work.
+Regex search and capture visualization follow after the document/view contracts are stable.
 
 ### Core probe
 

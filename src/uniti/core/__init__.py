@@ -7,6 +7,7 @@ from .eol import EOLReport, analyze_eol
 from .offsets import OffsetCheckpoint, OffsetMapper
 from .lines import LineIndex
 from .pieces import EditPiece, EditRef, EditStore, PieceTable, SourcePiece
+from .document import Document
 from .streaming import atomic_copy_source
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "SourcePiece",
     "EditPiece",
     "PieceTable",
+    "Document",
     "decode_span",
     "iter_decoded_spans",
     "analyze_eol",

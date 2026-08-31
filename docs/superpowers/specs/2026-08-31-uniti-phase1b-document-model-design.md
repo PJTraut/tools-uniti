@@ -105,9 +105,9 @@ class OffsetMapper:
 
 `char_to_byte()` scans forward only until the requested character boundary exists. Asking past EOF raises `ValueError`.
 
-## 3. Compact progressive LineIndex
+## 3. Compact progressive immutable-source LineIndex
 
-`LineIndex` stores line-start byte offsets in `array('Q')`, not one Python object per line. Line zero always begins at the first visible byte boundary (after a BOM where applicable).
+`LineIndex` stores immutable-source line-start byte offsets in `array('Q')`, not one Python object per line. Line zero always begins at the first visible byte boundary (after a BOM where applicable).
 
 Line indexing is encoding-aware and progressive. It consumes the same safe decoded windows and records the byte boundary following each logical line ending:
 
@@ -210,7 +210,7 @@ class Document:
     @property
     def offset_mapper(self) -> OffsetMapper: ...
     @property
-    def line_index(self) -> LineIndex: ...
+    def source_line_index(self) -> LineIndex: ...
     @property
     def modified(self) -> bool: ...
     def read(self, start: int, end: int) -> str: ...
@@ -220,6 +220,8 @@ class Document:
     def total_chars(self) -> int: ...
     def close(self) -> None: ...
 ```
+
+`Document.source_line_index` is explicitly the immutable-source line index. It is not a current edited-document line index; inserted Unicode text has no original source byte offset. A piece-aware document line/navigation layer is deferred rather than exposing stale source offsets after edits.
 
 `Document.open()` performs only:
 
@@ -251,7 +253,7 @@ Phase 1B is accepted when all Phase 1A tests remain green and new tests prove:
 - the line-start store is `array('Q')` backed;
 - insertion, deletion and replacement work across source/edit piece boundaries;
 - invalid source bytes remain visible/preserved through piece-table reads;
-- opening a document leaves mapper and line index incomplete for a multi-chunk source;
+- opening a document leaves mapper and immutable-source line index incomplete for a multi-chunk source;
 - edits near the beginning do not require whole-file character counting;
 - `uniti.core` remains Qt-independent;
 - the complete test suite and Python compile check pass.

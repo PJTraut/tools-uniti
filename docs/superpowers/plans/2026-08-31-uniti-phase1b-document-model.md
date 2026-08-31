@@ -262,7 +262,7 @@ git commit -m "feat: add lazy hybrid piece table"
 
 **Interfaces:**
 - Consumes: all Phase-1A/1B core services.
-- Produces: `Document.open`, `.read`, `.insert`, `.delete`, `.replace`, `.total_chars`, `.modified`, `.close` and service properties.
+- Produces: `Document.open`, `.read`, `.insert`, `.delete`, `.replace`, `.total_chars`, `.modified`, `.close`, `.offset_mapper`, and `.source_line_index`.
 
 - [ ] **Step 1: Write failing lazy-open and editing tests.**
 
@@ -273,7 +273,7 @@ def test_document_open_is_lazy_and_editable(tmp_path):
     doc = Document.open(path)
     try:
         assert not doc.offset_mapper.complete
-        assert not doc.line_index.complete
+        assert not doc.source_line_index.complete
         doc.insert(5, "X")
         assert doc.read(0, 12) == "01234X56789\n"
         assert not doc.offset_mapper.complete
@@ -288,7 +288,7 @@ Run: `PYTHONPATH=src pytest tests/core/test_document.py -q`
 
 - [ ] **Step 3: Implement ownership/lifetime, encoding override metadata, editing delegation, and modified state.**
 
-`Document.open()` detects encoding from bounded samples unless overridden, then constructs mapper/index/store/table without requesting total characters or total lines.
+`Document.open()` detects encoding from bounded samples unless overridden, then constructs mapper/source-index/store/table without requesting total characters or total lines. `source_line_index` remains explicitly source-based after edits; no stale edited-document line API is exposed.
 
 - [ ] **Step 4: Add tests for encoding override, context manager, Unicode editing, total character count on demand, and unchanged Phase-1A imports.**
 
