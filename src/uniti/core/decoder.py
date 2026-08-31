@@ -168,3 +168,126 @@ def decode_span(
         errors=tuple(errors),
         char_boundaries=tuple(boundaries),
     )
+
+
+def _normalized_encoding(encoding: str) -> str:
+    return encoding.lower().replace("_", "-")
+
+
+def _utf8_sequence_length(first: int) -> int | None:
+    if first < 0x80:
+        return 1
+    if 0xC2 <= first <= 0xDF:
+        return 2
+    if 0xE0 <= first <= 0xEF:
+        return 3
+    if 0xF0 <= first <= 0xF4:
+        return 4
+    return None
+
+
+def _utf8_safe_end(source: ByteSource, start: int, candidate: int, end: int) -> int:
+    if candidate >= end:
+        return end
+    tail_start = max(start, candidate - 4)
+    tail = source.read(tail_start, candidate - tail_start)
+    if not tail:
+        return candidate
+
+    lead_index = len(tail) - 1
+    while lead_index >= 0 and tail[lead_index] & 0xC0 == 0x80:
+        lead_index -= 1
+
+    if lead_index < 0:
+        return candidate
+
+    needed = _utf8_sequence_length(tail[lead_index])
+    if needed is None:
+        return candidate
+    lead_offset = tail_start + lead_index
+    if lead_offset + needed > candidate:
+        safe = lead_offset
+    else:
+        safe = candidate
+
+    if safe > start:
+        return safe
+
+    first = source.read(start, 1)[0]
+    needed = _utf8_sequence_length(first) or 1
+    return min(end, start + needed)
+
+
+def _utf16_safe_end(
+    source: ByteSource,
+    start: int,
+    candidate: int,
+    end: int,
+    *,
+    byteorder: str,
+) -> int:
+    if candidate >= end:
+        return end
+    safe = candidate - (candidate % 2)
+    if safe <= start:
+        safe = min(end, start + 2)
+    if safe <= start or safe >= end or safe < 2 or safe + 2 > end:
+        return safe
+
+    previous = int.from_bytes(source.read(safe - 2, 2), byteorder)
+    following = int.from_bytes(source.read(safe, 2), byteorder)
+    if 0xD800 <= previous <= 0xDBFF and 0xDC00 <= following <= 0xDFFF:
+        if safe - 2 > start:
+            return safe - 2
+        return min(end, safe + 2)
+    return safe
+
+
+def _safe_chunk_end(
+    source: ByteSource,
+    start: int,
+    candidate: int,
+    end: int,
+    encoding: str,
+) -> int:
+    normalized = _normalized_encoding(encoding)
+    if normalized in {"utf-8", "utf-8-sig"}:
+        return _utf8_safe_end(source, start, candidate, end)
+    if normalized == "utf-16-le":
+        return _utf16_safe_end(source, start, candidate, end, byteorder="little")
+    if normalized == "utf-16-be":
+        return _utf16_safe_end(source, start, candidate, end, byteorder="big")
+    if normalized in {"utf-32-le", "utf-32-be"}:
+        if candidate >= end:
+            return end
+        safe = candidate - (candidate % 4)
+        if safe <= start:
+            safe = min(end, start + 4)
+        return safe
+    return candidate
+
+
+def iter_decoded_spans(
+    source: ByteSource,
+    encoding: str,
+    *,
+    start: int = 0,
+    end: int | None = None,
+    chunk_size: int = 65_536,
+):
+    """Yield bounded decoded spans without splitting supported characters."""
+
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    stop = source.size if end is None else end
+    if start < 0 or stop < start or stop > source.size:
+        raise ValueError("invalid decoded span range")
+
+    offset = start
+    while offset < stop:
+        candidate = min(stop, offset + chunk_size)
+        safe_end = _safe_chunk_end(source, offset, candidate, stop, encoding)
+        if safe_end <= offset:
+            raise UnicodeError("unable to make progress to a safe decode boundary")
+        yield decode_span(source, offset, safe_end - offset, encoding)
+        offset = safe_end
