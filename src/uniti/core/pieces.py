@@ -17,16 +17,52 @@ class EditRef:
     length: int
 
 
+class _EditBlock:
+    __slots__ = ("chunks", "length", "_cache")
+
+    def __init__(self, text: str) -> None:
+        self.chunks = [text]
+        self.length = len(text)
+        self._cache: str | None = text
+
+    def append(self, text: str) -> None:
+        if not text:
+            return
+        self.chunks.append(text)
+        self.length += len(text)
+        self._cache = None
+
+    def text(self) -> str:
+        if self._cache is None:
+            self._cache = "".join(self.chunks)
+        return self._cache
+
+
 class EditStore:
-    """Append-only Unicode edit blocks."""
+    """Append-only Unicode edit blocks with cheap sequential extension."""
 
     def __init__(self) -> None:
-        self._blocks: list[str] = []
+        self._blocks: list[_EditBlock] = []
+
+    @property
+    def block_count(self) -> int:
+        return len(self._blocks)
 
     def append(self, text: str) -> EditRef:
         block = len(self._blocks)
-        self._blocks.append(text)
+        self._blocks.append(_EditBlock(text))
         return EditRef(block=block, start=0, length=len(text))
+
+    def append_to(self, ref: EditRef, text: str) -> EditRef | None:
+        """Extend *ref* when it reaches the physical tail of its edit block."""
+
+        if not text:
+            return ref
+        block = self._blocks[ref.block]
+        if ref.start + ref.length != block.length:
+            return None
+        block.append(text)
+        return EditRef(ref.block, ref.start, ref.length + len(text))
 
     def read(self, ref: EditRef, start: int = 0, end: int | None = None) -> str:
         stop = ref.length if end is None else end
@@ -35,9 +71,9 @@ class EditStore:
         block = self._blocks[ref.block]
         absolute_start = ref.start + start
         absolute_end = ref.start + stop
-        if absolute_end > len(block):
+        if absolute_end > block.length:
             raise ValueError("edit reference extends beyond stored block")
-        return block[absolute_start:absolute_end]
+        return block.text()[absolute_start:absolute_end]
 
     @staticmethod
     def slice(ref: EditRef, start: int, end: int) -> EditRef:
@@ -240,6 +276,12 @@ class PieceTable:
             self._validate_offset(char_offset)
             return
         boundary = self._split_at(char_offset)
+        if boundary > 0 and isinstance(self._pieces[boundary - 1], EditPiece):
+            previous = self._pieces[boundary - 1]
+            extended = self._edit_store.append_to(previous.ref, text)
+            if extended is not None:
+                previous.ref = extended
+                return
         ref = self._edit_store.append(text)
         self._pieces.insert(boundary, EditPiece(ref))
         self._merge_neighbors()
