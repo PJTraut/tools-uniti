@@ -27,7 +27,7 @@ Implemented in Phase 1A:
 - first-pass encoding metadata/detection;
 - bounded loss-aware decoding with invalid-byte records;
 - local byte↔character boundary mapping for decoded windows;
-- streaming LF/CRLF/CR analysis;
+- encoding-aware streaming LF/CRLF/CR analysis;
 - atomic byte-preserving streaming copy/save primitive;
 - `scripts/core_probe.py` for headless inspection.
 

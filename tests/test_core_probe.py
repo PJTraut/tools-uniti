@@ -19,3 +19,19 @@ def test_core_probe_reports_file_metadata(tmp_path: Path):
     assert "size: 13" in result.stdout
     assert "encoding: utf-8" in result.stdout
     assert "eol: CRLF" in result.stdout
+
+
+def test_core_probe_uses_detected_encoding_for_eol(tmp_path: Path):
+    path = tmp_path / "utf16.txt"
+    path.write_bytes("alpha\r\nbeta\r\n".encode("utf-16-le"))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "src"
+    result = subprocess.run(
+        [sys.executable, "scripts/core_probe.py", str(path), "--window", "16"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert "encoding: utf-16-le" in result.stdout
+    assert "eol: CRLF" in result.stdout

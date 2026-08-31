@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 from dataclasses import dataclass
 from typing import Literal
 
@@ -32,31 +33,50 @@ def _classify(lf: int, crlf: int, cr: int) -> EOLKind:
     return "CR"
 
 
-def analyze_eol(source: ByteSource, chunk_size: int = 1 << 20) -> EOLReport:
-    """Count CRLF, LF and CR endings without materializing the full file."""
+def analyze_eol(
+    source: ByteSource,
+    chunk_size: int = 1 << 20,
+    *,
+    encoding: str = "utf-8",
+) -> EOLReport:
+    """Count logical CRLF, LF and CR endings through an incremental decoder."""
 
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
 
+    decoder = codecs.getincrementaldecoder(encoding)(errors="replace")
     lf = 0
     crlf = 0
     cr = 0
     pending_cr = False
 
-    for chunk in source.iter_chunks(chunk_size=chunk_size):
-        for byte in chunk:
-            if pending_cr:
-                if byte == 0x0A:
-                    crlf += 1
-                    pending_cr = False
-                    continue
-                cr += 1
-                pending_cr = False
+    def consume(text: str) -> None:
+        nonlocal lf, crlf, cr, pending_cr
+        if not text:
+            return
 
-            if byte == 0x0D:
-                pending_cr = True
-            elif byte == 0x0A:
-                lf += 1
+        if pending_cr:
+            if text.startswith("\n"):
+                crlf += 1
+                text = text[1:]
+            else:
+                cr += 1
+            pending_cr = False
+            if not text:
+                return
+
+        if text.endswith("\r"):
+            pending_cr = True
+            text = text[:-1]
+
+        pairs = text.count("\r\n")
+        crlf += pairs
+        lf += text.count("\n") - pairs
+        cr += text.count("\r") - pairs
+
+    for chunk in source.iter_chunks(chunk_size=chunk_size):
+        consume(decoder.decode(chunk, final=False))
+    consume(decoder.decode(b"", final=True))
 
     if pending_cr:
         cr += 1

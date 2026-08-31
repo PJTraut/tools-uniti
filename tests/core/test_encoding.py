@@ -56,3 +56,24 @@ def test_utf16be_without_bom_uses_null_structure(tmp_path: Path):
     info = detect(tmp_path, "Alpha Beta\n".encode("utf-16-be"))
     assert info.detected == "utf-16-be"
     assert 0.7 <= info.confidence < 1.0
+
+
+def test_utf8_sampling_tolerates_multibyte_character_at_sample_boundary(tmp_path: Path):
+    path = tmp_path / "sample-boundary.txt"
+    payload = b"A" * 11 + "é".encode("utf-8") + b"B" * 19
+    path.write_bytes(payload)
+    with ByteSource.open(path) as source:
+        info = detect_encoding(source, sample_size=8)
+    assert info.detected == "utf-8"
+
+
+def test_utf32le_without_bom_uses_null_structure(tmp_path: Path):
+    info = detect(tmp_path, "Alpha Beta\n".encode("utf-32-le"))
+    assert info.detected == "utf-32-le"
+    assert 0.7 <= info.confidence < 1.0
+
+
+def test_utf32be_without_bom_uses_null_structure(tmp_path: Path):
+    info = detect(tmp_path, "Alpha Beta\n".encode("utf-32-be"))
+    assert info.detected == "utf-32-be"
+    assert 0.7 <= info.confidence < 1.0

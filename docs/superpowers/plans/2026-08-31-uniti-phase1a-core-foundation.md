@@ -57,7 +57,7 @@ Expected: collection/import failure because `uniti` does not exist.
 
 - [ ] **Step 3: Create minimal package and project metadata**
 
-`pyproject.toml` must use setuptools with `src` layout, require Python `>=3.12`, declare `regex>=2026.5.9`, and declare `PySide6>=6.8` as an optional `ui` extra. `src/uniti/__init__.py` exposes `__version__ = "0.1.0a0"`; `src/uniti/core/__init__.py` contains no Qt imports.
+`pyproject.toml` must use setuptools with `src` layout, require Python `>=3.12`, declare `regex==2026.5.9`, and declare `PySide6>=6.8` as an optional `ui` extra. `src/uniti/__init__.py` exposes `__version__ = "0.1.0a0"`; `src/uniti/core/__init__.py` contains no Qt imports.
 
 - [ ] **Step 4: Run package test and verify GREEN**
 
@@ -215,9 +215,9 @@ Expected: import failure because `uniti.core.encoding` does not exist.
 
 - [ ] **Step 3: Implement EncodingInfo and BOM/UTF-8 detection**
 
-`EncodingInfo` is frozen and stores `detected`, `confidence`, `bom`, `user_override=False`, `output_encoding=None`, and `alternatives=()`. Sample beginning, midpoint, and end for files larger than `sample_size * 3`; strict UTF-8 validation succeeds only if all samples decode strictly.
+`EncodingInfo` is frozen and stores `detected`, `confidence`, `bom`, `user_override=False`, `output_encoding=None`, and `alternatives=()`. Sample beginning, midpoint, and end for files larger than `sample_size * 3`; strict UTF-8 validation succeeds only if each sample is valid after ignoring only a multibyte sequence cut by that sample edge.
 
-- [ ] **Step 4: Add failing UTF-16 heuristic and legacy fallback tests**
+- [ ] **Step 4: Add failing UTF-16/UTF-32 heuristic and legacy fallback tests**
 
 ```python
 def test_utf16le_without_bom_uses_null_structure(tmp_path: Path):
@@ -239,9 +239,9 @@ Run: `PYTHONPATH=src pytest tests/core/test_encoding.py -q`
 
 Expected: at least the UTF-16 or legacy test fails until implemented.
 
-- [ ] **Step 6: Implement structural UTF-16 heuristic and conservative fallback**
+- [ ] **Step 6: Implement structural UTF-32/UTF-16 heuristics and conservative fallback**
 
-For even-length samples of at least 8 bytes, compare zero-byte frequency at even and odd positions. Strong zeros on odd bytes imply UTF-16LE; strong zeros on even bytes imply UTF-16BE. Otherwise return Windows-1252 at confidence `0.35` with `("iso-8859-1",)` alternative.
+Check four byte lanes first for UTF-32LE/BE null structure, then even/odd lanes for UTF-16LE/BE. Only after structural Unicode checks should boundary-aware strict UTF-8 validation run. Otherwise return Windows-1252 at confidence `0.35` with `("iso-8859-1",)` alternative.
 
 - [ ] **Step 7: Run detector tests and verify GREEN**
 
@@ -293,7 +293,7 @@ Expected: import failure because decoder module does not exist.
 
 - [ ] **Step 3: Implement valid-text DecodedSpan path**
 
-Decode with `errors="surrogateescape"`. Build character boundaries by re-encoding each decoded character with the same encoding and `errors="surrogateescape"`, accumulating byte lengths from zero. Convert boundaries to absolute offsets only in `byte_offset_for_char_boundary`.
+Decode valid text first with explicit local byte-boundary reconstruction. The final implementation replaces Python `surrogateescape` with UNITI's codec-error sentinel because malformed UTF-16/UTF-32 spans cannot be losslessly round-tripped by the built-in handler.
 
 - [ ] **Step 4: Add failing invalid-byte preservation tests**
 
@@ -324,11 +324,11 @@ def test_undefined_cp1252_byte_is_preserved(tmp_path: Path):
 
 Run: `PYTHONPATH=src pytest tests/core/test_decoder.py -q`
 
-Expected: invalid-byte assertions fail until surrogate markers are converted into U+FFFD plus `DecodeError` records.
+Expected: invalid-byte assertions fail until codec error spans are converted into U+FFFD plus `DecodeError` records.
 
 - [ ] **Step 6: Implement invalid-byte records**
 
-Walk the surrogate-escaped decoded string alongside accumulated byte boundaries. For characters U+DC80..U+DCFF, emit U+FFFD in display text and one `DecodeError` for that byte. Keep boundary width equal to the re-encoded raw byte width. Validate `char_boundary` range in `byte_offset_for_char_boundary`.
+Register a UNITI decode-error handler that records each `UnicodeDecodeError` byte span and emits an internal sentinel. Convert each sentinel to one U+FFFD plus one exact `DecodeError`, including multi-byte malformed UTF-16/UTF-32 spans. Strip recognized BOM prefixes from visible text while starting `char_boundaries` after the BOM. Validate all reconstructed byte boundaries before returning the span.
 
 - [ ] **Step 7: Add failing sliced-window absolute-offset test**
 
@@ -364,7 +364,7 @@ git commit -m "feat: add bounded loss-aware decoder"
 
 **Interfaces:**
 - Consumes: `ByteSource.iter_chunks()`.
-- Produces: frozen `EOLReport(lf, crlf, cr, kind)` and `analyze_eol(source, chunk_size=1<<20) -> EOLReport`.
+- Produces: frozen `EOLReport(lf, crlf, cr, kind)` and `analyze_eol(source, chunk_size=1<<20, *, encoding="utf-8") -> EOLReport`.
 
 - [ ] **Step 1: Write failing homogeneous/mixed/none tests**
 
@@ -404,7 +404,7 @@ Expected: import failure because EOL module does not exist.
 
 - [ ] **Step 3: Implement streaming EOL scanner**
 
-Process bytes in chunks and keep `pending_cr: bool` between chunks. A pending CR followed by LF increments CRLF; otherwise it increments CR before the new byte is processed. LF not preceded by CR increments LF. Flush pending CR at EOF.
+Use `codecs.getincrementaldecoder(encoding)(errors="replace")` over `ByteSource.iter_chunks()`. Count CRLF/LF/CR in decoded text using string counts and carry a pending CR across decoded chunk boundaries. This keeps UTF-16/UTF-32 EOL semantics correct even when byte chunks split code units.
 
 - [ ] **Step 4: Add failing CRLF-across-chunk test**
 
@@ -541,7 +541,7 @@ Expected: failure because `scripts/core_probe.py` does not exist.
 
 - [ ] **Step 3: Implement probe and document current scope**
 
-Use `argparse`; open the source with `ByteSource`, detect encoding, analyze EOL, decode at most `--window` bytes from byte 0, and print one field per line. The README must state that Phase 1A has no editor viewport yet and list the next slice as piece table + sparse offset index + line index.
+Use `argparse`; open the source with `ByteSource`, detect encoding, analyze EOL using that detected encoding, decode at most `--window` bytes from byte 0, and print one field per line. The README must state that Phase 1A has no editor viewport yet and list the next slice as piece table + sparse offset index + line index.
 
 - [ ] **Step 4: Run probe test and full suite**
 

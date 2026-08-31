@@ -9,7 +9,7 @@ description = "UNITI — Unicode Intelligent Text Interchange"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "regex>=2026.5.9",
+    "regex==2026.5.9",
 ]
 
 [project.optional-dependencies]

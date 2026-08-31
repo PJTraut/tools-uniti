@@ -39,9 +39,10 @@ Owns file opening, file identity, random reads, chunk iteration, and close seman
 Defines immutable encoding metadata and a first-pass detector. Detection order for this slice is:
 
 1. UTF-8/UTF-16/UTF-32 BOM;
-2. strict UTF-8 validation on samples;
+2. UTF-32 structural null-byte heuristic;
 3. UTF-16 structural null-byte heuristic;
-4. conservative Windows-1252 fallback with low confidence.
+4. strict UTF-8 validation on samples, tolerating only multibyte sequences cut by a sample edge;
+5. conservative Windows-1252 fallback with low confidence.
 
 The result exposes confidence and alternatives; it must not claim certainty for legacy text. A later slice may plug in a statistical detector behind this interface.
 
@@ -57,11 +58,11 @@ Decodes only requested byte ranges. It returns `DecodedSpan` containing:
 
 Invalid bytes are displayed as U+FFFD but remain recoverable through the source and `DecodeError` records. The decoder must not silently discard them.
 
-For UTF-8 and single-byte legacy encodings, local boundaries are reconstructed by a surrogate-escape round trip. UTF-16/UTF-32 invalid-tail handling is kept explicit and conservative in this first slice; ranges requested by callers should be aligned by the future mapper.
+Decoding uses a UNITI codec-error sentinel backed by thread-local error-span records. Any codec decode error, including malformed UTF-16/UTF-32 sequences, becomes one visible U+FFFD plus a `DecodeError` containing the exact original byte range. Valid characters are re-encoded only to reconstruct local byte boundaries; unstable/stateful codecs fail explicitly rather than returning incorrect offsets. UTF BOM bytes at byte zero remain prefix metadata and are excluded from visible text while remaining represented in the first character boundary.
 
 ### `uniti.core.eol`
 
-Scans bounded chunks while carrying one byte of state across chunk boundaries so CRLF split across two chunks is counted correctly. It reports counts and one of `LF`, `CRLF`, `CR`, `MIXED`, or `NONE`.
+Decodes bounded byte chunks incrementally using the document encoding, then counts logical CRLF/LF/CR sequences in decoded text. This is required for UTF-16/UTF-32, where raw CR/LF bytes are separated by zero bytes. A pending CR is carried across decoded chunk boundaries so CRLF remains one logical EOL. It reports counts and one of `LF`, `CRLF`, `CR`, `MIXED`, or `NONE`.
 
 ### `uniti.core.streaming`
 
@@ -119,6 +120,13 @@ class EOLReport:
     crlf: int
     cr: int
     kind: Literal["LF", "CRLF", "CR", "MIXED", "NONE"]
+
+def analyze_eol(
+    source: ByteSource,
+    chunk_size: int = 1 << 20,
+    *,
+    encoding: str = "utf-8",
+) -> EOLReport: ...
 ```
 
 ## Performance constraints
@@ -146,9 +154,9 @@ Tests are test-first and use real temporary files, not mocked filesystem APIs. T
 - no 32-bit offset assumptions through a sparse >1 GiB file;
 - BOM and strict UTF-8 detection;
 - conservative fallback for invalid UTF-8;
-- preservation and display marking of invalid bytes;
-- UTF-8 multibyte local byte↔character boundaries;
-- CRLF split across chunks;
+- preservation and display marking of invalid UTF-8, Windows-1252, UTF-16 and UTF-32 spans;
+- UTF BOM prefix handling and UTF-8 multibyte local byte↔character boundaries;
+- CRLF split across chunks and encoding-aware UTF-16/UTF-32 EOL analysis;
 - mixed and no-EOL classification;
 - byte-identical streaming copy and atomic target replacement.
 

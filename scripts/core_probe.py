@@ -32,7 +32,7 @@ def main() -> int:
 
     with ByteSource.open(args.path) as source:
         encoding = detect_encoding(source)
-        eol = analyze_eol(source)
+        eol = analyze_eol(source, encoding=encoding.detected)
         window = _aligned_window(min(source.size, args.window), encoding.detected)
         span = decode_span(source, 0, window, encoding.detected)
 
