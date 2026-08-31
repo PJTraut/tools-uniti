@@ -6,7 +6,7 @@ from collections.abc import Callable
 from concurrent.futures import Future
 
 import regex
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -40,6 +40,7 @@ class FindReplacePanel(QFrame):
     """Compact bottom panel; match records remain data, never per-match widgets."""
 
     streamReplaceCommitted = Signal(object, str, int)
+    _jobCompleted = Signal()
 
     def __init__(
         self,
@@ -120,9 +121,12 @@ class FindReplacePanel(QFrame):
         self.replace_input.returnPressed.connect(self.replace_current)
         self.find_input.textChanged.connect(self._pattern_changed)
 
-        self._poll_timer = QTimer(self)
-        self._poll_timer.setInterval(40)
-        self._poll_timer.timeout.connect(self._poll_job)
+        # Worker futures may finish before the next Qt timer tick.  Deliver
+        # completion through a queued Qt signal so result application happens
+        # deterministically on the GUI thread.
+        self._jobCompleted.connect(
+            self._poll_job, Qt.ConnectionType.QueuedConnection
+        )
 
     @property
     def result_count(self) -> int:
@@ -130,7 +134,10 @@ class FindReplacePanel(QFrame):
 
     @property
     def busy(self) -> bool:
-        return self._future is not None and not self._future.done()
+        # A completed Future is still busy until its payload has been applied on
+        # the GUI thread.  Callers may safely wait on this property while
+        # pumping QApplication events.
+        return self._future is not None
 
     def focus_find(self) -> None:
         self.show()
@@ -212,7 +219,7 @@ class FindReplacePanel(QFrame):
             fn,
             token=token,
         )
-        self._poll_timer.start()
+        self._future.add_done_callback(lambda _future: self._jobCompleted.emit())
         return True
 
     def find_all(self) -> None:
@@ -305,7 +312,6 @@ class FindReplacePanel(QFrame):
         future = self._future
         if future is None or not future.done():
             return
-        self._poll_timer.stop()
         kind = self._job_kind
         context = self._job_context
         view = self._target_view
