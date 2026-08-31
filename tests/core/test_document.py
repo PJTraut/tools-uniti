@@ -234,3 +234,48 @@ def test_read_line_window_does_not_materialize_single_huge_line(tmp_path: Path):
         assert text == "a" * 1024
         assert not document.document_line_index.complete
         assert not document.offset_mapper.complete
+
+
+def test_output_encoding_policy_marks_document_modified_until_save(tmp_path: Path):
+    path = tmp_path / "encoding-policy.txt"
+    target = tmp_path / "encoding-policy-out.txt"
+    path.write_text("café", encoding="utf-8")
+    with Document.open(path, encoding="utf-8") as document:
+        assert not document.modified
+        document.set_output_encoding("windows-1252")
+        assert document.modified
+        assert document.encoding_info.output_encoding == "windows-1252"
+        document.save(target)
+        assert not document.modified
+    assert target.read_bytes() == b"caf\xe9"
+
+
+def test_output_eol_policy_can_be_changed_and_reverted_without_text_edit(tmp_path: Path):
+    path = tmp_path / "eol-policy.txt"
+    path.write_text("a\nb\n", encoding="utf-8")
+    with Document.open(path, encoding="utf-8") as document:
+        document.set_output_eol("CRLF")
+        assert document.output_eol == "CRLF"
+        assert document.modified
+        document.set_output_eol(None)
+        assert document.output_eol is None
+        assert not document.modified
+
+
+def test_text_undo_does_not_clear_output_metadata_dirtiness(tmp_path: Path):
+    path = tmp_path / "metadata-history.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path, encoding="utf-8") as document:
+        document.set_output_eol("CRLF")
+        document.insert(3, "x")
+        document.undo()
+        assert document.read(0, document.total_chars()) == "abc"
+        assert document.modified
+
+
+def test_invalid_output_eol_policy_is_rejected(tmp_path: Path):
+    path = tmp_path / "bad-eol.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path, encoding="utf-8") as document:
+        with pytest.raises(ValueError, match="EOL"):
+            document.set_output_eol("BAD")  # type: ignore[arg-type]

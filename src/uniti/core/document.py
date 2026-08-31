@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import os
 from collections.abc import Iterator
 from dataclasses import replace as dataclass_replace
@@ -38,6 +39,10 @@ class Document:
         self._document_line_index = document_line_index
         self._output_eol: EOLName | None = None
         self._history = EditHistory()
+        self._saved_output_encoding = (
+            encoding_info.output_encoding or encoding_info.detected
+        )
+        self._saved_output_eol: EOLName | None = None
         self._closed = False
 
     @classmethod
@@ -114,8 +119,37 @@ class Document:
         return self._output_eol
 
     @property
+    def output_encoding(self) -> str:
+        return self._encoding_info.output_encoding or self._encoding_info.detected
+
+    @property
     def modified(self) -> bool:
-        return self._history.modified
+        metadata_modified = (
+            self.output_encoding != self._saved_output_encoding
+            or self._output_eol != self._saved_output_eol
+        )
+        return self._history.modified or metadata_modified
+
+    def set_output_encoding(self, encoding: str) -> None:
+        self._ensure_open()
+        if not isinstance(encoding, str) or not encoding:
+            raise ValueError("output encoding must be a non-empty string")
+        try:
+            codecs.lookup(encoding)
+        except LookupError as exc:
+            raise ValueError(f"unknown output encoding: {encoding}") from exc
+        if encoding == self.output_encoding:
+            return
+        self._encoding_info = dataclass_replace(
+            self._encoding_info,
+            output_encoding=encoding,
+        )
+
+    def set_output_eol(self, eol: EOLName | None) -> None:
+        self._ensure_open()
+        if eol not in (None, "LF", "CRLF", "CR"):
+            raise ValueError(f"unsupported EOL policy: {eol}")
+        self._output_eol = eol
 
     @property
     def can_undo(self) -> bool:
@@ -347,6 +381,8 @@ class Document:
         if eol is not None:
             self._output_eol = eol
         self._history.mark_saved()
+        self._saved_output_encoding = output_encoding
+        self._saved_output_eol = output_eol
         return result
 
     def total_chars(self) -> int:
