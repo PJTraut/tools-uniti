@@ -147,3 +147,20 @@ def test_piece_table_matches_reference_text_across_deterministic_edits(tmp_path:
 
             assert table.total_chars() == len(reference)
             assert table.read(0, len(reference)) == reference
+
+
+def test_iter_text_is_bounded_and_keeps_source_tail_unresolved(tmp_path: Path):
+    path = tmp_path / "iter.txt"
+    path.write_text("0123456789" * 20_000, encoding="utf-8")
+    with ByteSource.open(path) as source:
+        mapper = OffsetMapper(source, "utf-8", checkpoint_bytes=64)
+        table = PieceTable(source, "utf-8", mapper, EditStore())
+        chunks = list(table.iter_text(5, 25, chunk_chars=7))
+        assert chunks == [
+            (5, "5678901"),
+            (12, "2345678"),
+            (19, "901234"),
+        ]
+        assert not mapper.complete
+        assert isinstance(table._pieces[-1], SourcePiece)
+        assert table._pieces[-1].char_length is None

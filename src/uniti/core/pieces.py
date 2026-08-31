@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterator
 
 from .byte_source import ByteSource
 from .decoder import decode_span
@@ -304,6 +305,40 @@ class PieceTable:
         if consumed_to < end:
             raise ValueError("document range extends beyond end of document")
         return "".join(output)
+
+    def iter_text(
+        self,
+        start: int = 0,
+        end: int | None = None,
+        *,
+        chunk_chars: int = 65_536,
+    ) -> Iterator[tuple[int, str]]:
+        """Yield bounded logical Unicode chunks without eagerly measuring EOF."""
+        if start < 0:
+            raise ValueError("character offset must be non-negative")
+        if end is not None and end < start:
+            raise ValueError("invalid document character range")
+        if chunk_chars <= 0:
+            raise ValueError("chunk_chars must be positive")
+        position = start
+        while end is None or position < end:
+            requested_end = position + chunk_chars
+            if end is not None:
+                requested_end = min(requested_end, end)
+            try:
+                text = self.read(position, requested_end)
+            except ValueError:
+                total = self.total_chars()
+                if position > total or (end is not None and end > total):
+                    raise
+                if position == total:
+                    return
+                requested_end = min(requested_end, total)
+                text = self.read(position, requested_end)
+            if not text:
+                return
+            yield position, text
+            position = requested_end
 
     def total_chars(self) -> int:
         total = 0
