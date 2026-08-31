@@ -5,20 +5,20 @@ from pathlib import Path
 
 import pytest
 
-from scripts.alpha_smoke import run_alpha_smoke
+from uniti.app.smoke import run_alpha_smoke
 from uniti.core.document import Document
 
 
-def test_a10_canonical_version_and_headless_smoke(tmp_path: Path):
+def test_a11_canonical_version_and_headless_smoke(tmp_path: Path):
     import uniti
 
-    assert uniti.__display_version__ == "v0.001a10"
-    assert uniti.__version__ == "0.1a10"
-    assert Path("VERSION").read_text().strip() == "v0.001a10"
+    assert uniti.__display_version__ == "v0.001a11"
+    assert uniti.__version__ == "0.1a11"
+    assert Path("VERSION").read_text().strip() == "v0.001a11"
     assert run_alpha_smoke(tmp_path / "smoke")["ok"] is True
 
 
-def test_a10_gib_sparse_file_stays_lazy_during_early_edit(tmp_path: Path):
+def test_a11_gib_sparse_file_stays_lazy_during_early_edit(tmp_path: Path):
     path = tmp_path / "gib-sparse.txt"
     with path.open("wb") as handle:
         handle.write(b"abc\n")
@@ -33,7 +33,7 @@ def test_a10_gib_sparse_file_stays_lazy_during_early_edit(tmp_path: Path):
         assert document.source.size > 1 << 30
 
 
-def test_a10_offscreen_open_find_edit_save_when_pyside6_available(tmp_path: Path):
+def test_a11_offscreen_open_find_edit_save_when_pyside6_available(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import unicodedata
 
 from .byte_source import ByteSource
 
@@ -118,6 +119,73 @@ def _valid_utf8_sample(sample: _Sample, source_size: int) -> bool:
 
 
 
+
+def _unicode_text_score(text: str) -> float:
+    if not text:
+        return 0.0
+    good = 0
+    textlike = 0
+    bad = 0
+    whitespace = 0
+    for char in text:
+        category = unicodedata.category(char)
+        is_space = char in "\t\r\n " or char.isspace()
+        if is_space:
+            whitespace += 1
+        if (char.isprintable() or char in "\t\r\n") and category not in {"Co", "Cs", "Cn"}:
+            good += 1
+        if category[:1] in {"L", "M", "N", "P", "Z"} or char in "\t\r\n":
+            textlike += 1
+        if category in {"Co", "Cs", "Cn"} or (category == "Cc" and char not in "\t\r\n\f\b"):
+            bad += 1
+    length = len(text)
+    return max(
+        0.0,
+        0.55 * good / length
+        + 0.35 * textlike / length
+        + (0.10 if whitespace else 0.0)
+        - 0.55 * bad / length,
+    )
+
+
+def _plausible_unicode_guess(sample: bytes) -> str | None:
+    """Distinguish BOM-less UTF-16/32 after strict UTF-8 has failed.
+
+    This is intentionally conservative: arbitrary legacy byte pairs often
+    decode under both UTF-16 endiannesses, so UNITI only chooses a codec when
+    one candidate is strongly more text-like than its opposite endian form.
+    """
+
+    candidates: list[tuple[str, float]] = []
+    for encoding, unit in (
+        ("utf-32-le", 4),
+        ("utf-32-be", 4),
+        ("utf-16-le", 2),
+        ("utf-16-be", 2),
+    ):
+        usable = sample[: len(sample) - (len(sample) % unit)]
+        if len(usable) < unit * 4:
+            continue
+        try:
+            text = usable.decode(encoding, errors="strict")
+        except UnicodeDecodeError:
+            continue
+        candidates.append((encoding, _unicode_text_score(text)))
+
+    for width_prefix, threshold, margin in (("utf-32", 0.86, 0.10), ("utf-16", 0.88, 0.12)):
+        peers = sorted(
+            ((enc, score) for enc, score in candidates if enc.startswith(width_prefix)),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        if not peers:
+            continue
+        best_encoding, best_score = peers[0]
+        second_score = peers[1][1] if len(peers) > 1 else 0.0
+        if best_score >= threshold and best_score - second_score >= margin:
+            return best_encoding
+    return None
+
 def matching_bom(source: ByteSource, encoding: str) -> bytes | None:
     """Return a BOM only when it matches the explicitly selected codec."""
 
@@ -159,6 +227,11 @@ def detect_encoding(source: ByteSource, sample_size: int = 65_536) -> EncodingIn
 
     if all(_valid_utf8_sample(sample, source.size) for sample in samples):
         return EncodingInfo("utf-8", 0.97, None)
+
+    unicode_guess = _plausible_unicode_guess(samples[0].data)
+    if unicode_guess is not None:
+        confidence = 0.80 if unicode_guess.startswith("utf-32") else 0.76
+        return EncodingInfo(unicode_guess, confidence, None)
 
     return EncodingInfo(
         "windows-1252",

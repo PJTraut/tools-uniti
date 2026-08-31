@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from scripts.alpha_smoke import run_alpha_smoke
+from uniti.app.smoke import run_alpha_smoke
 
 
 def test_alpha_smoke_exercises_core_workflow(tmp_path: Path):

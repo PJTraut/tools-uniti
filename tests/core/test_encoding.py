@@ -77,3 +77,15 @@ def test_utf32be_without_bom_uses_null_structure(tmp_path: Path):
     info = detect(tmp_path, "Alpha Beta\n".encode("utf-32-be"))
     assert info.detected == "utf-32-be"
     assert 0.7 <= info.confidence < 1.0
+
+
+def test_bomless_japanese_utf16_endianness_uses_unicode_plausibility(tmp_path: Path):
+    text = "日本語のテキストです。漢字とかな。\n"
+    assert detect(tmp_path, text.encode("utf-16-le")).detected == "utf-16-le"
+    assert detect(tmp_path, text.encode("utf-16-be")).detected == "utf-16-be"
+
+
+def test_bomless_japanese_utf32_endianness_uses_unicode_plausibility(tmp_path: Path):
+    text = "日本語のテキストです。漢字とかな。\n"
+    assert detect(tmp_path, text.encode("utf-32-le")).detected == "utf-32-le"
+    assert detect(tmp_path, text.encode("utf-32-be")).detected == "utf-32-be"
