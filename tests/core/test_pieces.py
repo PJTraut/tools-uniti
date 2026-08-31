@@ -164,3 +164,23 @@ def test_iter_text_is_bounded_and_keeps_source_tail_unresolved(tmp_path: Path):
         assert not mapper.complete
         assert isinstance(table._pieces[-1], SourcePiece)
         assert table._pieces[-1].char_length is None
+
+
+def test_iter_segments_exposes_source_and_edit_ranges_without_measuring_tail(tmp_path: Path):
+    from uniti.core.pieces import EditSegment, SourceSegment
+
+    path = tmp_path / "segments.txt"
+    path.write_text("abcdefghij" * 10_000, encoding="utf-8")
+    with ByteSource.open(path) as source:
+        mapper = OffsetMapper(source, "utf-8", checkpoint_bytes=16)
+        table = PieceTable(source, "utf-8", mapper, EditStore())
+        table.insert(3, "XYZ")
+        segments = list(table.iter_segments())
+        assert segments == [
+            SourceSegment(0, 3),
+            EditSegment("XYZ"),
+            SourceSegment(3, source.size),
+        ]
+        assert not mapper.complete
+        assert isinstance(table._pieces[-1], SourcePiece)
+        assert table._pieces[-1].char_length is None

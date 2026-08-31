@@ -62,6 +62,20 @@ class EditPiece:
 Piece = SourcePiece | EditPiece
 
 
+@dataclass(frozen=True, slots=True)
+class SourceSegment:
+    byte_start: int
+    byte_end: int
+
+
+@dataclass(frozen=True, slots=True)
+class EditSegment:
+    text: str
+
+
+TextSegment = SourceSegment | EditSegment
+
+
 class PieceTable:
     """List-backed piece table with one optional unresolved final source tail."""
 
@@ -305,6 +319,14 @@ class PieceTable:
         if consumed_to < end:
             raise ValueError("document range extends beyond end of document")
         return "".join(output)
+
+    def iter_segments(self) -> Iterator[TextSegment]:
+        """Yield immutable source-byte or Unicode-edit segments in document order."""
+        for piece in self._pieces:
+            if isinstance(piece, SourcePiece):
+                yield SourceSegment(piece.byte_start, piece.byte_end)
+            else:
+                yield EditSegment(self._edit_store.read(piece.ref))
 
     def iter_text(
         self,
