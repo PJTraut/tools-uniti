@@ -18,6 +18,14 @@ class RegexToken:
     valid: bool = True
 
 
+
+
+@dataclass(slots=True)
+class _GroupContext:
+    token_index: int
+    branch_base: int | None = None
+    branch_max: int = 0
+
 @dataclass(frozen=True, slots=True)
 class ReplacementToken:
     kind: str
@@ -62,8 +70,10 @@ def tokenize_pattern(pattern: str) -> tuple[RegexToken, ...]:
         raise TypeError("pattern must be a string")
 
     tokens: list[RegexToken] = []
-    group_stack: list[int] = []
-    group_number = 0
+    group_stack: list[_GroupContext] = []
+    next_group = 1
+    named_numbers: dict[str, int] = {}
+    number_names: dict[int, str] = {}
     i = 0
     n = len(pattern)
 
@@ -134,8 +144,16 @@ def tokenize_pattern(pattern: str) -> tuple[RegexToken, ...]:
                     tokens.append(RegexToken("invalid", i, n, pattern[i:], valid=False))
                     break
                 name = pattern[i + 4 : close]
-                group_number += 1
-                number = group_number
+                if name in named_numbers:
+                    number = named_numbers[name]
+                else:
+                    candidate = next_group
+                    while candidate in number_names and number_names[candidate] != name:
+                        candidate += 1
+                    number = candidate
+                    named_numbers[name] = number
+                    number_names[number] = name
+                    next_group = max(next_group, number + 1)
                 end = close + 1
             elif pattern.startswith("(?<", i) and not (
                 pattern.startswith("(?<=", i) or pattern.startswith("(?<!", i)
@@ -145,8 +163,16 @@ def tokenize_pattern(pattern: str) -> tuple[RegexToken, ...]:
                     tokens.append(RegexToken("invalid", i, n, pattern[i:], valid=False))
                     break
                 name = pattern[i + 3 : close]
-                group_number += 1
-                number = group_number
+                if name in named_numbers:
+                    number = named_numbers[name]
+                else:
+                    candidate = next_group
+                    while candidate in number_names and number_names[candidate] != name:
+                        candidate += 1
+                    number = candidate
+                    named_numbers[name] = number
+                    number_names[number] = name
+                    next_group = max(next_group, number + 1)
                 end = close + 1
             elif flag_group is not None:
                 end = flag_group.end()
@@ -159,8 +185,8 @@ def tokenize_pattern(pattern: str) -> tuple[RegexToken, ...]:
                 else:
                     end = i + 3
             else:
-                group_number += 1
-                number = group_number
+                number = next_group
+                next_group += 1
 
             token_index = len(tokens)
             tokens.append(
@@ -173,13 +199,22 @@ def tokenize_pattern(pattern: str) -> tuple[RegexToken, ...]:
                     group_name=name,
                 )
             )
-            group_stack.append(token_index)
+            is_branch_reset = pattern.startswith("(?|", i)
+            group_stack.append(
+                _GroupContext(
+                    token_index=token_index,
+                    branch_base=next_group if is_branch_reset else None,
+                    branch_max=next_group if is_branch_reset else 0,
+                )
+            )
             i = end
             continue
 
         if char == ")":
             if group_stack:
-                group_stack.pop()
+                context = group_stack.pop()
+                if context.branch_base is not None:
+                    next_group = max(next_group, context.branch_max)
                 tokens.append(RegexToken("group_close", i, i + 1, char))
             else:
                 tokens.append(RegexToken("invalid", i, i + 1, char, valid=False))
@@ -208,6 +243,10 @@ def tokenize_pattern(pattern: str) -> tuple[RegexToken, ...]:
             continue
 
         if char == "|":
+            if group_stack and group_stack[-1].branch_base is not None:
+                context = group_stack[-1]
+                context.branch_max = max(context.branch_max, next_group)
+                next_group = context.branch_base
             tokens.append(RegexToken("alternation", i, i + 1, char))
             i += 1
             continue
@@ -219,8 +258,19 @@ def tokenize_pattern(pattern: str) -> tuple[RegexToken, ...]:
             i += 1
         tokens.append(RegexToken("literal", start, i, pattern[start:i]))
 
-    for token_index in group_stack:
-        tokens[token_index] = replace(tokens[token_index], valid=False)
+    for context in group_stack:
+        tokens[context.token_index] = replace(tokens[context.token_index], valid=False)
+
+    try:
+        compiled = _syntax_re.compile(pattern)
+    except _syntax_re.error:
+        compiled = None
+    if compiled is not None and compiled.groupindex:
+        for index, token in enumerate(tokens):
+            if token.group_name is not None and token.group_name in compiled.groupindex:
+                tokens[index] = replace(
+                    token, group_number=compiled.groupindex[token.group_name]
+                )
     return tuple(tokens)
 
 

@@ -114,3 +114,85 @@ def test_vertical_movement_uses_line_length_without_reading_whole_line(tmp_path:
         assert state.cursor == document.line_start(1) + 2
         state.move_down()
         assert state.cursor == document.line_start(2) + 5
+
+
+def test_insert_newline_uses_crlf_source_policy(tmp_path: Path):
+    path = tmp_path / "crlf.txt"
+    path.write_bytes(b"a\r\nb\r\n")
+    document = Document.open(path)
+    try:
+        state = EditorState(document)
+        state.move_to(1)
+        state.insert_newline()
+        assert document.read(0, 4) == "a\r\n\r"
+        assert document.insertion_eol == "CRLF"
+    finally:
+        document.close()
+
+
+def test_insert_newline_uses_cr_source_policy(tmp_path: Path):
+    path = tmp_path / "cr.txt"
+    path.write_bytes(b"a\rb\r")
+    document = Document.open(path)
+    try:
+        state = EditorState(document)
+        state.move_to(1)
+        state.insert_newline()
+        assert document.read(0, 3) == "a\r\r"
+        assert document.insertion_eol == "CR"
+    finally:
+        document.close()
+
+
+def test_insert_newline_uses_dominant_mixed_source_policy(tmp_path: Path):
+    path = tmp_path / "mixed.txt"
+    path.write_bytes(b"a\r\nb\r\nc\nd\r\n")
+    document = Document.open(path)
+    try:
+        state = EditorState(document)
+        state.move_to(1)
+        state.insert_newline()
+        assert document.insertion_eol == "CRLF"
+        assert document.read(0, 3) == "a\r\n"
+    finally:
+        document.close()
+
+
+def test_explicit_insertion_eol_is_independent_of_output_conversion(tmp_path: Path):
+    path = tmp_path / "policy.txt"
+    path.write_bytes(b"a\r\nb\r\n")
+    document = Document.open(path)
+    try:
+        document.set_output_eol("LF")
+        document.set_insertion_eol("CR")
+        state = EditorState(document)
+        state.move_to(1)
+        state.insert_newline()
+        assert document.output_eol == "LF"
+        assert document.insertion_eol == "CR"
+        assert document.read(0, 3) == "a\r\r"
+    finally:
+        document.close()
+
+
+def test_clipboard_state_copy_cut_and_paste_use_document_mutations(tmp_path: Path):
+    with _open(tmp_path, "abcédef") as document:
+        state = EditorState(document)
+        state.move_to(3)
+        state.move_to(5, selecting=True)
+        assert state.selected_text() == "éd"
+        assert state.cut_selection() == "éd"
+        assert document.read(0, document.total_chars()) == "abcef"
+        state.paste_text("漢字")
+        assert document.read(0, document.total_chars()) == "abc漢字ef"
+
+
+def test_ime_surrounding_text_is_bounded_and_uses_relative_cursor_anchor(tmp_path: Path):
+    with _open(tmp_path, "0123456789") as document:
+        state = EditorState(document)
+        state.move_to(3)
+        state.move_to(5, selecting=True)
+        text, cursor, anchor = state.ime_surrounding_text(radius=3)
+        assert text == "234567"
+        assert cursor == 3
+        assert anchor == 1

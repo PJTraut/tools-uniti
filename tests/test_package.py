@@ -46,3 +46,11 @@ def test_application_constructs_one_resource_manager_for_desktop_runtime():
     source = Path("src/uniti/app/application.py").read_text()
     assert "ResourceManager" in source
     assert "resource_manager=resources" in source
+
+
+def test_application_finally_shuts_down_recovery_and_resource_services():
+    from pathlib import Path
+
+    source = Path("src/uniti/app/application.py").read_text()
+    assert "recovery_manager.shutdown()" in source
+    assert "resources.shutdown(wait=True)" in source

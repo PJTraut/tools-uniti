@@ -54,3 +54,19 @@ def test_replacement_lexer_validates_numeric_and_named_references():
         ("missing", False),
     ]
     assert any(token.kind == "escape" and token.text == r"\\" for token in tokens)
+
+
+def test_pattern_lexer_matches_regex_engine_branch_reset_numbering():
+    tokens = tokenize_pattern(r"(?|(a)|(b))(c)")
+    groups = [token for token in tokens if token.kind == "group_open"]
+    assert [token.group_number for token in groups] == [None, 1, 1, 2]
+
+
+def test_pattern_lexer_reuses_engine_group_number_for_duplicate_named_groups():
+    tokens = tokenize_pattern(r"(?P<item>a)(?P<item>b)(c)")
+    groups = [token for token in tokens if token.kind == "group_open"]
+    assert [(token.group_number, token.group_name) for token in groups] == [
+        (1, "item"),
+        (1, "item"),
+        (2, None),
+    ]

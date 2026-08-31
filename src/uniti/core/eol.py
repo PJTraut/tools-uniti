@@ -38,6 +38,7 @@ def analyze_eol(
     chunk_size: int = 1 << 20,
     *,
     encoding: str = "utf-8",
+    end: int | None = None,
 ) -> EOLReport:
     """Count logical CRLF, LF and CR endings through an incremental decoder."""
 
@@ -74,7 +75,8 @@ def analyze_eol(
         lf += text.count("\n") - pairs
         cr += text.count("\r") - pairs
 
-    for chunk in source.iter_chunks(chunk_size=chunk_size):
+    stop = source.size if end is None else min(source.size, max(0, end))
+    for chunk in source.iter_chunks(end=stop, chunk_size=chunk_size):
         consume(decoder.decode(chunk, final=False))
     consume(decoder.decode(b"", final=True))
 

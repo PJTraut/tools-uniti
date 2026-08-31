@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPointF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QFontDatabase,
     QFontMetrics,
+    QGuiApplication,
+    QInputMethodEvent,
     QKeyEvent,
     QMouseEvent,
     QPainter,
@@ -37,8 +39,10 @@ class UNITITextView(QAbstractScrollArea):
         self._cell_width = max(1, self._metrics.horizontalAdvance("M"))
         self._max_seen_line_width = 0
         self._drag_selecting = False
+        self._preedit_text = ""
         self._match_index = MatchIndex(())
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
         self.setMouseTracking(True)
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_changed)
         self.horizontalScrollBar().valueChanged.connect(self.viewport().update)
@@ -95,12 +99,35 @@ class UNITITextView(QAbstractScrollArea):
         text_x = self._gutter_width - (horizontal % self._cell_width)
         return column_start, text_x
 
-    def _line_text(self, line: int, column_start: int) -> str:
-        return self.document.read_line_window(
+    def _line_content(self, line: int, column_start: int):
+        return self.document.read_line_window_annotated(
             line,
             column_start=column_start,
             max_chars=self._max_visible_chars,
         )
+
+    def _line_text(self, line: int, column_start: int) -> str:
+        return self._line_content(line, column_start).text
+
+    def _paint_invalid_byte_annotations(
+        self, painter: QPainter, annotated, window_start: int, text: str, text_x: int, y: int
+    ) -> None:
+        if not annotated.invalid_bytes:
+            return
+        color = self.palette().color(QPalette.ColorRole.BrightText)
+        painter.setPen(color)
+        for span in annotated.invalid_bytes:
+            local = span.start - window_start
+            if local < 0 or local >= len(text):
+                continue
+            x1 = text_x + self._metrics.horizontalAdvance(text[:local])
+            x2 = text_x + self._metrics.horizontalAdvance(text[: local + 1])
+            painter.drawRect(
+                int(x1),
+                y + 1,
+                max(2, int(x2 - x1)),
+                max(2, self._line_height - 3),
+            )
 
     def _paint_line_text(self, painter: QPainter, text: str, x: float, y: float) -> None:
         layout = QTextLayout(text, self.font())
@@ -132,7 +159,8 @@ class UNITITextView(QAbstractScrollArea):
             line_number = first_line + row
             try:
                 line_start = self.document.line_start(line_number)
-                text = self._line_text(line_number, column_start)
+                annotated = self._line_content(line_number, column_start)
+                text = annotated.text
             except ValueError:
                 break
 
@@ -197,8 +225,24 @@ class UNITITextView(QAbstractScrollArea):
                         palette.color(QPalette.ColorRole.Highlight),
                     )
 
+            self._paint_invalid_byte_annotations(
+                painter, annotated, line_window_start, text, text_x, y
+            )
             painter.setPen(palette.color(QPalette.ColorRole.Text))
             self._paint_line_text(painter, text, float(text_x), float(y))
+
+            if line_number == cursor_line and self._preedit_text:
+                local_column = self.state.cursor - line_window_start
+                if 0 <= local_column <= len(text):
+                    preedit_x = text_x + self._metrics.horizontalAdvance(text[:local_column])
+                    painter.drawText(int(preedit_x), baseline, self._preedit_text)
+                    preedit_width = self._metrics.horizontalAdvance(self._preedit_text)
+                    painter.drawLine(
+                        int(preedit_x),
+                        y + self._line_height - 2,
+                        int(preedit_x + preedit_width),
+                        y + self._line_height - 2,
+                    )
 
             if line_number == cursor_line and self.hasFocus():
                 local_column = self.state.cursor - line_window_start
@@ -282,11 +326,70 @@ class UNITITextView(QAbstractScrollArea):
         super().wheelEvent(event)
 
     def _newline_text(self) -> str:
-        return {
-            "CRLF": "\r\n",
-            "CR": "\r",
-            "LF": "\n",
-        }.get(self.document.output_eol or "LF", "\n")
+        return {"CRLF": "\r\n", "CR": "\r", "LF": "\n"}[self.document.insertion_eol]
+
+    def copy_selection(self) -> str:
+        text = self.state.selected_text()
+        if text:
+            QGuiApplication.clipboard().setText(text)
+        return text
+
+    def cut_selection(self) -> str:
+        text = self.state.cut_selection()
+        if text:
+            QGuiApplication.clipboard().setText(text)
+            self._state_changed()
+        return text
+
+    def paste_clipboard(self) -> None:
+        text = QGuiApplication.clipboard().text()
+        if text:
+            self.state.paste_text(text)
+            self._state_changed()
+
+    def inputMethodEvent(self, event: QInputMethodEvent) -> None:
+        commit = event.commitString()
+        replacement_length = event.replacementLength()
+        replacement_start = event.replacementStart()
+        if replacement_length or replacement_start:
+            start = max(0, self.state.cursor + replacement_start)
+            end = max(start, start + replacement_length)
+            self.state.move_to(start)
+            self.state.move_to(end, selecting=True)
+        if commit:
+            self.state.insert_text(commit)
+        self._preedit_text = event.preeditString()
+        if commit:
+            self._state_changed()
+        else:
+            self.viewport().update()
+        event.accept()
+
+    def _cursor_rectangle(self) -> QRectF:
+        line = self.document.line_for_char(self.state.cursor)
+        first = self.verticalScrollBar().value()
+        line_start = self.document.line_start(line)
+        column = self.state.cursor - line_start
+        horizontal = self.horizontalScrollBar().value()
+        x = self._gutter_width + column * self._cell_width - horizontal
+        y = (line - first) * self._line_height
+        return QRectF(float(x), float(y), 2.0, float(self._line_height))
+
+    def inputMethodQuery(self, query):
+        if query == Qt.InputMethodQuery.ImEnabled:
+            return True
+        if query == Qt.InputMethodQuery.ImCursorRectangle:
+            return self._cursor_rectangle()
+        surrounding, cursor_relative, anchor_relative = self.state.ime_surrounding_text()
+        if query == Qt.InputMethodQuery.ImCursorPosition:
+            return cursor_relative
+        if query == Qt.InputMethodQuery.ImAnchorPosition:
+            return anchor_relative
+        if query == Qt.InputMethodQuery.ImCurrentSelection:
+            return self.state.selected_text()
+        if query == Qt.InputMethodQuery.ImSurroundingText:
+            return surrounding
+        return super().inputMethodQuery(query)
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
@@ -299,6 +402,16 @@ class UNITITextView(QAbstractScrollArea):
 
         if primary and key == Qt.Key.Key_A:
             self.state.select_all()
+        elif primary and key == Qt.Key.Key_C:
+            self.copy_selection()
+        elif primary and key == Qt.Key.Key_X:
+            self.cut_selection()
+            event.accept()
+            return
+        elif primary and key == Qt.Key.Key_V:
+            self.paste_clipboard()
+            event.accept()
+            return
         elif key == Qt.Key.Key_Left:
             self.state.move_left(selecting=selecting)
         elif key == Qt.Key.Key_Right:
@@ -316,7 +429,7 @@ class UNITITextView(QAbstractScrollArea):
         elif key == Qt.Key.Key_Delete:
             self.state.delete_forward()
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            self.state.insert_text(self._newline_text())
+            self.state.insert_newline()
         elif key == Qt.Key.Key_Tab and not primary:
             self.state.insert_text("\t")
         elif not primary and not (modifiers & Qt.KeyboardModifier.AltModifier):

@@ -105,3 +105,9 @@ def test_main_window_uses_shared_resource_manager_for_workers_and_tab_priority()
 def test_main_window_flushes_and_shuts_down_recovery_manager_on_application_close():
     source = MAIN.read_text()
     assert "self._recovery_manager.shutdown()" in source
+
+
+def test_main_window_periodically_observes_resource_memory_pressure():
+    source = MAIN.read_text()
+    assert "_resource_timer" in source
+    assert "observe_memory" in source

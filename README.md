@@ -21,12 +21,12 @@ The current development alpha includes:
 - external-file change protection before overwrite;
 - incremental crash-recovery journals and startup recovery discovery;
 - third-party `regex` search, named/repeated capture offsets, Find/Replace, Replace All, and streaming regex rewrite;
-- cancellable priority workers and memory/cache policy primitives;
+- integrated application ResourceManager with cache pressure, active/inactive document priorities, and shared background scheduling;
 - custom PySide6 `QAbstractScrollArea` editor viewport — Qt never owns the document;
-- tabs, native File/Edit/Search menus, operational status bar;
+- tabs, native File/Edit/Search menus, Cut/Copy/Paste, IME composition support, and operational status bar;
 - regex-aware Find/Replace fields, compact match index, visible-only match overlays, capture inspector;
 - separate **Reinterpret As** and **Convert on Save** controls;
-- EOL controls, character inspector, settings paths, and diagnostics.
+- source-aware inserted-EOL policy, EOL controls, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics.
 
 Explicitly deferred beyond this alpha: project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
 
@@ -91,6 +91,18 @@ python -m compileall -q src scripts tests
 ```
 
 Qt runtime tests run automatically when PySide6 is installed; otherwise those tests are explicitly skipped while all core/app contracts continue to run.
+
+## macOS alpha runtime checklist
+
+After installing `.[ui,dev]` on the Mac, run:
+
+```bash
+PYTHONPATH=src pytest -q
+QT_QPA_PLATFORM=offscreen PYTHONPATH=src pytest -q tests/test_a15_desktop_alpha_acceptance.py tests/ui
+uniti
+```
+
+Manual checks: open/save UTF-8, Windows-1252, UTF-16 LE/BE and UTF-32 LE/BE files; verify LF/CRLF/CR insertion and conversion; Cut/Copy/Paste; CJK IME composition; regex Find/Replace and capture groups; invalid-byte boxes/inspector; recovery after an intentional unclean exit; and horizontal navigation on a very long line.
 
 ## Architecture invariants
 

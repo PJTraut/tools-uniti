@@ -91,3 +91,11 @@ def test_reinterpret_uses_current_logical_path_after_save_as():
     reinterpret = source[source.index("def reinterpret_current"):source.index("def _show_save_error")]
     assert "path = view.document.path" in reinterpret
     assert "path = view.document.source.path" not in reinterpret
+
+
+def test_character_inspector_can_distinguish_decode_error_bytes_from_true_replacement_character():
+    inspector = INSPECTOR.read_text()
+    main = MAIN.read_text()
+    assert "invalid_bytes" in inspector
+    assert "Decode error bytes" in inspector
+    assert "read_with_annotations" in main

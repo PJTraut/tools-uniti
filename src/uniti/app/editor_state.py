@@ -107,6 +107,46 @@ class EditorState:
         if text:
             self._replace_selection(text)
 
+    def selected_text(self) -> str:
+        selection = self.selection
+        if selection is None:
+            return ""
+        start, end = selection
+        return self.document.read(start, end)
+
+    def cut_selection(self) -> str:
+        text = self.selected_text()
+        if text:
+            self._replace_selection("")
+        return text
+
+    def paste_text(self, text: str) -> None:
+        if text:
+            self._replace_selection(text)
+
+    def ime_surrounding_text(self, *, radius: int = 2048) -> tuple[str, int, int]:
+        if radius <= 0:
+            raise ValueError("radius must be positive")
+        start = max(0, self.cursor - radius)
+        before = self.document.read(start, self.cursor)
+        after = ""
+        iterator = self.document.iter_text(self.cursor, chunk_chars=radius)
+        try:
+            _, after = next(iterator)
+        except StopIteration:
+            pass
+        after = after[:radius]
+        text = before + after
+        cursor_relative = len(before)
+        anchor_relative = self.anchor - start
+        if anchor_relative < 0 or anchor_relative > len(text):
+            anchor_relative = cursor_relative
+        return text, cursor_relative, anchor_relative
+
+    def insert_newline(self) -> None:
+        eol = self.document.insertion_eol
+        self._replace_selection({"LF": "\n", "CRLF": "\r\n", "CR": "\r"}[eol])
+
     def backspace(self) -> None:
         selection = self.selection
         if selection is not None:

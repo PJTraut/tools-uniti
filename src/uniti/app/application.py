@@ -46,4 +46,5 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(app.exec())
     finally:
+        recovery_manager.shutdown()
         resources.shutdown(wait=True)

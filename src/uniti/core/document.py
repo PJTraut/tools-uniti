@@ -14,12 +14,13 @@ if TYPE_CHECKING:
 
 from .byte_source import ByteSource
 from .encoding import EncodingInfo, detect_encoding, matching_bom
+from .eol import EOLReport, analyze_eol
 from .document_lines import DocumentLineIndex
 from .file_identity import ExternalFileChangedError, FileIdentity
 from .history import EditHistory, EditOperation, EditTransaction
 from .lines import LineIndex
 from .offsets import OffsetMapper
-from .pieces import EditStore, PieceTable
+from .pieces import AnnotatedText, EditStore, PieceTable
 from .save import EOLName, SaveOptions, save_document
 
 
@@ -36,6 +37,7 @@ class Document:
         document_line_index: DocumentLineIndex,
         resource_manager: "ResourceManager | None" = None,
         cache_owner: Hashable | None = None,
+        source_eol_report: EOLReport | None = None,
     ) -> None:
         self._source = source
         self._path = source.path
@@ -47,6 +49,8 @@ class Document:
         self._piece_table = piece_table
         self._document_line_index = document_line_index
         self._output_eol: EOLName | None = None
+        self._source_eol_report = source_eol_report
+        self._insertion_eol_override: EOLName | None = None
         self._history = EditHistory()
         self._saved_output_encoding = (
             encoding_info.output_encoding or encoding_info.detected
@@ -89,6 +93,9 @@ class Document:
                 cache_owner=cache_owner,
             )
             source_line_index = LineIndex(source, selected)
+            source_eol_report = analyze_eol(
+                source, encoding=selected, end=min(source.size, 65_536)
+            )
             edit_store = EditStore()
             piece_table = PieceTable(source, selected, mapper, edit_store)
             document_line_index = DocumentLineIndex(piece_table)
@@ -101,6 +108,7 @@ class Document:
                 document_line_index,
                 resource_manager,
                 cache_owner,
+                source_eol_report,
             )
         except Exception:
             source.close()
@@ -145,6 +153,26 @@ class Document:
     @property
     def output_eol(self) -> EOLName | None:
         return self._output_eol
+
+    @property
+    def insertion_eol(self) -> EOLName:
+        if self._insertion_eol_override is not None:
+            return self._insertion_eol_override
+        report = self._source_eol_report
+        if report is None or (report.lf == 0 and report.crlf == 0 and report.cr == 0):
+            return "LF"
+        counts = ((report.crlf, "CRLF"), (report.lf, "LF"), (report.cr, "CR"))
+        return max(counts, key=lambda item: item[0])[1]  # type: ignore[return-value]
+
+    def set_insertion_eol(self, eol: EOLName | None) -> None:
+        self._ensure_open()
+        if eol not in (None, "LF", "CRLF", "CR"):
+            raise ValueError(f"unsupported insertion EOL policy: {eol}")
+        self._insertion_eol_override = eol
+
+    def set_source_eol_report(self, report: EOLReport) -> None:
+        self._ensure_open()
+        self._source_eol_report = report
 
     @property
     def output_encoding(self) -> str:
@@ -256,6 +284,10 @@ class Document:
         self._ensure_open()
         return self._piece_table.read(start, end)
 
+    def read_with_annotations(self, start: int, end: int) -> AnnotatedText:
+        self._ensure_open()
+        return self._piece_table.read_with_annotations(start, end)
+
     def iter_text(
         self,
         start: int = 0,
@@ -280,7 +312,9 @@ class Document:
     ) -> EditOperation | None:
         deleted = self._piece_table.read(start, end)
         if deleted == text:
-            return None
+            annotated = self._piece_table.read_with_annotations(start, end)
+            if not annotated.invalid_bytes:
+                return None
         self._piece_table.replace(start, end, text)
         self._document_line_index.invalidate_from_char(start)
         self._revision += 1
@@ -447,6 +481,24 @@ class Document:
                 visible_end = min(visible_end, index)
                 break
         return text[:visible_end]
+
+    def read_line_window_annotated(
+        self,
+        line: int,
+        *,
+        column_start: int = 0,
+        max_chars: int = 4096,
+    ) -> AnnotatedText:
+        text = self.read_line_window(
+            line, column_start=column_start, max_chars=max_chars
+        )
+        line_start = self._document_line_index.line_start(line)
+        absolute_start = line_start + column_start
+        if not text:
+            return AnnotatedText("", ())
+        return self._piece_table.read_with_annotations(
+            absolute_start, absolute_start + len(text)
+        )
 
     def read_lines(
         self,

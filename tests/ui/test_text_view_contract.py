@@ -58,3 +58,27 @@ def test_text_view_pages_horizontally_by_character_window():
     assert "column_start=column_start" in source
     assert "line_window_start = line_start + column_start" in source
     assert "return line_start + column_start + low" in source
+
+
+def test_text_view_exposes_clipboard_and_ime_contracts_without_qt_document_storage():
+    source = SOURCE.read_text()
+    for required in (
+        "copy_selection",
+        "cut_selection",
+        "paste_clipboard",
+        "inputMethodEvent",
+        "inputMethodQuery",
+        "QGuiApplication.clipboard",
+        "commitString",
+        "preeditString",
+    ):
+        assert required in source
+    assert "QTextDocument" not in source
+    assert "QPlainTextEdit" not in source
+
+
+def test_text_view_paints_invalid_byte_annotations_distinctly():
+    source = SOURCE.read_text()
+    assert "read_line_window_annotated" in source
+    assert "invalid_bytes" in source
+    assert "_paint_invalid_byte_annotations" in source

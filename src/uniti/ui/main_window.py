@@ -88,7 +88,18 @@ class UNITIMainWindow(QMainWindow):
         self._eol_timer = QTimer(self)
         self._eol_timer.setInterval(80)
         self._eol_timer.timeout.connect(self._poll_eol_jobs)
+        self._resource_timer = QTimer(self)
+        self._resource_timer.setInterval(1000)
+        self._resource_timer.timeout.connect(self._observe_resource_pressure)
+        self._resource_timer.start()
         self._build_menus()
+
+    def _observe_resource_pressure(self) -> None:
+        try:
+            self._resources.observe_memory()
+        except Exception:
+            # Memory telemetry must never interfere with editing.
+            return
 
     @property
     def current_view(self) -> UNITITextView | None:
@@ -127,6 +138,16 @@ class UNITIMainWindow(QMainWindow):
         )
         edit_menu.addAction(
             self._action("Redo", QKeySequence.StandardKey.Redo, self.redo_current)
+        )
+        edit_menu.addSeparator()
+        edit_menu.addAction(
+            self._action("Cut", QKeySequence.StandardKey.Cut, self.cut_current)
+        )
+        edit_menu.addAction(
+            self._action("Copy", QKeySequence.StandardKey.Copy, self.copy_current)
+        )
+        edit_menu.addAction(
+            self._action("Paste", QKeySequence.StandardKey.Paste, self.paste_current)
         )
         edit_menu.addSeparator()
         edit_menu.addAction(
@@ -345,6 +366,7 @@ class UNITIMainWindow(QMainWindow):
             except Exception:
                 continue
             self._eol_reports[id(view)] = report
+            view.document.set_source_eol_report(report)
             if view is self.current_view:
                 self._set_status_document(view)
         if not self._eol_jobs:
@@ -444,13 +466,20 @@ class UNITIMainWindow(QMainWindow):
             return
         selection = view.state.selection
         position = selection[0] if selection is not None else view.state.cursor
+        invalid_bytes = None
         try:
-            character = view.document.read(position, position + 1)
+            annotated = view.document.read_with_annotations(position, position + 1)
+            character = annotated.text
+            if annotated.invalid_bytes:
+                invalid_bytes = annotated.invalid_bytes[0].raw
         except ValueError:
             character = ""
         if not character and position > 0:
             try:
-                character = view.document.read(position - 1, position)
+                annotated = view.document.read_with_annotations(position - 1, position)
+                character = annotated.text
+                if annotated.invalid_bytes:
+                    invalid_bytes = annotated.invalid_bytes[0].raw
             except ValueError:
                 character = ""
         if not character:
@@ -459,6 +488,7 @@ class UNITIMainWindow(QMainWindow):
         dialog = CharacterInspectorDialog(
             character[0],
             output_encoding=view.document.output_encoding,
+            invalid_bytes=invalid_bytes,
             parent=self,
         )
         dialog.exec()
@@ -532,6 +562,21 @@ class UNITIMainWindow(QMainWindow):
         view.state.redo()
         view._state_changed()
 
+    def copy_current(self) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.copy_selection()
+
+    def cut_current(self) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.cut_selection()
+
+    def paste_current(self) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.paste_clipboard()
+
     def select_all(self) -> None:
         view = self.current_view
         if view is None or not view.isEnabled():
@@ -603,6 +648,7 @@ class UNITIMainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.close_all_documents(force=False):
+            self._resource_timer.stop()
             self._find_replace.shutdown()
             if self._recovery_manager is not None:
                 self._recovery_manager.shutdown()

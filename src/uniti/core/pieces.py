@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from bisect import bisect_left
 from collections.abc import Iterator
 
 from .byte_source import ByteSource
@@ -110,6 +111,19 @@ class EditSegment:
 
 
 TextSegment = SourceSegment | EditSegment
+
+
+@dataclass(frozen=True, slots=True)
+class InvalidByteSpan:
+    start: int
+    end: int
+    raw: bytes
+
+
+@dataclass(frozen=True, slots=True)
+class AnnotatedText:
+    text: str
+    invalid_bytes: tuple[InvalidByteSpan, ...]
 
 
 class PieceTable:
@@ -315,6 +329,42 @@ class PieceTable:
         )
         return span.text
 
+    def _read_source_piece_annotated(
+        self,
+        piece: SourcePiece,
+        start: int,
+        end: int,
+        *,
+        document_start: int,
+    ) -> AnnotatedText:
+        source_start = piece.source_char_start + start
+        source_end = piece.source_char_start + end
+        byte_start = self._mapper.char_to_byte(source_start)
+        byte_end = self._mapper.char_to_byte(source_end)
+        span = decode_span(
+            self._source,
+            byte_start,
+            byte_end - byte_start,
+            self._encoding,
+        )
+        invalid: list[InvalidByteSpan] = []
+        for error in span.errors:
+            local_byte = error.byte_start - span.byte_start
+            char_index = bisect_left(span.char_boundaries, local_byte)
+            if (
+                char_index >= len(span.char_boundaries)
+                or span.char_boundaries[char_index] != local_byte
+            ):
+                raise UnicodeError("decode error is not aligned to a character boundary")
+            invalid.append(
+                InvalidByteSpan(
+                    start=document_start + char_index,
+                    end=document_start + char_index + 1,
+                    raw=error.raw,
+                )
+            )
+        return AnnotatedText(span.text, tuple(invalid))
+
     def read(self, start: int, end: int) -> str:
         if start < 0 or end < start:
             raise ValueError("invalid document character range")
@@ -361,6 +411,58 @@ class PieceTable:
         if consumed_to < end:
             raise ValueError("document range extends beyond end of document")
         return "".join(output)
+
+    def read_with_annotations(self, start: int, end: int) -> AnnotatedText:
+        if start < 0 or end < start:
+            raise ValueError("invalid document character range")
+        if start == end:
+            self._validate_offset(start)
+            return AnnotatedText("", ())
+
+        output: list[str] = []
+        invalid: list[InvalidByteSpan] = []
+        position = 0
+        consumed_to = start
+        for index, piece in enumerate(self._pieces):
+            known_length = self._known_length(piece)
+            if known_length is None:
+                if not isinstance(piece, SourcePiece) or index != len(self._pieces) - 1:
+                    raise RuntimeError("only final source tail may have unknown length")
+                required = max(0, end - position)
+                if required == 0:
+                    break
+                self._mapper.char_to_byte(piece.source_char_start + required)
+                piece_length = required
+            else:
+                piece_length = known_length
+
+            piece_end_position = position + piece_length
+            if piece_end_position <= start:
+                position = piece_end_position
+                continue
+            if position >= end:
+                break
+
+            local_start = max(0, start - position)
+            local_end = min(piece_length, end - position)
+            if local_start < local_end:
+                document_start = position + local_start
+                if isinstance(piece, EditPiece):
+                    output.append(self._edit_store.read(piece.ref, local_start, local_end))
+                else:
+                    annotated = self._read_source_piece_annotated(
+                        piece, local_start, local_end, document_start=document_start
+                    )
+                    output.append(annotated.text)
+                    invalid.extend(annotated.invalid_bytes)
+                consumed_to = position + local_end
+            position = piece_end_position
+            if consumed_to >= end:
+                break
+
+        if consumed_to < end:
+            raise ValueError("document range extends beyond end of document")
+        return AnnotatedText("".join(output), tuple(invalid))
 
     def iter_segments(self) -> Iterator[TextSegment]:
         """Yield immutable source-byte or Unicode-edit segments in document order."""
