@@ -210,3 +210,17 @@ def test_document_iter_text_is_bounded_and_progressive(tmp_path: Path):
             (21, "123"),
         ]
         assert not doc.offset_mapper.complete
+
+
+def test_replace_many_is_one_undoable_transaction_with_length_changes(tmp_path: Path):
+    path = tmp_path / "many.txt"
+    path.write_text("aa bb cc", encoding="utf-8")
+    with Document.open(path) as doc:
+        count = doc.replace_many([(0, 2, "A"), (3, 5, "BBBB"), (6, 8, "C")])
+        assert count == 3
+        assert doc.read(0, doc.total_chars()) == "A BBBB C"
+        doc.undo()
+        assert doc.read(0, doc.total_chars()) == "aa bb cc"
+        assert not doc.can_undo
+        doc.redo()
+        assert doc.read(0, doc.total_chars()) == "A BBBB C"

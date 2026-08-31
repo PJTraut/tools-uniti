@@ -173,6 +173,37 @@ class Document:
         self._ensure_open()
         self._replace_internal(start, end, text, record=True)
 
+    def replace_many(self, replacements: list[tuple[int, int, str]]) -> int:
+        """Apply non-overlapping original-coordinate replacements as one history step."""
+        self._ensure_open()
+        prepared: list[tuple[int, int, str, str]] = []
+        previous_end = 0
+        for index, (start, end, text) in enumerate(replacements):
+            if start < 0 or end < start:
+                raise ValueError("invalid replacement range")
+            if index and start < previous_end:
+                raise ValueError("replacement ranges must be sorted and non-overlapping")
+            deleted = self._piece_table.read(start, end)
+            prepared.append((start, end, text, deleted))
+            previous_end = end
+
+        delta = 0
+        operations: list[EditOperation] = []
+        for start, end, text, deleted in prepared:
+            actual_start = start + delta
+            actual_end = actual_start + len(deleted)
+            operation = self._replace_internal(
+                actual_start,
+                actual_end,
+                text,
+                record=False,
+            )
+            if operation is not None:
+                operations.append(operation)
+            delta += len(text) - len(deleted)
+        self._history.record(EditTransaction(tuple(operations)))
+        return len(prepared)
+
     def undo(self) -> None:
         self._ensure_open()
         transaction = self._history.undo()
