@@ -91,3 +91,50 @@ def test_recovery_manager_rejects_changed_source(tmp_path: Path):
     candidate = RecoveryManager(recovery_dir).discover()[0]
     with pytest.raises(RecoverySourceMismatchError):
         RecoveryManager(recovery_dir).recover(candidate)
+
+
+def test_recovery_uses_source_encoding_not_pending_output_encoding(tmp_path: Path):
+    source = tmp_path / "legacy.txt"
+    source.write_bytes(b"caf\xe9")
+    recovery_dir = tmp_path / "recovery"
+
+    first = RecoveryManager(recovery_dir)
+    document = Document.open(source, encoding="windows-1252")
+    first.attach(document)
+    document.set_output_encoding("utf-8")
+    document.insert(document.total_chars(), "!")
+    first.detach(document, clean=False)
+    document.close()
+
+    second = RecoveryManager(recovery_dir)
+    candidate = second.discover()[0]
+    recovered = second.recover(candidate)
+    try:
+        assert recovered.encoding_info.detected == "windows-1252"
+        assert recovered.output_encoding == "utf-8"
+        assert recovered.read(0, recovered.total_chars()) == "café!"
+    finally:
+        second.detach(recovered, clean=True)
+        recovered.close()
+
+
+def test_recovery_persists_output_eol_changes_after_journal_start(tmp_path: Path):
+    source = tmp_path / "eol.txt"
+    source.write_bytes(b"a\nb\n")
+    recovery_dir = tmp_path / "recovery"
+
+    first = RecoveryManager(recovery_dir)
+    document = Document.open(source)
+    first.attach(document)
+    document.insert(0, "X")  # starts the journal
+    document.set_output_eol("CRLF")
+    first.detach(document, clean=False)
+    document.close()
+
+    second = RecoveryManager(recovery_dir)
+    recovered = second.recover(second.discover()[0])
+    try:
+        assert recovered.output_eol == "CRLF"
+    finally:
+        second.detach(recovered, clean=True)
+        recovered.close()

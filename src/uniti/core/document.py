@@ -48,6 +48,7 @@ class Document:
         self._saved_output_eol: EOLName | None = None
         self._edit_listeners: list[Callable[[EditOperation], None]] = []
         self._save_listeners: list[Callable[[Path], None]] = []
+        self._metadata_listeners: list[Callable[[str, EOLName | None], None]] = []
         self._closed = False
 
     @classmethod
@@ -153,13 +154,16 @@ class Document:
             self._encoding_info,
             output_encoding=encoding,
         )
+        self._notify_metadata()
 
     def set_output_eol(self, eol: EOLName | None) -> None:
         self._ensure_open()
         if eol not in (None, "LF", "CRLF", "CR"):
             raise ValueError(f"unsupported EOL policy: {eol}")
+        if eol == self._output_eol:
+            return
         self._output_eol = eol
-
+        self._notify_metadata()
 
     def add_edit_listener(self, listener: Callable[[EditOperation], None]) -> Callable[[], None]:
         self._ensure_open()
@@ -185,6 +189,21 @@ class Document:
 
         return remove
 
+    def add_metadata_listener(
+        self,
+        listener: Callable[[str, EOLName | None], None],
+    ) -> Callable[[], None]:
+        self._ensure_open()
+        self._metadata_listeners.append(listener)
+
+        def remove() -> None:
+            try:
+                self._metadata_listeners.remove(listener)
+            except ValueError:
+                pass
+
+        return remove
+
     def _notify_edit(self, operation: EditOperation) -> None:
         for listener in tuple(self._edit_listeners):
             listener(operation)
@@ -192,6 +211,10 @@ class Document:
     def _notify_save(self, path: Path) -> None:
         for listener in tuple(self._save_listeners):
             listener(path)
+
+    def _notify_metadata(self) -> None:
+        for listener in tuple(self._metadata_listeners):
+            listener(self.output_encoding, self._output_eol)
 
     @property
     def can_undo(self) -> bool:

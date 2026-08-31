@@ -75,3 +75,23 @@ def test_recovery_journal_size_tracks_edit_delta_not_source_size(tmp_path: Path)
         journal.append(EditOperation(0, "", "small edit"))
     assert source.stat().st_size > 32 * 1024 * 1024
     assert journal_path.stat().st_size < 2048
+
+
+def test_recovery_v2_round_trips_source_and_output_metadata(tmp_path: Path):
+    source = tmp_path / "metadata.txt"
+    source.write_bytes(b"caf\xe9")
+    journal_path = tmp_path / "metadata.uniti-recovery"
+
+    with RecoveryJournal.create(
+        journal_path,
+        source,
+        source_encoding="windows-1252",
+        output_encoding="utf-8",
+        output_eol="CRLF",
+    ) as journal:
+        journal.append(EditOperation(4, "", "!"))
+
+    session = load_recovery(journal_path)
+    assert session.source_encoding == "windows-1252"
+    assert session.output_encoding == "utf-8"
+    assert session.output_eol == "CRLF"

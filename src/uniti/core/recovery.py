@@ -6,7 +6,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO, TYPE_CHECKING
+from typing import TYPE_CHECKING, TextIO
 
 from .file_identity import FileIdentity
 from .history import EditOperation
@@ -19,9 +19,17 @@ if TYPE_CHECKING:
 class RecoverySession:
     source_path: Path
     source_identity: FileIdentity
-    encoding: str
+    source_encoding: str
+    output_encoding: str
+    output_eol: str | None
     operations: tuple[EditOperation, ...]
     clean: bool
+    format_version: int = 2
+
+    @property
+    def encoding(self) -> str:
+        """Compatibility alias for alpha10 journals/tests."""
+        return self.source_encoding
 
 
 class RecoverySourceMismatchError(RuntimeError):
@@ -33,7 +41,7 @@ class RecoveryReplayError(RuntimeError):
 
 
 class RecoveryJournal:
-    """Append-only JSONL journal flushed after each durable edit record."""
+    """Append-only JSONL journal flushed after each durable record."""
 
     def __init__(self, path: Path, handle: TextIO) -> None:
         self.path = path
@@ -46,8 +54,21 @@ class RecoveryJournal:
         path: str | os.PathLike[str],
         source_path: str | os.PathLike[str],
         *,
-        encoding: str,
+        source_encoding: str | None = None,
+        output_encoding: str | None = None,
+        output_eol: str | None = None,
+        encoding: str | None = None,
     ) -> "RecoveryJournal":
+        # ``encoding`` is accepted for alpha10 callers. In that format source
+        # and output were conflated, so using it for both is the only safe
+        # compatibility interpretation.
+        if source_encoding is None:
+            source_encoding = encoding
+        if source_encoding is None:
+            raise TypeError("source_encoding is required")
+        if output_encoding is None:
+            output_encoding = source_encoding if encoding is None else encoding
+
         journal_path = Path(path)
         source = Path(source_path)
         identity = FileIdentity.from_path(source)
@@ -56,11 +77,13 @@ class RecoveryJournal:
         journal._write_record(
             {
                 "type": "header",
-                "format": 1,
+                "format": 2,
                 "source_path": str(source),
                 "source_size": identity.size,
                 "source_mtime_ns": identity.mtime_ns,
-                "encoding": encoding,
+                "source_encoding": source_encoding,
+                "output_encoding": output_encoding,
+                "output_eol": output_eol,
                 "source_inode": identity.inode,
                 "source_device": identity.device,
             }
@@ -88,6 +111,20 @@ class RecoveryJournal:
             }
         )
 
+    def update_metadata(
+        self,
+        *,
+        output_encoding: str,
+        output_eol: str | None,
+    ) -> None:
+        self._write_record(
+            {
+                "type": "metadata",
+                "output_encoding": output_encoding,
+                "output_eol": output_eol,
+            }
+        )
+
     def mark_clean(self) -> None:
         self._write_record({"type": "clean"})
 
@@ -110,6 +147,9 @@ def load_recovery(path: str | os.PathLike[str]) -> RecoverySession:
     header: dict[str, object] | None = None
     operations: list[EditOperation] = []
     clean = False
+    output_encoding: str | None = None
+    output_eol: str | None = None
+
     with journal_path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
@@ -133,14 +173,37 @@ def load_recovery(path: str | os.PathLike[str]) -> RecoverySession:
                         str(record["inserted"]),
                     )
                 )
+            elif record_type == "metadata":
+                if "output_encoding" in record:
+                    output_encoding = str(record["output_encoding"])
+                output_eol = (
+                    None if record.get("output_eol") is None else str(record["output_eol"])
+                )
             elif record_type == "clean":
                 clean = True
             else:
                 raise ValueError(f"unknown recovery record type: {record_type!r}")
+
     if header is None:
         raise ValueError("recovery journal has no header")
-    if int(header.get("format", 0)) != 1:
+    version = int(header.get("format", 0))
+    if version not in (1, 2):
         raise ValueError("unsupported recovery journal format")
+
+    if version == 1:
+        # Alpha10 conflated source/output. Treat the value as the source
+        # decoder and preserve it as output only because no safer metadata
+        # exists in the old format.
+        source_encoding = str(header["encoding"])
+        initial_output_encoding = source_encoding
+        initial_output_eol = None
+    else:
+        source_encoding = str(header["source_encoding"])
+        initial_output_encoding = str(header.get("output_encoding", source_encoding))
+        initial_output_eol = (
+            None if header.get("output_eol") is None else str(header["output_eol"])
+        )
+
     return RecoverySession(
         source_path=Path(str(header["source_path"])),
         source_identity=FileIdentity(
@@ -149,9 +212,12 @@ def load_recovery(path: str | os.PathLike[str]) -> RecoverySession:
             inode=(None if header.get("source_inode") is None else int(header["source_inode"])),
             device=(None if header.get("source_device") is None else int(header["source_device"])),
         ),
-        encoding=str(header["encoding"]),
+        source_encoding=source_encoding,
+        output_encoding=output_encoding or initial_output_encoding,
+        output_eol=initial_output_eol if output_eol is None else output_eol,
         operations=tuple(operations),
         clean=clean,
+        format_version=version,
     )
 
 

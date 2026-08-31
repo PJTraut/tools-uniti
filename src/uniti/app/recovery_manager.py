@@ -30,6 +30,7 @@ class _Binding:
     journal_path: Path | None
     remove_edit_listener: object
     remove_save_listener: object
+    remove_metadata_listener: object
 
 
 class RecoveryManager:
@@ -58,7 +59,9 @@ class RecoveryManager:
         journal = RecoveryJournal.create(
             path,
             binding.document.path,
-            encoding=binding.document.output_encoding,
+            source_encoding=binding.document.encoding_info.detected,
+            output_encoding=binding.document.output_encoding,
+            output_eol=binding.document.output_eol,
         )
         for operation in seed_operations:
             journal.append(operation)
@@ -75,7 +78,7 @@ class RecoveryManager:
         if key in self._bindings:
             return
 
-        binding = _Binding(document, None, None, None, None)
+        binding = _Binding(document, None, None, None, None, None)
 
         def on_edit(operation: EditOperation) -> None:
             try:
@@ -91,8 +94,19 @@ class RecoveryManager:
             except Exception as exc:  # the save already succeeded
                 self.last_error = exc
 
+        def on_metadata(output_encoding: str, output_eol: str | None) -> None:
+            try:
+                if binding.journal is not None:
+                    binding.journal.update_metadata(
+                        output_encoding=output_encoding,
+                        output_eol=output_eol,
+                    )
+            except Exception as exc:
+                self.last_error = exc
+
         binding.remove_edit_listener = document.add_edit_listener(on_edit)
         binding.remove_save_listener = document.add_save_listener(on_save)
+        binding.remove_metadata_listener = document.add_metadata_listener(on_metadata)
         self._bindings[key] = binding
         if seed_operations:
             self._start_journal(binding, seed_operations=seed_operations)
@@ -115,10 +129,13 @@ class RecoveryManager:
             return
         remove_edit = binding.remove_edit_listener
         remove_save = binding.remove_save_listener
+        remove_metadata = binding.remove_metadata_listener
         if callable(remove_edit):
             remove_edit()
         if callable(remove_save):
             remove_save()
+        if callable(remove_metadata):
+            remove_metadata()
         if clean:
             self._clear_journal(binding)
         elif binding.journal is not None:
@@ -149,9 +166,11 @@ class RecoveryManager:
 
     def recover(self, candidate: RecoveryCandidate) -> Document:
         session = candidate.session
-        document = Document.open(session.source_path, encoding=session.encoding)
+        document = Document.open(session.source_path, encoding=session.source_encoding)
         try:
             replay_recovery(document, session)
+            document.set_output_encoding(session.output_encoding)
+            document.set_output_eol(session.output_eol)
             self.attach(document, seed_operations=session.operations)
         except Exception:
             document.close()
