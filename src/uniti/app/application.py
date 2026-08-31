@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -17,20 +16,22 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    from uniti.app.paths import AppPaths
     from uniti.app.recovery_manager import RecoveryManager
+    from uniti.app.settings import SettingsStore
     from uniti.ui.main_window import UNITIMainWindow
 
     arguments = list(sys.argv if argv is None else argv)
     program = arguments[0] if arguments else "uniti"
     app = QApplication.instance() or QApplication([program])
-    recovery_dir = Path(
-        os.environ.get(
-            "UNITI_RECOVERY_DIR",
-            str(Path.home() / ".uniti" / "recovery"),
-        )
+    paths = AppPaths.current()
+    paths.ensure()
+    recovery_manager = RecoveryManager(paths.recovery_dir)
+    settings_store = SettingsStore(paths.settings_file)
+    window = UNITIMainWindow(
+        recovery_manager=recovery_manager,
+        settings_store=settings_store,
     )
-    recovery_manager = RecoveryManager(recovery_dir)
-    window = UNITIMainWindow(recovery_manager=recovery_manager)
     window.recover_startup_sessions()
     for raw_path in arguments[1:]:
         path = Path(raw_path)

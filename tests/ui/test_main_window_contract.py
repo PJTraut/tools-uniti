@@ -67,3 +67,13 @@ def test_main_window_wires_recovery_manager_and_startup_recovery_flow():
     application = APPLICATION.read_text()
     assert "RecoveryManager" in application
     assert "recover_startup_sessions" in application
+
+
+def test_application_uses_app_paths_and_settings_store():
+    source = MAIN.read_text()
+    application = APPLICATION.read_text()
+    assert "SettingsStore" in source
+    assert "last_directory" in source
+    assert "AppPaths.current" in application
+    assert "SettingsStore" in application
+    assert "paths.recovery_dir" in application

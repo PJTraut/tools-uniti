@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from uniti.app.editor_state import EditorState
 from uniti.app.recovery_manager import RecoveryManager
+from uniti.app.settings import Settings, SettingsStore
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.eol import EOLReport, analyze_eol
@@ -45,9 +46,12 @@ class UNITIMainWindow(QMainWindow):
         parent=None,
         *,
         recovery_manager: RecoveryManager | None = None,
+        settings_store: SettingsStore | None = None,
     ) -> None:
         super().__init__(parent)
         self._recovery_manager = recovery_manager
+        self._settings_store = settings_store
+        self._settings = settings_store.load() if settings_store is not None else Settings()
         self.setWindowTitle("UNITI")
         self.resize(1100, 760)
         self._tabs = QTabWidget(self)
@@ -170,8 +174,24 @@ class UNITIMainWindow(QMainWindow):
             )
         )
 
+    def _remember_directory(self, path: str | Path) -> None:
+        directory = str(Path(path).parent)
+        self._settings = Settings(
+            last_directory=directory,
+            performance_mode=self._settings.performance_mode,
+        )
+        if self._settings_store is not None:
+            try:
+                self._settings_store.save(self._settings)
+            except OSError:
+                pass
+
     def open_dialog(self) -> None:
-        filename, _ = QFileDialog.getOpenFileName(self, "Open Text File")
+        filename, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Text File",
+            self._settings.last_directory or "",
+        )
         if filename:
             self.open_path(filename)
 
@@ -201,10 +221,12 @@ class UNITIMainWindow(QMainWindow):
     def open_path(self, path: str | Path) -> UNITITextView:
         document = Document.open(path)
         try:
-            return self._add_document(document)
+            view = self._add_document(document)
         except Exception:
             document.close()
             raise
+        self._remember_directory(path)
+        return view
 
     def recover_startup_sessions(self) -> int:
         if self._recovery_manager is None:
@@ -400,6 +422,7 @@ class UNITIMainWindow(QMainWindow):
                 return None
             destination = filename
         result = view.document.save(destination)
+        self._remember_directory(result)
         self._on_view_state_changed(view)
         self._on_current_changed(self._tabs.currentIndex())
         return result
