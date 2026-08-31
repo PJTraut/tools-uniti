@@ -279,3 +279,69 @@ def test_invalid_output_eol_policy_is_rejected(tmp_path: Path):
     with Document.open(path, encoding="utf-8") as document:
         with pytest.raises(ValueError, match="EOL"):
             document.set_output_eol("BAD")  # type: ignore[arg-type]
+
+
+def test_document_refuses_current_path_save_after_external_change(tmp_path: Path):
+    from uniti.core.file_identity import ExternalFileChangedError
+
+    path = tmp_path / "external.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path) as doc:
+        baseline = doc.disk_identity
+        doc.insert(3, "X")
+        path.write_text("changed-on-disk", encoding="utf-8")
+        with pytest.raises(ExternalFileChangedError):
+            doc.save()
+        assert doc.disk_identity == baseline
+        assert path.read_text(encoding="utf-8") == "changed-on-disk"
+        assert doc.modified
+
+
+def test_document_save_as_allowed_after_atomic_external_replacement(tmp_path: Path):
+    from uniti.core.file_identity import FileIdentity
+
+    source = tmp_path / "source-external.txt"
+    replacement = tmp_path / "replacement.txt"
+    target = tmp_path / "safe-copy.txt"
+    source.write_text("abc", encoding="utf-8")
+    with Document.open(source) as doc:
+        doc.insert(3, "X")
+        replacement.write_text("external", encoding="utf-8")
+        replacement.replace(source)
+        result = doc.save(target)
+        assert result == target
+        assert target.read_text(encoding="utf-8") == "abcX"
+        assert doc.path == target
+        assert doc.disk_identity == FileIdentity.from_path(target)
+
+
+def test_document_save_as_refuses_same_inode_source_mutation(tmp_path: Path):
+    from uniti.core.file_identity import ExternalFileChangedError
+
+    source = tmp_path / "source-mutated.txt"
+    target = tmp_path / "unsafe-copy.txt"
+    source.write_text("abc", encoding="utf-8")
+    with Document.open(source) as doc:
+        doc.insert(3, "X")
+        source.write_text("external", encoding="utf-8")
+        with pytest.raises(ExternalFileChangedError):
+            doc.save(target)
+        assert not target.exists()
+
+
+def test_successful_save_refreshes_identity_baseline(tmp_path: Path):
+    from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
+
+    path = tmp_path / "refresh-identity.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path) as doc:
+        initial = doc.disk_identity
+        doc.insert(3, "X")
+        doc.save()
+        refreshed = doc.disk_identity
+        assert refreshed == FileIdentity.from_path(path)
+        assert refreshed != initial
+        doc.insert(4, "Y")
+        path.write_text("someone-else", encoding="utf-8")
+        with pytest.raises(ExternalFileChangedError):
+            doc.save()

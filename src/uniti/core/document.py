@@ -11,6 +11,7 @@ from pathlib import Path
 from .byte_source import ByteSource
 from .encoding import EncodingInfo, detect_encoding
 from .document_lines import DocumentLineIndex
+from .file_identity import ExternalFileChangedError, FileIdentity
 from .history import EditHistory, EditOperation, EditTransaction
 from .lines import LineIndex
 from .offsets import OffsetMapper
@@ -32,6 +33,8 @@ class Document:
     ) -> None:
         self._source = source
         self._path = source.path
+        self._source_identity = FileIdentity.from_path(source.path)
+        self._disk_identity = self._source_identity
         self._encoding_info = encoding_info
         self._offset_mapper = offset_mapper
         self._source_line_index = source_line_index
@@ -93,6 +96,10 @@ class Document:
     @property
     def path(self) -> Path:
         return self._path
+
+    @property
+    def disk_identity(self) -> FileIdentity:
+        return self._disk_identity
 
     @property
     def encoding_info(self) -> EncodingInfo:
@@ -359,6 +366,38 @@ class Document:
     ) -> Path:
         self._ensure_open()
         target = self._path if destination is None else Path(destination)
+
+        # An mmap/open handle survives atomic path replacement, but an in-place
+        # rewrite of the same filesystem object can mutate bytes beneath UNITI.
+        # Refuse every save in that unsafe case rather than reconstructing from
+        # bytes that may no longer be the source the user opened.
+        try:
+            source_actual = FileIdentity.from_path(self._source.path)
+        except OSError:
+            source_actual = None
+        if source_actual is not None and source_actual != self._source_identity:
+            same_backing_file = (
+                source_actual.device == self._source_identity.device
+                and source_actual.inode == self._source_identity.inode
+            )
+            if same_backing_file:
+                raise ExternalFileChangedError(
+                    self._source.path,
+                    self._source_identity,
+                    source_actual,
+                )
+
+        if target == self._path:
+            try:
+                actual_identity = FileIdentity.from_path(target)
+            except OSError:
+                actual_identity = None
+            if actual_identity != self._disk_identity:
+                raise ExternalFileChangedError(
+                    target,
+                    self._disk_identity,
+                    actual_identity,
+                )
         output_encoding = (
             encoding
             or self._encoding_info.output_encoding
@@ -374,6 +413,7 @@ class Document:
             options=SaveOptions(encoding=output_encoding, eol=output_eol),
         )
         self._path = result
+        self._disk_identity = FileIdentity.from_path(result)
         self._encoding_info = dataclass_replace(
             self._encoding_info,
             output_encoding=output_encoding,

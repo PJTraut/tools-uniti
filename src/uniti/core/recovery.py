@@ -8,21 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO, TYPE_CHECKING
 
+from .file_identity import FileIdentity
 from .history import EditOperation
 
 if TYPE_CHECKING:
     from .document import Document
-
-
-@dataclass(frozen=True, slots=True)
-class FileIdentity:
-    size: int
-    mtime_ns: int
-
-    @classmethod
-    def from_path(cls, path: str | os.PathLike[str]) -> "FileIdentity":
-        stat = Path(path).stat()
-        return cls(size=stat.st_size, mtime_ns=stat.st_mtime_ns)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +61,8 @@ class RecoveryJournal:
                 "source_size": identity.size,
                 "source_mtime_ns": identity.mtime_ns,
                 "encoding": encoding,
+                "source_inode": identity.inode,
+                "source_device": identity.device,
             }
         )
         return journal
@@ -154,6 +146,8 @@ def load_recovery(path: str | os.PathLike[str]) -> RecoverySession:
         source_identity=FileIdentity(
             size=int(header["source_size"]),
             mtime_ns=int(header["source_mtime_ns"]),
+            inode=(None if header.get("source_inode") is None else int(header["source_inode"])),
+            device=(None if header.get("source_device") is None else int(header["source_device"])),
         ),
         encoding=str(header["encoding"]),
         operations=tuple(operations),

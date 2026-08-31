@@ -3,6 +3,7 @@
 from .byte_source import ByteSource
 from .decoder import DecodeError, DecodedSpan, decode_span, iter_decoded_spans
 from .encoding import EncodingInfo, detect_encoding
+from .file_identity import ExternalFileChangedError, FileIdentity
 from .eol import EOLReport, analyze_eol
 from .offsets import OffsetCheckpoint, OffsetMapper
 from .lines import LineIndex
@@ -15,6 +16,8 @@ __all__ = [
     "DecodeError",
     "DecodedSpan",
     "EncodingInfo",
+    "FileIdentity",
+    "ExternalFileChangedError",
     "EOLReport",
     "OffsetCheckpoint",
     "OffsetMapper",
