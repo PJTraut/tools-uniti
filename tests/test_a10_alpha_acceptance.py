@@ -9,12 +9,7 @@ from uniti.app.smoke import run_alpha_smoke
 from uniti.core.document import Document
 
 
-def test_a11_canonical_version_and_headless_smoke(tmp_path: Path):
-    import uniti
-
-    assert uniti.__display_version__ == "v0.001a11"
-    assert uniti.__version__ == "0.1a11"
-    assert Path("VERSION").read_text().strip() == "v0.001a11"
+def test_alpha_headless_smoke_remains_green(tmp_path: Path):
     assert run_alpha_smoke(tmp_path / "smoke")["ok"] is True
 
 

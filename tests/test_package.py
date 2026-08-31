@@ -26,10 +26,10 @@ def test_project_versions_are_canonical():
     import uniti
 
     project = tomllib.loads(Path("pyproject.toml").read_text())
-    assert project["project"]["version"] == "0.1a11"
-    assert uniti.__version__ == "0.1a11"
-    assert uniti.__display_version__ == "v0.001a11"
-    assert Path("VERSION").read_text().strip() == "v0.001a11"
+    assert project["project"]["version"] == "0.1a12"
+    assert uniti.__version__ == "0.1a12"
+    assert uniti.__display_version__ == "v0.001a12"
+    assert Path("VERSION").read_text().strip() == "v0.001a12"
 
 
 def test_project_declares_uniti_console_entrypoint():

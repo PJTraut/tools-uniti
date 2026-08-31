@@ -1,4 +1,4 @@
 """UNITI — Unicode Intelligent Text Interchange."""
 
-__version__ = "0.1a11"
-__display_version__ = "v0.001a11"
+__version__ = "0.1a12"
+__display_version__ = "v0.001a12"
