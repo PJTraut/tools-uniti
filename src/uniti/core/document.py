@@ -9,7 +9,7 @@ from dataclasses import replace as dataclass_replace
 from pathlib import Path
 
 from .byte_source import ByteSource
-from .encoding import EncodingInfo, detect_encoding
+from .encoding import EncodingInfo, detect_encoding, matching_bom
 from .document_lines import DocumentLineIndex
 from .file_identity import ExternalFileChangedError, FileIdentity
 from .history import EditHistory, EditOperation, EditTransaction
@@ -66,7 +66,7 @@ class Document:
                 encoding_info = EncodingInfo(
                     detected=encoding,
                     confidence=1.0,
-                    bom=None,
+                    bom=matching_bom(source, encoding),
                     user_override=True,
                     output_encoding=encoding,
                 )

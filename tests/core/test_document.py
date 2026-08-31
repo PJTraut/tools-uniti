@@ -345,3 +345,25 @@ def test_successful_save_refreshes_identity_baseline(tmp_path: Path):
         path.write_text("someone-else", encoding="utf-8")
         with pytest.raises(ExternalFileChangedError):
             doc.save()
+
+
+@pytest.mark.parametrize(
+    ("encoding", "bom", "payload"),
+    [
+        ("utf-16-le", b"\xff\xfe", "A\r\n".encode("utf-16-le")),
+        ("utf-16-be", b"\xfe\xff", "A\r\n".encode("utf-16-be")),
+        ("utf-32-le", b"\xff\xfe\x00\x00", "A\n".encode("utf-32-le")),
+        ("utf-32-be", b"\x00\x00\xfe\xff", "A\n".encode("utf-32-be")),
+    ],
+)
+def test_explicit_unicode_decoder_preserves_matching_bom_on_save(
+    tmp_path: Path, encoding: str, bom: bytes, payload: bytes
+):
+    path = tmp_path / f"explicit-{encoding}.txt"
+    path.write_bytes(bom + payload)
+    with Document.open(path, encoding=encoding) as document:
+        assert document.encoding_info.bom == bom
+        assert document.read(0, document.total_chars()).startswith("A")
+        document.insert(1, "X")
+        document.save()
+    assert path.read_bytes().startswith(bom)

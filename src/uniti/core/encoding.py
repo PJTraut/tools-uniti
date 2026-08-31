@@ -117,6 +117,29 @@ def _valid_utf8_sample(sample: _Sample, source_size: int) -> bool:
             return False
 
 
+
+def matching_bom(source: ByteSource, encoding: str) -> bytes | None:
+    """Return a BOM only when it matches the explicitly selected codec."""
+
+    normalized = encoding.lower().replace("_", "-")
+    aliases = {
+        "utf-8": "utf-8-sig",
+        "utf8": "utf-8-sig",
+        "utf-8-sig": "utf-8-sig",
+        "utf-16-le": "utf-16-le",
+        "utf-16-be": "utf-16-be",
+        "utf-32-le": "utf-32-le",
+        "utf-32-be": "utf-32-be",
+    }
+    expected = aliases.get(normalized)
+    if expected is None:
+        return None
+    prefix = source.read(0, min(source.size, 4))
+    for bom, codec in _BOMS:
+        if codec == expected and prefix.startswith(bom):
+            return bom
+    return None
+
 def detect_encoding(source: ByteSource, sample_size: int = 65_536) -> EncodingInfo:
     """Return deterministic first-pass encoding metadata from bounded samples."""
 

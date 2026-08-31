@@ -368,7 +368,7 @@ class UNITIMainWindow(QMainWindow):
             return
 
         index = self._tabs.currentIndex()
-        path = view.document.source.path
+        path = view.document.path
         try:
             document = Document.open(path, encoding=encoding)
         except Exception as exc:

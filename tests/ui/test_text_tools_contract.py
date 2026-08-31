@@ -84,3 +84,10 @@ def test_main_window_exposes_diagnostics_tool_without_using_it_as_document_stora
     assert "diagnostics_snapshot" in source
     assert dialog.exists()
     assert "QPlainTextEdit" not in source
+
+
+def test_reinterpret_uses_current_logical_path_after_save_as():
+    source = MAIN.read_text()
+    reinterpret = source[source.index("def reinterpret_current"):source.index("def _show_save_error")]
+    assert "path = view.document.path" in reinterpret
+    assert "path = view.document.source.path" not in reinterpret
