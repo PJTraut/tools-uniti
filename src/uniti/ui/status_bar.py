@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from uniti.core.eol import EOLReport
 from PySide6.QtWidgets import QLabel, QStatusBar
 
 
@@ -12,6 +13,7 @@ class UNITIStatusBar(QStatusBar):
         self._eol = QLabel("—")
         self._position = QLabel("Ln 1:1")
         self._size = QLabel("0 B")
+        self._eol_report: EOLReport | None = None
         for label in (self._encoding, self._eol, self._position):
             self.addWidget(label)
         self.addPermanentWidget(self._size)
@@ -27,10 +29,31 @@ class UNITIStatusBar(QStatusBar):
             value /= 1024.0
         return f"{size} B"
 
-    def update_document(self, document) -> None:
-        encoding = document.encoding_info.output_encoding or document.encoding_info.detected
-        self._encoding.setText(encoding)
-        self._eol.setText(document.output_eol or "EOL: source")
+    def update_eol_report(self, report: EOLReport | None) -> None:
+        self._eol_report = report
+
+    def update_document(self, document, eol_report: EOLReport | None = None) -> None:
+        if eol_report is not None:
+            self._eol_report = eol_report
+        detected = document.encoding_info.detected
+        output_encoding = document.output_encoding
+        self._encoding.setText(
+            detected if output_encoding == detected else f"{detected} → {output_encoding}"
+        )
+
+        report = self._eol_report
+        if report is None:
+            eol_text = "EOL: analyzing…"
+        elif report.kind == "MIXED":
+            eol_text = (
+                f"MIXED (LF {report.lf} / CRLF {report.crlf} / CR {report.cr})"
+            )
+        else:
+            eol_text = report.kind
+        if document.output_eol is not None:
+            eol_text = f"{eol_text} → {document.output_eol}"
+        self._eol.setText(eol_text)
+
         try:
             size = document.path.stat().st_size
         except OSError:
@@ -41,6 +64,7 @@ class UNITIStatusBar(QStatusBar):
         self._position.setText(f"Ln {line + 1}:{column + 1}")
 
     def clear_document(self) -> None:
+        self._eol_report = None
         self._encoding.setText("—")
         self._eol.setText("—")
         self._position.setText("Ln 1:1")

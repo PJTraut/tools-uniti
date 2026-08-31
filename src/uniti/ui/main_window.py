@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from concurrent.futures import Future
 from pathlib import Path
+import weakref
 
+from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -15,10 +18,24 @@ from PySide6.QtWidgets import (
 )
 
 from uniti.app.editor_state import EditorState
+from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
+from uniti.core.eol import EOLReport, analyze_eol
+from uniti.resources import PriorityWorkerPool, WorkPriority
+from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.find_replace import FindReplacePanel
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
+
+
+_ENCODING_CHOICES = (
+    ("UTF-8", "utf-8"),
+    ("UTF-16 LE", "utf-16-le"),
+    ("UTF-16 BE", "utf-16-be"),
+    ("UTF-32 LE", "utf-32-le"),
+    ("UTF-32 BE", "utf-32-be"),
+    ("Windows-1252", "windows-1252"),
+)
 
 
 class UNITIMainWindow(QMainWindow):
@@ -42,6 +59,16 @@ class UNITIMainWindow(QMainWindow):
         self.setCentralWidget(central)
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
+
+        self._eol_pool = PriorityWorkerPool(
+            max_workers=1,
+            thread_name_prefix="uniti-eol",
+        )
+        self._eol_jobs: dict[Future, weakref.ReferenceType] = {}
+        self._eol_reports: dict[int, EOLReport] = {}
+        self._eol_timer = QTimer(self)
+        self._eol_timer.setInterval(80)
+        self._eol_timer.timeout.connect(self._poll_eol_jobs)
         self._build_menus()
 
     @property
@@ -104,25 +131,57 @@ class UNITIMainWindow(QMainWindow):
                 self._find_replace.previous_match,
             )
         )
+
         self.menuBar().addMenu("&View")
-        self.menuBar().addMenu("&Encoding")
-        self.menuBar().addMenu("&EOL")
+
+        encoding_menu = self.menuBar().addMenu("&Encoding")
+        reinterpret_menu = encoding_menu.addMenu("Reinterpret As")
+        convert_menu = encoding_menu.addMenu("Convert on Save")
+        for label, codec in _ENCODING_CHOICES:
+            reinterpret_menu.addAction(
+                self._action(label, None, lambda codec=codec: self.reinterpret_current(codec))
+            )
+            convert_menu.addAction(
+                self._action(label, None, lambda codec=codec: self.set_output_encoding(codec))
+            )
+
+        eol_menu = self.menuBar().addMenu("&EOL")
+        eol_menu.addAction(
+            self._action("Keep Source", None, lambda: self.set_output_eol(None))
+        )
+        for eol in ("LF", "CRLF", "CR"):
+            eol_menu.addAction(
+                self._action(eol, None, lambda eol=eol: self.set_output_eol(eol))
+            )
+
+        tools_menu = self.menuBar().addMenu("&Tools")
+        tools_menu.addAction(
+            self._action(
+                "Character Inspector…",
+                None,
+                self.show_character_inspector,
+            )
+        )
 
     def open_dialog(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(self, "Open Text File")
         if filename:
             self.open_path(filename)
 
+    def _connect_view(self, view: UNITITextView) -> None:
+        view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
+        view.cursorPositionChanged.connect(self._status.update_cursor)
+
     def open_path(self, path: str | Path) -> UNITITextView:
         document = Document.open(path)
         state = EditorState(document)
         view = UNITITextView(state, self._tabs)
+        self._connect_view(view)
         index = self._tabs.addTab(view, self._tab_label(view))
         self._tabs.setCurrentIndex(index)
-        view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
-        view.cursorPositionChanged.connect(self._status.update_cursor)
-        self._status.update_document(document)
+        self._set_status_document(view)
         self._status.update_cursor(0, 0)
+        self._schedule_eol_analysis(view)
         view.setFocus()
         return view
 
@@ -130,12 +189,17 @@ class UNITIMainWindow(QMainWindow):
         marker = "*" if view.document.modified else ""
         return f"{view.document.path.name}{marker}"
 
+    def _set_status_document(self, view: UNITITextView) -> None:
+        report = self._eol_reports.get(id(view))
+        self._status.update_eol_report(report)
+        self._status.update_document(view.document, report)
+
     def _on_view_state_changed(self, view: UNITITextView) -> None:
         index = self._tabs.indexOf(view)
         if index >= 0:
             self._tabs.setTabText(index, self._tab_label(view))
         if view is self.current_view:
-            self._status.update_document(view.document)
+            self._set_status_document(view)
 
     def _on_current_changed(self, _index: int) -> None:
         self._find_replace.document_changed()
@@ -144,11 +208,117 @@ class UNITIMainWindow(QMainWindow):
             self._status.clear_document()
             self.setWindowTitle("UNITI")
             return
-        self._status.update_document(view.document)
+        self._set_status_document(view)
         line = view.document.line_for_char(view.state.cursor)
         column = view.state.cursor - view.document.line_start(line)
         self._status.update_cursor(line, column)
         self.setWindowTitle(f"UNITI — {view.document.path.name}")
+
+    @staticmethod
+    def _analyze_path_eol(path: Path, encoding: str) -> EOLReport:
+        with ByteSource.open(path) as source:
+            return analyze_eol(source, encoding=encoding)
+
+    def _schedule_eol_analysis(self, view: UNITITextView) -> None:
+        source_path = view.document.source.path
+        encoding = view.document.encoding_info.detected
+        future = self._eol_pool.submit(
+            WorkPriority.INDEX,
+            self._analyze_path_eol,
+            source_path,
+            encoding,
+        )
+        self._eol_jobs[future] = weakref.ref(view)
+        self._eol_timer.start()
+
+    def _poll_eol_jobs(self) -> None:
+        for future, view_ref in tuple(self._eol_jobs.items()):
+            if not future.done():
+                continue
+            self._eol_jobs.pop(future, None)
+            view = view_ref()
+            if view is None:
+                continue
+            try:
+                report = future.result()
+            except Exception:
+                continue
+            self._eol_reports[id(view)] = report
+            if view is self.current_view:
+                self._set_status_document(view)
+        if not self._eol_jobs:
+            self._eol_timer.stop()
+
+    def set_output_encoding(self, encoding: str) -> None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        view.document.set_output_encoding(encoding)
+        self._on_view_state_changed(view)
+
+    def set_output_eol(self, eol) -> None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        view.document.set_output_eol(eol)
+        self._on_view_state_changed(view)
+
+    def reinterpret_current(self, encoding: str) -> None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        if view.document.modified:
+            QMessageBox.information(
+                self,
+                "Reinterpret Encoding",
+                "Save or discard current changes before reinterpreting the source bytes.",
+            )
+            return
+
+        index = self._tabs.currentIndex()
+        path = view.document.source.path
+        try:
+            document = Document.open(path, encoding=encoding)
+        except Exception as exc:
+            QMessageBox.critical(self, "Reinterpret Failed", str(exc))
+            return
+
+        replacement = UNITITextView(EditorState(document), self._tabs)
+        self._connect_view(replacement)
+        self._tabs.removeTab(index)
+        self._tabs.insertTab(index, replacement, self._tab_label(replacement))
+        self._tabs.setCurrentIndex(index)
+        self._eol_reports.pop(id(view), None)
+        view.document.close()
+        view.deleteLater()
+        self._set_status_document(replacement)
+        self._schedule_eol_analysis(replacement)
+        replacement.setFocus()
+
+    def show_character_inspector(self) -> None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        selection = view.state.selection
+        position = selection[0] if selection is not None else view.state.cursor
+        try:
+            character = view.document.read(position, position + 1)
+        except ValueError:
+            character = ""
+        if not character and position > 0:
+            try:
+                character = view.document.read(position - 1, position)
+            except ValueError:
+                character = ""
+        if not character:
+            QMessageBox.information(self, "Character Inspector", "No character at cursor.")
+            return
+        dialog = CharacterInspectorDialog(
+            character[0],
+            output_encoding=view.document.output_encoding,
+            parent=self,
+        )
+        dialog.exec()
 
     def save_current(self) -> Path | None:
         view = self.current_view
@@ -234,6 +404,7 @@ class UNITIMainWindow(QMainWindow):
             return False
         if not force and not self._confirm_close(widget):
             return False
+        self._eol_reports.pop(id(widget), None)
         widget.document.close()
         self._tabs.removeTab(index)
         widget.deleteLater()
@@ -260,6 +431,7 @@ class UNITIMainWindow(QMainWindow):
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.close_all_documents(force=False):
             self._find_replace.shutdown()
+            self._eol_pool.shutdown(wait=False, cancel_pending=True)
             event.accept()
         else:
             event.ignore()
