@@ -116,3 +116,47 @@ def test_atomic_write_text_chunks_normalizes_eol_across_chunk_boundaries(tmp_pat
         eol="LF",
     )
     assert target.read_bytes() == b"a\nb\nc\n"
+
+
+def test_atomic_save_preserves_existing_posix_mode(tmp_path: Path):
+    source_path = tmp_path / "mode.txt"
+    source, table = table_for(source_path, b"abc", "utf-8")
+    source_path.chmod(0o644)
+    try:
+        table.insert(3, "X")
+        save_document(
+            source,
+            table,
+            source_encoding="utf-8",
+            source_bom=None,
+            destination=source_path,
+        )
+    finally:
+        source.close()
+    assert source_path.stat().st_mode & 0o777 == 0o644
+
+
+def test_atomic_save_preserves_supported_xattrs(tmp_path: Path):
+    if not all(hasattr(__import__("os"), name) for name in ("setxattr", "getxattr")):
+        pytest.skip("xattrs unsupported by this Python/platform")
+    import os
+
+    source_path = tmp_path / "xattr.txt"
+    source, table = table_for(source_path, b"abc", "utf-8")
+    name = "user.uniti-test"
+    try:
+        try:
+            os.setxattr(source_path, name, b"kept")
+        except OSError:
+            pytest.skip("test filesystem does not support user xattrs")
+        table.insert(3, "X")
+        save_document(
+            source,
+            table,
+            source_encoding="utf-8",
+            source_bom=None,
+            destination=source_path,
+        )
+    finally:
+        source.close()
+    assert os.getxattr(source_path, name) == b"kept"

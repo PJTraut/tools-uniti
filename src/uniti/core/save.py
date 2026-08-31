@@ -5,6 +5,7 @@ from __future__ import annotations
 import codecs
 import os
 import tempfile
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Iterator, Literal
@@ -16,6 +17,62 @@ EOLName = Literal["LF", "CRLF", "CR"]
 
 _EOL_TEXT: dict[str, str] = {"LF": "\n", "CRLF": "\r\n", "CR": "\r"}
 _UTF8_BOM = b"\xef\xbb\xbf"
+
+
+@dataclass(frozen=True, slots=True)
+class _TargetMetadata:
+    mode: int | None
+    xattrs: tuple[tuple[str, bytes], ...]
+
+
+def _capture_target_metadata(path: Path) -> _TargetMetadata:
+    try:
+        info = path.stat()
+    except FileNotFoundError:
+        return _TargetMetadata(None, ())
+    mode = stat.S_IMODE(info.st_mode)
+    attrs: list[tuple[str, bytes]] = []
+    if hasattr(os, "listxattr") and hasattr(os, "getxattr"):
+        try:
+            names = os.listxattr(path)
+        except OSError:
+            names = ()
+        for name in names:
+            try:
+                attrs.append((name, os.getxattr(path, name)))
+            except OSError:
+                continue
+    return _TargetMetadata(mode, tuple(attrs))
+
+
+def _apply_target_metadata(path: Path, metadata: _TargetMetadata) -> None:
+    if metadata.mode is not None:
+        os.chmod(path, metadata.mode)
+    if hasattr(os, "setxattr"):
+        for name, value in metadata.xattrs:
+            try:
+                os.setxattr(path, name, value)
+            except OSError:
+                # Extended attributes are best-effort across filesystems.
+                continue
+
+
+def _fsync_parent(path: Path) -> None:
+    if os.name != "posix":
+        return
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    try:
+        fd = os.open(path.parent, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +221,7 @@ def save_document(
         raise ValueError("save chunk sizes must be positive")
     output_encoding = opts.encoding or source_encoding
     target = Path(destination)
+    metadata = _capture_target_metadata(target)
     fd: int | None = None
     temp_path: Path | None = None
     try:
@@ -200,7 +258,9 @@ def save_document(
                 )
             handle.flush()
             os.fsync(handle.fileno())
+        _apply_target_metadata(temp_path, metadata)
         os.replace(temp_path, target)
+        _fsync_parent(target)
         temp_path = None
         return target
     except Exception:
@@ -225,6 +285,7 @@ def atomic_write_text_chunks(
     """Strictly encode text chunks through the UNITI atomic-save discipline."""
 
     target = Path(destination)
+    metadata = _capture_target_metadata(target)
     fd: int | None = None
     temp_path: Path | None = None
     try:
@@ -256,7 +317,9 @@ def atomic_write_text_chunks(
                 handle.write(tail)
             handle.flush()
             os.fsync(handle.fileno())
+        _apply_target_metadata(temp_path, metadata)
         os.replace(temp_path, target)
+        _fsync_parent(target)
         temp_path = None
         return target
     except Exception:
