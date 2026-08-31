@@ -93,6 +93,12 @@ class LineIndex:
             raise ValueError("byte offset is outside visible source text")
         while byte_offset > self._indexed_byte_end and not self._complete:
             self._advance()
+        if (
+            byte_offset == self._indexed_byte_end
+            and self._pending_cr_end == byte_offset
+            and not self._complete
+        ):
+            self._advance()
 
     def ensure_line(self, line_index: int) -> None:
         if line_index < 0:

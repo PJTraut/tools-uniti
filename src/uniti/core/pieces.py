@@ -140,6 +140,23 @@ class PieceTable:
         self._pieces[index : index + 1] = [left, right]
         return index + 1
 
+    def _validate_offset(self, char_offset: int) -> None:
+        if char_offset < 0:
+            raise ValueError("character offset must be non-negative")
+        remaining = char_offset
+        for index, piece in enumerate(self._pieces):
+            length = self._known_length(piece)
+            if length is None:
+                if not isinstance(piece, SourcePiece) or index != len(self._pieces) - 1:
+                    raise RuntimeError("only final source tail may have unknown length")
+                self._mapper.char_to_byte(piece.source_char_start + remaining)
+                return
+            if remaining <= length:
+                return
+            remaining -= length
+        if remaining != 0:
+            raise ValueError("character offset is beyond end of document")
+
     def _split_at(self, char_offset: int) -> int:
         if char_offset < 0:
             raise ValueError("character offset must be non-negative")
@@ -204,9 +221,10 @@ class PieceTable:
         self._pieces = merged
 
     def insert(self, char_offset: int, text: str) -> None:
-        boundary = self._split_at(char_offset)
         if not text:
+            self._validate_offset(char_offset)
             return
+        boundary = self._split_at(char_offset)
         ref = self._edit_store.append(text)
         self._pieces.insert(boundary, EditPiece(ref))
         self._merge_neighbors()
@@ -214,9 +232,10 @@ class PieceTable:
     def delete(self, start: int, end: int) -> None:
         if start < 0 or end < start:
             raise ValueError("invalid document character range")
-        start_index = self._split_at(start)
         if start == end:
+            self._validate_offset(start)
             return
+        start_index = self._split_at(start)
         end_index = self._split_at(end)
         del self._pieces[start_index:end_index]
         self._merge_neighbors()
@@ -243,7 +262,7 @@ class PieceTable:
         if start < 0 or end < start:
             raise ValueError("invalid document character range")
         if start == end:
-            self._split_at(start)
+            self._validate_offset(start)
             return ""
 
         output: list[str] = []

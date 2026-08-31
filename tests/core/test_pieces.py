@@ -91,3 +91,59 @@ def test_empty_operations_are_noops_but_validate_boundaries(tmp_path: Path):
             table.read(0, 4)
         with pytest.raises(ValueError):
             table.delete(-1, 1)
+
+
+def test_zero_length_operations_do_not_split_piece_structure(tmp_path: Path):
+    path = tmp_path / "zero-structure.txt"
+    path.write_text("abcdef", encoding="utf-8")
+    with ByteSource.open(path) as source:
+        mapper = OffsetMapper(source, "utf-8", checkpoint_bytes=2)
+        table = PieceTable(source, "utf-8", mapper, EditStore())
+        assert table.piece_count == 1
+        table.insert(3, "")
+        assert table.piece_count == 1
+        assert isinstance(table._pieces[-1], SourcePiece)
+        assert table._pieces[-1].char_length is None
+        assert table.read(3, 3) == ""
+        assert table.piece_count == 1
+        table.delete(4, 4)
+        assert table.piece_count == 1
+
+
+def test_piece_table_matches_reference_text_across_deterministic_edits(tmp_path: Path):
+    path = tmp_path / "reference.txt"
+    reference = "Aé中😀Z-0123456789"
+    path.write_text(reference, encoding="utf-8")
+    with ByteSource.open(path) as source:
+        mapper = OffsetMapper(source, "utf-8", checkpoint_bytes=5)
+        table = PieceTable(source, "utf-8", mapper, EditStore())
+
+        operations = [
+            ("insert", 2, "Ω"),
+            ("delete", 5, 8),
+            ("replace", 1, 4, "XYZ"),
+            ("insert", 0, "<"),
+            ("insert", None, ">"),
+            ("replace", 3, 3, "++"),
+            ("delete", 0, 1),
+        ]
+
+        for operation in operations:
+            kind = operation[0]
+            if kind == "insert":
+                _, position, text = operation
+                if position is None:
+                    position = len(reference)
+                table.insert(position, text)
+                reference = reference[:position] + text + reference[position:]
+            elif kind == "delete":
+                _, start, end = operation
+                table.delete(start, end)
+                reference = reference[:start] + reference[end:]
+            else:
+                _, start, end, text = operation
+                table.replace(start, end, text)
+                reference = reference[:start] + text + reference[end:]
+
+            assert table.total_chars() == len(reference)
+            assert table.read(0, len(reference)) == reference

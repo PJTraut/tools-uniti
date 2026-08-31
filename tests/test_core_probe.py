@@ -52,3 +52,19 @@ def test_core_probe_does_not_full_scan_eol_by_default(tmp_path: Path):
     assert "eol: not-scanned" in result.stdout
     assert "offset-index-complete: false" in result.stdout
     assert "source-line-index-complete: false" in result.stdout
+
+
+def test_core_probe_window_never_reports_split_utf8_as_decode_error(tmp_path: Path):
+    path = tmp_path / "utf8-boundary.txt"
+    path.write_bytes("AB€CD".encode("utf-8"))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = "src"
+    result = subprocess.run(
+        [sys.executable, "scripts/core_probe.py", str(path), "--window", "4"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert "decode-errors: 0" in result.stdout
+    assert "document-text: 'AB'" in result.stdout

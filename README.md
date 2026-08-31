@@ -42,4 +42,5 @@ Regex search and capture visualization follow after the document/view contracts 
 
 ```bash
 PYTHONPATH=src python scripts/core_probe.py path/to/file.txt --window 256
+# Add --full-eol only when a complete EOL scan is wanted.
 ```

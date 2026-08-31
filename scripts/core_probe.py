@@ -6,16 +6,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from uniti.core import Document, analyze_eol, decode_span
+from uniti.core import Document, analyze_eol, decode_span, iter_decoded_spans
 
-
-def _aligned_window(length: int, encoding: str) -> int:
-    normalized = encoding.lower().replace("_", "-")
-    if normalized.startswith("utf-32"):
-        return length - (length % 4)
-    if normalized.startswith("utf-16"):
-        return length - (length % 2)
-    return length
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,8 +33,19 @@ def main() -> int:
         mapper_complete_before_read = document.offset_mapper.complete
         line_index_complete_before_read = document.source_line_index.complete
 
-        window = _aligned_window(min(source.size, args.window), encoding.detected)
-        span = decode_span(source, 0, window, encoding.detected)
+        visible_start = document.offset_mapper.char_to_byte(0)
+        if args.window == 0 or visible_start >= source.size:
+            span = decode_span(source, visible_start, 0, encoding.detected)
+        else:
+            span = next(
+                iter_decoded_spans(
+                    source,
+                    encoding.detected,
+                    start=visible_start,
+                    end=source.size,
+                    chunk_size=args.window,
+                )
+            )
         document_text = document.read(0, len(span.text))
 
         eol_kind = (

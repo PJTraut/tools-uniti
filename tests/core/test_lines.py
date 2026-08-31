@@ -88,3 +88,20 @@ def test_early_line_lookup_does_not_index_entire_source(tmp_path: Path):
         assert index.line_start(3) == 6
         assert index.indexed_byte_end < source.size
         assert not index.complete
+
+
+def test_line_for_byte_resolves_pending_cr_at_window_end(tmp_path: Path):
+    path = tmp_path / "pending-cr.txt"
+    path.write_bytes(b"a\rb")
+    with ByteSource.open(path) as source:
+        index = LineIndex(source, "utf-8", chunk_size=2)
+        assert index.line_for_byte(2) == 1
+
+
+def test_line_for_byte_keeps_boundary_before_lf_on_previous_line(tmp_path: Path):
+    path = tmp_path / "pending-crlf.txt"
+    path.write_bytes(b"a\r\nb")
+    with ByteSource.open(path) as source:
+        index = LineIndex(source, "utf-8", chunk_size=2)
+        assert index.line_for_byte(2) == 0
+        assert index.line_for_byte(3) == 1
