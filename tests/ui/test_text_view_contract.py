@@ -50,3 +50,11 @@ def test_text_view_offscreen_smoke_when_pyside6_is_available(tmp_path: Path):
         app.processEvents()
         assert view.state is state
         view.close()
+
+
+def test_text_view_pages_horizontally_by_character_window():
+    source = SOURCE.read_text()
+    assert "def _horizontal_window" in source
+    assert "column_start=column_start" in source
+    assert "line_window_start = line_start + column_start" in source
+    assert "return line_start + column_start + low" in source

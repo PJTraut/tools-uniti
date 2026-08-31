@@ -33,6 +33,7 @@ class UNITITextView(QAbstractScrollArea):
         self._line_height = max(1, self._metrics.height())
         self._gutter_width = max(48, self._metrics.horizontalAdvance("00000000") + 12)
         self._max_visible_chars = 8192
+        self._cell_width = max(1, self._metrics.horizontalAdvance("M"))
         self._max_seen_line_width = 0
         self._drag_selecting = False
         self._match_index = MatchIndex(())
@@ -77,7 +78,7 @@ class UNITITextView(QAbstractScrollArea):
 
         horizontal_page = max(1, self.viewport().width() - self._gutter_width)
         self.horizontalScrollBar().setPageStep(horizontal_page)
-        self.horizontalScrollBar().setSingleStep(max(1, self._metrics.horizontalAdvance("M")))
+        self.horizontalScrollBar().setSingleStep(self._cell_width)
         self.horizontalScrollBar().setRange(
             0,
             max(0, self._max_seen_line_width - horizontal_page),
@@ -87,10 +88,16 @@ class UNITITextView(QAbstractScrollArea):
         super().resizeEvent(event)
         self._refresh_scrollbars(advance_index=False)
 
-    def _line_text(self, line: int) -> str:
+    def _horizontal_window(self) -> tuple[int, int]:
+        horizontal = self.horizontalScrollBar().value()
+        column_start = horizontal // self._cell_width
+        text_x = self._gutter_width - (horizontal % self._cell_width)
+        return column_start, text_x
+
+    def _line_text(self, line: int, column_start: int) -> str:
         return self.document.read_line_window(
             line,
-            column_start=0,
+            column_start=column_start,
             max_chars=self._max_visible_chars,
         )
 
@@ -112,7 +119,7 @@ class UNITITextView(QAbstractScrollArea):
         painter.setFont(self.font())
 
         first_line = self.verticalScrollBar().value()
-        horizontal = self.horizontalScrollBar().value()
+        column_start, text_x = self._horizontal_window()
         visible = self._visible_line_capacity()
         selection = self.state.selection
         cursor_line = self.document.line_for_char(self.state.cursor)
@@ -124,7 +131,7 @@ class UNITITextView(QAbstractScrollArea):
             line_number = first_line + row
             try:
                 line_start = self.document.line_start(line_number)
-                text = self._line_text(line_number)
+                text = self._line_text(line_number, column_start)
             except ValueError:
                 break
 
@@ -137,17 +144,24 @@ class UNITITextView(QAbstractScrollArea):
                 f"{line_number + 1:>{max(1, (self._gutter_width - 12) // max(1, self._metrics.horizontalAdvance('0')))}}",
             )
 
-            text_x = self._gutter_width - horizontal
             width = self._metrics.horizontalAdvance(text)
-            self._max_seen_line_width = max(self._max_seen_line_width, width)
+            known_columns = column_start + len(text)
+            if len(text) >= self._max_visible_chars:
+                known_columns += self._max_visible_chars
+            self._max_seen_line_width = max(
+                self._max_seen_line_width,
+                known_columns * self._cell_width,
+                self.horizontalScrollBar().value() + width,
+            )
 
-            line_end = line_start + len(text)
+            line_window_start = line_start + column_start
+            line_end = line_window_start + len(text)
             if len(self._match_index):
                 match_color = palette.color(QPalette.ColorRole.Highlight)
                 match_color.setAlpha(70)
-                for record in self._match_index.intersecting(line_start, line_end + 1):
-                    a = max(record.start, line_start) - line_start
-                    b = min(record.end, line_end) - line_start
+                for record in self._match_index.intersecting(line_window_start, line_end + 1):
+                    a = max(record.start, line_window_start) - line_window_start
+                    b = min(record.end, line_end) - line_window_start
                     a = max(0, min(len(text), a))
                     b = max(0, min(len(text), b))
                     x1 = text_x + self._metrics.horizontalAdvance(text[:a])
@@ -167,11 +181,11 @@ class UNITITextView(QAbstractScrollArea):
 
             if selection is not None:
                 sel_start, sel_end = selection
-                visible_start = max(sel_start, line_start)
+                visible_start = max(sel_start, line_window_start)
                 visible_end = min(sel_end, line_end)
                 if visible_start < visible_end:
-                    a = visible_start - line_start
-                    b = visible_end - line_start
+                    a = visible_start - line_window_start
+                    b = visible_end - line_window_start
                     x1 = text_x + self._metrics.horizontalAdvance(text[:a])
                     x2 = text_x + self._metrics.horizontalAdvance(text[:b])
                     painter.fillRect(
@@ -186,14 +200,15 @@ class UNITITextView(QAbstractScrollArea):
             self._paint_line_text(painter, text, float(text_x), float(y))
 
             if line_number == cursor_line and self.hasFocus():
-                column = max(0, min(len(text), self.state.cursor - line_start))
-                cursor_x = text_x + self._metrics.horizontalAdvance(text[:column])
-                painter.drawLine(
-                    int(cursor_x),
-                    y + 1,
-                    int(cursor_x),
-                    y + self._line_height - 1,
-                )
+                local_column = self.state.cursor - line_window_start
+                if 0 <= local_column <= len(text):
+                    cursor_x = text_x + self._metrics.horizontalAdvance(text[:local_column])
+                    painter.drawLine(
+                        int(cursor_x),
+                        y + 1,
+                        int(cursor_x),
+                        y + self._line_height - 1,
+                    )
 
         self._refresh_scrollbars(advance_index=False)
 
@@ -201,11 +216,12 @@ class UNITITextView(QAbstractScrollArea):
         line = self.verticalScrollBar().value() + max(0, int(y) // self._line_height)
         try:
             line_start = self.document.line_start(line)
-            text = self._line_text(line)
+            column_start, text_x = self._horizontal_window()
+            text = self._line_text(line, column_start)
         except ValueError:
             return self.state.cursor
 
-        target = max(0.0, x - self._gutter_width + self.horizontalScrollBar().value())
+        target = max(0.0, x - text_x)
         low = 0
         high = len(text)
         while low < high:
@@ -220,7 +236,7 @@ class UNITITextView(QAbstractScrollArea):
             after = self._metrics.horizontalAdvance(text[: low + 1])
             if target > (before + after) / 2:
                 low += 1
-        return line_start + low
+        return line_start + column_start + low
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -324,6 +340,20 @@ class UNITITextView(QAbstractScrollArea):
             self.verticalScrollBar().setValue(line)
         elif line >= first + visible:
             self.verticalScrollBar().setValue(max(0, line - visible + 1))
+
+        line_start = self.document.line_start(line)
+        column = self.state.cursor - line_start
+        cursor_pixel = column * self._cell_width
+        horizontal = self.horizontalScrollBar()
+        page = max(1, horizontal.pageStep())
+        if cursor_pixel < horizontal.value():
+            horizontal.setValue(cursor_pixel)
+        elif cursor_pixel >= horizontal.value() + page:
+            self._max_seen_line_width = max(
+                self._max_seen_line_width, cursor_pixel + self._cell_width
+            )
+            horizontal.setRange(0, max(0, self._max_seen_line_width - page))
+            horizontal.setValue(max(0, cursor_pixel - page + self._cell_width))
 
     def _state_changed(self) -> None:
         self._ensure_cursor_visible()
