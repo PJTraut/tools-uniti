@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from uniti.app.diagnostics import diagnostics_snapshot
 from uniti.app.editor_state import EditorState
 from uniti.app.recovery_manager import RecoveryManager
 from uniti.app.settings import Settings, SettingsStore
@@ -25,6 +26,7 @@ from uniti.core.document import Document
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.resources import PriorityWorkerPool, WorkPriority
 from uniti.ui.character_inspector import CharacterInspectorDialog
+from uniti.ui.diagnostics_dialog import DiagnosticsDialog
 from uniti.ui.find_replace import FindReplacePanel
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
@@ -171,6 +173,13 @@ class UNITIMainWindow(QMainWindow):
                 "Character Inspector…",
                 None,
                 self.show_character_inspector,
+            )
+        )
+        tools_menu.addAction(
+            self._action(
+                "Diagnostics…",
+                None,
+                self.show_diagnostics,
             )
         )
 
@@ -397,6 +406,15 @@ class UNITIMainWindow(QMainWindow):
             output_encoding=view.document.output_encoding,
             parent=self,
         )
+        dialog.exec()
+
+    def show_diagnostics(self) -> None:
+        documents = []
+        for index in range(self._tabs.count()):
+            widget = self._tabs.widget(index)
+            if isinstance(widget, UNITITextView):
+                documents.append(widget.document)
+        dialog = DiagnosticsDialog(diagnostics_snapshot(documents), self)
         dialog.exec()
 
     def save_current(self) -> Path | None:

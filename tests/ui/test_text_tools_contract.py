@@ -75,3 +75,12 @@ def test_text_tools_offscreen_smoke_when_pyside6_available(tmp_path: Path):
     assert view.document.output_eol == "CRLF"
     window.close_all_documents(force=True)
     window.close()
+
+
+def test_main_window_exposes_diagnostics_tool_without_using_it_as_document_storage():
+    source = Path("src/uniti/ui/main_window.py").read_text()
+    dialog = Path("src/uniti/ui/diagnostics_dialog.py")
+    assert "Diagnostics" in source
+    assert "diagnostics_snapshot" in source
+    assert dialog.exists()
+    assert "QPlainTextEdit" not in source
