@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from .byte_source import ByteSource
-from .decoder import decode_span, iter_decoded_spans
+from .decoder import DecodedSpan, decode_span, iter_decoded_spans
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +56,8 @@ class OffsetMapper:
         self._indexed_byte_end = start
         self._indexed_char_end = 0
         self._complete = start >= source.size
+        self._span_cache: OrderedDict[tuple[int, int], DecodedSpan] = OrderedDict()
+        self._span_cache_limit = 4
 
     @property
     def indexed_byte_end(self) -> int:
@@ -88,12 +91,39 @@ class OffsetMapper:
             self._complete = True
             return
 
+        self._cache_span(span)
         self._indexed_byte_end = span.byte_end
         self._indexed_char_end += len(span.text)
         checkpoint = OffsetCheckpoint(self._indexed_byte_end, self._indexed_char_end)
         if checkpoint != self._checkpoints[-1]:
             self._checkpoints.append(checkpoint)
         self._complete = self._indexed_byte_end >= self._source.size
+
+    def _cache_span(self, span: DecodedSpan) -> None:
+        key = (span.byte_start, span.byte_end)
+        self._span_cache[key] = span
+        self._span_cache.move_to_end(key)
+        while len(self._span_cache) > self._span_cache_limit:
+            self._span_cache.popitem(last=False)
+
+    def _decoded_interval(self, index: int) -> DecodedSpan:
+        checkpoint = self._checkpoints[index]
+        if index + 1 >= len(self._checkpoints):
+            raise ValueError("mapping interval is not indexed")
+        end_checkpoint = self._checkpoints[index + 1]
+        key = (checkpoint.byte_offset, end_checkpoint.byte_offset)
+        cached = self._span_cache.get(key)
+        if cached is not None:
+            self._span_cache.move_to_end(key)
+            return cached
+        span = decode_span(
+            self._source,
+            checkpoint.byte_offset,
+            end_checkpoint.byte_offset - checkpoint.byte_offset,
+            self._encoding,
+        )
+        self._cache_span(span)
+        return span
 
     def _ensure_char(self, char_offset: int) -> None:
         if char_offset < 0:
@@ -122,13 +152,7 @@ class OffsetMapper:
 
         if index + 1 >= len(self._checkpoints):
             raise ValueError("character offset is beyond end of source")
-        end_checkpoint = self._checkpoints[index + 1]
-        span = decode_span(
-            self._source,
-            checkpoint.byte_offset,
-            end_checkpoint.byte_offset - checkpoint.byte_offset,
-            self._encoding,
-        )
+        span = self._decoded_interval(index)
         local = char_offset - checkpoint.char_offset
         return span.byte_offset_for_char_boundary(local)
 
@@ -142,13 +166,7 @@ class OffsetMapper:
 
         if index + 1 >= len(self._checkpoints):
             raise ValueError("byte offset is not a visible character boundary")
-        end_checkpoint = self._checkpoints[index + 1]
-        span = decode_span(
-            self._source,
-            checkpoint.byte_offset,
-            end_checkpoint.byte_offset - checkpoint.byte_offset,
-            self._encoding,
-        )
+        span = self._decoded_interval(index)
         absolute_boundaries = [checkpoint.byte_offset + value for value in span.char_boundaries]
         boundary_index = bisect_left(absolute_boundaries, byte_offset)
         if (

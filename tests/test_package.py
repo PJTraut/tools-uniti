@@ -26,7 +26,7 @@ def test_project_versions_are_canonical():
     import uniti
 
     project = tomllib.loads(Path("pyproject.toml").read_text())
-    assert project["project"]["version"] == "0.1a5"
-    assert uniti.__version__ == "0.1a5"
-    assert uniti.__display_version__ == "v0.001a5"
-    assert Path("VERSION").read_text().strip() == "v0.001a5"
+    assert project["project"]["version"] == "0.1a6"
+    assert uniti.__version__ == "0.1a6"
+    assert uniti.__display_version__ == "v0.001a6"
+    assert Path("VERSION").read_text().strip() == "v0.001a6"

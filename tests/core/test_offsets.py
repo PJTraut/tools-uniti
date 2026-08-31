@@ -6,6 +6,16 @@ from uniti.core.byte_source import ByteSource
 from uniti.core.offsets import OffsetMapper
 
 
+class CountingByteSource(ByteSource):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.read_calls = 0
+
+    def read(self, start: int, length: int) -> bytes:
+        self.read_calls += 1
+        return super().read(start, length)
+
+
 def test_utf8_character_boundaries_round_trip(tmp_path: Path):
     path = tmp_path / "map.txt"
     path.write_bytes("Aé中Z".encode("utf-8"))
@@ -88,3 +98,17 @@ def test_invalid_utf8_byte_occupies_one_character(tmp_path: Path):
         assert mapper.char_to_byte(2) == 2
         assert mapper.byte_to_char(2) == 2
         assert mapper.total_chars() == 3
+
+
+def test_repeated_mapping_reuses_checkpoint_decoded_span(tmp_path: Path):
+    path = tmp_path / "cached-span.txt"
+    path.write_text("a" * 60_000, encoding="utf-8")
+    with CountingByteSource.open(path) as source:
+        mapper = OffsetMapper(source, "utf-8", checkpoint_bytes=65_536)
+        assert mapper.char_to_byte(1) == 1
+        reads_after_first_mapping = source.read_calls
+
+        for char_offset in range(2, 10_000, 137):
+            assert mapper.char_to_byte(char_offset) == char_offset
+
+        assert source.read_calls == reads_after_first_mapping
