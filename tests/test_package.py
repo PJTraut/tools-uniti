@@ -17,3 +17,16 @@ def test_regex_engine_dependency_is_exactly_pinned():
     project = tomllib.loads(Path("pyproject.toml").read_text())
     dependencies = project["project"]["dependencies"]
     assert f"regex=={regex.__version__}" in dependencies
+
+
+def test_project_versions_are_canonical():
+    import tomllib
+    from pathlib import Path
+
+    import uniti
+
+    project = tomllib.loads(Path("pyproject.toml").read_text())
+    assert project["project"]["version"] == "0.1a1"
+    assert uniti.__version__ == "0.1a1"
+    assert uniti.__display_version__ == "v0.001a1"
+    assert Path("VERSION").read_text().strip() == "v0.001a1"

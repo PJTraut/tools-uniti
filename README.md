@@ -1,5 +1,8 @@
 # UNITI
 
+**Current project version:** `v0.001a1`
+**Python package version:** `0.1a1`
+
 **Unicode Intelligent Text Interchange** — a focused, cross-platform power text editor.
 
 The project is being built from the frozen UNITI Architecture v0.1. The first implementation slice proves the byte-oriented core before any custom Qt viewport work.

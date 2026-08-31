@@ -1,0 +1,12 @@
+# Keep source files deterministic across Windows/macOS/Linux.
+* text=auto
+*.py text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.sh text eol=lf
+
+# UNITI's future byte/EOL/encoding fixtures must never be rewritten by Git.
+tests/fixtures/** -text
