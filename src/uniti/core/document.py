@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
 
@@ -127,6 +128,20 @@ class Document:
     def read(self, start: int, end: int) -> str:
         self._ensure_open()
         return self._piece_table.read(start, end)
+
+    def iter_text(
+        self,
+        start: int = 0,
+        end: int | None = None,
+        *,
+        chunk_chars: int = 65_536,
+    ) -> Iterator[tuple[int, str]]:
+        self._ensure_open()
+        return self._piece_table.iter_text(
+            start,
+            end,
+            chunk_chars=chunk_chars,
+        )
 
     def _replace_internal(
         self,

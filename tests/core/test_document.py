@@ -198,3 +198,15 @@ def test_document_saved_revision_tracks_undo_redo(tmp_path: Path):
         assert not doc.modified
         doc.redo()
         assert doc.modified
+
+
+def test_document_iter_text_is_bounded_and_progressive(tmp_path: Path):
+    path = tmp_path / "iter-document.txt"
+    path.write_text("0123456789" * 30_000, encoding="utf-8")
+    with Document.open(path) as doc:
+        assert list(doc.iter_text(5, 24, chunk_chars=8)) == [
+            (5, "56789012"),
+            (13, "34567890"),
+            (21, "123"),
+        ]
+        assert not doc.offset_mapper.complete
