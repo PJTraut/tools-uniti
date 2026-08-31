@@ -77,3 +77,11 @@ def test_application_uses_app_paths_and_settings_store():
     assert "AppPaths.current" in application
     assert "SettingsStore" in application
     assert "paths.recovery_dir" in application
+
+
+def test_main_window_handles_open_and_external_save_errors_in_ui():
+    source = MAIN.read_text()
+    assert "ExternalFileChangedError" in source
+    assert "File Changed on Disk" in source
+    assert "Open Failed" in source
+    assert "Save Failed" in source

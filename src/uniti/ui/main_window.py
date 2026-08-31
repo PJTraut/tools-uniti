@@ -24,6 +24,7 @@ from uniti.app.settings import Settings, SettingsStore
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.eol import EOLReport, analyze_eol
+from uniti.core.file_identity import ExternalFileChangedError
 from uniti.resources import PriorityWorkerPool, WorkPriority
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
@@ -202,7 +203,14 @@ class UNITIMainWindow(QMainWindow):
             self._settings.last_directory or "",
         )
         if filename:
-            self.open_path(filename)
+            try:
+                self.open_path(filename)
+            except Exception as exc:
+                QMessageBox.critical(
+                    self,
+                    "Open Failed",
+                    f"{filename}\n\n{exc}",
+                )
 
     def _connect_view(self, view: UNITITextView) -> None:
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
@@ -417,11 +425,25 @@ class UNITIMainWindow(QMainWindow):
         dialog = DiagnosticsDialog(diagnostics_snapshot(documents), self)
         dialog.exec()
 
+    def _show_save_error(self, exc: Exception) -> None:
+        if isinstance(exc, ExternalFileChangedError):
+            QMessageBox.warning(
+                self,
+                "File Changed on Disk",
+                f"{exc}\n\nUNITI did not overwrite the file. Reload/inspect it, or use Save As when safe.",
+            )
+            return
+        QMessageBox.critical(self, "Save Failed", str(exc))
+
     def save_current(self) -> Path | None:
         view = self.current_view
         if view is None or not view.isEnabled():
             return None
-        result = view.document.save()
+        try:
+            result = view.document.save()
+        except Exception as exc:
+            self._show_save_error(exc)
+            return None
         self._on_view_state_changed(view)
         return result
 
@@ -439,7 +461,11 @@ class UNITIMainWindow(QMainWindow):
             if not filename:
                 return None
             destination = filename
-        result = view.document.save(destination)
+        try:
+            result = view.document.save(destination)
+        except Exception as exc:
+            self._show_save_error(exc)
+            return None
         self._remember_directory(result)
         self._on_view_state_changed(view)
         self._on_current_changed(self._tabs.currentIndex())
@@ -484,7 +510,7 @@ class UNITIMainWindow(QMainWindow):
             try:
                 view.document.save()
             except Exception as exc:
-                QMessageBox.critical(self, "Save Failed", str(exc))
+                self._show_save_error(exc)
                 return False
         return True
 
