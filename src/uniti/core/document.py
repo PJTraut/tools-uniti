@@ -254,6 +254,53 @@ class Document:
             return text[:-1]
         return text
 
+    def read_line_window(
+        self,
+        line: int,
+        *,
+        column_start: int = 0,
+        max_chars: int = 4096,
+    ) -> str:
+        """Read a bounded visible slice of one logical line.
+
+        Unlike :meth:`read_line`, this method never needs to discover the
+        next line start merely to return a viewport-sized prefix. That keeps
+        a single enormous line renderable without materializing or indexing
+        the complete line.
+        """
+
+        self._ensure_open()
+        if line < 0 or column_start < 0:
+            raise ValueError("line and column_start must be non-negative")
+        if max_chars <= 0:
+            raise ValueError("max_chars must be positive")
+
+        line_start = self._document_line_index.line_start(line)
+        absolute_start = line_start + column_start
+        try:
+            if self._document_line_index.line_for_char(absolute_start) != line:
+                return ""
+        except ValueError:
+            return ""
+
+        iterator = self._piece_table.iter_text(
+            absolute_start,
+            chunk_chars=max_chars + 2,
+        )
+        try:
+            chunk_start, text = next(iterator)
+        except StopIteration:
+            return ""
+        if chunk_start != absolute_start:
+            raise RuntimeError("piece-table iterator returned a discontinuous line window")
+
+        visible_end = min(len(text), max_chars)
+        for index, char in enumerate(text[: max_chars + 1]):
+            if char in "\r\n":
+                visible_end = min(visible_end, index)
+                break
+        return text[:visible_end]
+
     def read_lines(
         self,
         first: int,

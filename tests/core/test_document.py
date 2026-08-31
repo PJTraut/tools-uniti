@@ -224,3 +224,13 @@ def test_replace_many_is_one_undoable_transaction_with_length_changes(tmp_path: 
         assert not doc.can_undo
         doc.redo()
         assert doc.read(0, doc.total_chars()) == "A BBBB C"
+
+
+def test_read_line_window_does_not_materialize_single_huge_line(tmp_path: Path):
+    path = tmp_path / "huge-line.txt"
+    path.write_bytes(b"a" * (2 * 1024 * 1024))
+    with Document.open(path, encoding="utf-8") as document:
+        text = document.read_line_window(0, column_start=0, max_chars=1024)
+        assert text == "a" * 1024
+        assert not document.document_line_index.complete
+        assert not document.offset_mapper.complete
