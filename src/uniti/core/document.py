@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import codecs
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
 
@@ -46,6 +46,8 @@ class Document:
             encoding_info.output_encoding or encoding_info.detected
         )
         self._saved_output_eol: EOLName | None = None
+        self._edit_listeners: list[Callable[[EditOperation], None]] = []
+        self._save_listeners: list[Callable[[Path], None]] = []
         self._closed = False
 
     @classmethod
@@ -158,6 +160,39 @@ class Document:
             raise ValueError(f"unsupported EOL policy: {eol}")
         self._output_eol = eol
 
+
+    def add_edit_listener(self, listener: Callable[[EditOperation], None]) -> Callable[[], None]:
+        self._ensure_open()
+        self._edit_listeners.append(listener)
+
+        def remove() -> None:
+            try:
+                self._edit_listeners.remove(listener)
+            except ValueError:
+                pass
+
+        return remove
+
+    def add_save_listener(self, listener: Callable[[Path], None]) -> Callable[[], None]:
+        self._ensure_open()
+        self._save_listeners.append(listener)
+
+        def remove() -> None:
+            try:
+                self._save_listeners.remove(listener)
+            except ValueError:
+                pass
+
+        return remove
+
+    def _notify_edit(self, operation: EditOperation) -> None:
+        for listener in tuple(self._edit_listeners):
+            listener(operation)
+
+    def _notify_save(self, path: Path) -> None:
+        for listener in tuple(self._save_listeners):
+            listener(path)
+
     @property
     def can_undo(self) -> bool:
         return self._history.can_undo
@@ -200,6 +235,7 @@ class Document:
         operation = EditOperation(start, deleted, text)
         if record:
             self._history.record(EditTransaction((operation,)))
+        self._notify_edit(operation)
         return operation
 
     def insert(self, char_offset: int, text: str) -> None:
@@ -423,6 +459,7 @@ class Document:
         self._history.mark_saved()
         self._saved_output_encoding = output_encoding
         self._saved_output_eol = output_eol
+        self._notify_save(result)
         return result
 
     def total_chars(self) -> int:

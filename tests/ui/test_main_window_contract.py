@@ -56,3 +56,14 @@ def test_main_window_offscreen_open_edit_save_when_pyside6_available(tmp_path: P
     assert output.read_text(encoding="utf-8") == "abcX\n"
     window.close_all_documents(force=True)
     window.close()
+
+
+def test_main_window_wires_recovery_manager_and_startup_recovery_flow():
+    source = MAIN.read_text()
+    assert "RecoveryManager" in source
+    assert "recover_startup_sessions" in source
+    assert "recovery_manager.attach" in source
+    assert "recovery_manager.detach" in source
+    application = APPLICATION.read_text()
+    assert "RecoveryManager" in application
+    assert "recover_startup_sessions" in application

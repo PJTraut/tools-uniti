@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from uniti.app.editor_state import EditorState
+from uniti.app.recovery_manager import RecoveryManager
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.eol import EOLReport, analyze_eol
@@ -39,8 +40,14 @@ _ENCODING_CHOICES = (
 
 
 class UNITIMainWindow(QMainWindow):
-    def __init__(self, parent=None) -> None:
+    def __init__(
+        self,
+        parent=None,
+        *,
+        recovery_manager: RecoveryManager | None = None,
+    ) -> None:
         super().__init__(parent)
+        self._recovery_manager = recovery_manager
         self.setWindowTitle("UNITI")
         self.resize(1100, 760)
         self._tabs = QTabWidget(self)
@@ -172,8 +179,14 @@ class UNITIMainWindow(QMainWindow):
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
         view.cursorPositionChanged.connect(self._status.update_cursor)
 
-    def open_path(self, path: str | Path) -> UNITITextView:
-        document = Document.open(path)
+    def _add_document(
+        self,
+        document: Document,
+        *,
+        attach_recovery: bool = True,
+    ) -> UNITITextView:
+        if attach_recovery and self._recovery_manager is not None:
+            self._recovery_manager.attach(document)
         state = EditorState(document)
         view = UNITITextView(state, self._tabs)
         self._connect_view(view)
@@ -184,6 +197,46 @@ class UNITIMainWindow(QMainWindow):
         self._schedule_eol_analysis(view)
         view.setFocus()
         return view
+
+    def open_path(self, path: str | Path) -> UNITITextView:
+        document = Document.open(path)
+        try:
+            return self._add_document(document)
+        except Exception:
+            document.close()
+            raise
+
+    def recover_startup_sessions(self) -> int:
+        if self._recovery_manager is None:
+            return 0
+        recovered = 0
+        for candidate in self._recovery_manager.discover():
+            choice = QMessageBox.question(
+                self,
+                "Recover UNITI Document",
+                f"Recover unsaved changes to {candidate.session.source_path}?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes,
+            )
+            if choice == QMessageBox.StandardButton.Cancel:
+                break
+            if choice == QMessageBox.StandardButton.No:
+                self._recovery_manager.discard(candidate)
+                continue
+            try:
+                document = self._recovery_manager.recover(candidate)
+                self._add_document(document, attach_recovery=False)
+            except Exception as exc:
+                QMessageBox.warning(
+                    self,
+                    "Recovery Failed",
+                    f"Could not recover {candidate.session.source_path}:\n\n{exc}",
+                )
+                continue
+            recovered += 1
+        return recovered
 
     def _tab_label(self, view: UNITITextView) -> str:
         marker = "*" if view.document.modified else ""
@@ -283,12 +336,16 @@ class UNITIMainWindow(QMainWindow):
             QMessageBox.critical(self, "Reinterpret Failed", str(exc))
             return
 
+        if self._recovery_manager is not None:
+            self._recovery_manager.attach(document)
         replacement = UNITITextView(EditorState(document), self._tabs)
         self._connect_view(replacement)
         self._tabs.removeTab(index)
         self._tabs.insertTab(index, replacement, self._tab_label(replacement))
         self._tabs.setCurrentIndex(index)
         self._eol_reports.pop(id(view), None)
+        if self._recovery_manager is not None:
+            self._recovery_manager.detach(view.document, clean=True)
         view.document.close()
         view.deleteLater()
         self._set_status_document(replacement)
@@ -405,6 +462,8 @@ class UNITIMainWindow(QMainWindow):
         if not force and not self._confirm_close(widget):
             return False
         self._eol_reports.pop(id(widget), None)
+        if self._recovery_manager is not None:
+            self._recovery_manager.detach(widget.document, clean=True)
         widget.document.close()
         self._tabs.removeTab(index)
         widget.deleteLater()
