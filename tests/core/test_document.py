@@ -146,3 +146,55 @@ def test_failed_document_save_keeps_modified_state_and_path(tmp_path: Path):
         assert doc.modified
         assert doc.path == source
         assert not target.exists()
+
+
+def test_document_undo_redo_insert_delete_replace(tmp_path: Path):
+    path = tmp_path / "history.txt"
+    path.write_text("abc\ndef", encoding="utf-8")
+    with Document.open(path) as doc:
+        doc.insert(1, "X")
+        doc.delete(3, 4)
+        doc.replace(0, 1, "A")
+        assert doc.read(0, doc.total_chars()) == "AXb\ndef"
+        assert doc.can_undo
+        doc.undo()
+        assert doc.read(0, doc.total_chars()) == "aXb\ndef"
+        doc.undo()
+        assert doc.read(0, doc.total_chars()) == "aXbc\ndef"
+        doc.undo()
+        assert doc.read(0, doc.total_chars()) == "abc\ndef"
+        assert not doc.can_undo
+        assert doc.can_redo
+        doc.redo()
+        doc.redo()
+        doc.redo()
+        assert doc.read(0, doc.total_chars()) == "AXb\ndef"
+        assert not doc.can_redo
+
+
+def test_document_undo_redo_updates_line_navigation_and_unicode(tmp_path: Path):
+    path = tmp_path / "history-lines.txt"
+    path.write_text("éa\n中b", encoding="utf-8")
+    with Document.open(path) as doc:
+        doc.replace(1, 3, "X\r\nY")
+        assert doc.read_lines(0, doc.line_count()) == ["éX", "Y中b"]
+        doc.undo()
+        assert doc.read_lines(0, doc.line_count()) == ["éa", "中b"]
+        doc.redo()
+        assert doc.read_lines(0, doc.line_count()) == ["éX", "Y中b"]
+
+
+def test_document_saved_revision_tracks_undo_redo(tmp_path: Path):
+    path = tmp_path / "saved-history.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path) as doc:
+        doc.insert(3, "X")
+        assert doc.modified
+        doc.save()
+        assert not doc.modified
+        doc.insert(4, "Y")
+        assert doc.modified
+        doc.undo()
+        assert not doc.modified
+        doc.redo()
+        assert doc.modified

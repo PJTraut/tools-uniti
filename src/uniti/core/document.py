@@ -9,6 +9,7 @@ from pathlib import Path
 from .byte_source import ByteSource
 from .encoding import EncodingInfo, detect_encoding
 from .document_lines import DocumentLineIndex
+from .history import EditHistory, EditOperation, EditTransaction
 from .lines import LineIndex
 from .offsets import OffsetMapper
 from .pieces import EditStore, PieceTable
@@ -35,7 +36,7 @@ class Document:
         self._piece_table = piece_table
         self._document_line_index = document_line_index
         self._output_eol: EOLName | None = None
-        self._modified = False
+        self._history = EditHistory()
         self._closed = False
 
     @classmethod
@@ -113,32 +114,71 @@ class Document:
 
     @property
     def modified(self) -> bool:
-        return self._modified
+        return self._history.modified
+
+    @property
+    def can_undo(self) -> bool:
+        return self._history.can_undo
+
+    @property
+    def can_redo(self) -> bool:
+        return self._history.can_redo
 
     def read(self, start: int, end: int) -> str:
         self._ensure_open()
         return self._piece_table.read(start, end)
 
+    def _replace_internal(
+        self,
+        start: int,
+        end: int,
+        text: str,
+        *,
+        record: bool,
+    ) -> EditOperation | None:
+        deleted = self._piece_table.read(start, end)
+        if deleted == text:
+            return None
+        self._piece_table.replace(start, end, text)
+        self._document_line_index.invalidate_from_char(start)
+        operation = EditOperation(start, deleted, text)
+        if record:
+            self._history.record(EditTransaction((operation,)))
+        return operation
+
     def insert(self, char_offset: int, text: str) -> None:
         self._ensure_open()
-        self._piece_table.insert(char_offset, text)
-        if text:
-            self._document_line_index.invalidate_from_char(char_offset)
-            self._modified = True
+        self._replace_internal(char_offset, char_offset, text, record=True)
 
     def delete(self, start: int, end: int) -> None:
         self._ensure_open()
-        self._piece_table.delete(start, end)
-        if start != end:
-            self._document_line_index.invalidate_from_char(start)
-            self._modified = True
+        self._replace_internal(start, end, "", record=True)
 
     def replace(self, start: int, end: int, text: str) -> None:
         self._ensure_open()
-        self._piece_table.replace(start, end, text)
-        if start != end or text:
-            self._document_line_index.invalidate_from_char(start)
-            self._modified = True
+        self._replace_internal(start, end, text, record=True)
+
+    def undo(self) -> None:
+        self._ensure_open()
+        transaction = self._history.undo()
+        for operation in reversed(transaction.operations):
+            self._replace_internal(
+                operation.start,
+                operation.start + len(operation.inserted_text),
+                operation.deleted_text,
+                record=False,
+            )
+
+    def redo(self) -> None:
+        self._ensure_open()
+        transaction = self._history.redo()
+        for operation in transaction.operations:
+            self._replace_internal(
+                operation.start,
+                operation.start + len(operation.deleted_text),
+                operation.inserted_text,
+                record=False,
+            )
 
     def line_count(self) -> int:
         self._ensure_open()
@@ -213,7 +253,7 @@ class Document:
         )
         if eol is not None:
             self._output_eol = eol
-        self._modified = False
+        self._history.mark_saved()
         return result
 
     def total_chars(self) -> int:
