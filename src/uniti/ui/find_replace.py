@@ -6,27 +6,40 @@ from collections.abc import Callable
 from concurrent.futures import Future
 
 import regex
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QPushButton,
+    QMessageBox,
     QVBoxLayout,
 )
 
 from uniti.regex.engine import compile_pattern
 from uniti.regex.match_store import MatchStore
-from uniti.regex.replace import Replacement, collect_replacements
+from uniti.regex.replace import (
+    Replacement,
+    ReplacementProbe,
+    StreamReplaceResult,
+    collect_replacements,
+    probe_replacements,
+    stream_replace_to_file,
+)
 from uniti.regex.results import MatchIndex, MatchRecord
-from uniti.regex.search import SearchOptions, search_document
+from uniti.regex.search import SearchOptions, resolve_captures, search_document
 from uniti.resources import CancellationToken, PriorityWorkerPool, WorkPriority
 from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 
+STREAM_REPLACE_THRESHOLD = 50_000
+
+
 class FindReplacePanel(QFrame):
     """Compact bottom panel; match records remain data, never per-match widgets."""
+
+    streamReplaceCommitted = Signal(object, str, int)
 
     def __init__(self, view_provider: Callable[[], object | None], parent=None) -> None:
         super().__init__(parent)
@@ -41,6 +54,7 @@ class FindReplacePanel(QFrame):
         self._results_view = None
         self._result_listener_remove = None
         self._current_index: int | None = None
+        self._results_compiled = None
 
         self.find_input = RegexInput(self)
         self.replace_input = ReplacementInput(self)
@@ -158,6 +172,7 @@ class FindReplacePanel(QFrame):
         self._result_listener_remove = None
         self._current_index = None
         self.capture_list.clear()
+        self._results_compiled = None
 
     def _start_job(
         self,
@@ -203,7 +218,7 @@ class FindReplacePanel(QFrame):
                 for record in search_document(
                     view.document,
                     compiled,
-                    options=SearchOptions(timeout=0.5),
+                    options=SearchOptions(timeout=0.5, include_captures=False),
                     cancelled=lambda: token.cancelled,
                 ):
                     store.append(record)
@@ -212,7 +227,7 @@ class FindReplacePanel(QFrame):
                 raise
             return store
 
-        self._start_job("find", view, work, token=token)
+        self._start_job("find", view, work, token=token, context=compiled)
 
     def replace_current(self) -> None:
         view = self._current_view()
@@ -248,17 +263,26 @@ class FindReplacePanel(QFrame):
         if view is None or compiled is None:
             return
         token = CancellationToken()
+        revision = view.document.revision
+        replacement_text = self.replace_input.text()
 
         def work():
-            return collect_replacements(
+            return probe_replacements(
                 view.document,
                 compiled,
-                self.replace_input.text(),
+                replacement_text,
+                threshold=STREAM_REPLACE_THRESHOLD,
                 options=SearchOptions(timeout=0.5),
                 cancelled=lambda: token.cancelled,
             )
 
-        self._start_job("replace_all", view, work, token=token)
+        self._start_job(
+            "replace_all_probe",
+            view,
+            work,
+            token=token,
+            context=(compiled, replacement_text, revision),
+        )
 
     def cancel_search(self) -> None:
         if self._token is not None:
@@ -293,13 +317,15 @@ class FindReplacePanel(QFrame):
             return
 
         if kind == "find":
-            self._apply_find_results(view, payload)
+            self._apply_find_results(view, payload, context)
         elif kind == "replace_current":
             self._apply_current_replacement(view, payload, context)
-        elif kind == "replace_all":
-            self._apply_replace_all(view, payload)
+        elif kind == "replace_all_probe":
+            self._apply_replace_probe(view, payload, context)
+        elif kind == "replace_all_stream":
+            self._apply_stream_replace(view, payload, context)
 
-    def _apply_find_results(self, view, store: MatchStore) -> None:
+    def _apply_find_results(self, view, store: MatchStore, compiled) -> None:
         if view is None or view.document.revision != store.document_revision:
             store.close()
             self._clear_results()
@@ -308,6 +334,7 @@ class FindReplacePanel(QFrame):
         self._clear_results()
         self._results = store
         self._results_view = view
+        self._results_compiled = compiled
         self._result_listener_remove = view.document.add_edit_listener(
             lambda _operation, view=view: self._invalidate_results_for_edit(view)
         )
@@ -350,7 +377,7 @@ class FindReplacePanel(QFrame):
         view._state_changed()
         self.status_label.setText("1 replaced")
 
-    def _apply_replace_all(self, view, replacements: list[Replacement]) -> None:
+    def _apply_replace_all(self, view, replacements) -> None:
         view.document.replace_many(
             [(item.start, item.end, item.text) for item in replacements]
         )
@@ -358,6 +385,66 @@ class FindReplacePanel(QFrame):
         self._clear_results()
         view._state_changed()
         self.status_label.setText(f"{count:,} replaced")
+
+    def _apply_replace_probe(self, view, probe: ReplacementProbe, context) -> None:
+        if view is None or not isinstance(context, tuple) or len(context) != 3:
+            self.status_label.setText("match changed — search again")
+            return
+        compiled, replacement_text, revision = context
+        if view.document.revision != revision:
+            self.status_label.setText("text changed — search again")
+            return
+        if not probe.truncated:
+            self._apply_replace_all(view, probe.replacements)
+            return
+
+        choice = QMessageBox.warning(
+            self,
+            "Large Replace All",
+            f"More than {STREAM_REPLACE_THRESHOLD:,} replacements were found. "
+            "UNITI will stream the transformation atomically to the current "
+            "file to keep memory bounded. This commits current unsaved changes "
+            "and resets undo history. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if choice != QMessageBox.StandardButton.Yes:
+            self.status_label.setText("large Replace All cancelled")
+            return
+
+        token = CancellationToken()
+
+        def work():
+            view.document.assert_safe_overwrite()
+            return stream_replace_to_file(
+                view.document,
+                compiled,
+                replacement_text,
+                view.document.path,
+                options=SearchOptions(timeout=0.5),
+                cancelled=lambda: token.cancelled,
+            )
+
+        self._start_job(
+            "replace_all_stream",
+            view,
+            work,
+            token=token,
+            context=revision,
+        )
+
+    def _apply_stream_replace(
+        self,
+        view,
+        result: StreamReplaceResult,
+        revision,
+    ) -> None:
+        if view is None or view.document.revision != revision:
+            self.status_label.setText("text changed after streamed replacement")
+            return
+        self._clear_results()
+        self.streamReplaceCommitted.emit(view, str(result.path), result.count)
+        self.status_label.setText(f"{result.count:,} replaced (streamed)")
 
     def next_match(self) -> None:
         if not len(self._results):
@@ -405,6 +492,16 @@ class FindReplacePanel(QFrame):
 
     def _show_capture_details(self, view, record: MatchRecord) -> None:
         self.capture_list.clear()
+        if not record.captures and self._results_compiled is not None:
+            try:
+                record = resolve_captures(
+                    view.document,
+                    self._results_compiled,
+                    record,
+                    timeout=0.15,
+                )
+            except Exception:
+                pass
         whole = self._display_text(view.document.read(record.start, record.end))
         self.capture_list.addItem(f"0  {whole}")
         for capture in record.captures:

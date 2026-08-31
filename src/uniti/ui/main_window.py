@@ -68,6 +68,9 @@ class UNITIMainWindow(QMainWindow):
         central_layout.setSpacing(0)
         central_layout.addWidget(self._tabs, 1)
         self._find_replace = FindReplacePanel(lambda: self.current_view, central)
+        self._find_replace.streamReplaceCommitted.connect(
+            self._reload_after_stream_replace
+        )
         self._find_replace.hide()
         central_layout.addWidget(self._find_replace, 0)
         self.setCentralWidget(central)
@@ -390,6 +393,42 @@ class UNITIMainWindow(QMainWindow):
         self._set_status_document(replacement)
         self._schedule_eol_analysis(replacement)
         replacement.setFocus()
+
+    def _reload_after_stream_replace(self, view, path: str, count: int) -> None:
+        index = self._tabs.indexOf(view)
+        if index < 0 or view.document.path != Path(path):
+            return
+        old_document = view.document
+        try:
+            replacement = Document.open(path)
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Reload After Replace Failed",
+                f"The streamed file was written but could not be reopened:\n\n{exc}",
+            )
+            return
+        try:
+            if self._recovery_manager is not None:
+                self._recovery_manager.detach(old_document, clean=True)
+                self._recovery_manager.attach(replacement)
+            view.state = EditorState(replacement)
+            view.state.cursor = 0
+            view.state.anchor = 0
+            self._eol_reports.pop(id(view), None)
+            old_document.close()
+            view.set_match_index(None)
+            view._max_seen_line_width = 0
+            view._refresh_scrollbars(advance_index=False)
+            view._state_changed()
+            self._schedule_eol_analysis(view)
+            self.statusBar().showMessage(
+                f"Streamed Replace All committed {count:,} replacements",
+                5000,
+            )
+        except Exception:
+            replacement.close()
+            raise
 
     def show_character_inspector(self) -> None:
         view = self.current_view

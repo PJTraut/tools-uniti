@@ -78,3 +78,25 @@ def test_stream_replace_to_file_applies_output_encoding_and_eol(tmp_path: Path):
             eol="CRLF",
         )
     assert target.read_bytes() == b"caf\xe9\r\nbar\r\n"
+
+
+def test_probe_replacements_stops_at_threshold_and_marks_streaming_route(tmp_path: Path):
+    from uniti.regex.replace import probe_replacements
+
+    path = tmp_path / "probe-replace.txt"
+    path.write_text("x " * 20, encoding="utf-8")
+    with Document.open(path) as doc:
+        probe = probe_replacements(doc, compile_pattern("x"), "y", threshold=5)
+    assert probe.truncated is True
+    assert len(probe.replacements) == 5
+
+
+def test_probe_replacements_returns_complete_small_transaction(tmp_path: Path):
+    from uniti.regex.replace import probe_replacements
+
+    path = tmp_path / "probe-small.txt"
+    path.write_text("x x x", encoding="utf-8")
+    with Document.open(path) as doc:
+        probe = probe_replacements(doc, compile_pattern("x"), "y", threshold=5)
+    assert probe.truncated is False
+    assert [item.text for item in probe.replacements] == ["y", "y", "y"]

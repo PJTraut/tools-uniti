@@ -382,3 +382,17 @@ def test_document_revision_changes_on_edit_undo_and_redo(tmp_path: Path):
         assert document.revision == 3
         document.replace(0, 1, "a")
         assert document.revision == 3
+
+
+def test_assert_safe_overwrite_detects_external_atomic_replacement(tmp_path: Path):
+    from uniti.core.file_identity import ExternalFileChangedError
+
+    source = tmp_path / "assert-safe.txt"
+    replacement = tmp_path / "assert-safe-new.txt"
+    source.write_text("abc", encoding="utf-8")
+    with Document.open(source) as document:
+        document.assert_safe_overwrite()
+        replacement.write_text("external", encoding="utf-8")
+        replacement.replace(source)
+        with pytest.raises(ExternalFileChangedError):
+            document.assert_safe_overwrite()

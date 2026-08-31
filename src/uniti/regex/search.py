@@ -29,6 +29,7 @@ class SearchOptions:
     timeout: float | None = 0.25
     max_matches: int | None = None
     max_context_chars: int = 1_048_576
+    include_captures: bool = True
 
     def __post_init__(self) -> None:
         if self.window_chars <= 0:
@@ -52,16 +53,22 @@ def _needs_full_prefix(compiled: regex.Pattern) -> bool:
     return False
 
 
-def _record_match(match: regex.Match, buffer_start: int) -> MatchRecord:
-    names_by_group = {number: name for name, number in match.re.groupindex.items()}
+def _record_match(
+    match: regex.Match,
+    buffer_start: int,
+    *,
+    include_captures: bool = True,
+) -> MatchRecord:
     captures: list[CaptureRecord] = []
-    for group in range(1, match.re.groups + 1):
-        spans = tuple(
-            (buffer_start + start, buffer_start + end)
-            for start, end in match.spans(group)
-            if start >= 0
-        )
-        captures.append(CaptureRecord(group, names_by_group.get(group), spans))
+    if include_captures:
+        names_by_group = {number: name for name, number in match.re.groupindex.items()}
+        for group in range(1, match.re.groups + 1):
+            spans = tuple(
+                (buffer_start + start, buffer_start + end)
+                for start, end in match.spans(group)
+                if start >= 0
+            )
+            captures.append(CaptureRecord(group, names_by_group.get(group), spans))
     start, end = match.span()
     return MatchRecord(buffer_start + start, buffer_start + end, tuple(captures))
 
@@ -138,7 +145,9 @@ def _iter_engine_matches(
                 )
                 for match in matches:
                     _check_cancelled(cancelled)
-                    record = _record_match(match, buffer_start)
+                    record = _record_match(
+                        match, buffer_start, include_captures=options.include_captures
+                    )
                     yield record, match
                     emitted += 1
                     if options.max_matches is not None and emitted >= options.max_matches:
@@ -168,7 +177,9 @@ def _iter_engine_matches(
                 if match.end() == len(buffer):
                     unsafe_start = min(unsafe_start, match.start())
                     break
-                record = _record_match(match, buffer_start)
+                record = _record_match(
+                    match, buffer_start, include_captures=options.include_captures
+                )
                 yield record, match
                 emitted += 1
                 if options.max_matches is not None and emitted >= options.max_matches:
@@ -192,6 +203,64 @@ def _iter_engine_matches(
         buffer = buffer[context_start:]
         search_pos = unsafe_start - context_start
 
+
+
+def resolve_captures(
+    document: Document,
+    compiled: regex.Pattern,
+    record: MatchRecord,
+    *,
+    context_chars: int = 65_536,
+    timeout: float | None = 0.25,
+) -> MatchRecord:
+    """Resolve capture spans for one stored match using bounded local context.
+
+    The match store can omit captures for millions of results. The capture
+    inspector calls this only for the current match. Patterns needing more
+    than *context_chars* around the stored match retain their whole-match span
+    but return no detailed captures rather than forcing a document-scale read.
+    """
+
+    if record.captures or compiled.groups == 0:
+        return record
+    if context_chars <= 0:
+        raise ValueError("context_chars must be positive")
+    context_start = max(0, record.start - context_chars)
+    target_end = record.end + context_chars
+    parts: list[str] = []
+    expected = context_start
+    for chunk_start, text in document.iter_text(start=context_start, chunk_chars=65_536):
+        if chunk_start != expected:
+            raise RuntimeError("document iterator returned a discontinuous capture window")
+        remaining = target_end - expected
+        if remaining <= 0:
+            break
+        piece = text[:remaining]
+        parts.append(piece)
+        expected += len(piece)
+        if len(piece) < len(text) or expected >= target_end:
+            break
+    window = "".join(parts)
+    local_start = record.start - context_start
+    try:
+        matches = _finditer(
+            compiled,
+            window,
+            pos=local_start,
+            partial=False,
+            timeout=timeout,
+        )
+        for match in matches:
+            absolute_start = context_start + match.start()
+            if absolute_start > record.start:
+                break
+            if absolute_start == record.start and context_start + match.end() == record.end:
+                return _record_match(match, context_start, include_captures=True)
+    except TimeoutError as exc:
+        if isinstance(exc, RegexSearchTimeout):
+            raise
+        raise RegexSearchTimeout("regex capture resolution timed out") from exc
+    return record
 
 def search_document(
     document: Document,

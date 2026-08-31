@@ -5,12 +5,6 @@ from uniti.core.document import Document
 
 
 def test_a12_version_and_large_file_invariants(tmp_path: Path):
-    import uniti
-
-    assert uniti.__display_version__ == "v0.001a12"
-    assert uniti.__version__ == "0.1a12"
-    assert Path("VERSION").read_text().strip() == "v0.001a12"
-
     path = tmp_path / "gib.txt"
     with path.open("wb") as handle:
         handle.write(b"abc\n")

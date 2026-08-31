@@ -442,20 +442,14 @@ class Document:
             for line in range(first, first + count)
         ]
 
-    def save(
+    def assert_safe_overwrite(
         self,
         destination: str | os.PathLike[str] | None = None,
-        *,
-        encoding: str | None = None,
-        eol: EOLName | None = None,
-    ) -> Path:
+    ) -> None:
+        """Raise when streaming/Save would overwrite externally changed bytes."""
+
         self._ensure_open()
         target = self._path if destination is None else Path(destination)
-
-        # An mmap/open handle survives atomic path replacement, but an in-place
-        # rewrite of the same filesystem object can mutate bytes beneath UNITI.
-        # Refuse every save in that unsafe case rather than reconstructing from
-        # bytes that may no longer be the source the user opened.
         try:
             source_actual = FileIdentity.from_path(self._source.path)
         except OSError:
@@ -471,7 +465,6 @@ class Document:
                     self._source_identity,
                     source_actual,
                 )
-
         if target == self._path:
             try:
                 actual_identity = FileIdentity.from_path(target)
@@ -483,6 +476,18 @@ class Document:
                     self._disk_identity,
                     actual_identity,
                 )
+
+    def save(
+        self,
+        destination: str | os.PathLike[str] | None = None,
+        *,
+        encoding: str | None = None,
+        eol: EOLName | None = None,
+    ) -> Path:
+        self._ensure_open()
+        target = self._path if destination is None else Path(destination)
+
+        self.assert_safe_overwrite(target)
         output_encoding = (
             encoding
             or self._encoding_info.output_encoding

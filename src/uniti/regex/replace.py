@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dataclass_replace
 from pathlib import Path
 from typing import Callable
 
@@ -37,6 +37,40 @@ def collect_replacements(
     ):
         replacements.append(Replacement(record.start, record.end, match.expand(replacement)))
     return replacements
+
+
+@dataclass(frozen=True, slots=True)
+class ReplacementProbe:
+    replacements: tuple[Replacement, ...]
+    truncated: bool
+
+
+def probe_replacements(
+    document: Document,
+    compiled: regex.Pattern,
+    replacement: str,
+    *,
+    threshold: int,
+    options: SearchOptions | None = None,
+    cancelled: Callable[[], bool] | None = None,
+) -> ReplacementProbe:
+    """Collect at most *threshold* replacements and detect a larger transform."""
+
+    if threshold <= 0:
+        raise ValueError("threshold must be positive")
+    opts = SearchOptions() if options is None else options
+    probe_options = dataclass_replace(opts, max_matches=threshold + 1)
+    replacements = collect_replacements(
+        document,
+        compiled,
+        replacement,
+        options=probe_options,
+        cancelled=cancelled,
+    )
+    truncated = len(replacements) > threshold
+    if truncated:
+        del replacements[threshold:]
+    return ReplacementProbe(tuple(replacements), truncated)
 
 
 def replace_all(

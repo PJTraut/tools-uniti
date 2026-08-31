@@ -119,3 +119,38 @@ def test_prefix_retaining_regex_is_bounded_by_context_limit(tmp_path: Path):
                     ),
                 )
             )
+
+
+def test_search_can_defer_capture_spans_for_large_result_storage(tmp_path: Path):
+    path = tmp_path / "lazy-captures.txt"
+    path.write_text("123 456", encoding="utf-8")
+    compiled = compile_pattern(r"(?P<digit>\d)+")
+    with Document.open(path) as doc:
+        results = list(
+            search_document(
+                doc,
+                compiled,
+                options=SearchOptions(include_captures=False),
+            )
+        )
+    assert [result.span for result in results] == [(0, 3), (4, 7)]
+    assert all(result.captures == () for result in results)
+
+
+def test_deferred_capture_spans_can_be_resolved_for_current_match(tmp_path: Path):
+    from uniti.regex.search import resolve_captures
+
+    path = tmp_path / "resolve-captures.txt"
+    path.write_text("123 456", encoding="utf-8")
+    compiled = compile_pattern(r"(?P<digit>\d)+")
+    with Document.open(path) as doc:
+        [first, _] = list(
+            search_document(
+                doc,
+                compiled,
+                options=SearchOptions(include_captures=False),
+            )
+        )
+        resolved = resolve_captures(doc, compiled, first)
+    assert resolved.captures[0].name == "digit"
+    assert resolved.captures[0].spans == ((0, 1), (1, 2), (2, 3))

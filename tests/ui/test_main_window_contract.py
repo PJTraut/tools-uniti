@@ -85,3 +85,10 @@ def test_main_window_handles_open_and_external_save_errors_in_ui():
     assert "File Changed on Disk" in source
     assert "Open Failed" in source
     assert "Save Failed" in source
+
+
+def test_main_window_reloads_document_after_streamed_replace_all():
+    source = MAIN.read_text()
+    assert "_reload_after_stream_replace" in source
+    assert "streamReplaceCommitted.connect" in source
+    assert "Document.open(path)" in source
