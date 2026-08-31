@@ -10,10 +10,13 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from uniti.app.editor_state import EditorState
 from uniti.core.document import Document
+from uniti.ui.find_replace import FindReplacePanel
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
 
@@ -28,7 +31,15 @@ class UNITIMainWindow(QMainWindow):
         self._tabs.setMovable(True)
         self._tabs.tabCloseRequested.connect(self._close_tab)
         self._tabs.currentChanged.connect(self._on_current_changed)
-        self.setCentralWidget(self._tabs)
+        central = QWidget(self)
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        central_layout.addWidget(self._tabs, 1)
+        self._find_replace = FindReplacePanel(lambda: self.current_view, central)
+        self._find_replace.hide()
+        central_layout.addWidget(self._find_replace, 0)
+        self.setCentralWidget(central)
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
         self._build_menus()
@@ -76,7 +87,23 @@ class UNITIMainWindow(QMainWindow):
             self._action("Select All", QKeySequence.StandardKey.SelectAll, self.select_all)
         )
 
-        self.menuBar().addMenu("&Search")
+        search_menu = self.menuBar().addMenu("&Search")
+        search_menu.addAction(
+            self._action("Find", QKeySequence.StandardKey.Find, self.show_find)
+        )
+        search_menu.addAction(
+            self._action("Replace", QKeySequence.StandardKey.Replace, self.show_replace)
+        )
+        search_menu.addAction(
+            self._action("Find Next", QKeySequence("F3"), self._find_replace.next_match)
+        )
+        search_menu.addAction(
+            self._action(
+                "Find Previous",
+                QKeySequence("Shift+F3"),
+                self._find_replace.previous_match,
+            )
+        )
         self.menuBar().addMenu("&View")
         self.menuBar().addMenu("&Encoding")
         self.menuBar().addMenu("&EOL")
@@ -111,6 +138,7 @@ class UNITIMainWindow(QMainWindow):
             self._status.update_document(view.document)
 
     def _on_current_changed(self, _index: int) -> None:
+        self._find_replace.document_changed()
         view = self.current_view
         if view is None:
             self._status.clear_document()
@@ -124,7 +152,7 @@ class UNITIMainWindow(QMainWindow):
 
     def save_current(self) -> Path | None:
         view = self.current_view
-        if view is None:
+        if view is None or not view.isEnabled():
             return None
         result = view.document.save()
         self._on_view_state_changed(view)
@@ -132,7 +160,7 @@ class UNITIMainWindow(QMainWindow):
 
     def save_current_as(self, path: str | Path | None = None) -> Path | None:
         view = self.current_view
-        if view is None:
+        if view is None or not view.isEnabled():
             return None
         destination: str | Path | None = path
         if destination is None:
@@ -151,21 +179,21 @@ class UNITIMainWindow(QMainWindow):
 
     def undo_current(self) -> None:
         view = self.current_view
-        if view is None or not view.document.can_undo:
+        if view is None or not view.isEnabled() or not view.document.can_undo:
             return
         view.state.undo()
         view._state_changed()
 
     def redo_current(self) -> None:
         view = self.current_view
-        if view is None or not view.document.can_redo:
+        if view is None or not view.isEnabled() or not view.document.can_redo:
             return
         view.state.redo()
         view._state_changed()
 
     def select_all(self) -> None:
         view = self.current_view
-        if view is None:
+        if view is None or not view.isEnabled():
             return
         view.state.select_all()
         view._state_changed()
@@ -197,6 +225,13 @@ class UNITIMainWindow(QMainWindow):
         if not isinstance(widget, UNITITextView):
             return True
         self._tabs.setCurrentIndex(index)
+        if not force and not widget.isEnabled():
+            QMessageBox.information(
+                self,
+                "UNITI Operation in Progress",
+                "Cancel the active Find/Replace operation before closing this document.",
+            )
+            return False
         if not force and not self._confirm_close(widget):
             return False
         widget.document.close()
@@ -216,8 +251,15 @@ class UNITIMainWindow(QMainWindow):
                 return False
         return True
 
+    def show_find(self) -> None:
+        self._find_replace.focus_find()
+
+    def show_replace(self) -> None:
+        self._find_replace.focus_replace()
+
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.close_all_documents(force=False):
+            self._find_replace.shutdown()
             event.accept()
         else:
             event.ignore()

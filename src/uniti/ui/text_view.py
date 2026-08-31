@@ -16,6 +16,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QAbstractScrollArea
 
 from uniti.app.editor_state import EditorState
+from uniti.regex.results import MatchIndex
 
 
 class UNITITextView(QAbstractScrollArea):
@@ -34,6 +35,7 @@ class UNITITextView(QAbstractScrollArea):
         self._max_visible_chars = 8192
         self._max_seen_line_width = 0
         self._drag_selecting = False
+        self._match_index = MatchIndex(())
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_changed)
@@ -43,6 +45,10 @@ class UNITITextView(QAbstractScrollArea):
     @property
     def document(self):
         return self.state.document
+
+    def set_match_index(self, match_index: MatchIndex | None) -> None:
+        self._match_index = MatchIndex(()) if match_index is None else match_index
+        self.viewport().update()
 
     def _visible_line_capacity(self) -> int:
         return max(1, self.viewport().height() // self._line_height + 1)
@@ -135,9 +141,32 @@ class UNITITextView(QAbstractScrollArea):
             width = self._metrics.horizontalAdvance(text)
             self._max_seen_line_width = max(self._max_seen_line_width, width)
 
+            line_end = line_start + len(text)
+            if len(self._match_index):
+                match_color = palette.color(QPalette.ColorRole.Highlight)
+                match_color.setAlpha(70)
+                for record in self._match_index.intersecting(line_start, line_end + 1):
+                    a = max(record.start, line_start) - line_start
+                    b = min(record.end, line_end) - line_start
+                    a = max(0, min(len(text), a))
+                    b = max(0, min(len(text), b))
+                    x1 = text_x + self._metrics.horizontalAdvance(text[:a])
+                    if record.start == record.end or b <= a:
+                        painter.fillRect(
+                            int(x1), y, 2, self._line_height, match_color
+                        )
+                    else:
+                        x2 = text_x + self._metrics.horizontalAdvance(text[:b])
+                        painter.fillRect(
+                            int(x1),
+                            y,
+                            max(1, int(x2 - x1)),
+                            self._line_height,
+                            match_color,
+                        )
+
             if selection is not None:
                 sel_start, sel_end = selection
-                line_end = line_start + len(text)
                 visible_start = max(sel_start, line_start)
                 visible_end = min(sel_end, line_end)
                 if visible_start < visible_end:
