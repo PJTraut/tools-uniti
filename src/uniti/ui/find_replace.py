@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from uniti.regex.engine import compile_pattern
+from uniti.regex.match_store import MatchStore
 from uniti.regex.replace import Replacement, collect_replacements
 from uniti.regex.results import MatchIndex, MatchRecord
 from uniti.regex.search import SearchOptions, search_document
@@ -38,6 +39,7 @@ class FindReplacePanel(QFrame):
         self._target_view = None
         self._results = MatchIndex(())
         self._results_view = None
+        self._result_listener_remove = None
         self._current_index: int | None = None
 
         self.find_input = RegexInput(self)
@@ -144,10 +146,16 @@ class FindReplacePanel(QFrame):
         self._compile_current()
 
     def _clear_results(self) -> None:
+        if self._result_listener_remove is not None:
+            self._result_listener_remove()
+            self._result_listener_remove = None
         if self._results_view is not None:
             self._results_view.set_match_index(None)
+        if isinstance(self._results, MatchStore):
+            self._results.close()
         self._results = MatchIndex(())
         self._results_view = None
+        self._result_listener_remove = None
         self._current_index = None
         self.capture_list.clear()
 
@@ -187,15 +195,22 @@ class FindReplacePanel(QFrame):
             return
         token = CancellationToken()
 
+        revision = view.document.revision
+
         def work():
-            return tuple(
-                search_document(
+            store = MatchStore(document_revision=revision)
+            try:
+                for record in search_document(
                     view.document,
                     compiled,
                     options=SearchOptions(timeout=0.5),
                     cancelled=lambda: token.cancelled,
-                )
-            )
+                ):
+                    store.append(record)
+            except Exception:
+                store.close()
+                raise
+            return store
 
         self._start_job("find", view, work, token=token)
 
@@ -284,9 +299,18 @@ class FindReplacePanel(QFrame):
         elif kind == "replace_all":
             self._apply_replace_all(view, payload)
 
-    def _apply_find_results(self, view, records: tuple[MatchRecord, ...]) -> None:
-        self._results = MatchIndex(records)
+    def _apply_find_results(self, view, store: MatchStore) -> None:
+        if view is None or view.document.revision != store.document_revision:
+            store.close()
+            self._clear_results()
+            self.status_label.setText("text changed — search again")
+            return
+        self._clear_results()
+        self._results = store
         self._results_view = view
+        self._result_listener_remove = view.document.add_edit_listener(
+            lambda _operation, view=view: self._invalidate_results_for_edit(view)
+        )
         view.set_match_index(self._results)
         self.status_label.setText(f"{len(self._results):,} matches")
         self._current_index = self._results.next_index(view.state.cursor)
@@ -294,6 +318,20 @@ class FindReplacePanel(QFrame):
             self._navigate_to(self._current_index)
         else:
             self.capture_list.clear()
+
+    def _invalidate_results_for_edit(self, view) -> None:
+        if view is not self._results_view:
+            return
+        self._clear_results()
+        self.status_label.setText("text changed — search again")
+
+    def _results_are_current(self, view) -> bool:
+        if isinstance(self._results, MatchStore):
+            return (
+                view is self._results_view
+                and view.document.revision == self._results.document_revision
+            )
+        return view is self._results_view
 
     def _apply_current_replacement(
         self,
@@ -344,6 +382,10 @@ class FindReplacePanel(QFrame):
     def _navigate_to(self, index: int) -> None:
         view = self._current_view()
         if view is None or not len(self._results):
+            return
+        if not self._results_are_current(view):
+            self._clear_results()
+            self.status_label.setText("text changed — search again")
             return
         self._current_index = index
         record = self._results.records[index]

@@ -19,11 +19,16 @@ class RegexSearchTimeout(TimeoutError):
     pass
 
 
+class RegexContextLimitError(RuntimeError):
+    """Pattern requires more retained context than virtual search permits."""
+
+
 @dataclass(frozen=True, slots=True)
 class SearchOptions:
     window_chars: int = 65_536
     timeout: float | None = 0.25
     max_matches: int | None = None
+    max_context_chars: int = 1_048_576
 
     def __post_init__(self) -> None:
         if self.window_chars <= 0:
@@ -32,6 +37,8 @@ class SearchOptions:
             raise ValueError("timeout must be positive")
         if self.max_matches is not None and self.max_matches < 0:
             raise ValueError("max_matches must be non-negative")
+        if self.max_context_chars <= 0:
+            raise ValueError("max_context_chars must be positive")
 
 
 def _needs_full_prefix(compiled: regex.Pattern) -> bool:
@@ -172,6 +179,11 @@ def _iter_engine_matches(
             raise RegexSearchTimeout("regex search timed out") from exc
 
         if retain_prefix:
+            if len(buffer) > options.max_context_chars:
+                raise RegexContextLimitError(
+                    "regex requires more retained prefix context than allowed "
+                    f"({options.max_context_chars:,} characters)"
+                )
             search_pos = unsafe_start
             continue
 

@@ -367,3 +367,18 @@ def test_explicit_unicode_decoder_preserves_matching_bom_on_save(
         document.insert(1, "X")
         document.save()
     assert path.read_bytes().startswith(bom)
+
+
+def test_document_revision_changes_on_edit_undo_and_redo(tmp_path: Path):
+    path = tmp_path / "revision.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path) as document:
+        assert document.revision == 0
+        document.insert(1, "X")
+        assert document.revision == 1
+        document.undo()
+        assert document.revision == 2
+        document.redo()
+        assert document.revision == 3
+        document.replace(0, 1, "a")
+        assert document.revision == 3

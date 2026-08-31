@@ -16,6 +16,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QAbstractScrollArea
 
 from uniti.app.editor_state import EditorState
+from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
 
 
@@ -47,7 +48,7 @@ class UNITITextView(QAbstractScrollArea):
     def document(self):
         return self.state.document
 
-    def set_match_index(self, match_index: MatchIndex | None) -> None:
+    def set_match_index(self, match_index: MatchIndex | MatchStore | None) -> None:
         self._match_index = MatchIndex(()) if match_index is None else match_index
         self.viewport().update()
 

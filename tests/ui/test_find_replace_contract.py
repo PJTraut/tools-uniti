@@ -34,6 +34,8 @@ def test_find_replace_panel_has_worker_cancellation_navigation_and_capture_ui():
         "Cancel",
         "capture",
         "MatchIndex",
+        "MatchStore",
+        "add_edit_listener",
     ):
         assert required in source
 

@@ -46,6 +46,7 @@ class Document:
             encoding_info.output_encoding or encoding_info.detected
         )
         self._saved_output_eol: EOLName | None = None
+        self._revision = 0
         self._edit_listeners: list[Callable[[EditOperation], None]] = []
         self._save_listeners: list[Callable[[Path], None]] = []
         self._metadata_listeners: list[Callable[[str, EOLName | None], None]] = []
@@ -131,6 +132,12 @@ class Document:
     @property
     def output_encoding(self) -> str:
         return self._encoding_info.output_encoding or self._encoding_info.detected
+
+    @property
+    def revision(self) -> int:
+        """Monotonic logical-text revision used to invalidate derived results."""
+
+        return self._revision
 
     @property
     def modified(self) -> bool:
@@ -255,6 +262,7 @@ class Document:
             return None
         self._piece_table.replace(start, end, text)
         self._document_line_index.invalidate_from_char(start)
+        self._revision += 1
         operation = EditOperation(start, deleted, text)
         if record:
             self._history.record(EditTransaction((operation,)))

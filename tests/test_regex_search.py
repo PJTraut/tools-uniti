@@ -100,3 +100,22 @@ def test_first_result_can_arrive_without_indexing_entire_document(tmp_path: Path
         )
         assert [result.span for result in results] == [(0, 3)]
         assert not doc.offset_mapper.complete
+
+
+def test_prefix_retaining_regex_is_bounded_by_context_limit(tmp_path: Path):
+    from uniti.regex.search import RegexContextLimitError
+
+    path = tmp_path / "anchored.txt"
+    path.write_text("a" + ("x" * 200) + "Z", encoding="utf-8")
+    with Document.open(path) as doc:
+        with pytest.raises(RegexContextLimitError):
+            list(
+                search_document(
+                    doc,
+                    compile_pattern(r"^a.*Z"),
+                    options=SearchOptions(
+                        window_chars=8,
+                        max_context_chars=32,
+                    ),
+                )
+            )
