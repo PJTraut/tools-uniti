@@ -65,3 +65,39 @@ def test_empty_edits_do_not_mark_document_modified(tmp_path: Path):
         doc.insert(1, "")
         doc.delete(2, 2)
         assert not doc.modified
+
+
+def test_document_line_navigation_tracks_edits(tmp_path: Path):
+    path = tmp_path / "lines.txt"
+    path.write_text("aa\nbb\ncc\ndd", encoding="utf-8")
+    with Document.open(path) as doc:
+        assert doc.line_start(2) == 6
+        assert doc.line_for_char(7) == 2
+        doc.insert(5, "\nX")
+        assert doc.line_count() == 5
+        assert [doc.line_start(i) for i in range(5)] == [0, 3, 6, 8, 11]
+        assert doc.read_line(0) == "aa"
+        assert doc.read_line(1, keep_eol=True) == "bb\n"
+        assert doc.read_lines(2, 3) == ["X", "cc", "dd"]
+        doc.delete(5, 8)
+        assert doc.read_lines(0, doc.line_count()) == ["aa", "bbcc", "dd"]
+        doc.replace(3, 5, "B\r\nC")
+        assert doc.read_lines(0, doc.line_count()) == ["aa", "B", "Ccc", "dd"]
+
+
+def test_document_early_line_access_is_progressive(tmp_path: Path):
+    path = tmp_path / "large-lines.txt"
+    path.write_bytes(b"abc\n" * 100_000)
+    with Document.open(path) as doc:
+        assert doc.line_start(10) == 40
+        assert doc.read_line(10) == "abc"
+        assert not doc.document_line_index.complete
+        assert not doc.offset_mapper.complete
+
+
+def test_read_line_handles_mixed_eol_and_final_line(tmp_path: Path):
+    path = tmp_path / "mixed-lines.txt"
+    path.write_bytes(b"a\r\nb\nc\rd")
+    with Document.open(path) as doc:
+        assert doc.read_lines(0, 4) == ["a", "b", "c", "d"]
+        assert doc.read_lines(0, 4, keep_eol=True) == ["a\r\n", "b\n", "c\r", "d"]
