@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from .atomic_json import atomic_write_json, preserve_invalid
@@ -24,6 +24,7 @@ class Settings:
     find_replace_zoom_percent: int = 100
     find_replace_report_location: str = "Bottom"
     find_replace_geometry: tuple[int, int, int, int] | None = None
+    shortcut_overrides: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +81,15 @@ def _settings_from_payload(payload: object) -> Settings:
         find_replace_geometry = None
     else:
         find_replace_geometry = tuple(geometry)
+    raw_shortcut_overrides = payload.get("shortcut_overrides", {})
+    if not isinstance(raw_shortcut_overrides, dict):
+        shortcut_overrides = {}
+    else:
+        shortcut_overrides = {
+            command_id: shortcut
+            for command_id, shortcut in raw_shortcut_overrides.items()
+            if isinstance(command_id, str) and isinstance(shortcut, str)
+        }
     return Settings(
         last_directory=last_directory,
         performance_mode=performance_mode,
@@ -88,6 +98,7 @@ def _settings_from_payload(payload: object) -> Settings:
         find_replace_zoom_percent=find_replace_zoom_percent,
         find_replace_report_location=find_replace_report_location,
         find_replace_geometry=find_replace_geometry,
+        shortcut_overrides=shortcut_overrides,
     )
 
 

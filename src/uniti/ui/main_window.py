@@ -6,10 +6,11 @@ from collections.abc import Mapping
 from concurrent.futures import Future
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
+import sys
 import weakref
 
-from PySide6.QtCore import QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
     QInputDialog,
@@ -21,6 +22,12 @@ from PySide6.QtWidgets import (
 )
 
 from uniti.app.diagnostics import diagnostics_snapshot
+from uniti.app.commands import (
+    CommandCategory,
+    CommandDefinition,
+    CommandRegistry,
+    CommandScope,
+)
 from uniti.app.editor_state import EditorState
 from uniti.app.recovery_manager import RecoveryManager
 from uniti.app.settings import Settings, SettingsStore
@@ -32,6 +39,7 @@ from uniti.resources import ResourceManager, WorkPriority
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
 from uniti.ui.find_replace import FindReplaceWindow
+from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
 
@@ -44,6 +52,50 @@ _ENCODING_CHOICES = (
     ("UTF-32 BE", "utf-32-be"),
     ("Windows-1252", "windows-1252"),
 )
+
+
+def _standard_shortcut(key: QKeySequence.StandardKey, fallback: str = "") -> str:
+    shortcut = QKeySequence(key).toString(QKeySequence.SequenceFormat.PortableText)
+    return shortcut or fallback
+
+
+def _command_definitions() -> tuple[CommandDefinition, ...]:
+    primary = "Meta" if sys.platform == "darwin" else "Ctrl"
+    return (
+        CommandDefinition("file.open", "Open…", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Open)),
+        CommandDefinition("file.save", "Save", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Save)),
+        CommandDefinition("file.save_as", "Save As…", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.SaveAs)),
+        CommandDefinition("file.reload", "Reload/Revert from Disk", CommandCategory.FILE, CommandScope.WINDOW, f"{primary}+Shift+R"),
+        CommandDefinition("file.close", "Close", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Close)),
+        CommandDefinition("file.quit", "Quit", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Quit, f"{primary}+Q")),
+        CommandDefinition("editing.undo", "Undo", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Undo)),
+        CommandDefinition("editing.redo", "Redo", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Redo)),
+        CommandDefinition("editing.cut", "Cut", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Cut)),
+        CommandDefinition("editing.copy", "Copy", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Copy)),
+        CommandDefinition("editing.paste", "Paste", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Paste)),
+        CommandDefinition("editing.select_all", "Select All", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.SelectAll)),
+        CommandDefinition("navigation.go_to_line", "Go to Line…", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+L"),
+        CommandDefinition("navigation.page_up", "Page Up", CommandCategory.NAVIGATION, CommandScope.EDITOR, "PageUp"),
+        CommandDefinition("navigation.page_down", "Page Down", CommandCategory.NAVIGATION, CommandScope.EDITOR, "PageDown"),
+        CommandDefinition("navigation.document_start", "Document Start", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+Home"),
+        CommandDefinition("navigation.document_end", "Document End", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+End"),
+        CommandDefinition("navigation.word_left", "Word Left", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+Left"),
+        CommandDefinition("navigation.word_right", "Word Right", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+Right"),
+        CommandDefinition("find.open", "Find", CommandCategory.FIND_REPLACE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Find)),
+        CommandDefinition("find.replace", "Replace", CommandCategory.FIND_REPLACE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Replace)),
+        CommandDefinition("find.next", "Find Next", CommandCategory.FIND_REPLACE, CommandScope.WINDOW, "F3"),
+        CommandDefinition("find.previous", "Find Previous", CommandCategory.FIND_REPLACE, CommandScope.WINDOW, "Shift+F3"),
+        CommandDefinition("editor.zoom_in", "Zoom In", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, _standard_shortcut(QKeySequence.StandardKey.ZoomIn)),
+        CommandDefinition("editor.zoom_out", "Zoom Out", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
+        CommandDefinition("editor.zoom_reset", "Reset Zoom", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, f"{primary}+0"),
+        CommandDefinition("editor.wrap", "Soft Line Wrap", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, f"{primary}+Alt+W"),
+        CommandDefinition("find.zoom_in", "Zoom In", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomIn)),
+        CommandDefinition("find.zoom_out", "Zoom Out", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
+        CommandDefinition("find.zoom_reset", "Reset Zoom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+0"),
+        CommandDefinition("find.report_hidden", "Report Hidden", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, ""),
+        CommandDefinition("find.report_bottom", "Report Bottom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, ""),
+        CommandDefinition("find.report_right", "Report Right", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, ""),
+    )
 
 
 class UNITIMainWindow(QMainWindow):
@@ -60,6 +112,14 @@ class UNITIMainWindow(QMainWindow):
         self._recovery_manager = recovery_manager
         self._settings_store = settings_store
         self._settings = settings_store.load() if settings_store is not None else Settings()
+        self._command_registry = CommandRegistry(
+            _command_definitions(),
+            overrides=self._settings.shortcut_overrides,
+        )
+        self._command_actions: dict[str, QAction] = {}
+        self._find_replace_shortcuts: dict[str, QShortcut] = {}
+        self._hotkeys_popup: HotkeysPopup | None = None
+        self._command_registry.add_listener(self._on_command_binding_changed)
         self._owns_resources = resource_manager is None
         self._resources = resource_manager or ResourceManager()
         self._startup_snapshot = dict(startup_snapshot or {})
@@ -78,6 +138,12 @@ class UNITIMainWindow(QMainWindow):
         self._find_replace = FindReplaceWindow(
             lambda: self.current_view, self, resource_manager=self._resources
         )
+        for field in (
+            self._find_replace.find_input,
+            self._find_replace.replace_input,
+        ):
+            field.installEventFilter(self)
+            field.viewport().installEventFilter(self)
         self._find_replace.streamReplaceCommitted.connect(
             self._reload_after_stream_replace
         )
@@ -151,6 +217,37 @@ class UNITIMainWindow(QMainWindow):
         )
         self._save_settings()
 
+    def _on_command_binding_changed(self, command_id: str, shortcut: str) -> None:
+        action = self._command_actions.get(command_id)
+        if action is not None:
+            action.setShortcut(QKeySequence(shortcut))
+        find_shortcut = self._find_replace_shortcuts.get(command_id)
+        if find_shortcut is not None:
+            find_shortcut.setKey(QKeySequence(shortcut))
+        self._settings = dataclass_replace(
+            self._settings,
+            shortcut_overrides=self._command_registry.overrides,
+        )
+        self._save_settings()
+
+    def eventFilter(self, watched, event) -> bool:
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and self._find_replace.focused_input() is not None
+        ):
+            pressed = QKeySequence(event.keyCombination())
+            for definition in self._command_registry.definitions(
+                category=CommandCategory.EDITING
+            ):
+                shortcut = self._command_registry.current(definition.command_id)
+                if shortcut and pressed.matches(QKeySequence(shortcut)) == (
+                    QKeySequence.SequenceMatch.ExactMatch
+                ):
+                    self._command_actions[definition.command_id].trigger()
+                    event.accept()
+                    return True
+        return super().eventFilter(watched, event)
+
     @property
     def current_view(self) -> UNITITextView | None:
         widget = self._tabs.currentWidget()
@@ -163,92 +260,86 @@ class UNITIMainWindow(QMainWindow):
         action.triggered.connect(lambda _checked=False, handler=handler: handler())
         return action
 
+    def _command_action(
+        self,
+        command_id: str,
+        handler,
+        *,
+        checkable: bool = False,
+    ) -> QAction:
+        definition = self._command_registry.definition(command_id)
+        action = QAction(definition.label, self)
+        action.setCheckable(checkable)
+        action.setShortcut(QKeySequence(self._command_registry.current(command_id)))
+        if definition.scope == CommandScope.WINDOW:
+            action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        else:
+            action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        action.triggered.connect(
+            lambda _checked=False, handler=handler: handler()
+        )
+        self._command_actions[command_id] = action
+        return action
+
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
-        file_menu.addAction(
-            self._action("Open…", QKeySequence.StandardKey.Open, self.open_dialog)
-        )
-        file_menu.addAction(
-            self._action("Save", QKeySequence.StandardKey.Save, self.save_current)
-        )
-        file_menu.addAction(
-            self._action("Save As…", QKeySequence.StandardKey.SaveAs, self.save_current_as)
-        )
-        file_menu.addAction(
-            self._action(
-                "Reload/Revert from Disk",
-                QKeySequence("Ctrl+Shift+R"),
-                self.reload_current,
-            )
-        )
+        file_menu.addAction(self._command_action("file.open", self.open_dialog))
+        file_menu.addAction(self._command_action("file.save", self.save_current))
+        file_menu.addAction(self._command_action("file.save_as", self.save_current_as))
+        file_menu.addAction(self._command_action("file.reload", self.reload_current))
         file_menu.addSeparator()
-        file_menu.addAction(
-            self._action("Close", QKeySequence.StandardKey.Close, self.close_current)
-        )
-        file_menu.addAction(
-            self._action("Quit", QKeySequence.StandardKey.Quit, self.close)
-        )
+        file_menu.addAction(self._command_action("file.close", self.close_current))
+        file_menu.addAction(self._command_action("file.quit", self.close))
 
         edit_menu = self.menuBar().addMenu("&Edit")
-        edit_menu.addAction(
-            self._action("Undo", QKeySequence.StandardKey.Undo, self.undo_current)
-        )
-        edit_menu.addAction(
-            self._action("Redo", QKeySequence.StandardKey.Redo, self.redo_current)
-        )
+        edit_menu.addAction(self._command_action("editing.undo", self.undo_current))
+        edit_menu.addAction(self._command_action("editing.redo", self.redo_current))
+        edit_menu.addSeparator()
+        edit_menu.addAction(self._command_action("editing.cut", self.cut_current))
+        edit_menu.addAction(self._command_action("editing.copy", self.copy_current))
+        edit_menu.addAction(self._command_action("editing.paste", self.paste_current))
         edit_menu.addSeparator()
         edit_menu.addAction(
-            self._action("Cut", QKeySequence.StandardKey.Cut, self.cut_current)
-        )
-        edit_menu.addAction(
-            self._action("Copy", QKeySequence.StandardKey.Copy, self.copy_current)
-        )
-        edit_menu.addAction(
-            self._action("Paste", QKeySequence.StandardKey.Paste, self.paste_current)
-        )
-        edit_menu.addSeparator()
-        edit_menu.addAction(
-            self._action("Select All", QKeySequence.StandardKey.SelectAll, self.select_all)
+            self._command_action("editing.select_all", self.select_all)
         )
 
         navigation_menu = self.menuBar().addMenu("&Navigation")
         navigation_menu.addAction(
-            self._action("Go to Line…", QKeySequence("Ctrl+L"), self.go_to_line_dialog)
+            self._command_action("navigation.go_to_line", self.go_to_line_dialog)
         )
+        navigation_menu.addAction(self._command_action("navigation.page_up", lambda: self._move_page(-1)))
+        navigation_menu.addAction(self._command_action("navigation.page_down", lambda: self._move_page(1)))
+        navigation_menu.addAction(self._command_action("navigation.document_start", lambda: self._move_editor("move_document_start")))
+        navigation_menu.addAction(self._command_action("navigation.document_end", lambda: self._move_editor("move_document_end")))
+        navigation_menu.addAction(self._command_action("navigation.word_left", lambda: self._move_editor("move_word_left")))
+        navigation_menu.addAction(self._command_action("navigation.word_right", lambda: self._move_editor("move_word_right")))
 
         search_menu = self.menuBar().addMenu("&Search")
-        search_menu.addAction(
-            self._action("Find", QKeySequence.StandardKey.Find, self.show_find)
-        )
-        search_menu.addAction(
-            self._action("Replace", QKeySequence.StandardKey.Replace, self.show_replace)
-        )
-        search_menu.addAction(
-            self._action("Find Next", QKeySequence("F3"), self._find_replace.next_match)
-        )
-        search_menu.addAction(
-            self._action(
-                "Find Previous",
-                QKeySequence("Shift+F3"),
-                self._find_replace.previous_match,
-            )
-        )
+        search_menu.addAction(self._command_action("find.open", self.show_find))
+        search_menu.addAction(self._command_action("find.replace", self.show_replace))
+        search_menu.addAction(self._command_action("find.next", self._find_replace.next_match))
+        search_menu.addAction(self._command_action("find.previous", self._find_replace.previous_match))
 
         view_menu = self.menuBar().addMenu("&View")
-        view_menu.addAction(
-            self._action("Zoom In", QKeySequence.StandardKey.ZoomIn, self.zoom_in_editor)
+        view_menu.addAction(self._command_action("editor.zoom_in", self.zoom_in_editor))
+        view_menu.addAction(self._command_action("editor.zoom_out", self.zoom_out_editor))
+        view_menu.addAction(self._command_action("editor.zoom_reset", self.reset_editor_zoom))
+        self._wrap_action = self._command_action(
+            "editor.wrap",
+            lambda: self.set_editor_wrap(self._wrap_action.isChecked()),
+            checkable=True,
         )
-        view_menu.addAction(
-            self._action("Zoom Out", QKeySequence.StandardKey.ZoomOut, self.zoom_out_editor)
-        )
-        view_menu.addAction(
-            self._action("Reset Zoom", QKeySequence("Ctrl+0"), self.reset_editor_zoom)
-        )
-        self._wrap_action = QAction("Soft Line Wrap", self)
-        self._wrap_action.setCheckable(True)
         self._wrap_action.setChecked(self._settings.soft_wrap)
-        self._wrap_action.toggled.connect(self.set_editor_wrap)
         view_menu.addAction(self._wrap_action)
+
+        find_view_menu = self.menuBar().addMenu("F/R &View")
+        find_view_menu.addAction(self._command_action("find.zoom_in", self._find_replace.zoom_in))
+        find_view_menu.addAction(self._command_action("find.zoom_out", self._find_replace.zoom_out))
+        find_view_menu.addAction(self._command_action("find.zoom_reset", self._find_replace.reset_zoom))
+        find_view_menu.addSeparator()
+        find_view_menu.addAction(self._command_action("find.report_hidden", lambda: self._find_replace.set_report_location("Hidden")))
+        find_view_menu.addAction(self._command_action("find.report_bottom", lambda: self._find_replace.set_report_location("Bottom")))
+        find_view_menu.addAction(self._command_action("find.report_right", lambda: self._find_replace.set_report_location("Right")))
 
         encoding_menu = self.menuBar().addMenu("&Encoding")
         reinterpret_menu = encoding_menu.addMenu("Reinterpret As")
@@ -278,6 +369,20 @@ class UNITIMainWindow(QMainWindow):
                 self.show_character_inspector,
             )
         )
+
+        self._hotkeys_action = self.menuBar().addAction("&Hotkeys")
+        self._hotkeys_action.triggered.connect(self.show_hotkeys)
+        for definition in self._command_registry.definitions():
+            if definition.scope == CommandScope.FIND_REPLACE:
+                self._find_replace.addAction(
+                    self._command_actions[definition.command_id]
+                )
+            elif definition.category == CommandCategory.EDITING:
+                action = self._command_actions[definition.command_id]
+                shortcut = QShortcut(action.shortcut(), self._find_replace)
+                shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+                shortcut.activated.connect(action.trigger)
+                self._find_replace_shortcuts[definition.command_id] = shortcut
         tools_menu.addAction(
             self._action(
                 "Diagnostics…",
@@ -316,6 +421,30 @@ class UNITIMainWindow(QMainWindow):
         view.wrapChanged.connect(
             lambda enabled, view=view: self._on_view_wrap_changed(view, enabled)
         )
+        for definition in self._command_registry.definitions():
+            if definition.scope == CommandScope.EDITOR:
+                view.addAction(self._command_actions[definition.command_id])
+
+    def _move_editor(self, method_name: str) -> None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        getattr(view.state, method_name)()
+        view._state_changed()
+
+    def _move_page(self, direction: int) -> None:
+        view = self.current_view
+        if view is None or not view.isEnabled() or direction == 0:
+            return
+        page = max(1, view._visible_line_capacity() - 1)
+        view.state.move_page(page if direction > 0 else -page)
+        view._state_changed()
+
+    def show_hotkeys(self) -> HotkeysPopup:
+        if self._hotkeys_popup is None:
+            self._hotkeys_popup = HotkeysPopup(self._command_registry, self)
+        self._hotkeys_popup.show_below(self.menuBar())
+        return self._hotkeys_popup
 
     def _add_document(
         self,
@@ -772,21 +901,37 @@ class UNITIMainWindow(QMainWindow):
         view._state_changed()
 
     def copy_current(self) -> None:
+        field = self._find_replace.focused_input()
+        if field is not None:
+            field.copy()
+            return
         view = self.current_view
         if view is not None and view.isEnabled():
             view.copy_selection()
 
     def cut_current(self) -> None:
+        field = self._find_replace.focused_input()
+        if field is not None:
+            field.cut()
+            return
         view = self.current_view
         if view is not None and view.isEnabled():
             view.cut_selection()
 
     def paste_current(self) -> None:
+        field = self._find_replace.focused_input()
+        if field is not None:
+            field.paste()
+            return
         view = self.current_view
         if view is not None and view.isEnabled():
             view.paste_clipboard()
 
     def select_all(self) -> None:
+        field = self._find_replace.focused_input()
+        if field is not None:
+            field.selectAll()
+            return
         view = self.current_view
         if view is None or not view.isEnabled():
             return

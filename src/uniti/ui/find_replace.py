@@ -11,6 +11,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QApplication,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -256,18 +257,25 @@ class FindReplaceWindow(QDialog):
         self._clear_results()
 
     def undo_focused_input(self) -> bool:
-        for field in (self.find_input, self.replace_input):
-            if field.hasFocus():
-                field.undo_input()
-                return True
+        field = self.focused_input()
+        if field is not None:
+            field.undo_input()
+            return True
         return False
 
     def redo_focused_input(self) -> bool:
-        for field in (self.find_input, self.replace_input):
-            if field.hasFocus():
-                field.redo_input()
-                return True
+        field = self.focused_input()
+        if field is not None:
+            field.redo_input()
+            return True
         return False
+
+    def focused_input(self):
+        focus = QApplication.focusWidget()
+        for field in (self.find_input, self.replace_input):
+            if focus is field or (focus is not None and field.isAncestorOf(focus)):
+                return field
+        return None
 
     def _current_view(self):
         return self._view_provider()

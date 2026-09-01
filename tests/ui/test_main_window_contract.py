@@ -274,3 +274,35 @@ def test_focused_find_field_owns_main_window_undo_redo(tmp_path: Path):
     assert view.document.read(0, view.document.total_chars()) == "document!"
     window.close_all_documents(force=True)
     window.close()
+
+
+def test_focused_find_field_owns_clipboard_and_select_all_commands(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "focus-clipboard.txt"
+    source.write_text("document", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    window.show()
+    window.show_find()
+    field = window._find_replace.find_input
+    field.set_text("needle")
+    field.setFocus()
+    app.processEvents()
+    window.select_all()
+    window.copy_current()
+    assert QGuiApplication.clipboard().text() == "needle"
+    window.cut_current()
+    assert field.text() == ""
+    window.paste_current()
+    assert field.text() == "needle"
+    assert view.document.read(0, view.document.total_chars()) == "document"
+    window.close_all_documents(force=True)
+    window.close()

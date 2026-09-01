@@ -61,6 +61,19 @@ def test_find_replace_view_state_round_trips(tmp_path: Path):
     assert store.load() == expected
 
 
+def test_shortcut_overrides_round_trip_and_invalid_entries_are_dropped(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.save(Settings(shortcut_overrides={"editor.zoom_in": "Ctrl+K"}))
+    assert store.load().shortcut_overrides == {"editor.zoom_in": "Ctrl+K"}
+
+    path.write_text(
+        '{"schema":1,"shortcut_overrides":{"ok":"Ctrl+K","bad":42}}',
+        encoding="utf-8",
+    )
+    assert store.load().shortcut_overrides == {"ok": "Ctrl+K"}
+
+
 def test_settings_store_ignores_unknown_keys_for_forward_compatibility(tmp_path: Path):
     path = tmp_path / "settings.json"
     path.write_text('{"last_directory":"/tmp","future":42}', encoding="utf-8")
@@ -105,6 +118,7 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
         "last_directory": None,
         "performance_mode": "Automatic",
         "schema": 1,
+        "shortcut_overrides": {},
         "soft_wrap": False,
     }
 
