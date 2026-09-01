@@ -7,6 +7,7 @@ Date: 2026-09-01
 | Item | Current value |
 |---|---|
 | Repository branch | `main` |
+| Product completion commit | `8bde00f` — `feat: complete UNITI v0.001a16 startup bootstrap` |
 | Implemented milestone | `v0.001a16` startup/bootstrap/initialization |
 | Display version metadata | `v0.001a16` |
 | PEP 440 package metadata | `0.1a16` |
@@ -28,7 +29,13 @@ The `v0.001a15` tag remains immutable. The post-tag Qt completion fix at `6b8118
 
 ## Verification evidence
 
-Focused task-level red/green gates and the a16 acceptance contract pass on the development macOS/Python 3.12/PySide6 environment. The final full-suite count and exact committed baseline are recorded in the current and historical handovers after closure verification.
+Focused task-level red/green gates and the a16 acceptance contract pass on the development macOS/Python 3.12/PySide6 environment. The release-closure suite completed with:
+
+```text
+357 passed, 1 skipped
+```
+
+Compilation, headless alpha smoke, managed-runtime bootstrap, deep offscreen self-check, import boundaries, documentation links, and `git diff --check` also passed. The completed code baseline is `8bde00f`.
 
 The capability-dependent extended-attribute save test may remain the single explicit skip when xattrs are unavailable in the active Python/platform combination.
 

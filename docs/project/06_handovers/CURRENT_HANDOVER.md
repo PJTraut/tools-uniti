@@ -9,10 +9,11 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
 - Canonical branch: `main`
 - Implemented milestone: `v0.001a16` startup/bootstrap/initialization
+- Product completion commit: `8bde00f638097f920a7f13973db2cab1a1af59a0`
 - Current display/package metadata: `v0.001a16` / `0.1a16`
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16 tag: none, by explicit instruction
-- Integration state: local release-closure verification in progress; normal push follows the final clean-tree gate
+- Integration state: implementation committed and verified locally; remote ancestry and normal push remain
 
 The `v0.001a15` tag must not move. Its artifacts remain exact historical products of `10f419e` and do not include the post-tag Qt fix or a16.
 
@@ -29,6 +30,7 @@ The `v0.001a15` tag must not move. Its artifacts remain exact historical product
 - [Parked capabilities](../04_parked/CATALOG.md)
 - [Architecture decisions](../05_decisions/README.md)
 - [Post-a15 historical snapshot](history/2026-08-31-v0.001a15-post-hotfix.md)
+- [a16 completion snapshot](history/2026-09-01-v0.001a16-complete.md)
 
 ## Implemented lifecycle
 
@@ -38,9 +40,17 @@ Source bootstrap uses exactly `.venv`; local mode is explicit. Bootstrap mutatio
 
 ## Verification state
 
-Every implementation slice passed its focused red/green tests. Bootstrap, app/UI, resource, core/smoke, deep offscreen self-check, and a16 acceptance gates are included in the final closure command set. The exact full-suite count and release-closure commit are added to this handover and the dated a16 snapshot after committed-tree verification.
+Every implementation slice passed its focused red/green tests. Release closure at `8bde00f` produced:
 
-The extended-attribute save test may be the sole explicit skip where the active platform/runtime does not support xattrs.
+```text
+357 passed, 1 skipped
+```
+
+The a16 acceptance contract reported `3 passed`. Managed source bootstrap, matching installed/imported `0.1a16` metadata, compileall, headless smoke, deep offscreen self-check, import boundaries, Markdown links, and `git diff --check` passed.
+
+The sole skip was `tests/core/test_save.py:141`, where extended attributes are unsupported by the active Python/platform.
+
+During verification, a now-fixed symlink-resolution defect caused an early bootstrap run to invoke the base Python executable instead of `.venv/bin/python`. Commit `8bde00f` preserves the managed interpreter path, checks installed UNITI metadata against canonical metadata, and includes a symlink regression. The base Python currently reports an editable `uniti-editor 0.1a16`; it was not uninstalled because its pre-verification ownership/state was not established. Future bootstrap runs are confined to the managed interpreter.
 
 ## Active and queued work
 
@@ -48,12 +58,11 @@ There is no approved active or queued product milestone. The roadmap is intentio
 
 ## Remaining integration gate
 
-1. complete focused and full a16 verification;
-2. record the exact clean commit and test count in current/history handovers;
-3. re-run the committed-tree verification;
-4. fetch `origin` and verify `origin/main` is an ancestor of local `main`; and
-5. push `main` normally without force or tag creation.
+1. commit this verification record and historical snapshot;
+2. re-run the committed-tree verification;
+3. fetch `origin` and verify `origin/main` is an ancestor of local `main`; and
+4. push `main` normally without force or tag creation.
 
 ## Next safe action
 
-Finish the release-closure verification and integration gate above. Do not begin a new milestone until it is explicitly approved and sequenced in the roadmap.
+Complete the remote ancestry check and approved normal push. Do not begin a new milestone until it is explicitly approved and sequenced in the roadmap.
