@@ -3,22 +3,21 @@
 from __future__ import annotations
 
 from uniti.core.eol import EOLReport
+from uniti.core.text_format import EOLPolicy, format_summary
 from PySide6.QtWidgets import QLabel, QStatusBar
 
 
 class UNITIStatusBar(QStatusBar):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._encoding = QLabel("—")
-        self._eol = QLabel("—")
+        self._format = QLabel("—")
         self._position = QLabel("Ln 1:1")
         self._zoom = QLabel("—")
         self._wrap = QLabel("—")
         self._size = QLabel("0 B")
         self._eol_report: EOLReport | None = None
         for label in (
-            self._encoding,
-            self._eol,
+            self._format,
             self._position,
             self._zoom,
             self._wrap,
@@ -40,27 +39,42 @@ class UNITIStatusBar(QStatusBar):
     def update_eol_report(self, report: EOLReport | None) -> None:
         self._eol_report = report
 
+    @property
+    def format_label(self) -> QLabel:
+        return self._format
+
+    @staticmethod
+    def _source_eol_label(report: EOLReport | None) -> str:
+        if report is None:
+            return "Analyzing…"
+        if report.kind == "MIXED":
+            return "Mixed"
+        if report.kind == "NONE":
+            return "No EOL"
+        return report.kind
+
     def update_document(self, document, eol_report: EOLReport | None = None) -> None:
         if eol_report is not None:
             self._eol_report = eol_report
-        detected = document.encoding_info.detected
-        output_encoding = document.output_encoding
-        self._encoding.setText(
-            detected if output_encoding == detected else f"{detected} → {output_encoding}"
+        source_eol = self._source_eol_label(self._eol_report)
+        saved = document.saved_output_format
+        saved_eol = (
+            source_eol
+            if saved.eol is EOLPolicy.PRESERVE
+            else saved.eol.value
         )
+        saved_text = format_summary(saved.encoding, saved_eol)
 
-        report = self._eol_report
-        if report is None:
-            eol_text = "EOL: analyzing…"
-        elif report.kind == "MIXED":
-            eol_text = (
-                f"MIXED (LF {report.lf} / CRLF {report.crlf} / CR {report.cr})"
-            )
-        else:
-            eol_text = report.kind
-        if document.output_eol is not None:
-            eol_text = f"{eol_text} → {document.output_eol}"
-        self._eol.setText(eol_text)
+        pending = document.output_format
+        pending_eol = (
+            source_eol
+            if pending.eol is EOLPolicy.PRESERVE
+            else pending.eol.value
+        )
+        pending_text = format_summary(pending.encoding, pending_eol)
+        self._format.setText(
+            saved_text if pending == saved else f"{saved_text} -> {pending_text}"
+        )
 
         try:
             size = document.path.stat().st_size
@@ -77,8 +91,7 @@ class UNITIStatusBar(QStatusBar):
 
     def clear_document(self) -> None:
         self._eol_report = None
-        self._encoding.setText("—")
-        self._eol.setText("—")
+        self._format.setText("—")
         self._position.setText("Ln 1:1")
         self._zoom.setText("—")
         self._wrap.setText("—")

@@ -305,3 +305,200 @@ def test_focused_find_field_owns_clipboard_and_select_all_commands(tmp_path: Pat
     assert view.document.read(0, view.document.total_chars()) == "document"
     window.close_all_documents(force=True)
     window.close()
+
+
+def test_high_confidence_utf8_open_does_not_show_format_confirmation(
+    tmp_path: Path, monkeypatch
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    import uniti.ui.main_window as main_window
+
+    source = tmp_path / "certain.txt"
+    source.write_text("Hello, Привет\r\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = main_window.UNITIMainWindow()
+
+    class UnexpectedDialog:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("high-confidence UTF-8 must not show the modal")
+
+    monkeypatch.setattr(main_window, "OpenFormatDialog", UnexpectedDialog)
+    view = window.open_path(source)
+
+    assert view is not None
+    assert view.document.source_profile.key == "utf-8"
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def test_low_confidence_open_requires_exact_profile_confirmation(
+    tmp_path: Path, monkeypatch
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    from uniti.core.text_format import encoding_profile
+    import uniti.ui.main_window as main_window
+
+    source = tmp_path / "legacy.txt"
+    source.write_bytes(b"Price \x96 10")
+    app = QApplication.instance() or QApplication([])
+    window = main_window.UNITIMainWindow()
+    seen = {}
+
+    class AcceptedDialog:
+        def __init__(self, assessment, eol_report, *, preview_provider, parent=None):
+            seen["assessment"] = assessment
+            seen["preview"] = preview_provider(encoding_profile("windows-1252"))
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def selected_profile(self):
+            return encoding_profile("windows-1252")
+
+    monkeypatch.setattr(main_window, "OpenFormatDialog", AcceptedDialog)
+    view = window.open_path(source)
+
+    assert view is not None
+    assert seen["assessment"].confidence < 0.75
+    assert any("confidence" in reason.lower() for reason in seen["assessment"].reasons)
+    assert seen["preview"].text == "Price – 10"
+    assert view.document.source_profile.key == "windows-1252"
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def test_cancelled_serious_open_creates_no_tab(tmp_path: Path, monkeypatch):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    import uniti.ui.main_window as main_window
+
+    source = tmp_path / "uncertain.txt"
+    source.write_bytes(b"A\xffZ")
+    app = QApplication.instance() or QApplication([])
+    window = main_window.UNITIMainWindow()
+
+    class CancelledDialog:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def exec(self):
+            return QDialog.DialogCode.Rejected
+
+    monkeypatch.setattr(main_window, "OpenFormatDialog", CancelledDialog)
+    before = window._tabs.count()
+
+    assert window.open_path(source) is None
+    assert window._tabs.count() == before
+    window.close()
+    app.processEvents()
+
+
+def test_explicit_profile_still_reports_malformed_preview(tmp_path: Path, monkeypatch):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    from uniti.core.text_format import encoding_profile
+    import uniti.ui.main_window as main_window
+
+    source = tmp_path / "malformed-utf8.txt"
+    source.write_bytes(b"A\xffZ")
+    app = QApplication.instance() or QApplication([])
+    window = main_window.UNITIMainWindow()
+    seen = {}
+
+    class AcceptedDialog:
+        def __init__(self, assessment, eol_report, *, preview_provider, parent=None):
+            seen["assessment"] = assessment
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def selected_profile(self):
+            return encoding_profile("utf-8")
+
+    monkeypatch.setattr(main_window, "OpenFormatDialog", AcceptedDialog)
+    view = window.open_path(source, profile=encoding_profile("utf-8"))
+
+    assert view is not None
+    assert seen["assessment"].malformed_preview
+    assert view.document.source_profile.key == "utf-8"
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def test_mixed_eol_report_is_modeless_and_only_changes_pending_metadata(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.core.text_format import EOLPolicy
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "mixed.txt"
+    original = b"one\r\ntwo\nthree\r"
+    source.write_bytes(original)
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    assert view is not None
+    dialog = window._eol_dialogs[id(view)]
+
+    assert dialog.isModal() is False
+    assert "LF 1" in dialog.summary_label.text()
+    assert "CRLF 1" in dialog.summary_label.text()
+    assert "CR 1" in dialog.summary_label.text()
+    dialog.select_policy(EOLPolicy.PRESERVE)
+    assert view.document.modified is False
+
+    dialog.select_policy(EOLPolicy.CRLF)
+    assert view.document.output_format.eol is EOLPolicy.CRLF
+    assert view.document.modified is True
+    assert source.read_bytes() == original
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def test_reinterpret_uses_an_exact_profile_and_preserves_the_view(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.core.text_format import encoding_profile
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "reinterpret.txt"
+    source.write_bytes(b"plain ASCII\n")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    assert view is not None
+    old_document = view.document
+
+    window.reinterpret_current(encoding_profile("windows-1252"))
+
+    assert window.current_view is view
+    assert view.document is not old_document
+    assert view.document.source_profile.key == "windows-1252"
+    assert view.document.modified is False
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()

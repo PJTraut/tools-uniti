@@ -11,6 +11,7 @@ import weakref
 from PySide6.QtCore import QEvent, Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QDialog,
     QFileDialog,
     QInputDialog,
     QMainWindow,
@@ -34,23 +35,27 @@ from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.core.file_identity import ExternalFileChangedError
+from uniti.core.text_format import (
+    EOLPolicy,
+    EncodingProfile,
+    OutputFormat,
+    encoding_profile,
+    encoding_profiles,
+    profile_from_codec,
+)
+from uniti.core.text_inspection import (
+    TextFileInspection,
+    inspect_source,
+    preview_source,
+)
 from uniti.resources import ResourceManager, WorkPriority
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
+from uniti.ui.file_format_dialogs import LineEndingReportDialog, OpenFormatDialog
 from uniti.ui.find_replace import FindReplaceWindow
 from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
-
-
-_ENCODING_CHOICES = (
-    ("UTF-8", "utf-8"),
-    ("UTF-16 LE", "utf-16-le"),
-    ("UTF-16 BE", "utf-16-be"),
-    ("UTF-32 LE", "utf-32-le"),
-    ("UTF-32 BE", "utf-32-be"),
-    ("Windows-1252", "windows-1252"),
-)
 
 
 def _standard_shortcut(key: QKeySequence.StandardKey, fallback: str = "") -> str:
@@ -166,6 +171,7 @@ class UNITIMainWindow(QMainWindow):
         self._eol_pool = self._resources.workers
         self._eol_jobs: dict[Future, weakref.ReferenceType] = {}
         self._eol_reports: dict[int, EOLReport] = {}
+        self._eol_dialogs: dict[int, LineEndingReportDialog] = {}
         self._eol_timer = QTimer(self)
         self._eol_timer.setInterval(80)
         self._eol_timer.timeout.connect(self._poll_eol_jobs)
@@ -339,19 +345,19 @@ class UNITIMainWindow(QMainWindow):
         encoding_menu = format_menu.addMenu("&Encoding")
         reinterpret_menu = encoding_menu.addMenu("Reinterpret As")
         convert_menu = encoding_menu.addMenu("Convert on Save")
-        for label, codec in _ENCODING_CHOICES:
+        for profile in encoding_profiles():
             reinterpret_menu.addAction(
                 self._action(
-                    label,
+                    profile.label,
                     None,
-                    lambda codec=codec: self.reinterpret_current(codec),
+                    lambda profile=profile: self.reinterpret_current(profile),
                 )
             )
             convert_menu.addAction(
                 self._action(
-                    label,
+                    profile.label,
                     None,
-                    lambda codec=codec: self.set_output_encoding(codec),
+                    lambda profile=profile: self.set_output_profile(profile),
                 )
             )
 
@@ -501,6 +507,7 @@ class UNITIMainWindow(QMainWindow):
         document: Document,
         *,
         attach_recovery: bool = True,
+        initial_eol_report: EOLReport | None = None,
     ) -> UNITITextView:
         if attach_recovery and self._recovery_manager is not None:
             self._recovery_manager.attach(document)
@@ -511,16 +518,60 @@ class UNITIMainWindow(QMainWindow):
         self._connect_view(view)
         index = self._tabs.addTab(view, self._tab_label(view))
         self._tabs.setCurrentIndex(index)
+        if initial_eol_report is not None:
+            self._eol_reports[id(view)] = initial_eol_report
+            document.set_source_eol_report(initial_eol_report)
         self._set_status_document(view)
         self._status.update_cursor(0, 0)
-        self._schedule_eol_analysis(view)
+        if initial_eol_report is None:
+            self._schedule_eol_analysis(view)
+        elif initial_eol_report.kind == "MIXED":
+            self._show_mixed_eol_report(view, initial_eol_report)
         view.setFocus()
         return view
 
-    def open_path(self, path: str | Path) -> UNITITextView:
-        document = Document.open(path, resource_manager=self._resources)
+    def _inspect_open_path(
+        self,
+        path: str | Path,
+        *,
+        profile: EncodingProfile | None = None,
+    ) -> tuple[EncodingProfile | None, TextFileInspection] | None:
+        with ByteSource.open(path) as source:
+            inspection = inspect_source(source, override=profile)
+            selected = profile
+            if inspection.encoding.requires_confirmation:
+                dialog = OpenFormatDialog(
+                    inspection.encoding,
+                    inspection.eol,
+                    preview_provider=lambda candidate: preview_source(source, candidate),
+                    parent=self,
+                )
+                if dialog.exec() != QDialog.DialogCode.Accepted:
+                    return None
+                selected = dialog.selected_profile()
+                inspection = inspect_source(source, override=selected)
+        return selected, inspection
+
+    def open_path(
+        self,
+        path: str | Path,
+        *,
+        profile: EncodingProfile | None = None,
+    ) -> UNITITextView | None:
+        decision = self._inspect_open_path(path, profile=profile)
+        if decision is None:
+            return None
+        selected, inspection = decision
+        document = Document.open(
+            path,
+            profile=selected,
+            resource_manager=self._resources,
+        )
         try:
-            view = self._add_document(document)
+            view = self._add_document(
+                document,
+                initial_eol_report=inspection.eol,
+            )
         except Exception:
             document.close()
             raise
@@ -647,6 +698,40 @@ class UNITIMainWindow(QMainWindow):
         self._eol_jobs[future] = weakref.ref(view)
         self._eol_timer.start()
 
+    def _cancel_eol_analysis(self, view: UNITITextView) -> None:
+        for future, view_ref in tuple(self._eol_jobs.items()):
+            if view_ref() is not view:
+                continue
+            self._eol_jobs.pop(future, None)
+            future.cancel()
+        if not self._eol_jobs:
+            self._eol_timer.stop()
+
+    def _dismiss_eol_dialog(self, view: UNITITextView) -> None:
+        dialog = self._eol_dialogs.pop(id(view), None)
+        if dialog is not None:
+            dialog.close()
+            dialog.deleteLater()
+
+    def _show_mixed_eol_report(
+        self,
+        view: UNITITextView,
+        report: EOLReport,
+    ) -> None:
+        self._dismiss_eol_dialog(view)
+        dialog = LineEndingReportDialog(report, self)
+
+        def apply_policy(policy: EOLPolicy) -> None:
+            if self._tabs.indexOf(view) < 0:
+                return
+            current = view.document.output_format
+            view.document.set_output_format(OutputFormat(current.encoding, policy))
+            self._on_view_state_changed(view)
+
+        dialog.policySelected.connect(apply_policy)
+        self._eol_dialogs[id(view)] = dialog
+        dialog.show()
+
     def _poll_eol_jobs(self) -> None:
         for future, view_ref in tuple(self._eol_jobs.items()):
             if not future.done():
@@ -661,6 +746,8 @@ class UNITIMainWindow(QMainWindow):
                 continue
             self._eol_reports[id(view)] = report
             view.document.set_source_eol_report(report)
+            if report.kind == "MIXED":
+                self._show_mixed_eol_report(view, report)
             if view is self.current_view:
                 self._set_status_document(view)
         if not self._eol_jobs:
@@ -673,6 +760,15 @@ class UNITIMainWindow(QMainWindow):
         view.document.set_output_encoding(encoding)
         self._on_view_state_changed(view)
 
+    def set_output_profile(self, profile: EncodingProfile) -> None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        view.document.set_output_format(
+            OutputFormat(profile, view.document.output_format.eol)
+        )
+        self._on_view_state_changed(view)
+
     def set_output_eol(self, eol) -> None:
         view = self.current_view
         if view is None or not view.isEnabled():
@@ -680,7 +776,16 @@ class UNITIMainWindow(QMainWindow):
         view.document.set_output_eol(eol)
         self._on_view_state_changed(view)
 
-    def reinterpret_current(self, encoding: str) -> None:
+    @staticmethod
+    def _exact_profile(profile: EncodingProfile | str) -> EncodingProfile:
+        if isinstance(profile, EncodingProfile):
+            return profile
+        try:
+            return encoding_profile(profile)
+        except ValueError:
+            return profile_from_codec(profile)
+
+    def reinterpret_current(self, profile: EncodingProfile | str) -> None:
         view = self.current_view
         if view is None or not view.isEnabled():
             return
@@ -692,31 +797,32 @@ class UNITIMainWindow(QMainWindow):
             )
             return
 
-        index = self._tabs.currentIndex()
         path = view.document.path
+        exact_profile = self._exact_profile(profile)
+        decision = self._inspect_open_path(path, profile=exact_profile)
+        if decision is None:
+            return
+        selected, inspection = decision
         try:
             document = Document.open(
-                path, encoding=encoding, resource_manager=self._resources
+                path,
+                profile=selected,
+                resource_manager=self._resources,
             )
         except Exception as exc:
             QMessageBox.critical(self, "Reinterpret Failed", str(exc))
             return
 
-        if self._recovery_manager is not None:
-            self._recovery_manager.attach(document)
-        replacement = UNITITextView(EditorState(document), self._tabs)
-        self._connect_view(replacement)
-        self._tabs.removeTab(index)
-        self._tabs.insertTab(index, replacement, self._tab_label(replacement))
-        self._tabs.setCurrentIndex(index)
-        self._eol_reports.pop(id(view), None)
-        if self._recovery_manager is not None:
-            self._recovery_manager.detach(view.document, clean=True)
-        view.document.close()
-        view.deleteLater()
-        self._set_status_document(replacement)
-        self._schedule_eol_analysis(replacement)
-        replacement.setFocus()
+        try:
+            self._replace_view_document(
+                view,
+                document,
+                initial_eol_report=inspection.eol,
+            )
+        except Exception:
+            document.close()
+            raise
+        view.setFocus()
 
     def go_to_line(self, line_number: int) -> bool:
         view = self.current_view
@@ -749,13 +855,20 @@ class UNITIMainWindow(QMainWindow):
         self,
         view: UNITITextView,
         replacement: Document,
+        *,
+        initial_eol_report: EOLReport | None = None,
     ) -> None:
         old_document = view.document
+        self._cancel_eol_analysis(view)
+        self._dismiss_eol_dialog(view)
         if self._recovery_manager is not None:
             self._recovery_manager.attach(replacement)
             self._recovery_manager.detach(old_document, clean=True)
         view.state = EditorState(replacement)
         self._eol_reports.pop(id(view), None)
+        if initial_eol_report is not None:
+            self._eol_reports[id(view)] = initial_eol_report
+            replacement.set_source_eol_report(initial_eol_report)
         old_document.close()
         view.set_match_index(None)
         view._max_seen_line_width = 0
@@ -764,7 +877,10 @@ class UNITIMainWindow(QMainWindow):
         view._refresh_scrollbars(advance_index=False)
         self._find_replace.document_changed()
         view._state_changed()
-        self._schedule_eol_analysis(view)
+        if initial_eol_report is None:
+            self._schedule_eol_analysis(view)
+        elif initial_eol_report.kind == "MIXED":
+            self._show_mixed_eol_report(view, initial_eol_report)
 
     def reload_current(self) -> bool:
         view = self.current_view
@@ -782,15 +898,15 @@ class UNITIMainWindow(QMainWindow):
             if choice != QMessageBox.StandardButton.Discard:
                 return False
 
-        encoding = (
-            view.document.encoding_info.detected
+        profile = (
+            view.document.source_profile
             if view.document.encoding_info.user_override
             else None
         )
         try:
             replacement = Document.open(
                 view.document.path,
-                encoding=encoding,
+                profile=profile,
                 resource_manager=self._resources,
             )
         except Exception as exc:
@@ -991,6 +1107,8 @@ class UNITIMainWindow(QMainWindow):
             return False
         if not force and not self._confirm_close(widget):
             return False
+        self._cancel_eol_analysis(widget)
+        self._dismiss_eol_dialog(widget)
         self._eol_reports.pop(id(widget), None)
         if self._recovery_manager is not None:
             self._recovery_manager.detach(widget.document, clean=True)
