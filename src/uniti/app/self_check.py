@@ -200,6 +200,8 @@ class SelfCheckRunner:
             "regex": importlib.metadata.version("regex"),
             "PySide6": importlib.metadata.version("PySide6"),
         }
+        if versions["uniti-editor"] != uniti.__version__:
+            raise RuntimeError("installed UNITI metadata does not match the imported package")
         completed = self.process_runner(
             [str(self.runtime_python), "-m", "pip", "check"],
             text=True,

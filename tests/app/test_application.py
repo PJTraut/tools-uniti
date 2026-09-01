@@ -1,12 +1,13 @@
 import sys
 from pathlib import Path
 
+import pytest
 import uniti
 
 from uniti.app import application
 from uniti.app.paths import AppPaths
 from uniti.app.self_check import CheckResult, SelfCheckReport
-from uniti.app.startup import ExitCode
+from uniti.app.startup import ExitCode, StartupFailure
 
 
 def test_version_does_not_require_qt(monkeypatch, capsys):
@@ -57,3 +58,12 @@ def test_normal_startup_without_owned_marker_returns_actionable_environment_code
 
     assert code == ExitCode.ENVIRONMENT
     assert "scripts/bootstrap.py --repair" in capsys.readouterr().err
+
+
+def test_normal_dependency_validation_rejects_installed_metadata_mismatch(monkeypatch):
+    monkeypatch.setattr(uniti, "__version__", "9.9")
+
+    with pytest.raises(StartupFailure) as caught:
+        application._normal_dependencies()
+
+    assert caught.value.exit_code is ExitCode.DEPENDENCIES

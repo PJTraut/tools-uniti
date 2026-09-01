@@ -93,6 +93,24 @@ def probe_runtime(
     except OSError:
         disk_result = _unavailable("application-data disk usage is unavailable")
     selected_marker = marker_path or (Path(sys.prefix) / ".uniti-runtime.json")
+    memory_result = (
+        _available(
+            "memory calibration available",
+            physical_bytes=memory.physical,
+            available_bytes=memory.available,
+            effective_available_bytes=memory.effective_available,
+        )
+        if memory.physical > 0
+        else CapabilityResult(
+            CapabilityStatus.UNKNOWN,
+            "physical memory is not exposed by this platform/runtime",
+            {
+                "physical_bytes": memory.physical,
+                "available_bytes": memory.available,
+                "effective_available_bytes": memory.effective_available,
+            },
+        )
+    )
     return {
         "python": _available(
             "runtime identity available",
@@ -105,12 +123,7 @@ def probe_runtime(
             release=platform.release(),
             machine=platform.machine(),
         ),
-        "memory": _available(
-            "memory calibration available",
-            physical_bytes=memory.physical,
-            available_bytes=memory.available,
-            effective_available_bytes=memory.effective_available,
-        ),
+        "memory": memory_result,
         "cpu": _available("logical CPU count available", logical_count=logical_cpu),
         "disk": disk_result,
         "file_handles": _file_handle_result(),

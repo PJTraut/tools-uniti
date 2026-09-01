@@ -1,15 +1,74 @@
 # UNITI Current Architecture
 
 Date: 2026-09-01
-Baseline: implemented product code through `6b81185`
+Baseline: `v0.001a16` implementation series on `main`
 
-## Ownership model
+## Lifecycle boundary
 
-UNITI separates the virtual document engine from its PySide6 presentation. The document model owns content and coordinates; Qt owns windows, input events, painting, and GUI-thread presentation only.
+UNITI now has two deliberately separate execution paths:
 
 ```text
-QApplication / uniti.app.application
-    -> UNITIMainWindow
+explicit bootstrap
+host Python 3.12+
+    -> scripts/bootstrap.py compatibility shim
+    -> uniti.bootstrap discovery / ownership / dependencies
+    -> source .venv or application-local venv
+    -> managed Python -m uniti
+
+ordinary application startup
+application CLI parsed before Qt
+    -> StartupCoordinator phases 01-12
+    -> validated owned runtime and installed dependencies
+    -> paths / schemas / settings / resources / cleanup / recovery
+    -> lazy Qt capabilities and UNITIMainWindow
+```
+
+Only explicit bootstrap may create or repair a runtime and invoke `<managed-python> -m pip`. Ordinary `uniti` startup does not invoke pip, install packages, access the network, or mutate dependencies.
+
+## Managed runtime ownership
+
+`uniti.bootstrap.environment.EnvironmentManager` is the sole owner of virtual-environment mutation. Source mode uses exactly `<source-root>/.venv`; local mode uses `AppPaths.local_runtime_dir`. A schema-1 `.uniti-runtime.json` marker records owner, deterministic environment ID, mode, resolved path, source provenance, host/runtime identities, timestamps, dependency fingerprint, and health.
+
+A missing target receives an unhealthy marker before `venv.EnvBuilder(clear=False)` runs. Partial environments therefore remain explicit and repairable. Existing source `.venv` directories may be adopted only after interpreter/venv validation. Existing unmarked local targets and every owner/mode/ID/path mismatch are refused. Exclusive lock files reject live concurrent bootstrap and preserve stale lock evidence.
+
+`uniti.bootstrap.dependencies` reads canonical declarations from `pyproject.toml`, installs source mode editable and local mode non-editable, validates UNITI/`regex`/PySide6 metadata and imports, runs managed `pip check`, and records a deterministic fingerprint. A healthy matching runtime uses a validation-only fast path unless `--repair` is supplied.
+
+## Startup state machine
+
+`uniti.app.startup.StartupCoordinator` owns this strict order:
+
+```text
+BOOT
+  -> 01 RUNTIME_IDENTITY
+  -> 02 ENVIRONMENT_VALIDATION
+  -> 03 DEPENDENCY_VALIDATION
+  -> 04 APPLICATION_PATHS
+  -> 05 SCHEMA_MIGRATIONS
+  -> 06 SETTINGS_LOAD
+  -> 07 RESOURCE_CALIBRATION
+  -> 08 STALE_STATE_CLEANUP
+  -> 09 RECOVERY_DISCOVERY
+  -> 10 GUI_CAPABILITIES
+  -> 11 SESSION_RESTORE
+  -> 12 READY
+```
+
+The coordinator owns ordering, phase timing, atomic state updates, safe failure translation, bounded JSONL logging, and reverse-order cleanup. Application callbacks construct services and import PySide6 only in GUI phases. Exit codes separate usage, runtime, ownership, dependencies, state/schema, functional, and Qt/platform failures.
+
+`setup-state.json` and schema-1 settings use shared durable JSON replacement with file and parent syncing where supported. Malformed files are copied to timestamped `.invalid` siblings before replacement; future schemas fail without modification. Startup logs rotate at 5 MiB and retain ten rotations.
+
+## Paths, capabilities, and cleanup
+
+`AppPaths` distinguishes config, data, state, and cache roots and derives the local runtime, setup state, logs, temp artifacts, sessions, recovery journals, and settings paths. Bounded probes report runtime, memory, CPU, disk, file handles, ownership, write/fsync/atomic replace, mmap, xattrs, Qt, fonts, clipboard, input method, screens, and DPI.
+
+Cleanup has authority only inside UNITI temp, session, and rotated-log roots. It recognizes known prefixes or schema records, preserves live/active sessions, applies seven-day temp/session and thirty-day log thresholds, inspects at most 200 entries, and removes at most 100. Recovery journals and search spill files are outside this authority.
+
+## Document ownership model
+
+The lifecycle wraps rather than replaces the established editor engine:
+
+```text
+QApplication / UNITIMainWindow
     -> UNITITextView (custom QAbstractScrollArea)
     -> EditorState
     -> Document
@@ -19,70 +78,16 @@ QApplication / uniti.app.application
     -> ByteSource (mmap preferred, bounded fallback)
 ```
 
-`src/uniti/core` and `src/uniti/regex` do not import PySide6. UI commands mutate content through `EditorState` and `Document`; no `QTextDocument`, `QPlainTextEdit`, or other Qt text store is authoritative.
+`src/uniti/core` and `src/uniti/regex` remain Qt-free. Qt owns presentation and input only; it never becomes the document store.
 
-## Open and decode path
+## Search, save, recovery, and resources
 
-`ByteSource` provides immutable random byte access. Encoding detection selects a supported decoder without exposing a BOM as visible text. Bounded decoded spans retain exact character-to-byte boundaries and malformed-byte annotations. `OffsetMapper`, source line indexing, and edited-document line indexing are progressive so opening cost does not scale with total file length.
+Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, timeout-aware, revision-bound, compactly stored, and delivered to Qt through queued signals. Save remains streaming, atomic, explicit about encoding/EOL conversion, metadata-aware where supported, and protected against external file replacement.
 
-`Document` combines source identity, encoding/EOL metadata, piece-table editing, navigation, history, save policy, recovery integration, and revision tracking behind the main core facade.
+`RecoveryManager` serializes journal durability independently from disposable background work. The application-wide `ResourceManager` remains the single cache/pressure/worker policy owner and now exposes its constructed cache budget and worker count for state and diagnostics.
 
-## Editing and rendering path
+## Self-check and diagnostics
 
-`EditorState` owns cursor, selection, navigation, clipboard mutations, and inserted-newline behavior. `UNITITextView` paints only visible logical lines and horizontal windows from bounded document reads. It renders selections, the cursor, invalid-byte boxes, IME preedit text, and visible match intersections without mirroring the file into Qt.
+`uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, and offscreen Qt/view checks.
 
-Sequential edit-store runs coalesce. Huge-line End/vertical navigation and viewport operations use bounded window APIs rather than materializing complete lines.
-
-## Search path
-
-```text
-FindReplacePanel
-    -> ResourceManager priority workers
-    -> uniti.regex search/replace using regex==2026.5.9
-    -> MatchStore (memory pages with spill storage)
-    -> revision validation
-    -> queued Qt completion signal
-    -> visible match overlays and capture inspector
-```
-
-Search execution is cancellable and timeout-aware. Difficult unbounded-context patterns fail explicitly rather than silently retaining an entire prefix. Find All stores compact results independently of GUI objects. Document edits invalidate revision-bound results. Worker completion is delivered through a queued Qt signal, and the panel remains busy until the GUI thread applies the result.
-
-## Save path
-
-```text
-Document
-    -> external FileIdentity validation
-    -> streaming source/edit segment writer
-    -> optional explicit encoding/EOL conversion
-    -> temporary sibling file + flush/fsync
-    -> atomic replacement
-    -> supported metadata preservation
-```
-
-Untouched source regions may be copied byte-for-byte where safe. Conversion is strict and explicit. Save rejects unsafe overwrites when the source file identity changed externally. Supported platforms preserve relevant file mode/metadata and sync the containing directory after replacement.
-
-## Recovery path
-
-```text
-Document edit listener
-    -> RecoveryManager single-thread executor
-    -> versioned JSONL recovery journal
-    -> bounded durability interval
-    -> explicit flush on save, close, discovery, and shutdown
-```
-
-The typing path queues recovery work without synchronous fsync. Recovery discovery validates source identity before replay and preserves distinct source/output encoding and EOL metadata.
-
-## Resource ownership
-
-One application `ResourceManager` owns cache budgets, pressure state, active/inactive document priority, and the shared `PriorityWorkerPool`. Disposable mapper, index, and search caches register by owner and priority. Pressure escalates immediately and recovers with hysteresis; closing a document evicts only that document's disposable resources. User edits and history are never treated as reclaimable cache.
-
-`UNITIMainWindow` updates active-tab priority. Find/Replace, background EOL analysis, and other long work share the scheduler. `RecoveryManager` has its own serialized durability executor because recovery ordering differs from disposable background computation.
-
-## Application services
-
-`uniti.app.application` constructs one `ResourceManager` and one `RecoveryManager`, creates application paths/settings, launches `UNITIMainWindow`, and shuts services down in `finally` paths. OS-appropriate config, state, cache, recovery, and diagnostics paths are implemented; the planned formal bootstrap/setup-state lifecycle is not yet implemented.
-
-## Platform boundary
-
-PySide6 is optional for importing and testing the core. When installed, the desktop UI provides native clipboard/IME/platform integration. Platform capability differences, such as unsupported extended attributes, are represented explicitly rather than treated as universal guarantees.
+The completed startup snapshot is passed into `UNITIMainWindow` and the diagnostics dialog. Diagnostics consume that snapshot and do not repeat ambient probes.

@@ -86,7 +86,7 @@ class DependencyManager:
         dev: bool = False,
         runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     ) -> None:
-        self.runtime_python = Path(runtime_python).resolve()
+        self.runtime_python = Path(runtime_python).absolute()
         self.source_root = Path(source_root).resolve()
         self.mode = mode
         self.dev = dev
@@ -95,7 +95,7 @@ class DependencyManager:
 
     def install_command(self) -> tuple[str, ...]:
         extras = "ui,dev" if self.dev else "ui"
-        command = [str(self.runtime_python), "-m", "pip", "install"]
+        command = [str(self.runtime_python), "-m", "pip", "install", "--upgrade"]
         if self.mode is BootstrapMode.SOURCE:
             command.append("-e")
         command.append(f"{self.source_root}[{extras}]")
@@ -136,6 +136,10 @@ class DependencyManager:
             }
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
             raise BootstrapError("UNITI dependency metadata is incomplete", 12) from error
+        if versions["uniti-editor"] != self.manifest.version:
+            raise BootstrapError(
+                "installed UNITI version does not match canonical project metadata", 12
+            )
         checked = self._run((str(self.runtime_python), "-m", "pip", "check"))
         if checked.returncode != 0:
             raise BootstrapError("UNITI runtime has broken dependency requirements", 12)

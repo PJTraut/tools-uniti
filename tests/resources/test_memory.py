@@ -6,6 +6,7 @@ from uniti.resources.memory import (
     automatic_cache_target,
     pressure_state,
     probe_memory,
+    _parse_macos_memory,
 )
 
 
@@ -42,3 +43,25 @@ def test_probe_memory_never_returns_negative_values():
     snapshot = probe_memory()
     assert snapshot.physical >= 0
     assert snapshot.available >= 0
+
+
+def test_macos_vm_stat_parser_reports_physical_and_available_bytes():
+    snapshot = _parse_macos_memory(
+        "17179869184\n",
+        """Mach Virtual Memory Statistics: (page size of 16384 bytes)
+Pages free:                               100.
+Pages inactive:                           200.
+Pages speculative:                         25.
+Pages purgeable:                            5.
+Pages active:                             500.
+""",
+    )
+
+    assert snapshot == MemorySnapshot(
+        physical=16 * GIB,
+        available=(100 + 200 + 25 + 5) * 16384,
+    )
+
+
+def test_macos_vm_stat_parser_rejects_incomplete_output():
+    assert _parse_macos_memory("not-a-number", "no page size") is None

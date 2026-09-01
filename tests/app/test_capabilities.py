@@ -6,6 +6,7 @@ from uniti.app.capabilities import (
     probe_runtime,
 )
 from uniti.app.paths import AppPaths
+from uniti.resources import MemorySnapshot
 
 
 def _paths(tmp_path: Path) -> AppPaths:
@@ -61,3 +62,17 @@ def test_runtime_probe_marks_invalid_ownership_marker_unavailable(tmp_path: Path
 
     assert result.status is CapabilityStatus.UNAVAILABLE
     assert "ownership" in result.reason
+
+
+def test_runtime_probe_reports_unknown_when_memory_cannot_be_measured(
+    tmp_path: Path, monkeypatch
+):
+    from uniti.app import capabilities
+
+    paths = _paths(tmp_path)
+    paths.ensure()
+    monkeypatch.setattr(capabilities, "probe_memory", lambda: MemorySnapshot(0, 0))
+
+    result = capabilities.probe_runtime(paths)["memory"]
+
+    assert result.status is CapabilityStatus.UNKNOWN

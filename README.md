@@ -34,6 +34,10 @@ The current development alpha includes:
 - regex-aware Find/Replace fields, compact match index, visible-only match overlays, capture inspector;
 - separate **Reinterpret As** and **Convert on Save** controls;
 - source-aware inserted-EOL policy, EOL controls, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics.
+- explicit Python 3.12+ bootstrap into a UNITI-owned source or application-local virtual environment;
+- ownership markers, exclusive bootstrap locks, dependency fingerprints, explicit repair, and validation-only normal startup;
+- atomic schema-1 setup/settings state, ordered BOOT→READY startup phases, bounded lifecycle logs, and narrow stale-artifact cleanup; and
+- fast/deep self-checks for runtime, dependencies, paths, schemas, resources, filesystem primitives, text fidelity, recovery, and offscreen Qt.
 
 Explicitly deferred beyond this alpha: project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
 
@@ -45,34 +49,58 @@ Explicitly deferred beyond this alpha: project/workspace concepts, plugins, LSP,
 
 The core can be installed/tested without Qt. PySide6 is an optional dependency so the text engine remains headless-testable.
 
-## macOS development install
+## Bootstrap and launch
 
-From the repository:
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e '.[ui,dev]'
-```
-
-Launch UNITI:
+From a source checkout, use an existing Python 3.12 or newer to create or adopt the repository `.venv`, install canonical dependencies there, validate it, and launch UNITI:
 
 ```bash
-uniti
+python3.12 scripts/bootstrap.py --dev
 ```
 
-Or open one or more files directly:
+Bootstrap never installs into the host Python. Source mode owns exactly `<checkout>/.venv`; explicit application-local mode uses the OS application-data runtime:
 
 ```bash
-uniti ~/Documents/example.txt ~/Documents/data.csv
+python3.12 scripts/bootstrap.py --local
 ```
 
-The module launcher is equivalent:
+Repair is explicit. Ordinary `uniti` startup validates but never runs pip or performs dependency/network mutation:
 
 ```bash
-python -m uniti
+python3.12 scripts/bootstrap.py --repair --dev
 ```
+
+Inspect the managed launch command without starting the application:
+
+```bash
+python3.12 scripts/bootstrap.py --no-launch
+```
+
+Once bootstrapped:
+
+```bash
+.venv/bin/uniti
+.venv/bin/uniti ~/Documents/example.txt ~/Documents/data.csv
+.venv/bin/python -m uniti
+```
+
+Bootstrap options include `--local`, `--dev`, `--repair`, `--no-launch`, and `--self-check [--deep] [--json]`. Use `--` before filenames beginning with `-`.
+
+## Runtime self-check
+
+Fast validation:
+
+```bash
+.venv/bin/uniti --self-check
+.venv/bin/uniti --self-check --json
+```
+
+The deep check adds encoding/endianness, EOL, mmap/fallback, invalid-byte, regex replacement, streaming save/reopen, recovery replay, and offscreen Qt/view fixtures:
+
+```bash
+QT_QPA_PLATFORM=offscreen .venv/bin/uniti --self-check --deep --json
+```
+
+Lifecycle exit codes are `0` success, `1` internal error, `2` usage, `10` runtime Python, `11` environment ownership, `12` dependencies, `13` paths/state/schema, `14` functional self-check, and `15` Qt/platform.
 
 ## Headless alpha smoke test
 
@@ -93,20 +121,21 @@ A successful run returns JSON with `"ok": true`.
 ## Test suite
 
 ```bash
-PYTHONPATH=src pytest
-python -m compileall -q src scripts tests
+.venv/bin/python -m pytest
+.venv/bin/python -m compileall -q src scripts tests
 ```
 
 Qt runtime tests run automatically when PySide6 is installed; otherwise those tests are explicitly skipped while all core/app contracts continue to run.
 
-## macOS alpha runtime checklist
+## Alpha runtime checklist
 
 After installing `.[ui,dev]` on the Mac, run:
 
 ```bash
-PYTHONPATH=src pytest -q
-QT_QPA_PLATFORM=offscreen PYTHONPATH=src pytest -q tests/test_a15_desktop_alpha_acceptance.py tests/ui
-uniti
+.venv/bin/python -m pytest -q
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/test_a16_startup_bootstrap_acceptance.py tests/ui
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m uniti --self-check --deep --json
+.venv/bin/uniti
 ```
 
 Manual checks: open/save UTF-8, Windows-1252, UTF-16 LE/BE and UTF-32 LE/BE files; verify LF/CRLF/CR insertion and conversion; Cut/Copy/Paste; CJK IME composition; regex Find/Replace and capture groups; invalid-byte boxes/inspector; recovery after an intentional unclean exit; and horizontal navigation on a very long line.
@@ -125,5 +154,8 @@ Manual checks: open/save UTF-8, Windows-1252, UTF-16 LE/BE and UTF-32 LE/BE file
 10. Search-result count does not dictate GUI object count.
 11. Save is streaming, atomic, and external-change conscious.
 12. `uniti.core` remains independent of PySide6.
+13. Bootstrap mutates only an ownership-validated UNITI virtual environment.
+14. Normal startup never invokes pip or repairs dependencies.
+15. Startup phase order, state persistence, logging, cleanup, and failure codes are centralized.
 
 > **A small editor built on a serious text engine.**

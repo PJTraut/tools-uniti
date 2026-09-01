@@ -1,73 +1,106 @@
 # UNITI Current Development Workflow
 
 Date: 2026-09-01
+Version: `v0.001a16` / `0.1a16`
 
-## Requirements
+## Requirements and policy
 
-- Python 3.12 or newer
-- `regex==2026.5.9`
-- PySide6 6.8 or newer for the desktop UI
-- pytest 9 or newer for development tests
+- Python 3.12 or newer must already be installed.
+- `regex==2026.5.9` is the authoritative regex engine.
+- PySide6 6.8 or newer is required for the desktop UI.
+- pytest 9 or newer is selected by the development extra.
+- Bootstrap may mutate only a verified UNITI-owned virtual environment.
+- Ordinary UNITI startup never invokes pip, repairs dependencies, or installs into the host Python.
 
-The repository currently relies on a manually created source-development `.venv`. The automated host-Python discovery, UNITI-owned environment repair, startup-state persistence, and self-check lifecycle described by `v0.001a16` are planned, not yet implemented.
+## Source bootstrap
 
-## Source environment
-
-```bash
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e '.[ui,dev]'
-```
-
-Dependencies belong in this repository-owned virtual environment, never in the host/system Python package environment.
-
-## Launch
+From the repository root:
 
 ```bash
-uniti
-uniti ~/Documents/example.txt ~/Documents/data.csv
-python -m uniti
+python3.12 scripts/bootstrap.py --dev
 ```
+
+This creates or safely adopts exactly `.venv`, installs `.[ui,dev]` through `.venv/bin/python -m pip`, validates imports and `pip check`, writes ownership/setup state, and launches UNITI. Explicit alternatives:
+
+```bash
+python3.12 scripts/bootstrap.py --no-launch --dev
+python3.12 scripts/bootstrap.py --repair --dev
+python3.12 scripts/bootstrap.py --self-check --deep --json
+```
+
+Application-local mode is explicit:
+
+```bash
+python3.12 scripts/bootstrap.py --local
+```
+
+An existing unmarked application-local target is refused. UNITI never deletes or clears a managed environment automatically.
+
+## Launch and CLI
+
+```bash
+.venv/bin/uniti
+.venv/bin/uniti file.txt other.csv
+.venv/bin/python -m uniti
+.venv/bin/uniti --version
+```
+
+`--deep` and `--json` require `--self-check` on the application CLI. Bootstrap `--deep` implies self-check. Use `--` before a filename beginning with `-`.
+
+## Self-check
+
+```bash
+.venv/bin/uniti --self-check
+.venv/bin/uniti --self-check --json
+QT_QPA_PLATFORM=offscreen .venv/bin/uniti --self-check --deep --json
+```
+
+Exit codes:
+
+| Code | Meaning |
+|---:|---|
+| `0` | success |
+| `1` | unexpected internal failure |
+| `2` | CLI usage error |
+| `10` | unsupported runtime Python |
+| `11` | unsafe or mismatched runtime ownership |
+| `12` | dependency failure |
+| `13` | path, persisted state, or schema failure |
+| `14` | functional self-check failure |
+| `15` | GUI/Qt/platform failure |
 
 ## Verification
 
-Full suite and Python compilation:
-
 ```bash
-PYTHONPATH=src pytest
-python -m compileall -q src scripts tests
+.venv/bin/python -m pytest -q
+.venv/bin/python -m compileall -q src scripts tests
+.venv/bin/python scripts/alpha_smoke.py
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m uniti --self-check --deep --json
+git diff --check
 ```
 
-Qt offscreen desktop coverage:
+Qt-focused coverage:
 
 ```bash
-QT_QPA_PLATFORM=offscreen PYTHONPATH=src pytest -q tests/test_a15_desktop_alpha_acceptance.py tests/ui
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
+  tests/test_a16_startup_bootstrap_acceptance.py tests/app tests/ui
 ```
 
-Headless functional smoke workflow:
+Before completion, verify that `src/uniti/core`, `src/uniti/regex`, and `src/uniti/resources` do not import PySide6, that the working tree is clean, and that remote integration is a normal fast-forward-safe push.
 
-```bash
-PYTHONPATH=src python scripts/alpha_smoke.py
-```
+## Lifecycle files
 
-Retain its generated fixtures when investigating a failure:
+- Runtime ownership: `<managed-environment>/.uniti-runtime.json`
+- Setup/startup state: `AppPaths.setup_state_file`
+- Settings: `AppPaths.settings_file`
+- Startup log: `AppPaths.startup_log_file`, rotated at 5 MiB with ten rotations
+- Sessions: `AppPaths.session_dir/<session-id>/session.json`
+- Recovery: `AppPaths.recovery_dir`; never removed by stale cleanup
 
-```bash
-PYTHONPATH=src python scripts/alpha_smoke.py --workdir /tmp/uniti-smoke
-```
+Malformed supported state/settings are preserved as timestamped `.invalid` siblings. Future schemas are left untouched and produce exit code 13.
 
-Before a completion claim, run tests proportionate to the change, `git diff --check`, and import-boundary checks confirming that `src/uniti/core` and `src/uniti/regex` do not import PySide6.
+## Versioning and documentation
 
-## Versioning
+Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a16` is completed without creating a tag under the approved integration instruction.
 
-- Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`.
-- PEP 440 package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`.
-- Tags are immutable milestone records.
-- Version metadata advances only with the milestone implementation and verification gate.
-
-Current metadata remains `v0.001a15` / `0.1a15`; the next planned value is `v0.001a16` / `0.1a16`.
-
-## Documentation lifecycle
-
-Use the ordered [Roadmap](../02_plans/ROADMAP.md) and active milestone plan for future work. Once a milestone is verified, move its plan to [Implemented](../03_implemented/README.md), update affected current-state documents, and refresh the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
+Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.

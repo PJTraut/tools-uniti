@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -18,7 +19,7 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 [project]
 name = "uniti-editor"
-version = "0.1a15"
+version = "0.1a16"
 requires-python = ">=3.12"
 dependencies = ["regex==2026.5.9"]
 [project.optional-dependencies]
@@ -55,7 +56,7 @@ def successful_runner(observed: list[tuple[str, ...]]):
         observed.append(invocation)
         if "-c" in invocation:
             stdout = json.dumps(
-                {"uniti-editor": "0.1a15", "regex": "2026.5.9", "PySide6": "6.9.2"}
+                {"uniti-editor": "0.1a16", "regex": "2026.5.9", "PySide6": "6.9.2"}
             )
         else:
             stdout = "No broken requirements found.\n"
@@ -68,7 +69,7 @@ def test_manifest_reads_canonical_base_ui_and_dev_groups(source_root: Path):
     manifest = DependencyManifest.load(source_root)
 
     assert manifest.project_name == "uniti-editor"
-    assert manifest.version == "0.1a15"
+    assert manifest.version == "0.1a16"
     assert manifest.base == ("regex==2026.5.9",)
     assert manifest.ui == ("PySide6>=6.8",)
     assert manifest.dev == ("pytest>=9",)
@@ -96,6 +97,20 @@ def test_install_command_uses_only_runtime_python(
     assert command[-1] == f"{source_root.resolve()}{extra}"
 
 
+def test_runtime_python_symlink_is_not_resolved_to_host_interpreter(source_root: Path):
+    runtime = source_root / ".venv" / "bin" / "python"
+    runtime.parent.mkdir(parents=True)
+    runtime.symlink_to(Path(sys.executable).resolve())
+
+    manager = DependencyManager(
+        runtime,
+        source_root,
+        mode=BootstrapMode.SOURCE,
+    )
+
+    assert manager.install_command()[0] == str(runtime.absolute())
+
+
 def test_healthy_matching_marker_uses_validation_only_fast_path(source_root, marker):
     observed: list[tuple[str, ...]] = []
     manager = DependencyManager(
@@ -104,7 +119,7 @@ def test_healthy_matching_marker_uses_validation_only_fast_path(source_root, mar
         mode=BootstrapMode.SOURCE,
         runner=successful_runner(observed),
     )
-    versions = {"uniti-editor": "0.1a15", "regex": "2026.5.9", "PySide6": "6.9.2"}
+    versions = {"uniti-editor": "0.1a16", "regex": "2026.5.9", "PySide6": "6.9.2"}
     matching = replace(
         marker,
         healthy=True,
@@ -126,7 +141,7 @@ def test_repair_installs_even_when_marker_matches(source_root, marker):
         mode=BootstrapMode.SOURCE,
         runner=successful_runner(observed),
     )
-    versions = {"uniti-editor": "0.1a15", "regex": "2026.5.9", "PySide6": "6.9.2"}
+    versions = {"uniti-editor": "0.1a16", "regex": "2026.5.9", "PySide6": "6.9.2"}
     matching = replace(
         marker,
         healthy=True,
@@ -147,7 +162,7 @@ def test_broken_pip_check_is_dependency_failure(source_root, marker):
                 command,
                 0,
                 json.dumps(
-                    {"uniti-editor": "0.1a15", "regex": "2026.5.9", "PySide6": "6.9.2"}
+                    {"uniti-editor": "0.1a16", "regex": "2026.5.9", "PySide6": "6.9.2"}
                 ),
                 "",
             )
@@ -164,5 +179,35 @@ def test_broken_pip_check_is_dependency_failure(source_root, marker):
 
     with pytest.raises(BootstrapError) as caught:
         manager.ensure(marker=marker, repair=True)
+
+    assert caught.value.exit_code == 12
+
+
+def test_installed_uniti_metadata_must_match_canonical_project_version(source_root, marker):
+    observed: list[tuple[str, ...]] = []
+
+    def stale_runner(command, **kwargs):
+        invocation = tuple(str(part) for part in command)
+        observed.append(invocation)
+        if "-c" in invocation:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {"uniti-editor": "0.1a15", "regex": "2026.5.9", "PySide6": "6.9.2"}
+                ),
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    manager = DependencyManager(
+        source_root / ".venv/bin/python",
+        source_root,
+        mode=BootstrapMode.SOURCE,
+        runner=stale_runner,
+    )
+
+    with pytest.raises(BootstrapError, match="version") as caught:
+        manager.validate()
 
     assert caught.value.exit_code == 12

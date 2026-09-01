@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import re
+import subprocess
+import sys
 from dataclasses import dataclass
 from enum import Enum
 
@@ -79,10 +82,65 @@ def _probe_with_sysconf() -> MemorySnapshot | None:
     )
 
 
+def _parse_macos_memory(
+    physical_output: str,
+    vm_stat_output: str,
+) -> MemorySnapshot | None:
+    try:
+        physical = int(physical_output.strip())
+    except ValueError:
+        return None
+    page_match = re.search(r"page size of (\d+) bytes", vm_stat_output)
+    if physical <= 0 or page_match is None:
+        return None
+    page_size = int(page_match.group(1))
+    counts: dict[str, int] = {}
+    for name, raw_value in re.findall(r"^Pages ([a-z ]+):\s+(\d+)\.", vm_stat_output, re.MULTILINE):
+        counts[name.strip()] = int(raw_value)
+    required = ("free", "inactive", "speculative", "purgeable")
+    if not all(name in counts for name in required):
+        return None
+    available_pages = sum(counts[name] for name in required)
+    available = min(physical, available_pages * page_size)
+    return MemorySnapshot(physical=physical, available=available)
+
+
+def _probe_with_macos() -> MemorySnapshot | None:
+    if sys.platform != "darwin":
+        return None
+    try:
+        physical = subprocess.run(
+            ["sysctl", "-n", "hw.memsize"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+            shell=False,
+        )
+        virtual = subprocess.run(
+            ["vm_stat"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=5,
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if physical.returncode != 0 or virtual.returncode != 0:
+        return None
+    return _parse_macos_memory(physical.stdout, virtual.stdout)
+
+
 def probe_memory(*, reclaimable_cache: int = 0) -> MemorySnapshot:
     """Probe host memory without making psutil a hard runtime dependency."""
 
-    snapshot = _probe_with_psutil() or _probe_with_sysconf() or MemorySnapshot(0, 0)
+    snapshot = (
+        _probe_with_psutil()
+        or _probe_with_macos()
+        or _probe_with_sysconf()
+        or MemorySnapshot(0, 0)
+    )
     return MemorySnapshot(
         physical=snapshot.physical,
         available=snapshot.available,

@@ -40,17 +40,86 @@ def test_project_declares_uniti_console_entrypoint():
     assert project["project"]["scripts"]["uniti"] == "uniti.app.application:main"
 
 
-def test_application_constructs_one_resource_manager_for_desktop_runtime():
-    from pathlib import Path
+def test_startup_constructs_one_resource_manager_and_registers_shutdown(
+    tmp_path, monkeypatch
+):
+    from uniti import resources as resource_module
+    from uniti.app import application
+    from uniti.app.paths import AppPaths
+    from uniti.app.startup import StartupContext, StartupPhase
 
-    source = Path("src/uniti/app/application.py").read_text()
-    assert "ResourceManager" in source
-    assert "resource_manager=resources" in source
+    instances = []
+
+    class FakePressure:
+        value = "green"
+
+    class FakeResourceManager:
+        cache_budget_bytes = 123
+        worker_count = 2
+        pressure = FakePressure()
+
+        def __init__(self, *, initial_snapshot):
+            self.initial_snapshot = initial_snapshot
+            self.shutdown_calls = []
+            instances.append(self)
+
+        def shutdown(self, *, wait=True):
+            self.shutdown_calls.append(wait)
+
+    monkeypatch.setattr(resource_module, "ResourceManager", FakeResourceManager)
+    paths = AppPaths(
+        tmp_path / "config",
+        tmp_path / "data",
+        tmp_path / "state",
+        tmp_path / "cache",
+    )
+    context = StartupContext.create(paths, session_id="test-session")
+    callback = application._startup_callbacks(
+        application.ApplicationRequest(), tmp_path / "marker.json"
+    )[StartupPhase.RESOURCE_CALIBRATION]
+
+    callback(context)
+    context.cleanup()
+
+    assert len(instances) == 1
+    assert context.data["resource_manager"] is instances[0]
+    assert instances[0].shutdown_calls == [True]
 
 
-def test_application_finally_shuts_down_recovery_and_resource_services():
-    from pathlib import Path
+def test_startup_registers_recovery_service_shutdown(tmp_path, monkeypatch):
+    from uniti.app import application
+    from uniti.app import recovery_manager as recovery_module
+    from uniti.app.paths import AppPaths
+    from uniti.app.startup import StartupContext, StartupPhase
 
-    source = Path("src/uniti/app/application.py").read_text()
-    assert "recovery_manager.shutdown()" in source
-    assert "resources.shutdown(wait=True)" in source
+    instances = []
+
+    class FakeRecoveryManager:
+        def __init__(self, directory):
+            self.directory = directory
+            self.shutdown_calls = 0
+            instances.append(self)
+
+        def discover(self):
+            return ()
+
+        def shutdown(self):
+            self.shutdown_calls += 1
+
+    monkeypatch.setattr(recovery_module, "RecoveryManager", FakeRecoveryManager)
+    paths = AppPaths(
+        tmp_path / "config",
+        tmp_path / "data",
+        tmp_path / "state",
+        tmp_path / "cache",
+    )
+    context = StartupContext.create(paths, session_id="test-session")
+    callback = application._startup_callbacks(
+        application.ApplicationRequest(), tmp_path / "marker.json"
+    )[StartupPhase.RECOVERY_DISCOVERY]
+
+    callback(context)
+    context.cleanup()
+
+    assert len(instances) == 1
+    assert instances[0].shutdown_calls == 1

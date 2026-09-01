@@ -25,6 +25,6 @@ Python bundling and polished `.app`/`.exe` installers remain separate parked dec
 
 ## Affected records
 
-- [v0.001a16 Startup/Bootstrap](../02_plans/v0.001a16-startup-bootstrap.md)
+- [Implemented v0.001a16 Startup/Bootstrap](../03_implemented/milestones/2026-09-01-uniti-v0.001a16-startup-bootstrap.md)
 - [Current Development Workflow](../01_current/DEVELOPMENT.md)
 - [Parked Capability Catalog](../04_parked/CATALOG.md)

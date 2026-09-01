@@ -2,6 +2,8 @@ import json
 import sys
 from pathlib import Path
 
+import uniti
+
 from uniti.app.paths import AppPaths
 from uniti.app.self_check import (
     CheckResult,
@@ -114,3 +116,16 @@ def test_invalid_runtime_marker_is_environment_failure(tmp_path: Path):
     runtime = next(result for result in report.results if result.name == "runtime")
     assert runtime.status is CheckStatus.FAIL
     assert runtime.exit_code is ExitCode.ENVIRONMENT
+
+
+def test_installed_metadata_mismatch_is_dependency_failure(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(uniti, "__version__", "9.9")
+    runner = SelfCheckRunner(
+        _paths(tmp_path), marker_path=_marker(tmp_path), runtime_python=Path(sys.executable)
+    )
+
+    report = runner.run()
+
+    dependency = next(result for result in report.results if result.name == "dependencies")
+    assert dependency.status is CheckStatus.FAIL
+    assert dependency.exit_code is ExitCode.DEPENDENCIES

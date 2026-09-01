@@ -136,6 +136,12 @@ def _normal_dependencies() -> dict[str, str]:
             ExitCode.DEPENDENCIES,
             "UNITI regex dependency version does not match the release",
         )
+    if versions["uniti-editor"] != uniti.__version__:
+        raise StartupFailure(
+            StartupPhase.DEPENDENCY_VALIDATION,
+            ExitCode.DEPENDENCIES,
+            "installed UNITI metadata does not match the running release",
+        )
     try:
         pyside_parts = tuple(int(part) for part in versions["PySide6"].split(".")[:2])
     except ValueError as error:
