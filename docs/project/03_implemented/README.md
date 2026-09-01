@@ -4,14 +4,16 @@ This directory contains completed, verified historical work. In UNITI project gr
 
 ## Contents
 
-- [`milestones/`](milestones/) retains completed implementation plans.
+- [`milestones/`](milestones/) retains completed milestone and workstream implementation plans.
 - [`designs/`](designs/) retains the design and specification records that governed those milestones.
 
 ## Interpretation
 
 Directory placement means the work is implemented. Completion is established by repository code and tests, Git history, milestone completion commits, tags where applicable, and recorded verification evidence.
 
-Historical plans may contain unchecked task boxes because they are retained as originally authored execution records. Those stale checklist marks do not move an implemented milestone back into the outstanding plan queue.
+Historical plans may contain unchecked task boxes because they are retained as originally authored execution records. Those stale checklist marks do not move implemented work back into the outstanding plan queue.
+
+An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. The a16 startup/bootstrap records are one such implemented foundation; `v0.001a16` remains active until the separate Usable Test Alpha gate passes.
 
 Implemented records never return to `02_plans`. A correction, extension, or replacement receives a new plan and, when it changes a consequential choice, a new or superseding architecture decision record.
 

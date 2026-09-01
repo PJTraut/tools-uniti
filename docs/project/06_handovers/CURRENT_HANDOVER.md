@@ -8,61 +8,53 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
 - Canonical branch: `main`
-- Implemented milestone: `v0.001a16` startup/bootstrap/initialization
-- Product completion commit: `8bde00f638097f920a7f13973db2cab1a1af59a0`
+- Baseline when a16 usability work resumed: `052f733`
+- Active milestone: `v0.001a16` — Usable Test Alpha
 - Current display/package metadata: `v0.001a16` / `0.1a16`
+- Latest implemented a16 workstream: startup/bootstrap/initialization at `8bde00f`
 - Latest immutable tag: `v0.001a15` at `10f419e`
-- a16 tag: none, by explicit instruction
-- Integration state: implementation committed and verified locally; remote ancestry and normal push remain
+- a16 tag: none
 
-The `v0.001a15` tag must not move. Its artifacts remain exact historical products of `10f419e` and do not include the post-tag Qt fix or a16.
+The working tree contains active a16 work, including the approved root macOS/Windows launchers and this project-record reconciliation. Inspect `git status` rather than assuming a clean tree. Preserve those changes when continuing.
 
 ## Canonical records
 
-- [Status](../01_current/STATUS.md)
-- [Scope](../01_current/SCOPE.md)
-- [Architecture](../01_current/ARCHITECTURE.md)
+- [Current status](../01_current/STATUS.md)
+- [Current scope](../01_current/SCOPE.md)
+- [Current architecture](../01_current/ARCHITECTURE.md)
 - [Development workflow](../01_current/DEVELOPMENT.md)
 - [Ordered roadmap](../02_plans/ROADMAP.md)
-- [Implemented a16 milestone](../03_implemented/milestones/2026-09-01-uniti-v0.001a16-startup-bootstrap.md)
-- [Implemented a16 design](../03_implemented/designs/2026-09-01-uniti-v0.001a16-startup-bootstrap-design.md)
-- [Implemented a16 execution plan](../03_implemented/milestones/2026-09-01-uniti-v0.001a16-startup-bootstrap-implementation.md)
+- [Active a16 exit contract](../02_plans/v0.001a16-usable-test-alpha.md)
+- [Active a16 implementation plan](../02_plans/v0.001a16-implementation-plan.md)
+- [Implemented startup/bootstrap workstream](../03_implemented/milestones/2026-09-01-uniti-v0.001a16-startup-bootstrap.md)
 - [Parked capabilities](../04_parked/CATALOG.md)
 - [Architecture decisions](../05_decisions/README.md)
-- [Post-a15 historical snapshot](history/2026-08-31-v0.001a15-post-hotfix.md)
-- [a16 completion snapshot](history/2026-09-01-v0.001a16-complete.md)
+- [Corrected startup-foundation snapshot](history/2026-09-01-v0.001a16-startup-foundation.md)
 
-## Implemented lifecycle
+## Active work
 
-The repository now contains the Python compatibility shim, Qt-free bootstrap package, managed runtime marker/lock safety, dependency install/validation/fingerprints, schema-1 setup/settings persistence, ordered startup coordinator, capability and cleanup services, fast/deep self-check, pre-Qt application CLI, and startup diagnostics integration.
+a16 exists to make UNITI usable for daily editing/search dogfooding, not to add more architecture. Required work includes core editor commands/navigation, 50-transaction document Undo, independent 50-step Find and Replace histories, editor and F/R zoom, soft wrap, reload/revert, floating modeless Find/Replace, literal/regex mode separation, capture-only reports, atomic Replace All, assignable persisted hotkeys, UI-state persistence, status indicators, and Western/Cyrillic fixed-pitch fonts.
 
-Source bootstrap uses exactly `.venv`; local mode is explicit. Bootstrap mutation is limited to ownership-validated UNITI environments. Normal startup validates imports/versions and never invokes pip.
+No user manual or feature documentation is required during this milestone. Maintain only current architecture, durable decisions/principles, project grammar, planning state, and handover continuity.
 
-## Verification state
+## Queue
 
-Every implementation slice passed its focused red/green tests. Release closure at `8bde00f` produced:
+After a16, implement in sequence:
 
-```text
-357 passed, 1 skipped
-```
+1. `v0.001a17` Text Integrity Alpha;
+2. `v0.001a18` Large-File Alpha;
+3. `v0.001a19` Regex Intelligence Alpha;
+4. `v0.001a20` Recovery & Session Alpha;
+5. `v0.001a21` Cross-Platform Alpha;
+6. `v0.001a22` Dogfood / Performance Alpha; and
+7. `v0.001a23` Beta Candidate.
 
-The a16 acceptance contract reported `3 passed`. Managed source bootstrap, matching installed/imported `0.1a16` metadata, compileall, headless smoke, deep offscreen self-check, import boundaries, Markdown links, and `git diff --check` passed.
+## Verification state and acceptance gate
 
-The sole skip was `tests/core/test_save.py:141`, where extended attributes are unsupported by the active Python/platform.
+The historical startup/bootstrap closure recorded `357 passed, 1 skipped`, plus compile, smoke, deep self-check, import-boundary, link, and diff checks. Those results prove that implemented workstream only; active a16 changes require fresh verification.
 
-During verification, a now-fixed symlink-resolution defect caused an early bootstrap run to invoke the base Python executable instead of `.venv/bin/python`. Commit `8bde00f` preserves the managed interpreter path, checks installed UNITI metadata against canonical metadata, and includes a symlink regression. The base Python currently reports an editable `uniti-editor 0.1a16`; it was not uninstalled because its pre-verification ownership/state was not established. Future bootstrap runs are confined to the managed interpreter.
-
-## Active and queued work
-
-There is no approved active or queued product milestone. The roadmap is intentionally empty. Parked capabilities remain outside current architecture/scope and carry no sequence or version commitment.
-
-## Remaining integration gate
-
-1. commit this verification record and historical snapshot;
-2. re-run the committed-tree verification;
-3. fetch `origin` and verify `origin/main` is an ancestor of local `main`; and
-4. push `main` normally without force or tag creation.
+a16 does not freeze until the full automated suite, deep self-check, and macOS GUI smoke are green; real editing/search dogfooding has found no remaining blocking/basic usability defect; and no known data-loss or text-integrity bug remains.
 
 ## Next safe action
 
-Complete the remote ancestry check and approved normal push. Do not begin a new milestone until it is explicitly approved and sequenced in the roadmap.
+Continue the [a16 implementation plan](../02_plans/v0.001a16-implementation-plan.md) test-first. Do not promote a16 to `03_implemented`, tag it, or push milestone completion until every acceptance gate has current evidence.

@@ -10,6 +10,7 @@ UNITI uses a controlled vocabulary so status and directory placement mean the sa
 |---|---|
 | `current` | Implemented and authoritative at the canonical development baseline. Current never means work that is merely underway. |
 | `milestone` | A bounded, versioned delivery unit with a goal, scope, acceptance criteria, and verification gate. |
+| `workstream` | A bounded implementation unit inside a milestone. A workstream may be implemented while its parent milestone remains active. |
 | `planned` | Approved for inclusion in the ordered implementation queue. Planned is a commitment state, not a synonym for idea. |
 | `active` | The one planned milestone presently being designed or implemented. |
 | `queued` | A planned milestone waiting behind the active milestone in explicit sequence. |
@@ -28,6 +29,8 @@ approved idea -> queued -> active -> verified -> implemented
 ```
 
 Normally exactly one milestone is `active`. Reordering `queued` milestones requires an explicit roadmap edit. After verification, the plan moves from `02_plans` to `03_implemented`; current-state documentation is then updated to describe the delivered behavior.
+
+A milestone may contain several workstreams. Each verified workstream moves to `03_implemented` immediately and becomes part of current reality, but the milestone remains `active` until every exit criterion and acceptance gate for the complete milestone passes. A completed workstream never implies completion of its parent milestone.
 
 `Implemented` is the only canonical status and folder term for completed historical work. The project does not use `implemented_archive`, `archive`, or `archived` as directory or lifecycle names.
 
@@ -55,5 +58,6 @@ A handover records the baseline, verification evidence, active plan position, bl
 - Use lowercase snake_case for numbered folder names.
 - Use uppercase descriptive filenames for stable owner documents such as `STATUS.md` and `ROADMAP.md`.
 - Use lowercase milestone filenames beginning with the display version, such as `v0.001a16-startup-bootstrap.md`.
+- Add a precise workstream name after the version when a record covers only part of a milestone.
 - Use `ADR-NNNN-short-title.md` for architecture decisions.
 - Use an ISO date and milestone/baseline description for historical handovers.

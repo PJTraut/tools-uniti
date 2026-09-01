@@ -28,6 +28,29 @@ python3.12 scripts/bootstrap.py --repair --dev
 python3.12 scripts/bootstrap.py --self-check --deep --json
 ```
 
+Root launchers provide the normal double-click path on macOS and Windows while retaining the same bootstrap ownership and validation rules:
+
+```bash
+./uniti.command
+./uniti.command file.txt
+```
+
+Windows Command Prompt (`cmd.exe`):
+
+```bat
+uniti.bat
+uniti.bat file.txt
+```
+
+PowerShell:
+
+```powershell
+.\uniti.bat
+.\uniti.bat file.txt
+```
+
+The launchers preserve the caller's working directory, forward all arguments, and return the bootstrap/application exit code. Their default install is `.[ui]`; pass `--dev` to include the development dependency group.
+
 Application-local mode is explicit:
 
 ```bash
@@ -101,6 +124,6 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a16` is completed without creating a tag under the approved integration instruction.
+Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a16` remains active without a tag; the startup/bootstrap foundation is an implemented workstream within it.
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.

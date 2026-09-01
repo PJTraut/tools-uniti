@@ -52,8 +52,26 @@ These capabilities are intentionally outside the lean editor boundary described 
 - **Known dependencies/risks:** parser choice, grammar distribution, multiline incremental state, huge-file degradation, and memory-pressure integration.
 - **Re-evaluation trigger:** stable rendering/cache interfaces and approval of a bounded language-highlighting subset.
 
-## Polished platform installers and embedded runtimes
+## CJK typography specialization
 
-- **Why parked:** The current startup direction requires an existing host Python and deliberately excludes embedded Python plus signed `.app`/`.exe` distribution.
+- **Why parked:** a16 guarantees Western/Latin and Cyrillic fixed-pitch coverage only; specialized CJK shaping, fallback, column-width, and typography policy needs a dedicated evidence base.
+- **Known dependencies/risks:** font discovery, fallback chains, ambiguous-width characters, shaping, vertical metrics, platform differences, and large-file rendering cost.
+- **Re-evaluation trigger:** tested CJK workflows demonstrate requirements that the general Unicode text engine and installed fonts cannot meet.
+
+## Elaborate preferences UI
+
+- **Why parked:** a16 needs persisted operational state and hotkey control, not a broad preferences architecture or large settings surface.
+- **Known dependencies/risks:** schema ownership, discoverability, reset behavior, migration, platform conventions, and premature commitment to unstable options.
+- **Re-evaluation trigger:** repeated stable settings accumulate beyond focused menus and controls.
+
+## Large multi-document and session architecture
+
+- **Why parked:** tabs needed for current testing already exist, but automatic restoration and complex session/workspace ownership would expand scope before document scale and recovery are proven.
+- **Known dependencies/risks:** resource prioritization, recovery identity, external-file changes, window topology, and startup latency.
+- **Re-evaluation trigger:** a18-a20 evidence shows a bounded multi-document/session design is required for normal use.
+
+## Polished installers and embedded runtimes
+
+- **Why parked:** a23 requires reproducible executable packaging, but the current startup direction still excludes embedded Python, signed polished `.app`/`.exe` installers, notarized distribution, shortcuts, and update delivery.
 - **Known dependencies/risks:** runtime bundling, code signing, notarization, Windows signing, update delivery, platform packaging, licensing, and release infrastructure.
-- **Re-evaluation trigger:** the host-Python bootstrap lifecycle is implemented and runtime evidence supports a separate packaging architecture decision.
+- **Re-evaluation trigger:** cross-platform and beta-candidate evidence supports a separate distribution architecture decision beyond reproducible packaging.

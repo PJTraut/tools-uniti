@@ -5,7 +5,7 @@ Version: `v0.001a16` / `0.1a16`
 
 ## Product boundary
 
-UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
+UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service. Current scope describes implemented behavior only; the remaining a16 usability contract stays in `02_plans` until verified.
 
 ## Included lifecycle capabilities
 
@@ -52,8 +52,12 @@ UNITI is a focused, cross-platform power text editor for Unicode correctness, ex
 15. Capability checks and cleanup remain bounded and confined to UNITI-owned paths.
 16. No deliberate 1 GiB ceiling is introduced; at least 1 GiB remains the design target.
 
-## Outside current scope
+## Approved but not yet current
 
-Host-Python installation, embedded Python, signed installers, shortcuts, updater, accounts, telemetry, network-dependent normal startup, persistent tab restoration, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, and polished platform installers remain outside current scope.
+The active a16 usability work and queued a17-a23 milestones are approved future changes, not implemented current scope. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+
+## Parked outside the approved roadmap
+
+Host-Python installation, embedded Python, signed polished installers, updater, accounts, telemetry, network-dependent normal startup, persistent multi-document/session architecture beyond testing needs, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, CJK typography specialization, and elaborate preferences remain outside the approved roadmap.
 
 See the [Parked Capability Catalog](../04_parked/CATALOG.md) for rationale and re-evaluation triggers.

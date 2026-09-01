@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
 Date: 2026-09-01
-Baseline: `v0.001a16` implementation series on `main`
+Baseline: implemented startup/bootstrap foundation within the active `v0.001a16` series on `main`
 
 ## Lifecycle boundary
 
@@ -91,3 +91,7 @@ Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, time
 `uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, and offscreen Qt/view checks.
 
 The completed startup snapshot is passed into `UNITIMainWindow` and the diagnostics dialog. Diagnostics consume that snapshot and do not repeat ambient probes.
+
+## Active-plan boundary
+
+The floating Find/Replace utility, bounded 50-step editor and field histories, zoom/wrap behavior, configurable hotkeys, additional navigation, reload/revert, and their persisted UI state are approved a16 changes but are not part of this current architecture until implemented and verified. Their governing boundaries are recorded in the [active a16 plan](../02_plans/v0.001a16-usable-test-alpha.md) and [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md).

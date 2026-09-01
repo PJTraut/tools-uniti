@@ -41,11 +41,11 @@ docs/project/
 │   └── DEVELOPMENT.md
 ├── 02_plans/
 │   ├── ROADMAP.md
-│   └── [approved active and queued milestone plans]
+│   └── [approved active and queued milestone/workstream plans]
 ├── 03_implemented/
 │   ├── README.md
 │   ├── milestones/
-│   │   └── [implemented milestone plans]
+│   │   └── [implemented milestone and workstream plans]
 │   └── designs/
 │       └── [implemented design and specification records]
 ├── 04_parked/
@@ -97,21 +97,19 @@ Contains every approved, outstanding milestone and no completed or merely specul
 - `ROADMAP.md` is the authoritative ordered queue.
 - Exactly one milestone may normally be `active`.
 - Remaining approved milestones are `queued` in explicit sequence.
-- Each milestone has its own implementation plan.
+- Each milestone has a governing scope record and one or more executable workstream plans.
 - Reordering the queue is an explicit roadmap change; filenames do not need renumbering.
-
-The first plan created by this migration is `v0.001a16-startup-bootstrap.md`, derived from the approved startup/bootstrap/initialization direction in the 2026-08-31 handover.
 
 ### `03_implemented`
 
 Contains completed historical records. The name `implemented` inherently includes archival meaning.
 
-- `milestones/` contains completed implementation plans.
+- `milestones/` contains completed milestone and workstream implementation plans.
 - `designs/` contains the design/specification records that governed implemented work.
 - Old unchecked checklist items may remain as authored history. Directory placement and implementation evidence determine status.
 - Records may receive mechanical link corrections or an implementation-status header during migration, but their historical intent is preserved.
 
-A plan enters `03_implemented` only after its acceptance criteria and proportionate verification have passed. A tag is useful evidence but is not required when Git history and verification establish completion.
+A plan enters `03_implemented` only after its own acceptance criteria and proportionate verification have passed. Completing a workstream does not complete its parent milestone. A tag is useful evidence but is not required when Git history and verification establish completion.
 
 ### `04_parked`
 
@@ -141,7 +139,7 @@ Not every implementation detail needs a decision record. Decisions exist where f
 Maintains continuity between development sessions without becoming a competing specification.
 
 - `CURRENT_HANDOVER.md` is the single replaceable continuation snapshot.
-- `history/` contains immutable snapshots captured at milestone completion or another meaningful project boundary.
+- `history/` contains snapshots captured at milestone completion or another meaningful project boundary. Git history preserves the original; a factual misclassification may be renamed and receive an explicit correction note.
 - Handovers state facts and next context; they do not contain agent commands that override the canonical project workflow.
 - Handovers link to current architecture, scope, roadmap, the active plan, decisions, and verification instead of copying them wholesale.
 
@@ -153,6 +151,7 @@ The controlled vocabulary is:
 |---|---|
 | `current` | Implemented and authoritative at the canonical development baseline. |
 | `milestone` | A bounded, versioned delivery unit with acceptance criteria. |
+| `workstream` | A bounded implementation unit within a milestone. |
 | `planned` | Approved for inclusion in the ordered implementation queue. |
 | `active` | The one planned milestone presently being implemented. |
 | `queued` | A planned milestone waiting behind the active milestone. |
@@ -177,8 +176,9 @@ approved idea -> queued -> active -> verified -> implemented
 3. The first executable plan is marked `active`; all later plans remain `queued`.
 4. Work proceeds against the active plan.
 5. Completion requires acceptance criteria and fresh verification evidence.
-6. The plan moves to `03_implemented/milestones/`.
-7. Current status, scope, architecture, development guidance, roadmap, and handover are updated wherever the implementation changed them.
+6. A verified workstream plan moves to `03_implemented/milestones/`; the parent milestone stays active until its complete acceptance gate passes.
+7. A fully verified milestone moves to `03_implemented`, leaves the outstanding roadmap, and activates the next queued milestone.
+8. Current status, scope, architecture, development guidance, roadmap, and handover are updated wherever implementation changed them.
 
 If approved work is deliberately removed from the queue before implementation, it moves to `04_parked/` with the decision and rationale recorded. It does not move to `03_implemented`.
 
@@ -229,7 +229,7 @@ A historical handover snapshot is created when:
 - a major external verification gate completes; or
 - responsibility is transferred with meaningful unfinished work.
 
-## Initial migration
+## Initial migration record
 
 The first implementation of this system will:
 
@@ -238,8 +238,8 @@ The first implementation of this system will:
 3. move all completed Phase 1A through `v0.001a15` plans into `03_implemented/milestones/`;
 4. move their completed design/specification records into `03_implemented/designs/`;
 5. synthesize current architecture, scope, development, and status from the repository and the supplied handover;
-6. create an ordered roadmap with `v0.001a16` as the only currently approved outstanding milestone;
-7. create the detailed `v0.001a16` startup/bootstrap/initialization plan;
+6. create an ordered roadmap and distinguish versioned milestones from their implementation workstreams;
+7. retain completed startup/bootstrap/initialization work as an implemented a16 foundation while the complete a16 product gate remains active;
 8. create a parked catalog for explicitly deferred capabilities such as project/workspace systems, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers;
 9. create a factual current handover and a dated post-`v0.001a15`/hotfix historical snapshot; and
 10. update repository documentation links and remove the superseded `docs/superpowers` hierarchy once all records are accounted for.
@@ -252,7 +252,7 @@ The migration is complete when:
 
 - every existing plan and design record is accounted for exactly once;
 - only outstanding approved milestones remain in `02_plans`;
-- every completed milestone plan is under `03_implemented`;
+- every completed milestone or workstream plan is under `03_implemented`;
 - current documents contain no unimplemented `v0.001a16` behavior stated as fact;
 - parked features are not presented as queued commitments;
 - all repository-relative links resolve;
