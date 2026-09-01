@@ -131,7 +131,7 @@ def test_main_window_applies_and_preserves_editor_view_settings(tmp_path: Path):
     source = tmp_path / "configured.txt"
     source.write_text("Привет", encoding="utf-8")
     store = SettingsStore(tmp_path / "settings.json")
-    store.save(Settings(editor_zoom_percent=130, soft_wrap=False))
+    store.save(Settings(editor_zoom_percent=130, soft_wrap=True))
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow(settings_store=store)
 
@@ -139,12 +139,16 @@ def test_main_window_applies_and_preserves_editor_view_settings(tmp_path: Path):
     app.processEvents()
 
     assert view.zoom_percent == 130
+    assert view.soft_wrap is True
     assert store.load().editor_zoom_percent == 130
     status_text = {label.text() for label in window.statusBar().findChildren(QLabel)}
     assert "130%" in status_text
-    assert "No Wrap" in status_text
+    assert "Wrap" in status_text
     window.zoom_in_editor()
     assert view.zoom_percent == 140
     assert store.load().editor_zoom_percent == 140
+    window.set_editor_wrap(False)
+    assert view.soft_wrap is False
+    assert store.load().soft_wrap is False
     window.close_all_documents(force=True)
     window.close()

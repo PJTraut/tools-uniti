@@ -186,6 +186,11 @@ class UNITIMainWindow(QMainWindow):
         view_menu.addAction(
             self._action("Reset Zoom", QKeySequence("Ctrl+0"), self.reset_editor_zoom)
         )
+        self._wrap_action = QAction("Soft Line Wrap", self)
+        self._wrap_action.setCheckable(True)
+        self._wrap_action.setChecked(self._settings.soft_wrap)
+        self._wrap_action.toggled.connect(self.set_editor_wrap)
+        view_menu.addAction(self._wrap_action)
 
         encoding_menu = self.menuBar().addMenu("&Encoding")
         reinterpret_menu = encoding_menu.addMenu("Reinterpret As")
@@ -254,6 +259,9 @@ class UNITIMainWindow(QMainWindow):
         view.zoomChanged.connect(
             lambda percent, view=view: self._on_view_zoom_changed(view, percent)
         )
+        view.wrapChanged.connect(
+            lambda enabled, view=view: self._on_view_wrap_changed(view, enabled)
+        )
 
     def _add_document(
         self,
@@ -266,6 +274,7 @@ class UNITIMainWindow(QMainWindow):
         state = EditorState(document)
         view = UNITITextView(state, self._tabs)
         view.set_zoom_percent(self._settings.editor_zoom_percent)
+        view.set_soft_wrap(self._settings.soft_wrap)
         self._connect_view(view)
         index = self._tabs.addTab(view, self._tab_label(view))
         self._tabs.setCurrentIndex(index)
@@ -325,15 +334,27 @@ class UNITIMainWindow(QMainWindow):
         report = self._eol_reports.get(id(view))
         self._status.update_eol_report(report)
         self._status.update_document(view.document, report)
-        self._status.update_view(view.zoom_percent, soft_wrap=False)
+        self._status.update_view(view.zoom_percent, soft_wrap=view.soft_wrap)
 
     def _on_view_zoom_changed(self, view: UNITITextView, percent: int) -> None:
         if view is self.current_view:
-            self._status.update_view(percent, soft_wrap=False)
+            self._status.update_view(percent, soft_wrap=view.soft_wrap)
         self._settings = dataclass_replace(
             self._settings,
             editor_zoom_percent=percent,
         )
+        if self._settings_store is not None:
+            try:
+                self._settings_store.save(self._settings)
+            except OSError:
+                pass
+
+    def _on_view_wrap_changed(self, view: UNITITextView, enabled: bool) -> None:
+        if view is self.current_view:
+            self._status.update_view(view.zoom_percent, soft_wrap=enabled)
+            if self._wrap_action.isChecked() != enabled:
+                self._wrap_action.setChecked(enabled)
+        self._settings = dataclass_replace(self._settings, soft_wrap=enabled)
         if self._settings_store is not None:
             try:
                 self._settings_store.save(self._settings)
@@ -354,6 +375,11 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is not None and view.isEnabled():
             view.reset_zoom()
+
+    def set_editor_wrap(self, enabled: bool) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.set_soft_wrap(enabled)
 
     def _on_view_state_changed(self, view: UNITITextView) -> None:
         index = self._tabs.indexOf(view)

@@ -219,3 +219,38 @@ def test_primary_modifier_wheel_changes_editor_zoom_instead_of_scrolling(tmp_pat
         assert view.zoom_percent == 110
         assert view.verticalScrollBar().value() == initial_scroll
         view.close()
+
+
+def test_soft_wrap_progressively_indexes_visual_rows_without_changing_text(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "wrapped-giant-line.txt"
+    path.write_bytes(b"x" * (2 * 1024 * 1024))
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        view.resize(240, 100)
+        view.show()
+        app.processEvents()
+
+        view.set_soft_wrap(True)
+        app.processEvents()
+
+        assert view.soft_wrap is True
+        assert view.horizontalScrollBar().maximum() == 0
+        assert view.verticalScrollBar().maximum() > 0
+        assert document.read(0, 8) == "xxxxxxxx"
+        first_maximum = view.verticalScrollBar().maximum()
+        view.verticalScrollBar().setValue(first_maximum)
+        app.processEvents()
+        assert view.verticalScrollBar().maximum() > first_maximum
+        view.set_soft_wrap(False)
+        assert view.soft_wrap is False
+        view.close()

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import QAbstractScrollArea
 from uniti.app.editor_state import EditorState
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
+from uniti.ui.wrap_index import WrappedRowIndex
 
 
 class UNITITextView(QAbstractScrollArea):
@@ -30,6 +31,7 @@ class UNITITextView(QAbstractScrollArea):
     stateChanged = Signal()
     cursorPositionChanged = Signal(int, int)
     zoomChanged = Signal(int)
+    wrapChanged = Signal(bool)
 
     def __init__(self, state: EditorState, parent=None) -> None:
         super().__init__(parent)
@@ -40,6 +42,9 @@ class UNITITextView(QAbstractScrollArea):
             self._base_point_size = 12.0
             self._base_font.setPointSizeF(self._base_point_size)
         self._zoom_percent = 100
+        self._soft_wrap = False
+        self._wrap_index: WrappedRowIndex | None = None
+        self._wrap_signature: tuple[int, int, int] | None = None
         self.setFont(self._base_font)
         self._metrics = QFontMetrics(self.font())
         self._line_height = max(1, self._metrics.height())
@@ -90,6 +95,35 @@ class UNITITextView(QAbstractScrollArea):
     def zoom_percent(self) -> int:
         return self._zoom_percent
 
+    @property
+    def soft_wrap(self) -> bool:
+        return self._soft_wrap
+
+    def _wrap_columns(self) -> int:
+        width = max(1, self.viewport().width() - self._gutter_width - 8)
+        return max(1, width // self._cell_width)
+
+    def _wrapped_row_index(self) -> WrappedRowIndex:
+        columns = self._wrap_columns()
+        signature = (id(self.document), self.document.revision, columns)
+        if self._wrap_index is None or signature != self._wrap_signature:
+            self._wrap_index = WrappedRowIndex(self.document, columns)
+            self._wrap_signature = signature
+        return self._wrap_index
+
+    def set_soft_wrap(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        if enabled == self._soft_wrap:
+            return
+        self._soft_wrap = enabled
+        self._wrap_index = None
+        self._wrap_signature = None
+        self.horizontalScrollBar().setValue(0)
+        self.verticalScrollBar().setValue(0)
+        self._refresh_scrollbars(advance_index=False)
+        self.wrapChanged.emit(enabled)
+        self.viewport().update()
+
     def _rebuild_metrics(self) -> None:
         self._metrics = QFontMetrics(self.font())
         self._line_height = max(1, self._metrics.height())
@@ -99,6 +133,8 @@ class UNITITextView(QAbstractScrollArea):
         )
         self._cell_width = max(1, self._metrics.horizontalAdvance("M"))
         self._max_seen_line_width = 0
+        self._wrap_index = None
+        self._wrap_signature = None
         self._refresh_scrollbars(advance_index=False)
         self.viewport().update()
 
@@ -139,6 +175,20 @@ class UNITITextView(QAbstractScrollArea):
 
     def _refresh_scrollbars(self, *, advance_index: bool) -> None:
         visible = self._visible_line_capacity()
+        if self._soft_wrap:
+            index = self._wrapped_row_index()
+            first_row = self.verticalScrollBar().value()
+            index.ensure_row(first_row + visible)
+            if index.complete:
+                maximum = max(0, index.known_count - visible)
+            else:
+                maximum = max(first_row, index.known_count - visible)
+            self.verticalScrollBar().setPageStep(visible)
+            self.verticalScrollBar().setSingleStep(1)
+            self.verticalScrollBar().setRange(0, maximum)
+            self.horizontalScrollBar().setPageStep(1)
+            self.horizontalScrollBar().setRange(0, 0)
+            return
         index = self.document.document_line_index
         if advance_index and not index.complete:
             target = index.indexed_char_end + 65_536
@@ -173,11 +223,17 @@ class UNITITextView(QAbstractScrollArea):
         text_x = self._gutter_width - (horizontal % self._cell_width)
         return column_start, text_x
 
-    def _line_content(self, line: int, column_start: int):
+    def _line_content(
+        self,
+        line: int,
+        column_start: int,
+        *,
+        max_chars: int | None = None,
+    ):
         return self.document.read_line_window_annotated(
             line,
             column_start=column_start,
-            max_chars=self._max_visible_chars,
+            max_chars=self._max_visible_chars if max_chars is None else max_chars,
         )
 
     def _line_text(self, line: int, column_start: int) -> str:
@@ -221,7 +277,6 @@ class UNITITextView(QAbstractScrollArea):
         painter.setFont(self.font())
 
         first_line = self.verticalScrollBar().value()
-        column_start, text_x = self._horizontal_window()
         visible = self._visible_line_capacity()
         selection = self.state.selection
         cursor_line = self.document.line_for_char(self.state.cursor)
@@ -229,11 +284,33 @@ class UNITITextView(QAbstractScrollArea):
         gutter_color = palette.color(QPalette.ColorRole.AlternateBase)
         painter.fillRect(0, 0, self._gutter_width, self.viewport().height(), gutter_color)
 
-        for row in range(visible):
-            line_number = first_line + row
+        display_rows: list[tuple[int, int, int, int]] = []
+        if self._soft_wrap:
+            wrapped = self._wrapped_row_index()
+            wrapped.ensure_row(first_line + visible)
+            for row in range(visible):
+                try:
+                    visual = wrapped.row(first_line + row)
+                except ValueError:
+                    break
+                display_rows.append(
+                    (visual.line, visual.column_start, self._gutter_width, row)
+                )
+        else:
+            column_start, text_x = self._horizontal_window()
+            display_rows = [
+                (first_line + row, column_start, text_x, row)
+                for row in range(visible)
+            ]
+
+        for line_number, column_start, text_x, row in display_rows:
             try:
                 line_start = self.document.line_start(line_number)
-                annotated = self._line_content(line_number, column_start)
+                annotated = self._line_content(
+                    line_number,
+                    column_start,
+                    max_chars=self._wrap_columns() if self._soft_wrap else None,
+                )
                 text = annotated.text
             except ValueError:
                 break
@@ -241,21 +318,23 @@ class UNITITextView(QAbstractScrollArea):
             y = row * self._line_height
             baseline = y + self._metrics.ascent()
             painter.setPen(palette.color(QPalette.ColorRole.PlaceholderText))
-            painter.drawText(
-                4,
-                baseline,
-                f"{line_number + 1:>{max(1, (self._gutter_width - 12) // max(1, self._metrics.horizontalAdvance('0')))}}",
-            )
+            if not self._soft_wrap or column_start == 0:
+                painter.drawText(
+                    4,
+                    baseline,
+                    f"{line_number + 1:>{max(1, (self._gutter_width - 12) // max(1, self._metrics.horizontalAdvance('0')))}}",
+                )
 
             width = self._metrics.horizontalAdvance(text)
             known_columns = column_start + len(text)
             if len(text) >= self._max_visible_chars:
                 known_columns += self._max_visible_chars
-            self._max_seen_line_width = max(
-                self._max_seen_line_width,
-                known_columns * self._cell_width,
-                self.horizontalScrollBar().value() + width,
-            )
+            if not self._soft_wrap:
+                self._max_seen_line_width = max(
+                    self._max_seen_line_width,
+                    known_columns * self._cell_width,
+                    self.horizontalScrollBar().value() + width,
+                )
 
             line_window_start = line_start + column_start
             line_end = line_window_start + len(text)
@@ -332,11 +411,25 @@ class UNITITextView(QAbstractScrollArea):
         self._refresh_scrollbars(advance_index=False)
 
     def _char_for_point(self, x: float, y: float) -> int:
-        line = self.verticalScrollBar().value() + max(0, int(y) // self._line_height)
+        visual_row = self.verticalScrollBar().value() + max(
+            0, int(y) // self._line_height
+        )
+        if self._soft_wrap:
+            try:
+                wrapped_row = self._wrapped_row_index().row(visual_row)
+            except ValueError:
+                return self.state.cursor
+            line = wrapped_row.line
+            column_start = wrapped_row.column_start
+            text_x = self._gutter_width
+        else:
+            line = visual_row
+            column_start, text_x = self._horizontal_window()
         try:
             line_start = self.document.line_start(line)
-            column_start, text_x = self._horizontal_window()
             text = self._line_text(line, column_start)
+            if self._soft_wrap:
+                text = text[: self._wrap_columns()]
         except ValueError:
             return self.state.cursor
 
@@ -454,9 +547,21 @@ class UNITITextView(QAbstractScrollArea):
         first = self.verticalScrollBar().value()
         line_start = self.document.line_start(line)
         column = self.state.cursor - line_start
-        horizontal = self.horizontalScrollBar().value()
-        x = self._gutter_width + column * self._cell_width - horizontal
-        y = (line - first) * self._line_height
+        if self._soft_wrap:
+            try:
+                visual_row = self._wrapped_row_index().row_for_position(line, column)
+                wrapped = self._wrapped_row_index().row(visual_row)
+            except ValueError:
+                visual_row = first
+                wrapped_column = 0
+            else:
+                wrapped_column = wrapped.column_start
+            x = self._gutter_width + (column - wrapped_column) * self._cell_width
+            y = (visual_row - first) * self._line_height
+        else:
+            horizontal = self.horizontalScrollBar().value()
+            x = self._gutter_width + column * self._cell_width - horizontal
+            y = (line - first) * self._line_height
         return QRectF(float(x), float(y), 2.0, float(self._line_height))
 
     def inputMethodQuery(self, query):
@@ -552,6 +657,21 @@ class UNITITextView(QAbstractScrollArea):
         line = self.document.line_for_char(self.state.cursor)
         first = self.verticalScrollBar().value()
         visible = self._visible_line_capacity()
+        if self._soft_wrap:
+            line_start = self.document.line_start(line)
+            column = self.state.cursor - line_start
+            try:
+                visual_row = self._wrapped_row_index().row_for_position(line, column)
+            except ValueError:
+                visual_row = first
+            if visual_row < first:
+                self.verticalScrollBar().setValue(visual_row)
+            elif visual_row >= first + visible:
+                self.verticalScrollBar().setValue(
+                    max(0, visual_row - visible + 1)
+                )
+            self.horizontalScrollBar().setValue(0)
+            return
         if line < first:
             self.verticalScrollBar().setValue(line)
         elif line >= first + visible:
