@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
 Date: 2026-09-01
-Baseline: verified a16 implementation through `7d8866a` on `main`
+Baseline: verified a16 implementation through `05ef391` on `main`
 
 ## Lifecycle boundary
 
@@ -105,9 +105,11 @@ These principles are derived from CotEditor's published [design philosophy](http
 
 ## Floating Find/Replace
 
-`FindReplaceWindow` is a modeless Qt tool window over the active `UNITITextView`. The document remains editable while it is visible. Its Find and Replace inputs use explicit immutable snapshot histories capped independently at 50 steps; focus routing sends Undo/Redo and clipboard commands to the active field before falling back to the document.
+`FindReplaceWindow` is a modeless, mouse-resizable Qt tool window over the active `UNITITextView`. A native size grip supplements edge resizing. The document remains editable while the window is visible. Its Find and Replace inputs use explicit immutable snapshot histories capped independently at 50 steps; focus routing sends Undo/Redo and clipboard commands to the active field before falling back to the document.
 
-Literal mode escapes the query and alone supplies Case Sensitive and Whole Word options. Regex mode sends raw syntax and inline switches to the authoritative third-party engine. Search remains cancellable and revision-bound. The report pane can be Hidden, Bottom, or Right and renders capture groups `1..N` only, with delimiters between adjacent matches.
+An explicit `Literal | Regex` selector owns search semantics. Literal mode escapes the query and alone displays Case Sensitive and Whole Word options. Regex mode hides those controls and sends raw syntax and inline switches such as `(?i)` to the authoritative third-party engine. Find All/Replace All form one batch-action row; Previous/Next/Replace form one match-action row; Cancel and status remain separate. Search remains cancellable and revision-bound.
+
+The capture report is the collapsible second child of an unrestricted `QSplitter`, so it can be resized to any useful Bottom or Right proportion or dragged closed. `Report: Hidden | Bottom | Right` remains the explicit selector. The scoped `Cycle Report Position` command rotates those locations with default portable binding `Ctrl+Alt+R`. Capture rendering remains groups `1..N` only, with delimiters between adjacent matches.
 
 Single Replace and Replace All return through the authoritative `Document`. Replace All collects the revision-bound replacement set off the GUI thread, rejects stale results, and submits the entire set to `replace_many` as one Undo operation. The UI does not use the core streaming-rewrite service for Replace All because a disk rewrite would bypass the a16 history contract.
 
@@ -117,7 +119,7 @@ Editor zoom/wrap and Find/Replace zoom/geometry/report placement persist indepen
 
 `app.commands.CommandRegistry` is the Qt-free authority for command definitions, defaults, current shortcuts, categories, and `WINDOW`/`EDITOR`/`FIND_REPLACE` collision scopes. `UNITIMainWindow` creates shared `QAction` handlers from that registry. Editor and modeless-window dispatch use focus-aware action/shortcut forwarding, including interception of native text-control shortcuts so Find/Replace fields keep ownership.
 
-`HotkeysPopup` is a modeless editor over the same registry. It exposes the six approved horizontal categories and Default/Current bindings, and performs assignment, clearing, collision rejection, selected/category/all resets, and portable-text persistence. Menus and customized shortcuts therefore do not maintain competing handler paths.
+`HotkeysPopup` is a modeless editor over the same registry. It exposes the six approved horizontal categories and Default/Current bindings, and performs assignment, clearing, collision rejection, selected/category/all resets, and portable-text persistence. The three former report-location commands are represented by the single `find.report_cycle` action. Menus and customized shortcuts therefore do not maintain competing handler paths.
 
 ### Compact menu definition
 
