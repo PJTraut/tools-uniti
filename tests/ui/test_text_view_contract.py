@@ -221,6 +221,96 @@ def test_primary_modifier_wheel_changes_editor_zoom_instead_of_scrolling(tmp_pat
         view.close()
 
 
+def test_multi_click_selects_word_visual_line_and_logical_line(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "multi-click.txt"
+    first_line = "alpha bravo charlie delta echo foxtrot"
+    path.write_text(first_line + "\nsecond line\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(220, 120)
+        view.set_soft_wrap(True)
+        view.show()
+        app.processEvents()
+        x = view._gutter_width + view.fontMetrics().horizontalAdvance("alpha br")
+        y = view._line_height // 2
+
+        view._select_click_unit(x, y, 2)
+        assert state.selected_text() == "bravo"
+
+        first_visual_row = view._wrapped_row_index().row(0)
+        view._select_click_unit(x, y, 3)
+        assert state.selection == (
+            first_visual_row.column_start,
+            first_visual_row.column_start + first_visual_row.length,
+        )
+
+        view._select_click_unit(x, y, 4)
+        assert state.selection == (document.line_start(0), document.line_start(1))
+        assert state.selected_text() == first_line + "\n"
+        view.close()
+        app.processEvents()
+
+
+def test_native_click_sequence_promotes_word_line_and_line_break_selection(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QEvent, QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "native-multi-click.txt"
+    path.write_text("alpha bravo\nnext\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(320, 120)
+        view.show()
+        app.processEvents()
+        point = QPointF(
+            view._gutter_width + view.fontMetrics().horizontalAdvance("alpha br"),
+            view._line_height // 2,
+        )
+
+        def mouse_event(event_type):
+            return QMouseEvent(
+                event_type,
+                point,
+                point,
+                Qt.MouseButton.LeftButton,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+
+        view.mousePressEvent(mouse_event(QEvent.Type.MouseButtonPress))
+        view.mouseDoubleClickEvent(mouse_event(QEvent.Type.MouseButtonDblClick))
+        assert state.selected_text() == "bravo"
+        view.mousePressEvent(mouse_event(QEvent.Type.MouseButtonPress))
+        assert state.selected_text() == "alpha bravo"
+        view.mouseDoubleClickEvent(mouse_event(QEvent.Type.MouseButtonDblClick))
+        assert state.selected_text() == "alpha bravo\n"
+        view.close()
+        app.processEvents()
+
+
 def test_soft_wrap_progressively_indexes_visual_rows_without_changing_text(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

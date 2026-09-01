@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QFont,
@@ -17,7 +19,7 @@ from PySide6.QtGui import (
     QTextLayout,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QAbstractScrollArea
+from PySide6.QtWidgets import QAbstractScrollArea, QApplication
 
 from uniti.app.editor_state import EditorState
 from uniti.regex.match_store import MatchStore
@@ -53,6 +55,9 @@ class UNITITextView(QAbstractScrollArea):
         self._cell_width = max(1, self._metrics.horizontalAdvance("M"))
         self._max_seen_line_width = 0
         self._drag_selecting = False
+        self._click_count = 0
+        self._last_click_at = 0.0
+        self._last_click_position = (0.0, 0.0)
         self._preedit_text = ""
         self._match_index = MatchIndex(())
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -450,9 +455,101 @@ class UNITITextView(QAbstractScrollArea):
                 low += 1
         return line_start + column_start + low
 
+    def _select_range(self, start: int, end: int) -> None:
+        self.state.move_to(start)
+        self.state.move_to(end, selecting=True)
+        self._state_changed()
+
+    def _word_range(self, position: int) -> tuple[int, int]:
+        total = self.document.total_chars()
+        if position >= total:
+            return total, total
+        character = self.document.read(position, position + 1)
+        if not self.state._is_word_character(character):
+            return position, position
+        start = position
+        while start > 0:
+            character = self.document.read(start - 1, start)
+            if not self.state._is_word_character(character):
+                break
+            start -= 1
+        end = position + 1
+        while end < total:
+            character = self.document.read(end, end + 1)
+            if not self.state._is_word_character(character):
+                break
+            end += 1
+        return start, end
+
+    def _visual_line_range(self, y: float) -> tuple[int, int]:
+        visual_row = self.verticalScrollBar().value() + max(
+            0, int(y) // self._line_height
+        )
+        if self._soft_wrap:
+            try:
+                wrapped_row = self._wrapped_row_index().row(visual_row)
+            except ValueError:
+                return self.state.cursor, self.state.cursor
+            line_start = self.document.line_start(wrapped_row.line)
+            start = line_start + wrapped_row.column_start
+            return start, start + wrapped_row.length
+        try:
+            start = self.document.line_start(visual_row)
+            return start, self.document.line_end(visual_row)
+        except ValueError:
+            return self.state.cursor, self.state.cursor
+
+    def _logical_line_range(self, position: int) -> tuple[int, int]:
+        line = self.document.line_for_char(position)
+        start = self.document.line_start(line)
+        try:
+            end = self.document.line_start(line + 1)
+        except ValueError:
+            end = self.document.total_chars()
+        return start, end
+
+    def _select_click_unit(self, x: float, y: float, click_count: int) -> None:
+        position = self._char_for_point(x, y)
+        if click_count == 2:
+            start, end = self._word_range(position)
+        elif click_count == 3:
+            start, end = self._visual_line_range(y)
+        elif click_count >= 4:
+            start, end = self._logical_line_range(position)
+        else:
+            start = end = position
+        self._select_range(start, end)
+
+    def _register_click(self, event: QMouseEvent) -> int:
+        now = time.monotonic()
+        position = event.position()
+        last_x, last_y = self._last_click_position
+        distance = abs(position.x() - last_x) + abs(position.y() - last_y)
+        interval = QApplication.doubleClickInterval() / 1000.0
+        if (
+            now - self._last_click_at <= interval
+            and distance <= QApplication.startDragDistance()
+        ):
+            self._click_count = self._click_count % 4 + 1
+        else:
+            self._click_count = 1
+        self._last_click_at = now
+        self._last_click_position = (position.x(), position.y())
+        return self._click_count
+
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.setFocus()
+            click_count = self._register_click(event)
+            if click_count > 1:
+                self._select_click_unit(
+                    event.position().x(),
+                    event.position().y(),
+                    click_count,
+                )
+                self._drag_selecting = True
+                event.accept()
+                return
             selecting = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
             self.state.move_to(
                 self._char_for_point(event.position().x(), event.position().y()),
@@ -463,6 +560,20 @@ class UNITITextView(QAbstractScrollArea):
             event.accept()
             return
         super().mousePressEvent(event)
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setFocus()
+            click_count = self._register_click(event)
+            self._select_click_unit(
+                event.position().x(),
+                event.position().y(),
+                max(2, click_count),
+            )
+            self._drag_selecting = True
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if self._drag_selecting and event.buttons() & Qt.MouseButton.LeftButton:

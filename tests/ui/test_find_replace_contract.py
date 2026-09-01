@@ -194,6 +194,48 @@ def test_find_replace_report_locations_and_zoom_are_independent(tmp_path: Path):
         view.close()
 
 
+def test_primary_modifier_wheel_zooms_focused_find_replace_only(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.find_replace import FindReplacePanel
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "find-wheel-zoom.txt"
+    path.write_text("text", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        panel = FindReplacePanel(lambda: view)
+        panel.show()
+        panel.find_input.setFocus()
+        app.processEvents()
+        event = QWheelEvent(
+            QPointF(10, 10),
+            QPointF(10, 10),
+            QPoint(),
+            QPoint(0, 120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.ControlModifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+
+        QApplication.sendEvent(panel.find_input.viewport(), event)
+
+        assert panel.zoom_percent == 110
+        assert view.zoom_percent == 100
+        panel.shutdown()
+        panel.close()
+        view.close()
+
+
 def test_capture_report_excludes_group_zero_and_separates_matches(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

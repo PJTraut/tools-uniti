@@ -6,8 +6,8 @@ from collections.abc import Callable
 from concurrent.futures import Future
 
 import regex
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtGui import QFont, QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -167,6 +167,8 @@ class FindReplaceWindow(QDialog):
         )
         self._search_mode_changed(False)
         self.set_report_location("Bottom")
+        for widget in self.findChildren(QWidget):
+            widget.installEventFilter(self)
 
     @property
     def zoom_percent(self) -> int:
@@ -201,6 +203,30 @@ class FindReplaceWindow(QDialog):
 
     def reset_zoom(self) -> None:
         self.set_zoom_percent(100)
+
+    def _handle_zoom_wheel(self, event: QWheelEvent) -> bool:
+        delta = event.angleDelta().y()
+        primary = bool(
+            event.modifiers()
+            & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)
+        )
+        if not primary or not delta:
+            return False
+        steps = max(1, abs(delta) // 120)
+        for _ in range(steps):
+            self.zoom_in() if delta > 0 else self.zoom_out()
+        event.accept()
+        return True
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() == QEvent.Type.Wheel and self._handle_zoom_wheel(event):
+            return True
+        return super().eventFilter(watched, event)
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        if self._handle_zoom_wheel(event):
+            return
+        super().wheelEvent(event)
 
     def set_report_location(self, location: str) -> None:
         if location not in {"Hidden", "Bottom", "Right"}:

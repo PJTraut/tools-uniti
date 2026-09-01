@@ -20,6 +20,12 @@ from PySide6.QtWidgets import (
 from uniti.app.commands import CommandCategory, CommandRegistry, ShortcutCollision
 
 
+def _native_shortcut(shortcut: str) -> str:
+    return QKeySequence(shortcut).toString(
+        QKeySequence.SequenceFormat.NativeText
+    )
+
+
 class HotkeysPopup(QDialog):
     def __init__(self, registry: CommandRegistry, parent=None) -> None:
         super().__init__(parent)
@@ -108,11 +114,17 @@ class HotkeysPopup(QDialog):
             command_item = QTableWidgetItem(definition.label)
             command_item.setData(Qt.ItemDataRole.UserRole, definition.command_id)
             self.table.setItem(row, 0, command_item)
-            self.table.setItem(row, 1, QTableWidgetItem(definition.default_shortcut))
+            self.table.setItem(
+                row,
+                1,
+                QTableWidgetItem(_native_shortcut(definition.default_shortcut)),
+            )
             self.table.setItem(
                 row,
                 2,
-                QTableWidgetItem(self.registry.current(definition.command_id)),
+                QTableWidgetItem(
+                    _native_shortcut(self.registry.current(definition.command_id))
+                ),
             )
             if definition.command_id == selected:
                 selected_row = row

@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from concurrent.futures import Future
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
-import sys
 import weakref
 
 from PySide6.QtCore import QEvent, Qt, QTimer
@@ -60,7 +59,9 @@ def _standard_shortcut(key: QKeySequence.StandardKey, fallback: str = "") -> str
 
 
 def _command_definitions() -> tuple[CommandDefinition, ...]:
-    primary = "Meta" if sys.platform == "darwin" else "Ctrl"
+    # Qt's portable "Ctrl" token maps to the native primary modifier on each
+    # platform (Command on macOS, Control on Windows/Linux).
+    primary = "Ctrl"
     return (
         CommandDefinition("file.open", "Open…", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Open)),
         CommandDefinition("file.save", "Save", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Save)),
@@ -300,56 +301,63 @@ class UNITIMainWindow(QMainWindow):
             self._command_action("editing.select_all", self.select_all)
         )
 
-        navigation_menu = self.menuBar().addMenu("&Navigation")
+        edit_menu.addSeparator()
+        navigation_menu = edit_menu.addMenu("&Navigation")
         navigation_menu.addAction(
             self._command_action("navigation.go_to_line", self.go_to_line_dialog)
         )
-        navigation_menu.addAction(self._command_action("navigation.page_up", lambda: self._move_page(-1)))
-        navigation_menu.addAction(self._command_action("navigation.page_down", lambda: self._move_page(1)))
-        navigation_menu.addAction(self._command_action("navigation.document_start", lambda: self._move_editor("move_document_start")))
-        navigation_menu.addAction(self._command_action("navigation.document_end", lambda: self._move_editor("move_document_end")))
-        navigation_menu.addAction(self._command_action("navigation.word_left", lambda: self._move_editor("move_word_left")))
-        navigation_menu.addAction(self._command_action("navigation.word_right", lambda: self._move_editor("move_word_right")))
-
-        search_menu = self.menuBar().addMenu("&Search")
-        search_menu.addAction(self._command_action("find.open", self.show_find))
-        search_menu.addAction(self._command_action("find.replace", self.show_replace))
-        search_menu.addAction(self._command_action("find.next", self._find_replace.next_match))
-        search_menu.addAction(self._command_action("find.previous", self._find_replace.previous_match))
-
-        view_menu = self.menuBar().addMenu("&View")
-        view_menu.addAction(self._command_action("editor.zoom_in", self.zoom_in_editor))
-        view_menu.addAction(self._command_action("editor.zoom_out", self.zoom_out_editor))
-        view_menu.addAction(self._command_action("editor.zoom_reset", self.reset_editor_zoom))
-        self._wrap_action = self._command_action(
-            "editor.wrap",
-            lambda: self.set_editor_wrap(self._wrap_action.isChecked()),
-            checkable=True,
+        navigation_menu.addAction(
+            self._command_action("navigation.page_up", lambda: self._move_page(-1))
         )
-        self._wrap_action.setChecked(self._settings.soft_wrap)
-        view_menu.addAction(self._wrap_action)
+        navigation_menu.addAction(
+            self._command_action("navigation.page_down", lambda: self._move_page(1))
+        )
+        navigation_menu.addAction(
+            self._command_action(
+                "navigation.document_start",
+                lambda: self._move_editor("move_document_start"),
+            )
+        )
+        navigation_menu.addAction(
+            self._command_action(
+                "navigation.document_end",
+                lambda: self._move_editor("move_document_end"),
+            )
+        )
+        navigation_menu.addAction(
+            self._command_action(
+                "navigation.word_left",
+                lambda: self._move_editor("move_word_left"),
+            )
+        )
+        navigation_menu.addAction(
+            self._command_action(
+                "navigation.word_right",
+                lambda: self._move_editor("move_word_right"),
+            )
+        )
 
-        find_view_menu = self.menuBar().addMenu("F/R &View")
-        find_view_menu.addAction(self._command_action("find.zoom_in", self._find_replace.zoom_in))
-        find_view_menu.addAction(self._command_action("find.zoom_out", self._find_replace.zoom_out))
-        find_view_menu.addAction(self._command_action("find.zoom_reset", self._find_replace.reset_zoom))
-        find_view_menu.addSeparator()
-        find_view_menu.addAction(self._command_action("find.report_hidden", lambda: self._find_replace.set_report_location("Hidden")))
-        find_view_menu.addAction(self._command_action("find.report_bottom", lambda: self._find_replace.set_report_location("Bottom")))
-        find_view_menu.addAction(self._command_action("find.report_right", lambda: self._find_replace.set_report_location("Right")))
-
-        encoding_menu = self.menuBar().addMenu("&Encoding")
+        format_menu = self.menuBar().addMenu("F&ormat")
+        encoding_menu = format_menu.addMenu("&Encoding")
         reinterpret_menu = encoding_menu.addMenu("Reinterpret As")
         convert_menu = encoding_menu.addMenu("Convert on Save")
         for label, codec in _ENCODING_CHOICES:
             reinterpret_menu.addAction(
-                self._action(label, None, lambda codec=codec: self.reinterpret_current(codec))
+                self._action(
+                    label,
+                    None,
+                    lambda codec=codec: self.reinterpret_current(codec),
+                )
             )
             convert_menu.addAction(
-                self._action(label, None, lambda codec=codec: self.set_output_encoding(codec))
+                self._action(
+                    label,
+                    None,
+                    lambda codec=codec: self.set_output_encoding(codec),
+                )
             )
 
-        eol_menu = self.menuBar().addMenu("&EOL")
+        eol_menu = format_menu.addMenu("&Line Endings")
         eol_menu.addAction(
             self._action("Keep Source", None, lambda: self.set_output_eol(None))
         )
@@ -358,12 +366,78 @@ class UNITIMainWindow(QMainWindow):
                 self._action(eol, None, lambda eol=eol: self.set_output_eol(eol))
             )
 
+        view_menu = self.menuBar().addMenu("&View")
+        editor_view_menu = view_menu.addMenu("&Editor View")
+        editor_view_menu.addAction(
+            self._command_action("editor.zoom_in", self.zoom_in_editor)
+        )
+        editor_view_menu.addAction(
+            self._command_action("editor.zoom_out", self.zoom_out_editor)
+        )
+        editor_view_menu.addAction(
+            self._command_action("editor.zoom_reset", self.reset_editor_zoom)
+        )
+        self._wrap_action = self._command_action(
+            "editor.wrap",
+            lambda: self.set_editor_wrap(self._wrap_action.isChecked()),
+            checkable=True,
+        )
+        self._wrap_action.setChecked(self._settings.soft_wrap)
+        editor_view_menu.addAction(self._wrap_action)
+
+        find_view_menu = view_menu.addMenu("F/R &View")
+        find_view_menu.addAction(
+            self._command_action("find.zoom_in", self._find_replace.zoom_in)
+        )
+        find_view_menu.addAction(
+            self._command_action("find.zoom_out", self._find_replace.zoom_out)
+        )
+        find_view_menu.addAction(
+            self._command_action("find.zoom_reset", self._find_replace.reset_zoom)
+        )
+        find_view_menu.addSeparator()
+        find_view_menu.addAction(
+            self._command_action(
+                "find.report_hidden",
+                lambda: self._find_replace.set_report_location("Hidden"),
+            )
+        )
+        find_view_menu.addAction(
+            self._command_action(
+                "find.report_bottom",
+                lambda: self._find_replace.set_report_location("Bottom"),
+            )
+        )
+        find_view_menu.addAction(
+            self._command_action(
+                "find.report_right",
+                lambda: self._find_replace.set_report_location("Right"),
+            )
+        )
+
+        find_menu = self.menuBar().addMenu("&Find")
+        find_menu.addAction(self._command_action("find.open", self.show_find))
+        find_menu.addAction(self._command_action("find.replace", self.show_replace))
+        find_menu.addAction(
+            self._command_action("find.next", self._find_replace.next_match)
+        )
+        find_menu.addAction(
+            self._command_action("find.previous", self._find_replace.previous_match)
+        )
+
         tools_menu = self.menuBar().addMenu("&Tools")
         tools_menu.addAction(
             self._action(
                 "Character Inspector…",
                 None,
                 self.show_character_inspector,
+            )
+        )
+        tools_menu.addAction(
+            self._action(
+                "Diagnostics…",
+                None,
+                self.show_diagnostics,
             )
         )
 
@@ -380,13 +454,6 @@ class UNITIMainWindow(QMainWindow):
                 shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
                 shortcut.activated.connect(action.trigger)
                 self._find_replace_shortcuts[definition.command_id] = shortcut
-        tools_menu.addAction(
-            self._action(
-                "Diagnostics…",
-                None,
-                self.show_diagnostics,
-            )
-        )
 
     def _remember_directory(self, path: str | Path) -> None:
         directory = str(Path(path).parent)

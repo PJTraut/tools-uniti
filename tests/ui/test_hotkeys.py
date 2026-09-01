@@ -5,6 +5,62 @@ from pathlib import Path
 import pytest
 
 
+def _menu_labels(menu) -> list[str]:
+    return [action.text().replace("&", "") for action in menu.actions()]
+
+
+def _top_level_action(window, label: str):
+    return next(
+        action
+        for action in window.menuBar().actions()
+        if action.text().replace("&", "") == label
+    )
+
+
+def _descendant_actions(menu):
+    for action in menu.actions():
+        yield action
+        if action.menu() is not None:
+            yield from _descendant_actions(action.menu())
+
+
+def test_menu_bar_uses_compact_coteditor_reference_structure():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+
+    assert _menu_labels(window.menuBar()) == [
+        "File",
+        "Edit",
+        "Format",
+        "View",
+        "Find",
+        "Tools",
+        "Hotkeys",
+    ]
+    edit_menu = _top_level_action(window, "Edit").menu()
+    format_menu = _top_level_action(window, "Format").menu()
+    view_menu = _top_level_action(window, "View").menu()
+    assert "Navigation" in _menu_labels(edit_menu)
+    assert {"Encoding", "Line Endings"} <= set(_menu_labels(format_menu))
+    assert {"Editor View", "F/R View"} <= set(_menu_labels(view_menu))
+
+    reachable = {
+        action
+        for top_level in window.menuBar().actions()
+        if top_level.menu() is not None
+        for action in _descendant_actions(top_level.menu())
+    }
+    assert set(window._command_actions.values()) <= reachable
+    window.close()
+
+
 def test_hotkeys_popup_has_horizontal_categories_and_binding_columns(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
@@ -34,6 +90,38 @@ def test_hotkeys_popup_has_horizontal_categories_and_binding_columns(tmp_path: P
     assert popup.isVisible() is True
     popup.reject()
     assert popup.isVisible() is False
+    window.close()
+
+
+def test_hotkeys_display_uses_native_notation_but_registry_stays_portable():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeySequence
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.commands import CommandCategory
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    popup = window.show_hotkeys()
+    popup.select_category(CommandCategory.NAVIGATION)
+    definition = popup.registry.definition("navigation.go_to_line")
+    assert definition.default_shortcut == "Ctrl+L"
+    expected = QKeySequence(definition.default_shortcut).toString(
+        QKeySequence.SequenceFormat.NativeText
+    )
+    row = next(
+        row
+        for row in range(popup.table.rowCount())
+        if popup.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        == definition.command_id
+    )
+    assert popup.table.item(row, 1).text() == expected
+    assert popup.table.item(row, 2).text() == expected
+    popup.reject()
     window.close()
 
 
