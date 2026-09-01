@@ -493,7 +493,7 @@ Add a concise `Project documentation` section linking to:
 Run this Python 3.12 link validator. It scans every `*.md` file under the repository, ignores HTTP(S), anchors, and fenced-code examples, resolves relative Markdown link targets from each source file, and exits nonzero with every missing target printed.
 
 ```bash
-python - <<'PY'
+.venv/bin/python - <<'PY'
 from pathlib import Path
 import re
 from urllib.parse import unquote
@@ -537,8 +537,8 @@ test "$(find docs/project/03_implemented/designs -maxdepth 1 -name '*.md' | wc -
 test "$(find docs/project/05_decisions -maxdepth 1 -name 'ADR-*.md' | wc -l | tr -d ' ')" = "3"
 ! rg -n "docs/superpowers/(plans|specs)" README.md docs --glob '!**/2026-09-01-project-documentation-migration.md'
 git diff --check
-PYTHONPATH=src pytest -q tests/test_package.py
-python -m compileall -q src scripts tests
+PYTHONPATH=src .venv/bin/python -m pytest -q tests/test_package.py
+.venv/bin/python -m compileall -q src scripts tests
 ```
 
 Expected: counts are exact, no old paths remain, whitespace is clean, package tests pass, and Python compilation succeeds.

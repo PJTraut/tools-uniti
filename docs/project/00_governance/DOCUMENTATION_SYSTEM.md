@@ -1,7 +1,7 @@
 # UNITI Project Documentation and Handover System
 
 Date: 2026-09-01
-Status: Approved design; migration pending
+Status: implemented and authoritative
 
 ## Goal
 

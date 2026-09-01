@@ -4,6 +4,13 @@
 
 UNITI is a private alpha. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
 
+## Project documentation
+
+- [Project record](docs/project/README.md) — documentation grammar, progression, and ownership.
+- [Current status](docs/project/01_current/STATUS.md) — canonical baseline and verification state.
+- [Ordered roadmap](docs/project/02_plans/ROADMAP.md) — approved outstanding milestones in implementation sequence.
+- [Current handover](docs/project/06_handovers/CURRENT_HANDOVER.md) — concise continuation context and next safe action.
+
 ## Alpha capabilities
 
 The current development alpha includes:
