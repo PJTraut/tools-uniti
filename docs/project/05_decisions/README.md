@@ -1,0 +1,20 @@
+# UNITI Architecture Decisions
+
+This directory records consequential choices that future maintainers would otherwise need to rediscover.
+
+## Status grammar
+
+- `proposed`: under review and not authoritative.
+- `accepted`: authoritative until superseded.
+- `superseded`: retained historically and linked to its replacement.
+- `rejected`: considered but not adopted.
+
+Each record contains its date, status, context, decision, consequences, and affected project records. Implementation details that do not change ownership, product boundaries, compatibility, dependencies, or project policy do not require an ADR.
+
+## Index
+
+| ADR | Status | Outcome |
+|---|---|---|
+| [ADR-0001](ADR-0001-host-python-runtime-policy.md) | accepted | Bootstrap from host Python 3.12+ into UNITI-owned isolated runtimes without mutating host packages. |
+| [ADR-0002](ADR-0002-document-authority-boundary.md) | accepted | UNITI's custom document engine owns text; Qt is presentation and input only. |
+| [ADR-0003](ADR-0003-regex-engine-authority.md) | accepted | Third-party Python `regex` is the sole authoritative regex engine. |
