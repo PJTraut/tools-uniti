@@ -34,6 +34,29 @@ def test_status_bar_can_report_detected_and_output_text_state():
     assert "MIXED" in source
 
 
+def test_status_bar_reports_editor_zoom_and_wrap_state_when_pyside6_available():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    import os
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QLabel
+
+    from uniti.ui.status_bar import UNITIStatusBar
+
+    app = QApplication.instance() or QApplication([])
+    status = UNITIStatusBar()
+    status.update_view(130, soft_wrap=False)
+    texts = {label.text() for label in status.findChildren(QLabel)}
+    assert "130%" in texts
+    assert "No Wrap" in texts
+    status.update_view(130, soft_wrap=True)
+    texts = {label.text() for label in status.findChildren(QLabel)}
+    assert "Wrap" in texts
+    status.close()
+    app.processEvents()
+
+
 def test_character_inspector_exposes_unicode_name_codepoint_and_encoding_bytes():
     assert INSPECTOR.exists()
     source = INSPECTOR.read_text()

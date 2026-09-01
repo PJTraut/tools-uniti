@@ -12,9 +12,17 @@ class UNITIStatusBar(QStatusBar):
         self._encoding = QLabel("—")
         self._eol = QLabel("—")
         self._position = QLabel("Ln 1:1")
+        self._zoom = QLabel("—")
+        self._wrap = QLabel("—")
         self._size = QLabel("0 B")
         self._eol_report: EOLReport | None = None
-        for label in (self._encoding, self._eol, self._position):
+        for label in (
+            self._encoding,
+            self._eol,
+            self._position,
+            self._zoom,
+            self._wrap,
+        ):
             self.addWidget(label)
         self.addPermanentWidget(self._size)
 
@@ -63,9 +71,15 @@ class UNITIStatusBar(QStatusBar):
     def update_cursor(self, line: int, column: int) -> None:
         self._position.setText(f"Ln {line + 1}:{column + 1}")
 
+    def update_view(self, zoom_percent: int, *, soft_wrap: bool) -> None:
+        self._zoom.setText(f"{zoom_percent}%")
+        self._wrap.setText("Wrap" if soft_wrap else "No Wrap")
+
     def clear_document(self) -> None:
         self._eol_report = None
         self._encoding.setText("—")
         self._eol.setText("—")
         self._position.setText("Ln 1:1")
+        self._zoom.setText("—")
+        self._wrap.setText("—")
         self._size.setText("0 B")

@@ -122,3 +122,100 @@ def test_text_view_keys_dispatch_word_document_and_page_navigation(tmp_path: Pat
         )
         assert state.selection == (state.anchor, document.total_chars())
         view.close()
+
+
+def test_text_view_zoom_changes_metrics_without_changing_document_text(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QFontDatabase, QRawFont
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "zoom.txt"
+    path.write_text("Western Привет", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        original_text = document.read(0, document.total_chars())
+        original_height = view.fontMetrics().height()
+
+        view.set_zoom_percent(130)
+
+        assert view.zoom_percent == 130
+        assert view.fontMetrics().height() > original_height
+        assert document.read(0, document.total_chars()) == original_text
+        assert view.font().family().casefold() != "monospace"
+        assert QFontDatabase.isFixedPitch(view.font().family())
+        raw_font = QRawFont.fromFont(view.font())
+        assert raw_font.supportsCharacter(ord("A"))
+        assert raw_font.supportsCharacter(ord("Ж"))
+        view.reset_zoom()
+        assert view.zoom_percent == 100
+        view.close()
+        app.processEvents()
+
+
+def test_text_view_zoom_is_clamped_to_supported_range(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "zoom-range.txt"
+    path.write_text("text", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        view.set_zoom_percent(999)
+        assert view.zoom_percent == 300
+        view.set_zoom_percent(1)
+        assert view.zoom_percent == 50
+        view.close()
+        app.processEvents()
+
+
+def test_primary_modifier_wheel_changes_editor_zoom_instead_of_scrolling(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "wheel-zoom.txt"
+    path.write_text("line\n" * 100, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        view.resize(320, 120)
+        view.show()
+        app.processEvents()
+        initial_scroll = view.verticalScrollBar().value()
+        event = QWheelEvent(
+            QPointF(10, 10),
+            QPointF(10, 10),
+            QPoint(),
+            QPoint(0, 120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.ControlModifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+
+        QApplication.sendEvent(view.viewport(), event)
+
+        assert view.zoom_percent == 110
+        assert view.verticalScrollBar().value() == initial_scroll
+        view.close()

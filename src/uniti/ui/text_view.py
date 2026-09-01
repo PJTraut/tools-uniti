@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
+    QFont,
     QFontDatabase,
     QFontMetrics,
     QGuiApplication,
@@ -12,6 +13,7 @@ from PySide6.QtGui import (
     QMouseEvent,
     QPainter,
     QPalette,
+    QRawFont,
     QTextLayout,
     QWheelEvent,
 )
@@ -27,11 +29,18 @@ class UNITITextView(QAbstractScrollArea):
 
     stateChanged = Signal()
     cursorPositionChanged = Signal(int, int)
+    zoomChanged = Signal(int)
 
     def __init__(self, state: EditorState, parent=None) -> None:
         super().__init__(parent)
         self.state = state
-        self.setFont(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont))
+        self._base_font = self._fixed_pitch_font()
+        self._base_point_size = self._base_font.pointSizeF()
+        if self._base_point_size <= 0:
+            self._base_point_size = 12.0
+            self._base_font.setPointSizeF(self._base_point_size)
+        self._zoom_percent = 100
+        self.setFont(self._base_font)
         self._metrics = QFontMetrics(self.font())
         self._line_height = max(1, self._metrics.height())
         self._gutter_width = max(48, self._metrics.horizontalAdvance("00000000") + 12)
@@ -47,6 +56,71 @@ class UNITITextView(QAbstractScrollArea):
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_changed)
         self.horizontalScrollBar().valueChanged.connect(self.viewport().update)
         self._refresh_scrollbars(advance_index=False)
+
+    @staticmethod
+    def _fixed_pitch_font() -> QFont:
+        families = set(QFontDatabase.families())
+        preferred = (
+            "Menlo",
+            "Cascadia Mono",
+            "Consolas",
+            "DejaVu Sans Mono",
+            "Liberation Mono",
+            "Noto Sans Mono",
+            "Courier New",
+            "Monaco",
+            "Andale Mono",
+        )
+        ordered = [family for family in preferred if family in families]
+        ordered.extend(sorted(families.difference(ordered)))
+        for family in ordered:
+            if not QFontDatabase.isFixedPitch(family):
+                continue
+            font = QFont(family)
+            raw_font = QRawFont.fromFont(font)
+            if (
+                raw_font.isValid()
+                and raw_font.supportsCharacter(ord("A"))
+                and raw_font.supportsCharacter(ord("Ж"))
+            ):
+                return font
+        return QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
+
+    @property
+    def zoom_percent(self) -> int:
+        return self._zoom_percent
+
+    def _rebuild_metrics(self) -> None:
+        self._metrics = QFontMetrics(self.font())
+        self._line_height = max(1, self._metrics.height())
+        self._gutter_width = max(
+            48,
+            self._metrics.horizontalAdvance("00000000") + 12,
+        )
+        self._cell_width = max(1, self._metrics.horizontalAdvance("M"))
+        self._max_seen_line_width = 0
+        self._refresh_scrollbars(advance_index=False)
+        self.viewport().update()
+
+    def set_zoom_percent(self, percent: int) -> None:
+        percent = max(50, min(300, int(percent)))
+        if percent == self._zoom_percent:
+            return
+        self._zoom_percent = percent
+        font = QFont(self._base_font)
+        font.setPointSizeF(self._base_point_size * percent / 100.0)
+        self.setFont(font)
+        self._rebuild_metrics()
+        self.zoomChanged.emit(percent)
+
+    def zoom_in(self) -> None:
+        self.set_zoom_percent(self._zoom_percent + 10)
+
+    def zoom_out(self) -> None:
+        self.set_zoom_percent(self._zoom_percent - 10)
+
+    def reset_zoom(self) -> None:
+        self.set_zoom_percent(100)
 
     @property
     def document(self):
@@ -315,6 +389,16 @@ class UNITITextView(QAbstractScrollArea):
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         delta = event.angleDelta().y()
+        primary = bool(
+            event.modifiers()
+            & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)
+        )
+        if primary and delta:
+            steps = max(1, abs(delta) // 120)
+            for _ in range(steps):
+                self.zoom_in() if delta > 0 else self.zoom_out()
+            event.accept()
+            return
         if delta:
             steps = max(1, abs(delta) // 120) * 3
             direction = -1 if delta > 0 else 1

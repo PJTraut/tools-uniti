@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from concurrent.futures import Future
+from dataclasses import replace as dataclass_replace
 from pathlib import Path
 import weakref
 
@@ -175,7 +176,16 @@ class UNITIMainWindow(QMainWindow):
             )
         )
 
-        self.menuBar().addMenu("&View")
+        view_menu = self.menuBar().addMenu("&View")
+        view_menu.addAction(
+            self._action("Zoom In", QKeySequence.StandardKey.ZoomIn, self.zoom_in_editor)
+        )
+        view_menu.addAction(
+            self._action("Zoom Out", QKeySequence.StandardKey.ZoomOut, self.zoom_out_editor)
+        )
+        view_menu.addAction(
+            self._action("Reset Zoom", QKeySequence("Ctrl+0"), self.reset_editor_zoom)
+        )
 
         encoding_menu = self.menuBar().addMenu("&Encoding")
         reinterpret_menu = encoding_menu.addMenu("Reinterpret As")
@@ -215,10 +225,7 @@ class UNITIMainWindow(QMainWindow):
 
     def _remember_directory(self, path: str | Path) -> None:
         directory = str(Path(path).parent)
-        self._settings = Settings(
-            last_directory=directory,
-            performance_mode=self._settings.performance_mode,
-        )
+        self._settings = dataclass_replace(self._settings, last_directory=directory)
         if self._settings_store is not None:
             try:
                 self._settings_store.save(self._settings)
@@ -244,6 +251,9 @@ class UNITIMainWindow(QMainWindow):
     def _connect_view(self, view: UNITITextView) -> None:
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
         view.cursorPositionChanged.connect(self._status.update_cursor)
+        view.zoomChanged.connect(
+            lambda percent, view=view: self._on_view_zoom_changed(view, percent)
+        )
 
     def _add_document(
         self,
@@ -255,6 +265,7 @@ class UNITIMainWindow(QMainWindow):
             self._recovery_manager.attach(document)
         state = EditorState(document)
         view = UNITITextView(state, self._tabs)
+        view.set_zoom_percent(self._settings.editor_zoom_percent)
         self._connect_view(view)
         index = self._tabs.addTab(view, self._tab_label(view))
         self._tabs.setCurrentIndex(index)
@@ -314,6 +325,35 @@ class UNITIMainWindow(QMainWindow):
         report = self._eol_reports.get(id(view))
         self._status.update_eol_report(report)
         self._status.update_document(view.document, report)
+        self._status.update_view(view.zoom_percent, soft_wrap=False)
+
+    def _on_view_zoom_changed(self, view: UNITITextView, percent: int) -> None:
+        if view is self.current_view:
+            self._status.update_view(percent, soft_wrap=False)
+        self._settings = dataclass_replace(
+            self._settings,
+            editor_zoom_percent=percent,
+        )
+        if self._settings_store is not None:
+            try:
+                self._settings_store.save(self._settings)
+            except OSError:
+                pass
+
+    def zoom_in_editor(self) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.zoom_in()
+
+    def zoom_out_editor(self) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.zoom_out()
+
+    def reset_editor_zoom(self) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.reset_zoom()
 
     def _on_view_state_changed(self, view: UNITITextView) -> None:
         index = self._tabs.indexOf(view)

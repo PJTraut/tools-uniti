@@ -19,6 +19,8 @@ class UnsupportedSettingsSchema(ValueError):
 class Settings:
     last_directory: str | None = None
     performance_mode: str = "Automatic"
+    editor_zoom_percent: int = 100
+    soft_wrap: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,9 +44,21 @@ def _settings_from_payload(payload: object) -> Settings:
     performance_mode = payload.get("performance_mode", "Automatic")
     if performance_mode not in {"Conservative", "Automatic", "Maximum Performance"}:
         performance_mode = "Automatic"
+    editor_zoom_percent = payload.get("editor_zoom_percent", 100)
+    if (
+        not isinstance(editor_zoom_percent, int)
+        or isinstance(editor_zoom_percent, bool)
+        or not 50 <= editor_zoom_percent <= 300
+    ):
+        editor_zoom_percent = 100
+    soft_wrap = payload.get("soft_wrap", False)
+    if not isinstance(soft_wrap, bool):
+        soft_wrap = False
     return Settings(
         last_directory=last_directory,
         performance_mode=performance_mode,
+        editor_zoom_percent=editor_zoom_percent,
+        soft_wrap=soft_wrap,
     )
 
 

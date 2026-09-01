@@ -18,13 +18,33 @@ def test_settings_store_defaults_when_missing(tmp_path: Path):
 def test_settings_store_round_trips_and_replaces_atomically(tmp_path: Path):
     path = tmp_path / "config" / "settings.json"
     store = SettingsStore(path)
-    settings = Settings(last_directory=str(tmp_path / "docs"), performance_mode="Automatic")
+    settings = Settings(
+        last_directory=str(tmp_path / "docs"),
+        performance_mode="Automatic",
+        editor_zoom_percent=130,
+        soft_wrap=True,
+    )
     store.save(settings)
     assert store.load() == settings
     payload = json.loads(path.read_text(encoding="utf-8"))
     assert payload["schema"] == 1
     assert payload["last_directory"] == str(tmp_path / "docs")
+    assert payload["editor_zoom_percent"] == 130
+    assert payload["soft_wrap"] is True
     assert not list(path.parent.glob("*.tmp"))
+
+
+def test_settings_reject_invalid_editor_view_state(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        '{"schema":1,"editor_zoom_percent":999,"soft_wrap":"yes"}',
+        encoding="utf-8",
+    )
+
+    settings = SettingsStore(path).load()
+
+    assert settings.editor_zoom_percent == 100
+    assert settings.soft_wrap is False
 
 
 def test_settings_store_ignores_unknown_keys_for_forward_compatibility(tmp_path: Path):
@@ -64,9 +84,11 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
     assert result.preserved_path is not None
     assert result.preserved_path.read_text(encoding="utf-8") == "broken"
     assert json.loads(path.read_text(encoding="utf-8")) == {
+        "editor_zoom_percent": 100,
         "last_directory": None,
         "performance_mode": "Automatic",
         "schema": 1,
+        "soft_wrap": False,
     }
 
 

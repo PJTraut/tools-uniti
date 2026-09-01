@@ -117,3 +117,34 @@ def test_main_window_accepts_completed_startup_snapshot_for_diagnostics():
     source = MAIN.read_text()
     assert "startup_snapshot" in source
     assert "set_startup_snapshot" in source
+
+
+def test_main_window_applies_and_preserves_editor_view_settings(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QLabel
+
+    from uniti.app.settings import Settings, SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "configured.txt"
+    source.write_text("Привет", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(Settings(editor_zoom_percent=130, soft_wrap=False))
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+
+    view = window.open_path(source)
+    app.processEvents()
+
+    assert view.zoom_percent == 130
+    assert store.load().editor_zoom_percent == 130
+    status_text = {label.text() for label in window.statusBar().findChildren(QLabel)}
+    assert "130%" in status_text
+    assert "No Wrap" in status_text
+    window.zoom_in_editor()
+    assert view.zoom_percent == 140
+    assert store.load().editor_zoom_percent == 140
+    window.close_all_documents(force=True)
+    window.close()
