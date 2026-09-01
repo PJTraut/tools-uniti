@@ -53,6 +53,7 @@ def test_a11_offscreen_open_find_edit_save_when_pyside6_available(tmp_path: Path
     )
     view = window.open_path(source)
     panel = window._find_replace
+    panel.regex_checkbox.setChecked(True)
     panel.find_input.setPlainText(r"abc\s+\d+")
     panel.find_all()
     deadline = time.monotonic() + 5.0

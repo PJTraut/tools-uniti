@@ -38,10 +38,8 @@ def test_find_replace_panel_has_worker_cancellation_navigation_and_capture_ui():
         "add_edit_listener",
         "resolve_captures",
         "include_captures=False",
-        "streamReplaceCommitted",
-        "stream_replace_to_file",
-        "probe_replacements",
-        "STREAM_REPLACE_THRESHOLD",
+        "collect_replacements",
+        "replace_many",
     ):
         assert required in source
 

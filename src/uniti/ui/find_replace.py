@@ -18,7 +18,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
-    QMessageBox,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -28,11 +27,7 @@ from uniti.regex.engine import compile_pattern
 from uniti.regex.match_store import MatchStore
 from uniti.regex.replace import (
     Replacement,
-    ReplacementProbe,
-    StreamReplaceResult,
     collect_replacements,
-    probe_replacements,
-    stream_replace_to_file,
 )
 from uniti.regex.results import MatchIndex, MatchRecord
 from uniti.regex.search import SearchOptions, resolve_captures, search_document
@@ -40,13 +35,9 @@ from uniti.resources import CancellationToken, PriorityWorkerPool, ResourceManag
 from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 
-STREAM_REPLACE_THRESHOLD = 50_000
-
-
 class FindReplaceWindow(QDialog):
     """Modeless Find/Replace utility; match records never become document state."""
 
-    streamReplaceCommitted = Signal(object, str, int)
     zoomChanged = Signal(int)
     reportLocationChanged = Signal(str)
     geometryChanged = Signal(tuple)
@@ -425,21 +416,20 @@ class FindReplaceWindow(QDialog):
         replacement_text = self._replacement_expression()
 
         def work():
-            return probe_replacements(
+            return collect_replacements(
                 view.document,
                 compiled,
                 replacement_text,
-                threshold=STREAM_REPLACE_THRESHOLD,
                 options=SearchOptions(timeout=0.5),
                 cancelled=lambda: token.cancelled,
             )
 
         self._start_job(
-            "replace_all_probe",
+            "replace_all",
             view,
             work,
             token=token,
-            context=(compiled, replacement_text, revision),
+            context=revision,
         )
 
     def cancel_search(self) -> None:
@@ -477,10 +467,8 @@ class FindReplaceWindow(QDialog):
             self._apply_find_results(view, payload, context)
         elif kind == "replace_current":
             self._apply_current_replacement(view, payload, context)
-        elif kind == "replace_all_probe":
-            self._apply_replace_probe(view, payload, context)
-        elif kind == "replace_all_stream":
-            self._apply_stream_replace(view, payload, context)
+        elif kind == "replace_all":
+            self._apply_replace_all(view, payload, context)
 
     def _apply_find_results(self, view, store: MatchStore, compiled) -> None:
         if view is None or view.document.revision != store.document_revision:
@@ -534,7 +522,10 @@ class FindReplaceWindow(QDialog):
         view._state_changed()
         self.status_label.setText("1 replaced")
 
-    def _apply_replace_all(self, view, replacements) -> None:
+    def _apply_replace_all(self, view, replacements, revision) -> None:
+        if view is None or view.document.revision != revision:
+            self.status_label.setText("text changed — search again")
+            return
         view.document.replace_many(
             [(item.start, item.end, item.text) for item in replacements]
         )
@@ -542,66 +533,6 @@ class FindReplaceWindow(QDialog):
         self._clear_results()
         view._state_changed()
         self.status_label.setText(f"{count:,} replaced")
-
-    def _apply_replace_probe(self, view, probe: ReplacementProbe, context) -> None:
-        if view is None or not isinstance(context, tuple) or len(context) != 3:
-            self.status_label.setText("match changed — search again")
-            return
-        compiled, replacement_text, revision = context
-        if view.document.revision != revision:
-            self.status_label.setText("text changed — search again")
-            return
-        if not probe.truncated:
-            self._apply_replace_all(view, probe.replacements)
-            return
-
-        choice = QMessageBox.warning(
-            self,
-            "Large Replace All",
-            f"More than {STREAM_REPLACE_THRESHOLD:,} replacements were found. "
-            "UNITI will stream the transformation atomically to the current "
-            "file to keep memory bounded. This commits current unsaved changes "
-            "and resets undo history. Continue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if choice != QMessageBox.StandardButton.Yes:
-            self.status_label.setText("large Replace All cancelled")
-            return
-
-        token = CancellationToken()
-
-        def work():
-            view.document.assert_safe_overwrite()
-            return stream_replace_to_file(
-                view.document,
-                compiled,
-                replacement_text,
-                view.document.path,
-                options=SearchOptions(timeout=0.5),
-                cancelled=lambda: token.cancelled,
-            )
-
-        self._start_job(
-            "replace_all_stream",
-            view,
-            work,
-            token=token,
-            context=revision,
-        )
-
-    def _apply_stream_replace(
-        self,
-        view,
-        result: StreamReplaceResult,
-        revision,
-    ) -> None:
-        if view is None or view.document.revision != revision:
-            self.status_label.setText("text changed after streamed replacement")
-            return
-        self._clear_results()
-        self.streamReplaceCommitted.emit(view, str(result.path), result.count)
-        self.status_label.setText(f"{result.count:,} replaced (streamed)")
 
     def next_match(self) -> None:
         if not len(self._results):
