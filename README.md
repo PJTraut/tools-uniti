@@ -57,6 +57,26 @@ From a source checkout, use an existing Python 3.12 or newer to create or adopt 
 python3.12 scripts/bootstrap.py --dev
 ```
 
+For a normal desktop launch, double-click `uniti.command` on macOS or `uniti.bat` on Windows. The launchers locate this checkout, run the same safe bootstrap flow, and then start UNITI. From a macOS terminal:
+
+```bash
+./uniti.command ~/Documents/example.txt
+```
+
+From Windows Command Prompt (`cmd.exe`):
+
+```bat
+uniti.bat "%USERPROFILE%\Documents\example.txt"
+```
+
+From PowerShell:
+
+```powershell
+.\uniti.bat "$HOME\Documents\example.txt"
+```
+
+The first launch creates `.venv` and installs the UI dependencies. Pass `--dev` when the managed environment should also include development dependencies.
+
 Bootstrap never installs into the host Python. Source mode owns exactly `<checkout>/.venv`; explicit application-local mode uses the OS application-data runtime:
 
 ```bash

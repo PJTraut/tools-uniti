@@ -7,6 +7,8 @@
 *.yaml text eol=lf
 *.json text eol=lf
 *.sh text eol=lf
+*.command text eol=lf
+*.bat text eol=crlf
 
 # UNITI's future byte/EOL/encoding fixtures must never be rewritten by Git.
 tests/fixtures/** -text
