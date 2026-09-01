@@ -3,12 +3,10 @@ import json
 import os
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 
 import pytest
 
-import uniti
 from uniti.app import application
 from uniti.app.paths import AppPaths
 from uniti.app.setup_state import SetupStateStore
@@ -20,12 +18,6 @@ REPO_ROOT = Path(__file__).parents[1]
 
 
 def test_a16_release_contract():
-    project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-
-    assert (REPO_ROOT / "VERSION").read_text(encoding="utf-8").strip() == "v0.001a16"
-    assert uniti.__version__ == "0.1a16"
-    assert uniti.__display_version__ == "v0.001a16"
-    assert project["project"]["version"] == "0.1a16"
     assert BootstrapMode.SOURCE.value == "source"
     assert list(StartupPhase)[-1] is StartupPhase.READY
     assert application.main(["uniti", "--version"]) == 0

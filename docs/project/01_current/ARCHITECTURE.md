@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
-Date: 2026-09-01
-Baseline: verified a16 implementation through `c6f7faa` on `main`
+Date: 2026-09-02
+Baseline: verified a17 implementation through `c016007` on `main`
 
 ## Lifecycle boundary
 
@@ -82,13 +82,31 @@ QApplication / UNITIMainWindow
 
 `EditHistory` retains at most 50 immutable document transactions. When the oldest transaction is evicted, its state is folded into the retained baseline so modified/save-point semantics remain correct. Typing, backspace, and delete may coalesce while contiguous; cursor movement, selection changes, save, Undo/Redo, and explicit operations break coalescing. `Document.replace_many` applies all non-overlapping original-coordinate replacements as one transaction.
 
+## Text-format authority and inspection
+
+`core.text_format` owns the exact input/output grammar. Encoding profiles are indivisible values: `UTF-8`, `UTF-8 BOM`, `Windows-1252`, UTF-16 LE/BE with and without BOM, and UTF-32 LE/BE with and without BOM. Omission of `BOM` always means no BOM. Line endings are a separate `PRESERVE | LF | CRLF | CR` policy, never a hidden property of an encoding choice.
+
+`core.text_inspection` performs bounded preview decoding and independent full streaming EOL analysis over a temporary `ByteSource`. Its `EncodingAssessment` and `EOLReport` remain separate because uncertain or contradictory encoding evidence is serious, while mixed line endings are usually remediable. Confidence below `0.75`, contradictory BOM evidence, or malformed preview bytes requires an exact-profile modal before a tab is constructed. Mixed EOL opens a separate modeless report and never normalizes automatically.
+
+`Document` remains authoritative for `source_profile`, `saved_output_format`, `output_format`, source EOL evidence, dirty state, and history. Reinterpretation reopens immutable source bytes under another exact profile and is blocked while the document is dirty. A pending codec, byte-order, BOM, or EOL change is metadata-dirty even before the logical text changes.
+
+The status bar renders encoding and EOL as one compact statement. A saved UTF-8 CRLF document displays `UTF-8, CRLF`; a pending conversion displays `UTF-8, CRLF -> UTF-16 LE BOM, LF`. Editor line/column, zoom, wrap, and size remain independent status fields.
+
+## Verified Save and Save As transaction
+
+Every output is streamed to a sibling temporary, flushed and synced, then reread before replacement. Verification proves exact BOM presence or absence, codec/byte order, strict decoding when applicable, requested EOL policy, logical-text equality, byte length, and SHA-256. The destination is atomically replaced only after verification; destination identity is checked from UI preflight through staging and again before commit. Failure discards the temporary and preserves destination bytes and document state.
+
+Same-profile `PRESERVE` is the sole malformed-byte exception: unresolved annotated source spans are copied byte-for-byte. Encoding or EOL transformation is blocked until malformed spans are resolved. Strict output encoding reports an unrepresentable character and document position rather than substituting bytes.
+
+In-place `Document.save()` advances the current tab's save point only after verified replacement and rebuilds its immutable source services. `Document.export_copy()` writes a different resolved path without changing the source tab's path, format, history, dirty state, or save point. `UNITIMainWindow` coordinates the application-owned Save As path/format dialog, normal existing-file confirmation, exact encoding-change confirmation, dirty-open-target blocking, and the second clean-open-target replacement confirmation. A successful different-path export opens a new active tab; a successful replacement of an already-open clean target reloads and reuses that tab instead of duplicating it.
+
 ## Editor presentation and command flow
 
 `UNITITextView` continues to paint only visible document content through the custom virtual viewport. It selects a concrete fixed-pitch font with Western/Latin and Cyrillic coverage, applies clamped 50–300% font scaling, and handles primary-modifier wheel zoom without transferring text ownership to Qt.
 
 Soft wrap is display-only and defaults off. `ui.wrap_index.WrappedRowIndex` incrementally maps logical lines to visual rows at the current viewport width; scrolling advances that index rather than constructing a whole-document Qt layout. Wrap therefore does not insert EOLs or change document coordinates.
 
-Input flows through `EditorState` for insertion/deletion, clipboard operations, selection, Unicode-category word movement, page movement, document start/end, and line navigation. `UNITITextView` interprets double-click as word selection, triple-click as visual-line selection, and quadruple-click as logical-line selection through the terminating line break. Reload/Revert asks before discarding modifications, reopens through `Document.open`, and installs a fresh history. The status bar receives cursor, encoding/EOL, size, editor zoom, and `Wrap`/`No Wrap` state from the active view.
+Input flows through `EditorState` for insertion/deletion, clipboard operations, selection, Unicode-category word movement, page movement, document start/end, and line navigation. `UNITITextView` interprets double-click as word selection, triple-click as visual-line selection, and quadruple-click as logical-line selection through the terminating line break. Reload/Revert asks before discarding modifications, reopens through `Document.open`, and installs a fresh history. The status bar receives cursor, exact saved/pending format, size, editor zoom, and `Wrap`/`No Wrap` state from the active view.
 
 ## Desktop UI reference principles
 
@@ -149,16 +167,18 @@ The pre-Cot top-level Navigation, Search, F/R View, Encoding, and EOL groupings 
 
 ## Search, save, recovery, and resources
 
-Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, timeout-aware, revision-bound, compactly stored, and delivered to Qt through queued signals. Core streaming replacement remains available for future bounded large-file work but is not a UI Replace All path in a16. Save remains streaming, atomic, explicit about encoding/EOL conversion, metadata-aware where supported, and protected against external file replacement.
+Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, timeout-aware, revision-bound, compactly stored, and delivered to Qt through queued signals. Core streaming replacement remains available for future bounded large-file work but is not a UI Replace All path. Save uses the verified transaction above and remains streaming, atomic, metadata-aware where supported, and protected against external file replacement.
 
 `RecoveryManager` serializes journal durability independently from disposable background work. The application-wide `ResourceManager` remains the single cache/pressure/worker policy owner and now exposes its constructed cache budget and worker count for state and diagnostics.
 
 ## Self-check and diagnostics
 
-`uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, and offscreen Qt/view checks.
+`uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, offscreen Qt/view, and a distinct `text-integrity` check for the exact profile registry, verified staging, reopen, and verifier-refusal cleanup.
+
+The application CLI's `--smoke` mode runs the core alpha probe and a self-closing real `UNITIMainWindow` on the selected Qt platform. `QT_QPA_PLATFORM=offscreen` provides the automated platform gate; an unmodified macOS environment exercises native Cocoa separately.
 
 The completed startup snapshot is passed into `UNITIMainWindow` and the diagnostics dialog. Diagnostics consume that snapshot and do not repeat ambient probes.
 
 ## Planned-change boundary
 
-The complete a16 product milestone, including the compact menu, focus-owned F/R wheel zoom, multiple-click selection, expanding F/R input layout, and clear Find All result highlighting corrections discovered during real use, is implemented and verified current architecture. Its historical scope and execution records are retained in [`03_implemented`](../03_implemented/README.md), with command ownership governed by [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Active a17 and queued a18+ behavior are planned intent and are not current architecture.
+The complete a17 Text Integrity Alpha is implemented and verified current architecture. Its milestone, approved design, and execution record are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a18` Large-File Alpha is now the sole active milestone; a18 and queued a19+ behavior remain planned intent and are not current architecture. Extension-sensed file-type profiles and syntax highlighting remain parked outside the approved roadmap.

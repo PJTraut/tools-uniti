@@ -1,6 +1,6 @@
 # UNITI Current Status
 
-Date: 2026-09-01
+Date: 2026-09-02
 
 ## Canonical baseline
 
@@ -8,49 +8,61 @@ Date: 2026-09-01
 |---|---|
 | Repository branch | `main` |
 | Remote baseline | `origin/main` at `052f733` |
-| Verified a16 implementation checkpoint | `c6f7faa` — clear Find All editor highlights |
-| Local integration state | `main` contains unpushed a16 completion commits after `origin/main`; push remains a separate user decision |
-| Latest implemented milestone | `v0.001a16` — Usable Test Alpha |
-| Active product milestone | `v0.001a17` — Text Integrity Alpha |
-| Display/package metadata | `v0.001a16` / `0.1a16` |
+| Verified a17 implementation checkpoint | `c016007` — a17 acceptance matrix, deep text-integrity check, and combined smoke |
+| Local integration state | `main` contains unpushed a16 and a17 completion commits after `origin/main`; push remains a separate user decision |
+| Latest implemented milestone | `v0.001a17` — Text Integrity Alpha |
+| Active product milestone | `v0.001a18` — Large-File Alpha |
+| Display/package metadata | `v0.001a17` / `0.1a17` |
 | Latest immutable release tag | `v0.001a15` at `10f419e` |
-| Queued milestones | `v0.001a18` through `v0.001a23` |
+| Queued milestones | `v0.001a19` through `v0.001a23` |
 
-The `v0.001a15` tag remains immutable. The post-tag Qt completion fix, startup/bootstrap workstream, launchers, and complete a16 usability milestone are on local `main`. a16 is implemented without a new tag; version metadata remains at the last implemented product milestone until a17 implementation deliberately advances it.
+The `v0.001a15` tag remains immutable. a16 and a17 are implemented on local `main` without new tags. No tag or push is implied by milestone completion.
 
-## Implemented a16 behavior
+## Implemented a17 behavior
 
-- document Undo/Redo is capped at 50 transactions, with coalesced typing/backspace/delete and correct save-point behavior;
-- Cut, Copy, Paste, Select All, Go to Line, Reload/Revert, page/document/Unicode-word navigation, and Shift selection dispatch through editor state;
-- double-click selects a word, triple-click selects a visual line, and quadruple-click selects the complete logical line through its line break;
-- editor zoom, primary-modifier wheel zoom, fixed-pitch Western/Cyrillic font selection, progressive soft wrap, persistence, and zoom/wrap status are implemented;
-- Find/Replace is a mouse-resizable floating utility with independent keyboard/mouse zoom, geometry, separate 50-step histories, explicit Literal/Regex modes, equal-height expanding input cells, a compact bottom-anchored control stack, grouped batch/match actions, and an unrestricted collapsible capture splitter;
-- report placement remains `Hidden | Bottom | Right` and rotates through one scoped, configurable `Ctrl+Alt+R` command;
-- Find All highlights every visible match through the virtual editor viewport while the current match remains the stronger selection;
-- literal and raw-regex modes are explicit; Case Sensitive and Whole Word belong only to literal mode; capture reports show groups `1..N` and exclude group `0`;
-- Replace and Replace All mutate the authoritative `Document`; Replace All is one atomic undoable transaction and never bypasses history through a disk rewrite;
-- the compact menu bar is `File | Edit | Format | View | Find | Tools | Hotkeys`, with the former top-level Navigation, Search, F/R View, Encoding, and EOL artifacts removed;
-- Hotkeys exposes the six approved horizontal categories, native Default/Current display, assignment, clearing, collision detection, selected/category/all resets, scoped dispatch, and portable persisted overrides; and
-- root macOS and Windows launchers use the canonical bootstrap path and forward arguments and exit status.
+- the canonical registry contains 11 exact profiles: UTF-8 with/without BOM, Windows-1252, UTF-16 LE/BE with/without BOM, and UTF-32 LE/BE with/without BOM;
+- encoding confidence, contradictory BOM evidence, and malformed preview bytes are serious input decisions, while line-ending evidence remains a separate report;
+- low-confidence or malformed Open requires exact-profile confirmation before tab creation; mixed EOL uses a modeless `Keep | LF | CRLF | CR` report and never normalizes automatically;
+- Reinterpret uses the exact profile flow and remains blocked on dirty documents;
+- the status bar renders saved and pending format compactly, such as `UTF-8, CRLF -> UTF-16 LE BOM, LF`;
+- Save and Save As stage, sync, verify, and atomically replace only after exact BOM, byte-order, decoding, EOL, logical-text, byte-length, digest, revision, and destination-identity checks pass;
+- same-profile `PRESERVE` copies unresolved malformed source spans byte-for-byte; format transformation remains blocked while malformed spans remain;
+- the application-owned Save As dialog keeps filename, exact encoding, and EOL controls together;
+- in-place Save advances the current document only after success; different-path Save As preserves the source tab and opens the verified copy in a new active tab;
+- an existing target requires normal overwrite confirmation, a distinct exact encoding-change warning when applicable, and a second confirmation when a clean target tab is already open; dirty targets are blocked;
+- successful replacement reloads and reuses an existing clean target tab, and destination changes after confirmation abort instead of being silently overwritten; and
+- deep self-check exposes `text-integrity`, while `uniti --smoke` runs both core and self-closing real-window probes.
 
-## a16 completion evidence
+## a17 completion evidence
 
-Fresh verification after the final usability corrections reported:
+Fresh automated and native verification reported:
 
 ```text
-421 passed, 4 skipped in 11.34s
-compileall: pass
-alpha_smoke.py: ok=true
-deep offscreen self-check: status=pass, exit_code=0
-Qt-free core/regex/resource boundary: pass
-./uniti.command --version: v0.001a16
-native Qt platform: cocoa
-native Cocoa equal 224/224 px F/R inputs and bottom-anchored controls: pass
-native Cocoa Find All: 3/3 matches visibly highlighted, contrast 573/270/270: pass
+full pytest: 552 passed, 4 skipped in 14.40s
+deep self-check: pass; text-integrity=pass; exit_code=0
+offscreen combined smoke: core_ok=true; gui_ok=true; qt_platform=offscreen
+native combined smoke: core_ok=true; gui_ok=true; qt_platform=cocoa
+native smoke timestamp: 2026-09-02 00:33 SAST
+native window: shown=true; closed=true; exit_code=0
 ```
 
-The four skips are one platform xattr capability case and three Windows launcher cases unavailable on macOS. Automated coverage also retains F/R window/capture resizing, capture collapse, action grouping, Literal/Regex semantics, and report-hotkey rotation. Real-use feedback exposed the remaining basic usability defects: legacy menu accumulation, missing focus-owned F/R mouse zoom, missing multiple-click selection units, constrained/ambiguous F/R controls and input sizing, and insufficient contrast on non-current Find All results. Each correction was locked by automated coverage before the final full and native-macOS runs. No known data-loss or text-integrity defect remains at this baseline.
+The four skips are one unavailable xattr capability case and three Windows launcher cases unavailable on macOS.
 
-All five a16 acceptance gates are therefore recorded as passed. The milestone scope and execution plan now reside in [`03_implemented`](../03_implemented/README.md), and a17 is the active outstanding milestone.
+Disposable non-pytest dogfood opened, searched, edited, saved, exported, SHA-256 checked, and reopened these real formats:
 
-See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and [the implemented a16 milestone](../03_implemented/milestones/2026-09-01-uniti-v0.001a16-usable-test-alpha.md).
+```text
+UTF-8 no BOM / CRLF       9e1242692a1fc9417362d3c9fbaa3411aae946a4819119051e4378e99ff7a04a
+UTF-8 BOM / LF            594d6b0b2facccb8b0974bb0b16f55c6f8a1fac0c766dca49c6b1a98ce2b4b39
+Windows-1252 / CRLF       f0fde73ce827e3526b93a4760585b5a1302a455f6691ab51b6f86e7123c5a69c
+UTF-16 LE no BOM          77b812a69a5d99d7df5e005d7a6cb8770b367e8ef4535983b9c60d44f8270eb5
+UTF-16 BE BOM             d4f5fc9fe3db3da9d9de0821fcdc894d35705f1bd9279e9281e7a01539b564de
+UTF-32 LE BOM             27ca19902dcdcf30ef036c2de2d774d24f553ecd631077e5a55336a62fb00a2b
+Mixed EOL preserve        9b3540a97ca4ccbc0b281159acf7d8b5497407a3ab377914b7ab0f2082e22232
+Malformed UTF-8 preserve  e73c25ee494df25f567d0c028ff4d45d0233435573c5dbd606059bdd7a7411a2
+```
+
+Each search returned one match before edit; Save As matched the saved source bytes; the second exact-profile reopen matched logical text. The malformed case retained byte `FF`. The first dogfood harness run compared `/var` and `/private/var` lexically; rerunning with resolved file identity passed and confirmed the intended macOS alias handling. No product defect was found, and no known data-loss, silent encoding/EOL, malformed-byte, identity, or save-state defect remains.
+
+All a17 acceptance gates are therefore recorded as passed. The milestone, approved design, and implementation plan reside in [`03_implemented`](../03_implemented/README.md), and a18 is the active outstanding milestone.
+
+See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and [the implemented a17 milestone](../03_implemented/milestones/2026-09-01-uniti-v0.001a17-text-integrity-alpha.md).

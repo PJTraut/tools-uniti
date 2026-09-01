@@ -1,7 +1,7 @@
 # UNITI Current Development Workflow
 
-Date: 2026-09-01
-Version: `v0.001a16` / `0.1a16`
+Date: 2026-09-02
+Version: `v0.001a17` / `0.1a17`
 
 ## Requirements and policy
 
@@ -66,9 +66,10 @@ An existing unmarked application-local target is refused. UNITI never deletes or
 .venv/bin/uniti file.txt other.csv
 .venv/bin/python -m uniti
 .venv/bin/uniti --version
+.venv/bin/python -m uniti --smoke
 ```
 
-`--deep` and `--json` require `--self-check` on the application CLI. Bootstrap `--deep` implies self-check. Use `--` before a filename beginning with `-`.
+`--deep` and `--json` require `--self-check` on the application CLI. Bootstrap `--deep` implies self-check. `--smoke` runs the core workflow plus a real self-closing main window on the selected Qt platform. Use `--` before a filename beginning with `-`.
 
 ## Self-check
 
@@ -97,8 +98,9 @@ Exit codes:
 ```bash
 .venv/bin/python -m pytest -q
 .venv/bin/python -m compileall -q src scripts tests
-.venv/bin/python scripts/alpha_smoke.py
-QT_QPA_PLATFORM=offscreen .venv/bin/python -m uniti --self-check --deep --json
+.venv/bin/python -m uniti --self-check --deep
+QT_QPA_PLATFORM=offscreen .venv/bin/python -m uniti --smoke
+.venv/bin/python -m uniti --smoke
 git diff --check
 ```
 
@@ -106,11 +108,21 @@ Qt-focused coverage:
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
+  tests/test_a17_text_integrity_acceptance.py \
   tests/test_a16_startup_bootstrap_acceptance.py \
   tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-The final a16 checkpoint at `c6f7faa` recorded `421 passed, 4 skipped`, clean compilation, a passing alpha smoke, a passing deep offscreen self-check, a clean Qt-free core/regex/resource boundary, and `v0.001a16` through `./uniti.command --version`. Self-closing native Cocoa runs passed equal-height expanding F/R inputs, bottom-anchored controls, and clear highlighting of all three Find All results; the full suite retains window/capture resizing, capture collapse, action grouping, Literal/Regex semantics, and report-hotkey rotation coverage. Before remote integration, confirm the working tree is clean and ensure the push is normal and fast-forward safe.
+The final a17 freeze gate recorded `552 passed, 4 skipped`, a passing deep self-check with `text-integrity`, a passing offscreen combined smoke, and a passing native Cocoa combined smoke with a real shown-and-closed window. Disposable non-pytest dogfood exercised UTF-8 without BOM/CRLF, UTF-8 BOM/LF, Windows-1252/CRLF, UTF-16 LE without BOM, UTF-16 BE BOM, UTF-32 LE BOM, mixed EOL, and malformed UTF-8 through open, search, edit, Save, Save As, SHA-256 comparison, and second reopen. Before remote integration, confirm the working tree is clean and ensure the push is normal and fast-forward safe.
+
+## Text-integrity change discipline
+
+- Add or select formats only through `core.text_format.EncodingProfile` and `OutputFormat`; do not recreate codec/BOM/EOL grammar in a menu or dialog.
+- Keep encoding assessment serious and independent from line-ending reporting.
+- Test all save-path changes against exact bytes, logical reopen text, document state, destination identity, and temporary cleanup.
+- Use `Document.save()` only for the current resolved path and `Document.export_copy()` for another path.
+- Preserve malformed bytes only under same-profile `PRESERVE`; never introduce replacement-byte conversion silently.
+- Keep Qt and tab coordination in `src/uniti/ui`; core/regex/resource modules remain Qt-free.
 
 ## Lifecycle files
 
@@ -125,6 +137,6 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a16` is implemented without a new tag; `v0.001a17` is active planning state, while runtime/package metadata remains at a16 until a17 implementation deliberately advances it.
+Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a17` is implemented without a new tag; `v0.001a18` is the active planned milestone.
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.
