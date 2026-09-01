@@ -13,7 +13,15 @@ Directory placement means the work is implemented. Completion is established by 
 
 Historical plans may contain unchecked task boxes because they are retained as originally authored execution records. Those stale checklist marks do not move implemented work back into the outstanding plan queue.
 
-An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. The a16 startup/bootstrap records are one such implemented foundation; `v0.001a16` remains active until the separate Usable Test Alpha gate passes.
+An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. a16's startup/bootstrap foundation was retained here before the parent gate closed; the complete `v0.001a16` Usable Test Alpha milestone is now also implemented.
+
+## v0.001a16 records
+
+- [Usable Test Alpha milestone](milestones/2026-09-01-uniti-v0.001a16-usable-test-alpha.md)
+- [Usable Test Alpha implementation plan](milestones/2026-09-01-uniti-v0.001a16-usable-test-alpha-implementation.md)
+- [Startup/bootstrap foundation](milestones/2026-09-01-uniti-v0.001a16-startup-bootstrap.md)
+- [Startup/bootstrap implementation plan](milestones/2026-09-01-uniti-v0.001a16-startup-bootstrap-implementation.md)
+- [Startup/bootstrap design](designs/2026-09-01-uniti-v0.001a16-startup-bootstrap-design.md)
 
 Implemented records never return to `02_plans`. A correction, extension, or replacement receives a new plan and, when it changes a consequential choice, a new or superseding architecture decision record.
 

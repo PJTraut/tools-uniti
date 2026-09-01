@@ -7,7 +7,7 @@ Version: `v0.001a16` / `0.1a16`
 
 UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
 
-The a16 usability implementation is current and automatically verified. The milestone itself remains active until interactive macOS smoke and sustained real-use dogfood close its remaining acceptance gates.
+The a16 usability milestone is implemented and verified, including its real-use corrections and native macOS smoke. a17 Text Integrity is the active planned milestone; its intended changes are not current behavior until implemented and verified.
 
 ## Included lifecycle capabilities
 
@@ -32,6 +32,7 @@ The a16 usability implementation is current and automatically verified. The mile
 - hybrid source/edit piece table, selections, atomic transactions, and a 50-transaction document Undo/Redo history;
 - coalesced typing/backspace/delete plus Unicode-aware word, page, document, line, and Shift-extended navigation;
 - Cut, Copy, Paste, Select All, Go to Line, and protected Reload/Revert;
+- word, visual-line, and logical-line-through-break selection by double, triple, and quadruple click;
 - fixed-pitch Western/Latin and Cyrillic rendering, independent editor zoom, primary-modifier wheel zoom, and progressive display-only soft wrap;
 - streaming atomic Save/Save As with external-file identity and supported metadata protection;
 - asynchronous crash-recovery journals and validated replay;
@@ -39,6 +40,7 @@ The a16 usability implementation is current and automatically verified. The mile
 - floating modeless Find/Replace with literal/regex separation, capture-only reports, independent zoom/geometry/report state, and separate 50-step field histories;
 - one-step undoable Replace All with no disk-rewrite history bypass;
 - a scoped shared command registry and persisted Hotkeys popup for window, editor, and Find/Replace commands;
+- a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with native shortcut display and no duplicate pre-Cot top-level command groupings;
 - PySide6 tabs, custom virtual viewport, clipboard, IME, menus, zoom/wrap status, inspections, diagnostics, and recovery surfaces; and
 - centralized cache pressure, active/inactive document priority, and shared background workers.
 
@@ -65,7 +67,7 @@ The a16 usability implementation is current and automatically verified. The mile
 
 ## Approved future scope
 
-The ordered `v0.001a17`–`v0.001a23` milestones are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a17` is active and `v0.001a18`–`v0.001a23` remain queued. All are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 

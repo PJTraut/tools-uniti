@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
 Date: 2026-09-01
-Baseline: automatically verified a16 implementation through `fe7bf17` on `main`
+Baseline: verified a16 implementation through `7d8866a` on `main`
 
 ## Lifecycle boundary
 
@@ -86,9 +86,9 @@ QApplication / UNITIMainWindow
 
 `UNITITextView` continues to paint only visible document content through the custom virtual viewport. It selects a concrete fixed-pitch font with Western/Latin and Cyrillic coverage, applies clamped 50–300% font scaling, and handles primary-modifier wheel zoom without transferring text ownership to Qt.
 
-Soft wrap is display-only and defaults off. `ui.wrap_index.VisualRowIndex` incrementally maps logical lines to visual rows at the current viewport width; scrolling advances that index rather than constructing a whole-document Qt layout. Wrap therefore does not insert EOLs or change document coordinates.
+Soft wrap is display-only and defaults off. `ui.wrap_index.WrappedRowIndex` incrementally maps logical lines to visual rows at the current viewport width; scrolling advances that index rather than constructing a whole-document Qt layout. Wrap therefore does not insert EOLs or change document coordinates.
 
-Input flows through `EditorState` for insertion/deletion, clipboard operations, selection, Unicode-category word movement, page movement, document start/end, and line navigation. Reload/Revert asks before discarding modifications, reopens through `Document.open`, and installs a fresh history. The status bar receives cursor, encoding/EOL, size, editor zoom, and `Wrap`/`No Wrap` state from the active view.
+Input flows through `EditorState` for insertion/deletion, clipboard operations, selection, Unicode-category word movement, page movement, document start/end, and line navigation. `UNITITextView` interprets double-click as word selection, triple-click as visual-line selection, and quadruple-click as logical-line selection through the terminating line break. Reload/Revert asks before discarding modifications, reopens through `Document.open`, and installs a fresh history. The status bar receives cursor, encoding/EOL, size, editor zoom, and `Wrap`/`No Wrap` state from the active view.
 
 ## Desktop UI reference principles
 
@@ -119,9 +119,9 @@ Editor zoom/wrap and Find/Replace zoom/geometry/report placement persist indepen
 
 `HotkeysPopup` is a modeless editor over the same registry. It exposes the six approved horizontal categories and Default/Current bindings, and performs assignment, clearing, collision rejection, selected/category/all resets, and portable-text persistence. Menus and customized shortcuts therefore do not maintain competing handler paths.
 
-### Approved compact menu definition
+### Compact menu definition
 
-The next a16 UI correction consolidates UNITI's application-owned menu bar to:
+UNITI's application-owned menu bar is consolidated to:
 
 ```text
 File | Edit | Format | View | Find | Tools | Hotkeys
@@ -141,7 +141,7 @@ The Hotkeys display retains the horizontal categories `File | Editing | Navigati
 
 Keyboard Zoom In/Out/Reset and primary-modifier mouse-wheel zoom are focus-owned: the editor changes only editor zoom, while any control inside the floating F/R window changes only F/R zoom. The two persisted zoom values remain independent.
 
-This compact definition is an approved a16 target, not yet an implemented-current claim. It becomes current only after its menu reachability, live shortcut display, focus-scoped keyboard zoom, and focus-scoped wheel zoom tests pass.
+The pre-Cot top-level Navigation, Search, F/R View, Encoding, and EOL groupings no longer exist. Menu reachability, live native shortcut display, focus-scoped keyboard zoom, and focus-scoped wheel zoom are covered by the a16 UI contract tests.
 
 ## Search, save, recovery, and resources
 
@@ -155,6 +155,6 @@ Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, time
 
 The completed startup snapshot is passed into `UNITIMainWindow` and the diagnostics dialog. Diagnostics consume that snapshot and do not repeat ambient probes.
 
-## Active-plan boundary
+## Planned-change boundary
 
-The original planned a16 functionality is implemented and automatically verified, so it is part of current architecture. Dogfood has now identified the compact menu and focus-owned F/R wheel-zoom corrections defined above; those corrections remain approved targets until their tests pass. The milestone also retains its interactive macOS smoke, sustained real editing/search dogfood, and final no-known-integrity-defect gates. Those boundaries are recorded in the [active a16 plan](../02_plans/v0.001a16-usable-test-alpha.md) and [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Queued a17+ behavior is not current architecture.
+The complete a16 product milestone, including the compact menu, focus-owned F/R wheel zoom, and multiple-click selection corrections discovered during real use, is implemented and verified current architecture. Its historical scope and execution records are retained in [`03_implemented`](../03_implemented/README.md), with command ownership governed by [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Active a17 and queued a18+ behavior are planned intent and are not current architecture.

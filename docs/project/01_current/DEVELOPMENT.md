@@ -110,7 +110,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
   tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-The automated a16 checkpoint at `fe7bf17` recorded `411 passed, 4 skipped`, clean compilation, a passing alpha smoke, a passing deep offscreen self-check, and a successful `./uniti.command --version` end-to-end launcher check. Before milestone completion, also run the interactive macOS GUI smoke and real-use dogfood gate, verify that `src/uniti/core`, `src/uniti/regex`, and `src/uniti/resources` do not import PySide6, confirm the working tree is clean, and ensure remote integration is a normal fast-forward-safe push.
+The final a16 checkpoint at `7d8866a` recorded `416 passed, 4 skipped`, clean compilation, a passing alpha smoke, a passing deep offscreen self-check, a clean Qt-free core/regex/resource boundary, and `v0.001a16` through `./uniti.command --version`. A self-closing native Cocoa run also passed open/edit/save, Find/Replace, Hotkeys, compact-menu, and independent-zoom checks. Before remote integration, confirm the working tree is clean and ensure the push is normal and fast-forward safe.
 
 ## Lifecycle files
 
@@ -125,6 +125,6 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a16` remains active without a tag; the startup/bootstrap foundation is an implemented workstream within it.
+Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a16` is implemented without a new tag; `v0.001a17` is active planning state, while runtime/package metadata remains at a16 until a17 implementation deliberately advances it.
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.
