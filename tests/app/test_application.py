@@ -39,6 +39,23 @@ def test_self_check_json_path_returns_report_exit_without_qt(monkeypatch, capsys
     assert '"exit_code": 11' in capsys.readouterr().out
 
 
+def test_smoke_cli_dispatches_combined_smoke_and_returns_its_status(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        application,
+        "run_smoke",
+        lambda: {"ok": True, "core_ok": True, "gui_ok": True},
+        raising=False,
+    )
+
+    assert application.main(["uniti", "--smoke"]) == 0
+
+    output = capsys.readouterr().out
+    assert '"core_ok": true' in output
+    assert '"gui_ok": true' in output
+
+
 def test_normal_startup_without_owned_marker_returns_actionable_environment_code(
     tmp_path: Path, capsys
 ):

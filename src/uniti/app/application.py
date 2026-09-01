@@ -30,6 +30,7 @@ from .startup import (
 class ApplicationRequest:
     files: tuple[Path, ...] = ()
     self_check: bool = False
+    smoke: bool = False
     deep: bool = False
     json_output: bool = False
     version: bool = False
@@ -43,6 +44,11 @@ def _argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="uniti", description="UNITI text editor")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--self-check", action="store_true", help="validate this UNITI runtime")
+    group.add_argument(
+        "--smoke",
+        action="store_true",
+        help="run core and self-closing GUI smoke checks",
+    )
     group.add_argument("--version", action="store_true", help="print the UNITI version")
     parser.add_argument("--deep", action="store_true", help="run deep functional checks")
     parser.add_argument("--json", dest="json_output", action="store_true", help="emit JSON")
@@ -62,6 +68,7 @@ def parse_args(argv: list[str]) -> ApplicationRequest:
     return ApplicationRequest(
         files=tuple(namespace.files),
         self_check=bool(namespace.self_check),
+        smoke=bool(namespace.smoke),
         deep=bool(namespace.deep),
         json_output=bool(namespace.json_output),
         version=bool(namespace.version),
@@ -72,6 +79,12 @@ def run_self_check(request: ApplicationRequest):
     from .self_check import SelfCheckRunner
 
     return SelfCheckRunner().run(deep=request.deep)
+
+
+def run_smoke() -> dict[str, object]:
+    from .smoke import run_combined_smoke
+
+    return run_combined_smoke()
 
 
 def _capability_payload(results: Mapping[str, object]) -> dict[str, object]:
@@ -398,4 +411,12 @@ def main(argv: list[str] | None = None) -> int:
         output = render_json(report) if request.json_output else render_human(report)
         print(output, end="")
         return int(report.exit_code)
+    if request.smoke:
+        result = run_smoke()
+        print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+        if result.get("ok") is True:
+            return int(ExitCode.SUCCESS)
+        if result.get("gui_ok") is not True:
+            return int(ExitCode.GUI)
+        return int(ExitCode.FUNCTIONAL)
     return run_desktop(request)

@@ -21,6 +21,22 @@ from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.encoding import detect_encoding
 from uniti.core.eol import analyze_eol
+from uniti.core.offsets import OffsetMapper
+from uniti.core.pieces import EditStore, PieceTable
+from uniti.core.save import (
+    SaveVerificationError,
+    commit_staged_document,
+    discard_staged_document,
+    stage_document,
+    verify_staged_document,
+)
+from uniti.core.text_format import (
+    EOLPolicy,
+    OutputFormat,
+    encoding_profile,
+    encoding_profiles,
+)
+from uniti.core.text_inspection import inspect_source
 from uniti.regex.engine import compile_pattern
 from uniti.regex.replace import replace_all
 from uniti.resources import ResourceManager
@@ -379,6 +395,171 @@ class SelfCheckRunner:
         return "streaming atomic save and reopen passed", {"output_bytes": output.stat().st_size}
 
     @staticmethod
+    def _deep_text_integrity(root: Path) -> tuple[str, Mapping[str, object]]:
+        expected_keys = (
+            "utf-8",
+            "utf-8-bom",
+            "windows-1252",
+            "utf-16-le",
+            "utf-16-le-bom",
+            "utf-16-be",
+            "utf-16-be-bom",
+            "utf-32-le",
+            "utf-32-le-bom",
+            "utf-32-be",
+            "utf-32-be-bom",
+        )
+        registered = tuple(profile.key for profile in encoding_profiles())
+        if registered != expected_keys:
+            raise RuntimeError("exact encoding profile registry mismatch")
+
+        utf8_path = root / "integrity-utf8.txt"
+        utf8_path.write_bytes("Alpha Привет\r\n".encode("utf-8"))
+        with ByteSource.open(utf8_path) as source:
+            utf8_inspection = inspect_source(source)
+        if (
+            utf8_inspection.encoding.suggested.key != "utf-8"
+            or utf8_inspection.encoding.requires_confirmation
+            or utf8_inspection.eol.kind != "CRLF"
+        ):
+            raise RuntimeError("UTF-8 no-BOM inspection mismatch")
+
+        utf16_profile = encoding_profile("utf-16-be-bom")
+        utf16_path = root / "integrity-utf16-be-bom.txt"
+        utf16_text = "Western café Привет\n"
+        utf16_path.write_bytes(
+            utf16_profile.bom + utf16_text.encode(utf16_profile.codec)
+        )
+        with ByteSource.open(utf16_path) as source:
+            utf16_inspection = inspect_source(source)
+        if utf16_inspection.encoding.suggested != utf16_profile:
+            raise RuntimeError("UTF-16 BE BOM inspection mismatch")
+        with Document.open(utf16_path, profile=utf16_profile) as document:
+            if document.read(0, document.total_chars()) != utf16_text:
+                raise RuntimeError("UTF-16 BE BOM logical-text mismatch")
+
+        mixed_path = root / "integrity-mixed.txt"
+        mixed_copy = root / "integrity-mixed-copy.txt"
+        mixed_payload = b"one\r\ntwo\nthree\r"
+        mixed_path.write_bytes(mixed_payload)
+        with ByteSource.open(mixed_path) as source:
+            mixed_inspection = inspect_source(source)
+        if mixed_inspection.eol.kind != "MIXED":
+            raise RuntimeError("mixed-EOL inspection mismatch")
+        with Document.open(
+            mixed_path,
+            profile=encoding_profile("utf-8"),
+        ) as document:
+            document.export_copy(
+                mixed_copy,
+                output_format=document.output_format,
+                expected_destination_identity=None,
+            )
+        if mixed_copy.read_bytes() != mixed_payload:
+            raise RuntimeError("mixed-EOL preserve mismatch")
+
+        malformed_path = root / "integrity-malformed.txt"
+        malformed_copy = root / "integrity-malformed-copy.txt"
+        malformed_payload = b"A\xffB\r\n"
+        malformed_path.write_bytes(malformed_payload)
+        with ByteSource.open(malformed_path) as source:
+            malformed_inspection = inspect_source(
+                source,
+                override=encoding_profile("utf-8"),
+            )
+        if not malformed_inspection.encoding.malformed_preview:
+            raise RuntimeError("malformed-byte evidence missing")
+        with Document.open(
+            malformed_path,
+            profile=encoding_profile("utf-8"),
+        ) as document:
+            document.export_copy(
+                malformed_copy,
+                output_format=document.output_format,
+                expected_destination_identity=None,
+            )
+        if malformed_copy.read_bytes() != malformed_payload:
+            raise RuntimeError("malformed-byte preserve mismatch")
+
+        stage_source_path = root / "integrity-stage-source.txt"
+        stage_target = root / "integrity-stage-target.txt"
+        stage_source_path.write_text("Alpha Привет\n", encoding="utf-8")
+        source = ByteSource.open(stage_source_path)
+        mapper = OffsetMapper(source, "utf-8")
+        table = PieceTable(source, "utf-8", mapper, EditStore())
+        staged = None
+        staged_format = OutputFormat(utf16_profile, EOLPolicy.CRLF)
+        try:
+            staged = stage_document(
+                source,
+                table,
+                source_profile=encoding_profile("utf-8"),
+                destination=stage_target,
+                output_format=staged_format,
+            )
+            verify_staged_document(staged, table.iter_text())
+            commit_staged_document(staged)
+        finally:
+            if staged is not None:
+                discard_staged_document(staged)
+            source.close()
+        expected_stage_bytes = utf16_profile.bom + "Alpha Привет\r\n".encode(
+            utf16_profile.codec
+        )
+        if stage_target.read_bytes() != expected_stage_bytes:
+            raise RuntimeError("verified exact-format stage mismatch")
+        with Document.open(stage_target, profile=utf16_profile) as reopened:
+            if reopened.read(0, reopened.total_chars()) != "Alpha Привет\r\n":
+                raise RuntimeError("verified output reopen mismatch")
+
+        refusal_target = root / "integrity-refusal.txt"
+        refusal_target.write_bytes(b"untouched")
+        source = ByteSource.open(stage_source_path)
+        mapper = OffsetMapper(source, "utf-8")
+        table = PieceTable(source, "utf-8", mapper, EditStore())
+        refused = False
+        staged = None
+        try:
+            staged = stage_document(
+                source,
+                table,
+                source_profile=encoding_profile("utf-8"),
+                destination=refusal_target,
+                output_format=OutputFormat(
+                    encoding_profile("utf-8"),
+                    EOLPolicy.LF,
+                ),
+            )
+            with staged.temporary.open("ab") as handle:
+                handle.write(b"tampered")
+            try:
+                verify_staged_document(staged, table.iter_text())
+            except SaveVerificationError:
+                refused = True
+        finally:
+            if staged is not None:
+                discard_staged_document(staged)
+            source.close()
+        if not refused:
+            raise RuntimeError("tampered staged output was not refused")
+        if refusal_target.read_bytes() != b"untouched":
+            raise RuntimeError("verification refusal changed destination bytes")
+        if list(root.glob(".integrity-refusal.txt.*.uniti-tmp")):
+            raise RuntimeError("verification refusal left staged artifacts")
+
+        return "exact profiles, verified output, and failure cleanup passed", {
+            "profiles": len(registered),
+            "utf8_eol": utf8_inspection.eol.kind,
+            "utf16_profile": utf16_inspection.encoding.suggested.key,
+            "mixed_eol": mixed_inspection.eol.kind,
+            "malformed_errors": len(
+                malformed_inspection.encoding.malformed_preview
+            ),
+            "verified_bytes": stage_target.stat().st_size,
+            "refusal_cleanup": refused,
+        }
+
+    @staticmethod
     def _deep_recovery(root: Path) -> tuple[str, Mapping[str, object]]:
         source = root / "recovery-source.txt"
         source.write_text("abc", encoding="utf-8")
@@ -455,6 +636,7 @@ class SelfCheckRunner:
                     ("byte-preservation", self._deep_bytes),
                     ("regex-functional", self._deep_regex),
                     ("streaming-save", self._deep_save),
+                    ("text-integrity", self._deep_text_integrity),
                     ("recovery", self._deep_recovery),
                     ("qt-offscreen", self._deep_qt),
                 )

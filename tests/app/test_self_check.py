@@ -85,6 +85,7 @@ def test_deep_check_exercises_complete_core_matrix(tmp_path: Path, monkeypatch):
         "byte-preservation",
         "regex-functional",
         "streaming-save",
+        "text-integrity",
         "recovery",
         "qt-offscreen",
     } <= names

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import tempfile
 from pathlib import Path
 
 from uniti.app.recovery_manager import RecoveryManager
 from uniti.core.document import Document
 from uniti.core.file_identity import ExternalFileChangedError
+from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
 from uniti.regex.engine import compile_pattern
 from uniti.regex.replace import replace_all
 
@@ -38,6 +40,39 @@ def _run_in(directory: Path) -> dict[str, object]:
         document.set_output_eol("LF")
         document.export_copy(legacy_output, output_format=document.output_format)
     legacy_output_text = legacy_output.read_bytes().decode("windows-1252")
+
+    integrity_source = directory / "integrity-source.txt"
+    integrity_output = directory / "integrity-output-utf16be-bom.txt"
+    integrity_text = "Western café Привет\n"
+    integrity_source.write_bytes(integrity_text.encode("utf-8"))
+    integrity_format = OutputFormat(
+        encoding_profile("utf-16-be-bom"),
+        EOLPolicy.CRLF,
+    )
+    with Document.open(
+        integrity_source,
+        profile=encoding_profile("utf-8"),
+    ) as document:
+        document.export_copy(
+            integrity_output,
+            output_format=integrity_format,
+            expected_destination_identity=None,
+        )
+    integrity_payload = integrity_output.read_bytes()
+    expected_integrity_payload = (
+        integrity_format.encoding.bom
+        + "Western café Привет\r\n".encode(integrity_format.encoding.codec)
+    )
+    with Document.open(
+        integrity_output,
+        profile=integrity_format.encoding,
+    ) as reopened:
+        integrity_reopened = reopened.read(0, reopened.total_chars())
+    text_integrity = (
+        integrity_payload == expected_integrity_payload
+        and integrity_reopened == "Western café Привет\r\n"
+        and integrity_payload.startswith(b"\xfe\xff")
+    )
 
     recovery_source = directory / "recovery-source.txt"
     recovery_source.write_text("abc", encoding="utf-8")
@@ -77,12 +112,14 @@ def _run_in(directory: Path) -> dict[str, object]:
             and legacy_output_text == "café\nlegacy\n"
             and recovered_text == "abcX"
             and external_change_blocked
+            and text_integrity
         ),
         "regex_replacements": replacements,
         "utf16_output": utf16_output,
         "legacy_output": legacy_output_text,
         "recovered_text": recovered_text,
         "external_change_blocked": external_change_blocked,
+        "text_integrity": text_integrity,
     }
 
 
@@ -91,6 +128,82 @@ def run_alpha_smoke(base_dir: str | Path | None = None) -> dict[str, object]:
         return _run_in(Path(base_dir))
     with tempfile.TemporaryDirectory(prefix="uniti-alpha-smoke-") as temporary:
         return _run_in(Path(temporary))
+
+
+def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
+    """Open a real main window on the selected Qt platform and self-close."""
+
+    directory = Path(base_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    source = directory / "gui-smoke.txt"
+    source.write_text("UNITI smoke Привет\r\n", encoding="utf-8")
+
+    from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication(["uniti-smoke"])
+    window = UNITIMainWindow()
+    try:
+        view = window.open_path(source)
+        if view is None:
+            raise RuntimeError("GUI smoke document open was cancelled")
+        window.show()
+        app.processEvents()
+        window_shown = window.isVisible()
+        document_profile = view.document.source_profile.key
+        qt_platform = QGuiApplication.platformName()
+        QTimer.singleShot(250, window.close)
+        exit_code = int(app.exec())
+        closed = not window.isVisible()
+        return {
+            "ok": (
+                exit_code == 0
+                and window_shown
+                and closed
+                and document_profile == "utf-8"
+            ),
+            "window_shown": window_shown,
+            "window_closed": closed,
+            "document_profile": document_profile,
+            "qt_platform": qt_platform,
+            "platform": sys.platform,
+            "exit_code": exit_code,
+        }
+    except Exception as error:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+        return {
+            "ok": False,
+            "window_shown": False,
+            "window_closed": not window.isVisible(),
+            "document_profile": None,
+            "qt_platform": QGuiApplication.platformName(),
+            "platform": sys.platform,
+            "exit_code": 1,
+            "error": type(error).__name__,
+        }
+
+
+def run_combined_smoke(base_dir: str | Path | None = None) -> dict[str, object]:
+    def run(directory: Path) -> dict[str, object]:
+        core = run_alpha_smoke(directory / "core")
+        gui = run_gui_smoke(directory / "gui")
+        return {
+            "ok": core.get("ok") is True and gui.get("ok") is True,
+            "core_ok": core.get("ok") is True,
+            "gui_ok": gui.get("ok") is True,
+            "core": core,
+            "gui": gui,
+        }
+
+    if base_dir is not None:
+        return run(Path(base_dir))
+    with tempfile.TemporaryDirectory(prefix="uniti-combined-smoke-") as temporary:
+        return run(Path(temporary))
 
 
 def main(argv: list[str] | None = None) -> int:
