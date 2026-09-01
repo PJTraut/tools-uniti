@@ -52,6 +52,13 @@ def _output_profile_from_encoding(encoding: str) -> EncodingProfile:
     return profile_from_codec(encoding, bom)
 
 
+class _UnspecifiedDestinationIdentity:
+    pass
+
+
+_UNSPECIFIED_DESTINATION_IDENTITY = _UnspecifiedDestinationIdentity()
+
+
 class Document:
     """Own the lazy immutable-source services and edited piece table."""
 
@@ -684,6 +691,10 @@ class Document:
         self,
         destination: Path,
         output_format: OutputFormat,
+        *,
+        expected_destination_identity: (
+            FileIdentity | None | _UnspecifiedDestinationIdentity
+        ) = _UNSPECIFIED_DESTINATION_IDENTITY,
     ) -> Path:
         self.assert_safe_overwrite(destination)
         staged_revision = self._revision
@@ -696,6 +707,19 @@ class Document:
             output_format=output_format,
         )
         try:
+            if (
+                expected_destination_identity
+                is not _UNSPECIFIED_DESTINATION_IDENTITY
+                and staged.target_identity != expected_destination_identity
+            ):
+                assert expected_destination_identity is None or isinstance(
+                    expected_destination_identity, FileIdentity
+                )
+                raise ExternalFileChangedError(
+                    destination,
+                    expected_destination_identity,
+                    staged.target_identity,
+                )
             verify_staged_document(staged, self._piece_table.iter_text())
             if (
                 self._revision != staged_revision
@@ -788,6 +812,9 @@ class Document:
         destination: str | os.PathLike[str],
         *,
         output_format: OutputFormat,
+        expected_destination_identity: (
+            FileIdentity | None | _UnspecifiedDestinationIdentity
+        ) = _UNSPECIFIED_DESTINATION_IDENTITY,
     ) -> Path:
         """Write another path without changing this document's identity or state."""
 
@@ -797,7 +824,11 @@ class Document:
             raise ValueError("use in-place Save for the current document path")
         if not isinstance(output_format, OutputFormat):
             raise TypeError("output format must be an OutputFormat")
-        return self._write_verified_output(target, output_format)
+        return self._write_verified_output(
+            target,
+            output_format,
+            expected_destination_identity=expected_destination_identity,
+        )
 
     def total_chars(self) -> int:
         self._ensure_open()

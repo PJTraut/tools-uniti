@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from concurrent.futures import Future
 from dataclasses import replace as dataclass_replace
+import os
 from pathlib import Path
 import weakref
 
@@ -34,7 +35,7 @@ from uniti.app.settings import Settings, SettingsStore
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.eol import EOLReport, analyze_eol
-from uniti.core.file_identity import ExternalFileChangedError
+from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
 from uniti.core.text_format import (
     EOLPolicy,
     EncodingProfile,
@@ -51,7 +52,11 @@ from uniti.core.text_inspection import (
 from uniti.resources import ResourceManager, WorkPriority
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
-from uniti.ui.file_format_dialogs import LineEndingReportDialog, OpenFormatDialog
+from uniti.ui.file_format_dialogs import (
+    LineEndingReportDialog,
+    OpenFormatDialog,
+    SaveAsFormatDialog,
+)
 from uniti.ui.find_replace import FindReplaceWindow
 from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.status_bar import UNITIStatusBar
@@ -976,36 +981,280 @@ class UNITIMainWindow(QMainWindow):
             return
         QMessageBox.critical(self, "Save Failed", str(exc))
 
+    @staticmethod
+    def _same_resolved_path(left: str | Path, right: str | Path) -> bool:
+        left_path = Path(left).expanduser()
+        right_path = Path(right).expanduser()
+        if left_path.resolve(strict=False) == right_path.resolve(strict=False):
+            return True
+        try:
+            return os.path.samefile(left_path, right_path)
+        except OSError:
+            return False
+
+    def _view_for_path(
+        self,
+        path: str | Path,
+        *,
+        excluding: UNITITextView | None = None,
+    ) -> UNITITextView | None:
+        for index in range(self._tabs.count()):
+            candidate = self._tabs.widget(index)
+            if not isinstance(candidate, UNITITextView) or candidate is excluding:
+                continue
+            if self._same_resolved_path(candidate.document.path, path):
+                return candidate
+        return None
+
+    def _confirm_encoding_change(
+        self,
+        path: Path,
+        before: EncodingProfile,
+        after: EncodingProfile,
+    ) -> bool:
+        if before == after:
+            return True
+        result = QMessageBox.warning(
+            self,
+            "Change Text Encoding",
+            (
+                f"{path}\n\n"
+                f"Encoding will change: {before.label} -> {after.label}\n\n"
+                "This changes the file's byte representation. Continue?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return result == QMessageBox.StandardButton.Yes
+
+    def _confirm_existing_replacement(
+        self,
+        path: Path,
+        output_format: OutputFormat,
+        inspection: TextFileInspection,
+    ) -> bool:
+        output_eol = (
+            "Preserve source structure"
+            if output_format.eol is EOLPolicy.PRESERVE
+            else output_format.eol.value
+        )
+        result = QMessageBox.warning(
+            self,
+            "Replace Existing File",
+            (
+                f"Replace the existing file?\n\n{path}\n\n"
+                f"Current line endings: {inspection.eol.kind}\n"
+                f"Output line endings: {output_eol}"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return result == QMessageBox.StandardButton.Yes
+
+    def _confirm_open_replacement(self, path: Path) -> bool:
+        result = QMessageBox.warning(
+            self,
+            "Replace Open Document",
+            (
+                f"{path} is already open in UNITI.\n\n"
+                "Replace it on disk, reload its open tab, and discard that tab's "
+                "current undo history?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return result == QMessageBox.StandardButton.Yes
+
+    @staticmethod
+    def _inspect_known_output(
+        path: str | Path,
+        profile: EncodingProfile,
+    ) -> TextFileInspection:
+        with ByteSource.open(path) as source:
+            return inspect_source(source, override=profile)
+
+    def _refresh_saved_format(
+        self,
+        view: UNITITextView,
+        profile: EncodingProfile,
+    ) -> None:
+        inspection = self._inspect_known_output(view.document.path, profile)
+        self._eol_reports[id(view)] = inspection.eol
+        view.document.set_source_eol_report(inspection.eol)
+        self._dismiss_eol_dialog(view)
+        if inspection.eol.kind == "MIXED":
+            self._show_mixed_eol_report(view, inspection.eol)
+        self._on_view_state_changed(view)
+
+    def _open_verified_export(
+        self,
+        path: Path,
+        output_format: OutputFormat,
+        *,
+        existing_view: UNITITextView | None,
+    ) -> UNITITextView:
+        inspection = self._inspect_known_output(path, output_format.encoding)
+        document = Document.open(
+            path,
+            profile=output_format.encoding,
+            resource_manager=self._resources,
+        )
+        if existing_view is None:
+            try:
+                return self._add_document(
+                    document,
+                    initial_eol_report=inspection.eol,
+                )
+            except Exception:
+                document.close()
+                raise
+        try:
+            self._replace_view_document(
+                existing_view,
+                document,
+                initial_eol_report=inspection.eol,
+            )
+        except Exception:
+            document.close()
+            raise
+        self._tabs.setCurrentWidget(existing_view)
+        return existing_view
+
     def save_current(self) -> Path | None:
         view = self.current_view
         if view is None or not view.isEnabled():
             return None
+        selected = view.document.output_format
+        if not self._confirm_encoding_change(
+            view.document.path,
+            view.document.saved_output_format.encoding,
+            selected.encoding,
+        ):
+            return None
         try:
-            result = view.document.save()
+            result = view.document.save(output_format=selected)
         except Exception as exc:
             self._show_save_error(exc)
             return None
-        self._on_view_state_changed(view)
+        self._refresh_saved_format(view, selected.encoding)
         return result
 
-    def save_current_as(self, path: str | Path | None = None) -> Path | None:
+    def save_current_as(
+        self,
+        path: str | Path | None = None,
+        output_format: OutputFormat | None = None,
+    ) -> Path | None:
         view = self.current_view
         if view is None or not view.isEnabled():
             return None
-        destination: str | Path | None = path
+        destination = Path(path).expanduser() if path is not None else None
+        selected = output_format or view.document.output_format
+        if not isinstance(selected, OutputFormat):
+            raise TypeError("output_format must be an OutputFormat")
+
         if destination is None:
-            filename, _ = QFileDialog.getSaveFileName(
-                self,
-                "Save Text File As",
-                str(view.document.path),
+            dialog = SaveAsFormatDialog(
+                initial_directory=view.document.path.parent,
+                initial_name=view.document.path.name,
+                initial_format=selected,
+                parent=self,
             )
-            if not filename:
+            if dialog.exec() != QDialog.DialogCode.Accepted:
                 return None
-            destination = filename
+            selection = dialog.result_selection()
+            if selection is None:
+                return None
+            destination = selection.destination.expanduser()
+            selected = selection.output_format
+
+        destination = destination.resolve(strict=False)
+        if self._same_resolved_path(destination, view.document.path):
+            if not self._confirm_encoding_change(
+                view.document.path,
+                view.document.saved_output_format.encoding,
+                selected.encoding,
+            ):
+                return None
+            try:
+                result = view.document.save(output_format=selected)
+            except Exception as exc:
+                self._show_save_error(exc)
+                return None
+            self._refresh_saved_format(view, selected.encoding)
+            return result
+
+        target_view = self._view_for_path(destination, excluding=view)
+        if target_view is not None and (
+            target_view.document.modified or not target_view.isEnabled()
+        ):
+            QMessageBox.warning(
+                self,
+                "Target Has Unsaved Changes",
+                (
+                    f"{destination} is already open with unsaved changes or an "
+                    "active operation. Save or close that tab before replacing it."
+                ),
+                QMessageBox.StandardButton.Ok,
+                QMessageBox.StandardButton.Ok,
+            )
+            return None
+
+        target_inspection: TextFileInspection | None = None
+        target_profile: EncodingProfile | None = None
+        expected_target_identity: FileIdentity | None = None
+        if destination.exists():
+            try:
+                expected_target_identity = FileIdentity.from_path(destination)
+            except OSError:
+                expected_target_identity = None
+            decision = self._inspect_open_path(destination)
+            if decision is None:
+                return None
+            confirmed_profile, target_inspection = decision
+            target_profile = confirmed_profile or target_inspection.encoding.suggested
+            if not self._confirm_existing_replacement(
+                destination,
+                selected,
+                target_inspection,
+            ):
+                return None
+            if not self._confirm_encoding_change(
+                destination,
+                target_profile,
+                selected.encoding,
+            ):
+                return None
+            if target_view is not None and not self._confirm_open_replacement(
+                destination
+            ):
+                return None
+
+        if target_view is not None and (
+            target_view.document.modified or not target_view.isEnabled()
+        ):
+            QMessageBox.warning(
+                self,
+                "Target Has Unsaved Changes",
+                f"{destination} changed while replacement was being confirmed.",
+                QMessageBox.StandardButton.Ok,
+                QMessageBox.StandardButton.Ok,
+            )
+            return None
+
         try:
             result = view.document.export_copy(
                 destination,
-                output_format=view.document.output_format,
+                output_format=selected,
+                expected_destination_identity=expected_target_identity,
+            )
+        except Exception as exc:
+            self._show_save_error(exc)
+            return None
+        try:
+            self._open_verified_export(
+                result,
+                selected,
+                existing_view=target_view,
             )
         except Exception as exc:
             self._show_save_error(exc)

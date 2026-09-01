@@ -227,6 +227,27 @@ def test_export_copy_rejects_current_document_path(tmp_path: Path):
     assert path.read_bytes() == b"abc"
 
 
+def test_export_copy_rejects_destination_changed_since_ui_preflight(tmp_path: Path):
+    from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
+
+    source = tmp_path / "source.txt"
+    target = tmp_path / "target.txt"
+    source.write_text("source", encoding="utf-8")
+    target.write_text("old", encoding="utf-8")
+    expected = FileIdentity.from_path(target)
+    target.write_text("external change", encoding="utf-8")
+
+    with Document.open(source) as document:
+        with pytest.raises(ExternalFileChangedError):
+            document.export_copy(
+                target,
+                output_format=document.output_format,
+                expected_destination_identity=expected,
+            )
+
+    assert target.read_text(encoding="utf-8") == "external change"
+
+
 def test_save_no_longer_accepts_a_destination_argument(tmp_path: Path):
     path = tmp_path / "source.txt"
     target = tmp_path / "target.txt"
