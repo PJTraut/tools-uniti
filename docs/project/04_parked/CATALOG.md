@@ -46,11 +46,12 @@ These capabilities are intentionally outside the lean editor boundary described 
 - **Known dependencies/risks:** byte-oriented cursor/selection APIs, binary history, hex/ascii synchronized views, non-text search, and interaction with encoding reinterpretation.
 - **Re-evaluation trigger:** validated binary-editing demand and a design that preserves the existing text engine without conflating byte and character coordinates.
 
-## Full programming-language syntax highlighting
+## File-type profiles and syntax highlighting
 
-- **Why parked:** Incremental parsing and broad language grammars would create new cache, worker, invalidation, and language-maintenance responsibilities beyond regex-field highlighting.
-- **Known dependencies/risks:** parser choice, grammar distribution, multiline incremental state, huge-file degradation, and memory-pressure integration.
-- **Re-evaluation trigger:** stable rendering/cache interfaces and approval of a bounded language-highlighting subset.
+- **Future capability:** UNITI senses a file's presentation profile from its extension and applies a predefined syntax highlighter. Illustrative profiles include `.txt` as Plain Text, `.md` as Markdown, and `.xml` as XML; unknown extensions fall back to Plain Text. These are file-type profiles, not document-content templates. Highlighting is presentation-only and must never mutate text, encoding, BOM, or line endings. Manual override behavior and the final supported-profile catalog remain future design decisions.
+- **Why parked:** Extension mapping, incremental parsing, and language grammars would create new profile, cache, worker, invalidation, and grammar-maintenance responsibilities beyond regex-field highlighting. This capability is explicitly outside `v0.001a17` and has no roadmap position or target version.
+- **Known dependencies/risks:** profile ownership, extension aliases, parser choice, grammar distribution, multiline incremental state, huge-file degradation, manual override semantics, and memory-pressure integration.
+- **Re-evaluation trigger:** stable rendering/cache interfaces and approval of a bounded file-type and syntax-highlighting subset.
 
 ## CJK typography specialization
 
