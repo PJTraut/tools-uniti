@@ -672,18 +672,13 @@ class Document:
                 eol=EOLPolicy(eol),
             )
         output_encoding = selected_format.encoding.codec
-        output_eol: EOLName | None
-        if selected_format.eol is EOLPolicy.PRESERVE:
-            output_eol = None
-        else:
-            output_eol = selected_format.eol.value  # type: ignore[assignment]
         result = save_document(
             self._source,
             self._piece_table,
             source_encoding=self._encoding_info.detected,
             source_bom=self._encoding_info.bom,
             destination=target,
-            options=SaveOptions(encoding=output_encoding, eol=output_eol),
+            options=SaveOptions(output_format=selected_format),
         )
         self._path = result
         self._disk_identity = FileIdentity.from_path(result)

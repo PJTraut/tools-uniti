@@ -3,15 +3,25 @@
 from __future__ import annotations
 
 import codecs
+import hashlib
 import os
 import tempfile
 import stat
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Iterator, Literal
+from typing import BinaryIO, Iterable, Iterator, Literal
 
 from .byte_source import ByteSource
+from .decoder import iter_decoded_spans
+from .eol import analyze_eol
 from .pieces import EditSegment, PieceTable, SourceSegment
+from .text_format import (
+    EOLPolicy,
+    EncodingProfile,
+    OutputFormat,
+    encoding_profiles,
+    profile_from_codec,
+)
 
 EOLName = Literal["LF", "CRLF", "CR"]
 
@@ -81,6 +91,42 @@ class SaveOptions:
     eol: EOLName | None = None
     chunk_bytes: int = 1 << 20
     chunk_chars: int = 65_536
+    output_format: OutputFormat | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StagedSave:
+    destination: Path
+    temporary: Path
+    output_format: OutputFormat
+    byte_length: int
+    digest: str
+    metadata: _TargetMetadata
+    preserves_source_bytes: bool
+    _verified: bool = False
+
+
+class SaveVerificationError(RuntimeError):
+    """Raised when staged bytes do not prove the requested output contract."""
+
+
+class _DigestingWriter:
+    def __init__(self, handle: BinaryIO) -> None:
+        self._handle = handle
+        self.byte_length = 0
+        self._digest = hashlib.sha256()
+
+    def write(self, payload: bytes) -> int:
+        written = self._handle.write(payload)
+        if written != len(payload):
+            raise OSError("short write while staging document")
+        self.byte_length += written
+        self._digest.update(payload)
+        return written
+
+    @property
+    def digest(self) -> str:
+        return self._digest.hexdigest()
 
 
 class UnrepresentableCharacterError(UnicodeError):
@@ -103,20 +149,6 @@ def _content_encoding(encoding: str) -> str:
     if normalized == "utf-8-sig":
         return "utf-8"
     return encoding
-
-
-def _output_prefix(
-    source_encoding: str,
-    source_bom: bytes | None,
-    output_encoding: str,
-) -> bytes:
-    output_norm = _normalize_encoding(output_encoding)
-    source_norm = _normalize_encoding(source_encoding)
-    if output_norm == "utf-8-sig":
-        return _UTF8_BOM
-    if output_norm == source_norm and source_bom is not None:
-        return source_bom
-    return b""
 
 
 def _strict_encode(encoder, text: str, encoding: str, *, final: bool = False) -> bytes:
@@ -205,21 +237,43 @@ def _write_logical_text(
         handle.write(tail)
 
 
-def save_document(
+def _profile_for_output_encoding(encoding: str) -> EncodingProfile:
+    normalized = codecs.lookup(encoding).name
+    bom = _UTF8_BOM if normalized == "utf-8-sig" else None
+    return profile_from_codec(encoding, bom)
+
+
+def _output_format_for_options(
+    source_profile: EncodingProfile,
+    options: SaveOptions,
+) -> OutputFormat:
+    if options.output_format is not None:
+        if options.encoding is not None or options.eol is not None:
+            raise ValueError("output_format cannot be combined with encoding or eol")
+        return options.output_format
+    profile = (
+        source_profile
+        if options.encoding is None
+        else _profile_for_output_encoding(options.encoding)
+    )
+    policy = EOLPolicy.PRESERVE if options.eol is None else EOLPolicy(options.eol)
+    return OutputFormat(profile, policy)
+
+
+def stage_document(
     source: ByteSource,
     piece_table: PieceTable,
     *,
-    source_encoding: str,
-    source_bom: bytes | None,
+    source_profile: EncodingProfile,
     destination: str | os.PathLike[str],
-    options: SaveOptions | None = None,
-) -> Path:
-    """Stream the logical document to a temporary file and atomically replace target."""
+    output_format: OutputFormat,
+    chunk_bytes: int = 1 << 20,
+    chunk_chars: int = 65_536,
+) -> StagedSave:
+    """Write and fsync a sibling temporary without replacing destination."""
 
-    opts = SaveOptions() if options is None else options
-    if opts.chunk_bytes <= 0 or opts.chunk_chars <= 0:
+    if chunk_bytes <= 0 or chunk_chars <= 0:
         raise ValueError("save chunk sizes must be positive")
-    output_encoding = opts.encoding or source_encoding
     target = Path(destination)
     metadata = _capture_target_metadata(target)
     fd: int | None = None
@@ -233,36 +287,45 @@ def save_document(
         temp_path = Path(temp_name)
         with os.fdopen(fd, "wb") as handle:
             fd = None
-            prefix = _output_prefix(source_encoding, source_bom, output_encoding)
-            if prefix:
-                handle.write(prefix)
+            writer = _DigestingWriter(handle)
+            if output_format.encoding.bom:
+                writer.write(output_format.encoding.bom)
             preserve_bytes = (
-                _normalize_encoding(output_encoding) == _normalize_encoding(source_encoding)
-                and opts.eol is None
+                output_format.encoding == source_profile
+                and output_format.eol is EOLPolicy.PRESERVE
             )
             if preserve_bytes:
                 _write_preserved_segments(
-                    handle,
+                    writer,  # type: ignore[arg-type]
                     source,
                     piece_table,
-                    encoding=output_encoding,
-                    chunk_bytes=opts.chunk_bytes,
+                    encoding=output_format.encoding.codec,
+                    chunk_bytes=chunk_bytes,
                 )
             else:
+                eol: EOLName | None = None
+                if output_format.eol is not EOLPolicy.PRESERVE:
+                    eol = output_format.eol.value  # type: ignore[assignment]
                 _write_logical_text(
-                    handle,
+                    writer,  # type: ignore[arg-type]
                     piece_table,
-                    encoding=output_encoding,
-                    eol=opts.eol,
-                    chunk_chars=opts.chunk_chars,
+                    encoding=output_format.encoding.codec,
+                    eol=eol,
+                    chunk_chars=chunk_chars,
                 )
             handle.flush()
             os.fsync(handle.fileno())
-        _apply_target_metadata(temp_path, metadata)
-        os.replace(temp_path, target)
-        _fsync_parent(target)
-        temp_path = None
-        return target
+            byte_length = writer.byte_length
+            digest = writer.digest
+        return StagedSave(
+            destination=target,
+            temporary=temp_path,
+            output_format=output_format,
+            byte_length=byte_length,
+            digest=digest,
+            metadata=metadata,
+            preserves_source_bytes=preserve_bytes,
+        )
     except Exception:
         if fd is not None:
             os.close(fd)
@@ -272,6 +335,210 @@ def save_document(
             except FileNotFoundError:
                 pass
         raise
+
+
+def _observed_bom(payload: bytes) -> bytes:
+    ordered = sorted(encoding_profiles(), key=lambda item: len(item.bom), reverse=True)
+    for profile in ordered:
+        if profile.bom and payload.startswith(profile.bom):
+            return profile.bom
+    return b""
+
+
+def _verify_exact_bom(staged: StagedSave) -> int:
+    expected = staged.output_format.encoding.bom
+    with staged.temporary.open("rb") as handle:
+        prefix = handle.read(4)
+    if expected:
+        if not prefix.startswith(expected):
+            raise SaveVerificationError(
+                f"staged BOM does not match {staged.output_format.encoding.label}"
+            )
+        return len(expected)
+    observed = _observed_bom(prefix)
+    if observed:
+        raise SaveVerificationError(
+            f"staged output unexpectedly contains BOM {observed.hex(' ')}"
+        )
+    return 0
+
+
+def _file_length_and_digest(path: Path, *, chunk_size: int = 1 << 20) -> tuple[int, str]:
+    length = 0
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(chunk_size)
+            if not chunk:
+                break
+            length += len(chunk)
+            digest.update(chunk)
+    return length, digest.hexdigest()
+
+
+def _text_chunks(chunks: Iterable[str | tuple[int, str]]) -> Iterator[str]:
+    for chunk in chunks:
+        if isinstance(chunk, tuple):
+            yield chunk[1]
+        else:
+            yield chunk
+
+
+def _compare_text_streams(expected: Iterator[str], actual: Iterator[str]) -> None:
+    expected_buffer = ""
+    actual_buffer = ""
+    expected_done = False
+    actual_done = False
+    position = 0
+    while True:
+        while not expected_buffer and not expected_done:
+            try:
+                expected_buffer = next(expected)
+            except StopIteration:
+                expected_done = True
+        while not actual_buffer and not actual_done:
+            try:
+                actual_buffer = next(actual)
+            except StopIteration:
+                actual_done = True
+        if expected_done and actual_done and not expected_buffer and not actual_buffer:
+            return
+        if expected_done and not expected_buffer:
+            raise SaveVerificationError(
+                f"staged logical text has unexpected content at character {position}"
+            )
+        if actual_done and not actual_buffer:
+            raise SaveVerificationError(
+                f"staged logical text ended at character {position}"
+            )
+        compared = min(len(expected_buffer), len(actual_buffer))
+        if expected_buffer[:compared] != actual_buffer[:compared]:
+            mismatch = next(
+                index
+                for index in range(compared)
+                if expected_buffer[index] != actual_buffer[index]
+            )
+            raise SaveVerificationError(
+                f"staged logical text differs at character {position + mismatch}"
+            )
+        expected_buffer = expected_buffer[compared:]
+        actual_buffer = actual_buffer[compared:]
+        position += compared
+
+
+def _decoded_staged_chunks(staged: StagedSave, content_start: int) -> Iterator[str]:
+    with ByteSource.open(staged.temporary) as source:
+        for span in iter_decoded_spans(
+            source,
+            staged.output_format.encoding.codec,
+            start=content_start,
+            chunk_size=65_536,
+        ):
+            if span.errors and not staged.preserves_source_bytes:
+                first = span.errors[0]
+                raise SaveVerificationError(
+                    f"staged output does not decode strictly at byte {first.byte_start}"
+                )
+            yield span.text
+
+
+def _verify_eol_policy(staged: StagedSave) -> None:
+    policy = staged.output_format.eol
+    if policy is EOLPolicy.PRESERVE:
+        return
+    with ByteSource.open(staged.temporary) as source:
+        report = analyze_eol(source, encoding=staged.output_format.encoding.codec)
+    counts = {
+        EOLPolicy.LF: report.lf,
+        EOLPolicy.CRLF: report.crlf,
+        EOLPolicy.CR: report.cr,
+    }
+    wrong = sum(count for candidate, count in counts.items() if candidate is not policy)
+    if wrong:
+        raise SaveVerificationError(
+            f"staged line endings do not match requested {policy.value} policy"
+        )
+
+
+def verify_staged_document(
+    staged: StagedSave,
+    expected_chunks: Iterable[str | tuple[int, str]],
+) -> None:
+    """Reread staged bytes and prove exact byte and logical output invariants."""
+
+    content_start = _verify_exact_bom(staged)
+    length, digest = _file_length_and_digest(staged.temporary)
+    if length != staged.byte_length:
+        raise SaveVerificationError(
+            f"staged byte length changed: expected {staged.byte_length}, found {length}"
+        )
+    if digest != staged.digest:
+        raise SaveVerificationError("staged digest changed after output was written")
+
+    expected: Iterator[str] = _text_chunks(expected_chunks)
+    if staged.output_format.eol is not EOLPolicy.PRESERVE:
+        expected = _normalized_eol_chunks(
+            expected,
+            _EOL_TEXT[staged.output_format.eol.value],
+        )
+    _compare_text_streams(expected, _decoded_staged_chunks(staged, content_start))
+    _verify_eol_policy(staged)
+    object.__setattr__(staged, "_verified", True)
+
+
+def commit_staged_document(staged: StagedSave) -> Path:
+    """Atomically replace the destination after successful verification."""
+
+    if not staged._verified:
+        raise SaveVerificationError("staged output has not been verified")
+    length, digest = _file_length_and_digest(staged.temporary)
+    if length != staged.byte_length or digest != staged.digest:
+        raise SaveVerificationError("staged output changed after verification")
+    _apply_target_metadata(staged.temporary, staged.metadata)
+    os.replace(staged.temporary, staged.destination)
+    _fsync_parent(staged.destination)
+    return staged.destination
+
+
+def discard_staged_document(staged: StagedSave) -> None:
+    """Remove an uncommitted sibling temporary when it still exists."""
+
+    try:
+        staged.temporary.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def save_document(
+    source: ByteSource,
+    piece_table: PieceTable,
+    *,
+    source_encoding: str,
+    source_bom: bytes | None,
+    destination: str | os.PathLike[str],
+    options: SaveOptions | None = None,
+) -> Path:
+    """Stage, verify, and atomically replace one exact document output."""
+
+    opts = SaveOptions() if options is None else options
+    if opts.chunk_bytes <= 0 or opts.chunk_chars <= 0:
+        raise ValueError("save chunk sizes must be positive")
+    source_profile = profile_from_codec(source_encoding, source_bom)
+    output_format = _output_format_for_options(source_profile, opts)
+    staged = stage_document(
+        source,
+        piece_table,
+        source_profile=source_profile,
+        destination=destination,
+        output_format=output_format,
+        chunk_bytes=opts.chunk_bytes,
+        chunk_chars=opts.chunk_chars,
+    )
+    try:
+        verify_staged_document(staged, piece_table.iter_text(chunk_chars=opts.chunk_chars))
+        return commit_staged_document(staged)
+    finally:
+        discard_staged_document(staged)
 
 
 def atomic_write_text_chunks(
