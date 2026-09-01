@@ -6,6 +6,11 @@ from dataclasses import dataclass
 import unicodedata
 
 from .byte_source import ByteSource
+from .decoder import DecodeError
+from .text_format import EncodingProfile
+
+
+SERIOUS_CONFIDENCE_THRESHOLD = 0.75
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +21,19 @@ class EncodingInfo:
     user_override: bool = False
     output_encoding: str | None = None
     alternatives: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class EncodingAssessment:
+    """A UI-independent decision report for an exact input profile."""
+
+    suggested: EncodingProfile
+    confidence: float
+    alternatives: tuple[EncodingProfile, ...]
+    reasons: tuple[str, ...]
+    contradictory: bool
+    malformed_preview: tuple[DecodeError, ...]
+    requires_confirmation: bool
 
 
 @dataclass(frozen=True, slots=True)

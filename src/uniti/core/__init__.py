@@ -2,7 +2,7 @@
 
 from .byte_source import ByteSource
 from .decoder import DecodeError, DecodedSpan, decode_span, iter_decoded_spans
-from .encoding import EncodingInfo, detect_encoding
+from .encoding import EncodingAssessment, EncodingInfo, detect_encoding
 from .file_identity import ExternalFileChangedError, FileIdentity
 from .eol import EOLReport, analyze_eol
 from .offsets import OffsetCheckpoint, OffsetMapper
@@ -19,11 +19,13 @@ from .text_format import (
     format_summary,
     profile_from_codec,
 )
+from .text_inspection import FormatPreview, TextFileInspection, inspect_source, preview_source
 
 __all__ = [
     "ByteSource",
     "DecodeError",
     "DecodedSpan",
+    "EncodingAssessment",
     "EncodingInfo",
     "EncodingProfile",
     "EOLPolicy",
@@ -31,6 +33,7 @@ __all__ = [
     "FileIdentity",
     "ExternalFileChangedError",
     "EOLReport",
+    "FormatPreview",
     "OffsetCheckpoint",
     "OffsetMapper",
     "LineIndex",
@@ -41,6 +44,7 @@ __all__ = [
     "SourcePiece",
     "EditPiece",
     "PieceTable",
+    "TextFileInspection",
     "Document",
     "decode_span",
     "iter_decoded_spans",
@@ -50,5 +54,7 @@ __all__ = [
     "encoding_profile",
     "encoding_profiles",
     "format_summary",
+    "inspect_source",
     "profile_from_codec",
+    "preview_source",
 ]
