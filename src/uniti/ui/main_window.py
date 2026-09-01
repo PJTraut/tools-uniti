@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from concurrent.futures import Future
 from pathlib import Path
 import weakref
@@ -51,6 +52,7 @@ class UNITIMainWindow(QMainWindow):
         recovery_manager: RecoveryManager | None = None,
         settings_store: SettingsStore | None = None,
         resource_manager: ResourceManager | None = None,
+        startup_snapshot: Mapping[str, object] | None = None,
     ) -> None:
         super().__init__(parent)
         self._recovery_manager = recovery_manager
@@ -58,6 +60,7 @@ class UNITIMainWindow(QMainWindow):
         self._settings = settings_store.load() if settings_store is not None else Settings()
         self._owns_resources = resource_manager is None
         self._resources = resource_manager or ResourceManager()
+        self._startup_snapshot = dict(startup_snapshot or {})
         self.setWindowTitle("UNITI")
         self.resize(1100, 760)
         self._tabs = QTabWidget(self)
@@ -499,8 +502,13 @@ class UNITIMainWindow(QMainWindow):
             widget = self._tabs.widget(index)
             if isinstance(widget, UNITITextView):
                 documents.append(widget.document)
-        dialog = DiagnosticsDialog(diagnostics_snapshot(documents), self)
+        dialog = DiagnosticsDialog(
+            diagnostics_snapshot(documents, startup_snapshot=self._startup_snapshot), self
+        )
         dialog.exec()
+
+    def set_startup_snapshot(self, snapshot: Mapping[str, object]) -> None:
+        self._startup_snapshot = dict(snapshot)
 
     def _show_save_error(self, exc: Exception) -> None:
         if isinstance(exc, ExternalFileChangedError):

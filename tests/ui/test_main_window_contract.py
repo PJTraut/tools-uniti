@@ -111,3 +111,9 @@ def test_main_window_periodically_observes_resource_memory_pressure():
     source = MAIN.read_text()
     assert "_resource_timer" in source
     assert "observe_memory" in source
+
+
+def test_main_window_accepts_completed_startup_snapshot_for_diagnostics():
+    source = MAIN.read_text()
+    assert "startup_snapshot" in source
+    assert "set_startup_snapshot" in source

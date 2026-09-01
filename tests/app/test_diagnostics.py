@@ -29,3 +29,18 @@ def test_diagnostics_snapshot_reports_open_document_state(tmp_path: Path):
     assert item["modified"] is True
     assert isinstance(item["offset_index_complete"], bool)
     assert isinstance(item["line_index_complete"], bool)
+
+
+def test_diagnostics_includes_supplied_startup_snapshot_without_mutating_it():
+    startup = {
+        "session_id": "abc",
+        "capabilities": {"mmap": {"status": "available"}},
+    }
+
+    snapshot = diagnostics_snapshot((), startup_snapshot=startup)
+
+    assert snapshot["startup"] == startup
+    assert startup == {
+        "session_id": "abc",
+        "capabilities": {"mmap": {"status": "available"}},
+    }

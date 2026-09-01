@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import platform
 import sys
+from copy import deepcopy
 from collections.abc import Iterable
+from typing import Mapping
 
 import uniti
 from uniti.resources import automatic_cache_target, pressure_state, probe_memory
 
 
-def diagnostics_snapshot(documents: Iterable[object] = ()) -> dict[str, object]:
+def diagnostics_snapshot(
+    documents: Iterable[object] = (),
+    startup_snapshot: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     memory = probe_memory()
     document_items: list[dict[str, object]] = []
     for document in documents:
@@ -28,7 +33,7 @@ def diagnostics_snapshot(documents: Iterable[object] = ()) -> dict[str, object]:
             }
         )
 
-    return {
+    snapshot = {
         "uniti": {
             "display_version": uniti.__display_version__,
             "package_version": uniti.__version__,
@@ -50,3 +55,6 @@ def diagnostics_snapshot(documents: Iterable[object] = ()) -> dict[str, object]:
         },
         "documents": document_items,
     }
+    if startup_snapshot is not None:
+        snapshot["startup"] = deepcopy(dict(startup_snapshot))
+    return snapshot
