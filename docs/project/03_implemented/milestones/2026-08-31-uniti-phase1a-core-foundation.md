@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12+, pytest, standard library `mmap`/`codecs`/`tempfile`/`os`, third-party `regex` declared as a mandatory project dependency for later phases; PySide6 declared as the UI dependency but not imported by `uniti.core`.
 
-**Spec:** `docs/superpowers/specs/2026-08-31-uniti-phase1a-core-foundation-design.md`
+**Spec:** `docs/project/03_implemented/designs/2026-08-31-uniti-phase1a-core-foundation-design.md`
 
 ## Global Constraints
 

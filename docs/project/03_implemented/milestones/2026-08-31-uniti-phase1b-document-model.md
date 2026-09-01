@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12+, pytest, standard-library `array`, `bisect`, dataclasses, existing Phase-1A `ByteSource`/decoder/encoding services.
 
-**Spec:** `docs/superpowers/specs/2026-08-31-uniti-phase1b-document-model-design.md`
+**Spec:** `docs/project/03_implemented/designs/2026-08-31-uniti-phase1b-document-model-design.md`
 
 ## Global Constraints
 
