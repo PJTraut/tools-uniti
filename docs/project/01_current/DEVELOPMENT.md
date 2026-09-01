@@ -110,7 +110,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
   tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-The automated a16 checkpoint at `8151325` recorded `409 passed, 4 skipped`, clean compilation, a passing alpha smoke, and a passing deep offscreen self-check. Before milestone completion, also run the interactive macOS GUI smoke and real-use dogfood gate, verify that `src/uniti/core`, `src/uniti/regex`, and `src/uniti/resources` do not import PySide6, confirm the working tree is clean, and ensure remote integration is a normal fast-forward-safe push.
+The automated a16 checkpoint at `fe7bf17` recorded `411 passed, 4 skipped`, clean compilation, a passing alpha smoke, a passing deep offscreen self-check, and a successful `./uniti.command --version` end-to-end launcher check. Before milestone completion, also run the interactive macOS GUI smoke and real-use dogfood gate, verify that `src/uniti/core`, `src/uniti/regex`, and `src/uniti/resources` do not import PySide6, confirm the working tree is clean, and ensure remote integration is a normal fast-forward-safe push.
 
 ## Lifecycle files
 

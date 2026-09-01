@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
 Date: 2026-09-01
-Baseline: automatically verified a16 implementation through `8151325` on `main`
+Baseline: automatically verified a16 implementation through `fe7bf17` on `main`
 
 ## Lifecycle boundary
 

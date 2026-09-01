@@ -9,7 +9,7 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
 - Canonical branch: `main`
 - Remote baseline: `origin/main` at `052f733`
-- Latest a16 feature checkpoint: `8151325` — atomic Replace All safety
+- Latest a16 feature checkpoint: `fe7bf17` — launcher application-option forwarding
 - Active milestone: `v0.001a16` — Usable Test Alpha
 - Current display/package metadata: `v0.001a16` / `0.1a16`
 - Latest immutable tag: `v0.001a15` at `10f419e`
@@ -40,13 +40,16 @@ Local `main` contains the complete automatically verified a16 implementation seq
 - single-step undoable Replace and Replace All with no streamed disk-rewrite bypass; and
 - root macOS and Windows launchers through the canonical bootstrap path.
 
+The first end-to-end launcher probe exposed and then corrected a bootstrap parsing defect: application options such as `--version` are now forwarded in order, while `--` protects filenames that overlap bootstrap switches.
+
 Fresh evidence at the feature checkpoint:
 
 ```text
-409 passed, 4 skipped in 10.38s
+411 passed, 4 skipped in 10.72s
 compileall: pass
 alpha_smoke.py: ok=true
 deep offscreen self-check: status=pass, exit_code=0
+./uniti.command --version: v0.001a16
 ```
 
 The skips are one xattr capability case and three Windows launcher cases unavailable on macOS.

@@ -8,7 +8,7 @@ Date: 2026-09-01
 |---|---|
 | Repository branch | `main` |
 | Remote baseline | `origin/main` at `052f733` |
-| Verified a16 implementation checkpoint | `8151325` — atomic Replace All safety |
+| Verified a16 implementation checkpoint | `fe7bf17` — launcher application-option forwarding |
 | Local integration state | `main` contains unpushed a16 commits after `origin/main`; do not push until a16 is approved for push |
 | Active product milestone | `v0.001a16` — Usable Test Alpha |
 | Display/package metadata | `v0.001a16` / `0.1a16` |
@@ -31,10 +31,10 @@ The `v0.001a15` tag remains immutable. The post-tag Qt completion fix, the start
 
 ## Fresh verification evidence
 
-At the `8151325` implementation checkpoint:
+At the `fe7bf17` implementation checkpoint:
 
 ```text
-409 passed, 4 skipped in 10.38s
+411 passed, 4 skipped in 10.72s
 ```
 
 The four skips are one platform xattr capability case and three Windows launcher cases unavailable on macOS. The following gates also exited zero:
@@ -42,7 +42,9 @@ The four skips are one platform xattr capability case and three Windows launcher
 - `python -m compileall -q src scripts tests`;
 - `python scripts/alpha_smoke.py` with `"ok": true`;
 - deep offscreen self-check with top-level `"status": "pass"` and `"exit_code": 0`; and
-- the integrated a16 acceptance checks for atomic Replace All, persisted UI state, focused command ownership, and status indicators.
+- the integrated a16 acceptance checks for atomic Replace All, persisted UI state, focused command ownership, and status indicators;
+- focused bootstrap/launcher coverage; and
+- the real root launcher returning `v0.001a16` for `./uniti.command --version`.
 
 ## Remaining a16 gates
 
