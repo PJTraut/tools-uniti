@@ -345,7 +345,7 @@ class UNITITextView(QAbstractScrollArea):
             line_end = line_window_start + len(text)
             if len(self._match_index):
                 match_color = palette.color(QPalette.ColorRole.Highlight)
-                match_color.setAlpha(70)
+                match_color.setAlpha(120)
                 for record in self._match_index.intersecting(line_window_start, line_end + 1):
                     a = max(record.start, line_window_start) - line_window_start
                     b = min(record.end, line_end) - line_window_start

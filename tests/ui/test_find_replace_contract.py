@@ -89,6 +89,66 @@ def test_find_replace_offscreen_smoke_when_pyside6_available(tmp_path: Path):
         panel.close()
 
 
+def test_find_all_renders_every_visible_match_with_clear_contrast(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor, QPalette
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.find_replace import FindReplacePanel
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "highlight-all.txt"
+    text = "one gap one gap one"
+    path.write_text(text, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        palette = view.palette()
+        palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#204060"))
+        view.setPalette(palette)
+        view.resize(700, 180)
+        view.show()
+
+        panel = FindReplacePanel(lambda: view)
+        panel.find_input.set_text("one")
+        panel.find_all()
+        for _ in range(200):
+            app.processEvents()
+            if not panel.busy:
+                break
+        view.viewport().repaint()
+        app.processEvents()
+
+        assert panel.result_count == 3
+        image = view.viewport().grab().toImage()
+        base = QColor("#ffffff")
+        y = view._line_height - 2
+
+        def contrast_from_base(column: int) -> int:
+            x = (
+                view._gutter_width
+                + view._metrics.horizontalAdvance(text[:column])
+                + view._metrics.horizontalAdvance("one") // 2
+            )
+            color = image.pixelColor(x, y)
+            return sum(
+                abs(actual - expected)
+                for actual, expected in zip(color.getRgb()[:3], base.getRgb()[:3])
+            )
+
+        contrasts = [contrast_from_base(column) for column in (0, 8, 16)]
+        assert all(contrast >= 200 for contrast in contrasts), contrasts
+
+        panel.shutdown()
+        panel.close()
+        view.close()
+
+
 def test_find_replace_accepts_shared_resource_manager_instead_of_owning_worker_pool():
     source = PANEL.read_text()
     assert "resource_manager" in source
