@@ -12,6 +12,7 @@ from PySide6.QtCore import QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
+    QInputDialog,
     QMainWindow,
     QMessageBox,
     QTabWidget,
@@ -128,6 +129,13 @@ class UNITIMainWindow(QMainWindow):
         file_menu.addAction(
             self._action("Save As…", QKeySequence.StandardKey.SaveAs, self.save_current_as)
         )
+        file_menu.addAction(
+            self._action(
+                "Reload/Revert from Disk",
+                QKeySequence("Ctrl+Shift+R"),
+                self.reload_current,
+            )
+        )
         file_menu.addSeparator()
         file_menu.addAction(
             self._action("Close", QKeySequence.StandardKey.Close, self.close_current)
@@ -156,6 +164,11 @@ class UNITIMainWindow(QMainWindow):
         edit_menu.addSeparator()
         edit_menu.addAction(
             self._action("Select All", QKeySequence.StandardKey.SelectAll, self.select_all)
+        )
+
+        navigation_menu = self.menuBar().addMenu("&Navigation")
+        navigation_menu.addAction(
+            self._action("Go to Line…", QKeySequence("Ctrl+L"), self.go_to_line_dialog)
         )
 
         search_menu = self.menuBar().addMenu("&Search")
@@ -528,6 +541,91 @@ class UNITIMainWindow(QMainWindow):
         except Exception:
             replacement.close()
             raise
+
+    def go_to_line(self, line_number: int) -> bool:
+        view = self.current_view
+        if view is None or not view.isEnabled() or line_number < 1:
+            return False
+        try:
+            target = view.document.line_start(line_number - 1)
+        except ValueError:
+            return False
+        view.state.move_to(target)
+        view._state_changed()
+        return True
+
+    def go_to_line_dialog(self) -> bool:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return False
+        current_line = view.document.line_for_char(view.state.cursor) + 1
+        line_number, accepted = QInputDialog.getInt(
+            self,
+            "Go to Line",
+            "Line:",
+            current_line,
+            1,
+            2_147_483_647,
+        )
+        return accepted and self.go_to_line(line_number)
+
+    def _replace_view_document(
+        self,
+        view: UNITITextView,
+        replacement: Document,
+    ) -> None:
+        old_document = view.document
+        if self._recovery_manager is not None:
+            self._recovery_manager.attach(replacement)
+            self._recovery_manager.detach(old_document, clean=True)
+        view.state = EditorState(replacement)
+        self._eol_reports.pop(id(view), None)
+        old_document.close()
+        view.set_match_index(None)
+        view._max_seen_line_width = 0
+        view._wrap_index = None
+        view._wrap_signature = None
+        view._refresh_scrollbars(advance_index=False)
+        self._find_replace.document_changed()
+        view._state_changed()
+        self._schedule_eol_analysis(view)
+
+    def reload_current(self) -> bool:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return False
+        if view.document.modified:
+            choice = QMessageBox.warning(
+                self,
+                "Reload/Revert from Disk",
+                "Discard all unsaved changes and reload this document from disk?",
+                QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if choice != QMessageBox.StandardButton.Discard:
+                return False
+
+        encoding = (
+            view.document.encoding_info.detected
+            if view.document.encoding_info.user_override
+            else None
+        )
+        try:
+            replacement = Document.open(
+                view.document.path,
+                encoding=encoding,
+                resource_manager=self._resources,
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Reload Failed", str(exc))
+            return False
+        try:
+            self._replace_view_document(view, replacement)
+        except Exception:
+            replacement.close()
+            raise
+        return True
 
     def show_character_inspector(self) -> None:
         view = self.current_view

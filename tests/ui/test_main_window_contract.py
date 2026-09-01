@@ -152,3 +152,92 @@ def test_main_window_applies_and_preserves_editor_view_settings(tmp_path: Path):
     assert store.load().soft_wrap is False
     window.close_all_documents(force=True)
     window.close()
+
+
+def test_go_to_line_moves_to_one_based_line_and_rejects_invalid_target(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "lines.txt"
+    source.write_text("zero\none\ntwo\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+
+    assert window.go_to_line(3) is True
+    assert view.state.cursor == view.document.line_start(2)
+    assert window.go_to_line(0) is False
+    assert window.go_to_line(99) is False
+    assert view.state.cursor == view.document.line_start(2)
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def test_reload_cancel_preserves_modified_document(tmp_path: Path, monkeypatch):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "reload-cancel.txt"
+    source.write_text("disk", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    view.state.move_document_end()
+    view.state.insert_text(" local")
+    original_document = view.document
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Cancel,
+    )
+
+    assert window.reload_current() is False
+    assert view.document is original_document
+    assert view.document.read(0, view.document.total_chars()) == "disk local"
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def test_confirmed_reload_reopens_disk_with_fresh_history(tmp_path: Path, monkeypatch):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "reload.txt"
+    replacement = tmp_path / "replacement.txt"
+    source.write_text("old", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    view.state.move_document_end()
+    view.state.insert_text(" local")
+    original_document = view.document
+    replacement.write_text("fresh Привет", encoding="utf-8")
+    replacement.replace(source)
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda *args, **kwargs: QMessageBox.StandardButton.Discard,
+    )
+
+    assert window.reload_current() is True
+    assert view.document is not original_document
+    assert view.document.read(0, view.document.total_chars()) == "fresh Привет"
+    assert view.document.modified is False
+    assert view.document.can_undo is False
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
