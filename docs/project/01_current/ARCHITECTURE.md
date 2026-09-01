@@ -90,6 +90,19 @@ Soft wrap is display-only and defaults off. `ui.wrap_index.VisualRowIndex` incre
 
 Input flows through `EditorState` for insertion/deletion, clipboard operations, selection, Unicode-category word movement, page movement, document start/end, and line navigation. Reload/Revert asks before discarding modifications, reopens through `Document.open`, and installs a fresh history. The status bar receives cursor, encoding/EOL, size, editor zoom, and `Wrap`/`No Wrap` state from the active view.
 
+## Desktop UI reference principles
+
+UNITI uses CotEditor as a menu, navigation, and shortcut-presentation reference without copying its product scope or Cocoa text-storage architecture. The applicable principles are:
+
+1. follow native desktop conventions so the application behaves predictably on its host platform;
+2. keep common editing approachable while retaining precise power-user controls;
+3. prefer a small, coherent surface over accumulating top-level menus and options;
+4. prioritize accurate, predictable plain-text behavior over novelty;
+5. keep command names, menu placement, focus behavior, and shortcut display consistent; and
+6. preserve accessibility, localization, and keyboard operation as first-class UI constraints.
+
+These principles are derived from CotEditor's published [design philosophy](https://github.com/coteditor/CotEditor#design-philosophy) and concrete [main-menu definition](https://github.com/coteditor/CotEditor/blob/main/CotEditor/Storyboards/Base.lproj/Main.storyboard). They are reference constraints, not an external dependency and not authority over UNITI's document, regex, resource, or cross-platform boundaries.
+
 ## Floating Find/Replace
 
 `FindReplaceWindow` is a modeless Qt tool window over the active `UNITITextView`. The document remains editable while it is visible. Its Find and Replace inputs use explicit immutable snapshot histories capped independently at 50 steps; focus routing sends Undo/Redo and clipboard commands to the active field before falling back to the document.
@@ -106,6 +119,30 @@ Editor zoom/wrap and Find/Replace zoom/geometry/report placement persist indepen
 
 `HotkeysPopup` is a modeless editor over the same registry. It exposes the six approved horizontal categories and Default/Current bindings, and performs assignment, clearing, collision rejection, selected/category/all resets, and portable-text persistence. Menus and customized shortcuts therefore do not maintain competing handler paths.
 
+### Approved compact menu definition
+
+The next a16 UI correction consolidates UNITI's application-owned menu bar to:
+
+```text
+File | Edit | Format | View | Find | Tools | Hotkeys
+```
+
+| Menu | Command ownership |
+|---|---|
+| `File` | Open, Save, Save As, Reload/Revert, Close, and Quit. |
+| `Edit` | Undo/Redo, Cut/Copy/Paste, Select All, plus a `Navigation` submenu for Go to Line, page, document, and word movement. |
+| `Format` | `Encoding` and `Line Endings` submenus; reinterpretation remains distinct from convert-on-save. |
+| `View` | `Editor View` and `F/R View` submenus for independent zoom, editor wrap, and F/R report placement. |
+| `Find` | Open Find/Replace, Find Next, and Find Previous. |
+| `Tools` | Character Inspector and Diagnostics. |
+| `Hotkeys` | Open the shortcut display/editor; do not duplicate the full command tree in a menu. |
+
+The Hotkeys display retains the horizontal categories `File | Editing | Navigation | Find/Replace | Editor View | F/R View` and the columns `Command | Default | Current`. It renders native platform shortcut notation for display while persisting portable bindings. Every ordinary menu item displays the current binding from the same registry.
+
+Keyboard Zoom In/Out/Reset and primary-modifier mouse-wheel zoom are focus-owned: the editor changes only editor zoom, while any control inside the floating F/R window changes only F/R zoom. The two persisted zoom values remain independent.
+
+This compact definition is an approved a16 target, not yet an implemented-current claim. It becomes current only after its menu reachability, live shortcut display, focus-scoped keyboard zoom, and focus-scoped wheel zoom tests pass.
+
 ## Search, save, recovery, and resources
 
 Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, timeout-aware, revision-bound, compactly stored, and delivered to Qt through queued signals. Core streaming replacement remains available for future bounded large-file work but is not a UI Replace All path in a16. Save remains streaming, atomic, explicit about encoding/EOL conversion, metadata-aware where supported, and protected against external file replacement.
@@ -120,4 +157,4 @@ The completed startup snapshot is passed into `UNITIMainWindow` and the diagnost
 
 ## Active-plan boundary
 
-The planned a16 functionality is implemented and automatically verified, so it is part of current architecture. The milestone remains active only because interactive macOS smoke, sustained real editing/search dogfood, and the final no-known-integrity-defect review require human evidence. Those gates are recorded in the [active a16 plan](../02_plans/v0.001a16-usable-test-alpha.md) and [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Queued a17+ behavior is not current architecture.
+The original planned a16 functionality is implemented and automatically verified, so it is part of current architecture. Dogfood has now identified the compact menu and focus-owned F/R wheel-zoom corrections defined above; those corrections remain approved targets until their tests pass. The milestone also retains its interactive macOS smoke, sustained real editing/search dogfood, and final no-known-integrity-defect gates. Those boundaries are recorded in the [active a16 plan](../02_plans/v0.001a16-usable-test-alpha.md) and [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Queued a17+ behavior is not current architecture.
