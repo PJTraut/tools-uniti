@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
 Date: 2026-09-01
-Baseline: verified a16 implementation through `05ef391` on `main`
+Baseline: verified a16 implementation through `61d1250` on `main`
 
 ## Lifecycle boundary
 
@@ -107,7 +107,7 @@ These principles are derived from CotEditor's published [design philosophy](http
 
 `FindReplaceWindow` is a modeless, mouse-resizable Qt tool window over the active `UNITITextView`. A native size grip supplements edge resizing. The document remains editable while the window is visible. Its Find and Replace inputs use explicit immutable snapshot histories capped independently at 50 steps; focus routing sends Undo/Redo and clipboard commands to the active field before falling back to the document.
 
-An explicit `Literal | Regex` selector owns search semantics. Literal mode escapes the query and alone displays Case Sensitive and Whole Word options. Regex mode hides those controls and sends raw syntax and inline switches such as `(?i)` to the authoritative third-party engine. Find All/Replace All form one batch-action row; Previous/Next/Replace form one match-action row; Cancel and status remain separate. Search remains cancellable and revision-bound.
+An explicit `Literal | Regex` selector owns search semantics. Literal mode escapes the query and alone displays Case Sensitive and Whole Word options. Regex mode hides those controls and sends raw syntax and inline switches such as `(?i)` to the authoritative third-party engine. The Find and Replace input editors receive equal vertical stretch and divide all space remaining above the controls. Mode/report options, Find All/Replace All, Previous/Next/Replace, and Cancel/status form one compact stack anchored to the bottom of the controls frame. F/R zoom changes field fonts and their minimum readable height without restoring a fixed field height. Search remains cancellable and revision-bound.
 
 The capture report is the collapsible second child of an unrestricted `QSplitter`, so it can be resized to any useful Bottom or Right proportion or dragged closed. `Report: Hidden | Bottom | Right` remains the explicit selector. The scoped `Cycle Report Position` command rotates those locations with default portable binding `Ctrl+Alt+R`. Capture rendering remains groups `1..N` only, with delimiters between adjacent matches.
 
@@ -159,4 +159,4 @@ The completed startup snapshot is passed into `UNITIMainWindow` and the diagnost
 
 ## Planned-change boundary
 
-The complete a16 product milestone, including the compact menu, focus-owned F/R wheel zoom, and multiple-click selection corrections discovered during real use, is implemented and verified current architecture. Its historical scope and execution records are retained in [`03_implemented`](../03_implemented/README.md), with command ownership governed by [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Active a17 and queued a18+ behavior are planned intent and are not current architecture.
+The complete a16 product milestone, including the compact menu, focus-owned F/R wheel zoom, multiple-click selection, and expanding F/R input layout corrections discovered during real use, is implemented and verified current architecture. Its historical scope and execution records are retained in [`03_implemented`](../03_implemented/README.md), with command ownership governed by [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Active a17 and queued a18+ behavior are planned intent and are not current architecture.
