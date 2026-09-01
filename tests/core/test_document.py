@@ -3,6 +3,52 @@ from pathlib import Path
 import pytest
 
 from uniti.core.document import Document
+from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
+
+
+def test_document_records_exact_bom_profile(tmp_path: Path):
+    path = tmp_path / "bom.txt"
+    path.write_bytes(b"\xef\xbb\xbfhello\r\n")
+    with Document.open(path) as document:
+        assert document.source_profile.key == "utf-8-bom"
+        assert document.saved_output_format == OutputFormat(
+            encoding_profile("utf-8-bom"), EOLPolicy.PRESERVE
+        )
+        assert document.output_format == document.saved_output_format
+        assert document.source_eol_report is not None
+        assert document.source_eol_report.kind == "CRLF"
+
+
+def test_complete_output_format_controls_metadata_dirty_state(tmp_path: Path):
+    path = tmp_path / "format.txt"
+    path.write_bytes(b"a\nb\n")
+    with Document.open(path) as document:
+        saved = document.saved_output_format
+        changed = OutputFormat(encoding_profile("utf-16-be-bom"), EOLPolicy.CRLF)
+        document.set_output_format(changed)
+        assert document.modified is True
+        document.set_output_format(saved)
+        assert document.modified is False
+
+
+def test_profile_override_is_exact_even_without_bom(tmp_path: Path):
+    path = tmp_path / "utf16.txt"
+    path.write_bytes("Привет".encode("utf-16-le"))
+    with Document.open(path, profile=encoding_profile("utf-16-le")) as document:
+        assert document.source_profile.key == "utf-16-le"
+        assert document.encoding_info.user_override is True
+        assert document.read(0, document.total_chars()) == "Привет"
+
+
+def test_document_rejects_profile_and_legacy_encoding_together(tmp_path: Path):
+    path = tmp_path / "ambiguous.txt"
+    path.write_bytes(b"abc")
+    with pytest.raises(ValueError, match="profile.*encoding"):
+        Document.open(
+            path,
+            encoding="utf-8",
+            profile=encoding_profile("utf-8"),
+        )
 
 
 def test_document_open_is_lazy_and_editable(tmp_path: Path):

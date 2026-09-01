@@ -22,6 +22,27 @@ from .lines import LineIndex
 from .offsets import OffsetMapper
 from .pieces import AnnotatedText, EditStore, PieceTable
 from .save import EOLName, SaveOptions, save_document
+from .text_format import (
+    EOLPolicy,
+    EncodingProfile,
+    OutputFormat,
+    profile_from_codec,
+)
+
+
+def _decoder_encoding(profile: EncodingProfile) -> str:
+    if profile.key == "utf-8-bom":
+        return "utf-8-sig"
+    return profile.codec
+
+
+def _output_profile_from_encoding(encoding: str) -> EncodingProfile:
+    try:
+        normalized = codecs.lookup(encoding).name
+    except LookupError as exc:
+        raise ValueError(f"unknown output encoding: {encoding}") from exc
+    bom = b"\xef\xbb\xbf" if normalized == "utf-8-sig" else None
+    return profile_from_codec(encoding, bom)
 
 
 class Document:
@@ -31,6 +52,7 @@ class Document:
         self,
         source: ByteSource,
         encoding_info: EncodingInfo,
+        source_profile: EncodingProfile,
         offset_mapper: OffsetMapper,
         source_line_index: LineIndex,
         piece_table: PieceTable,
@@ -44,18 +66,19 @@ class Document:
         self._source_identity = FileIdentity.from_path(source.path)
         self._disk_identity = self._source_identity
         self._encoding_info = encoding_info
+        self._source_profile = source_profile
         self._offset_mapper = offset_mapper
         self._source_line_index = source_line_index
         self._piece_table = piece_table
         self._document_line_index = document_line_index
-        self._output_eol: EOLName | None = None
         self._source_eol_report = source_eol_report
         self._insertion_eol_override: EOLName | None = None
         self._history = EditHistory()
-        self._saved_output_encoding = (
-            encoding_info.output_encoding or encoding_info.detected
+        self._output_format = OutputFormat(
+            encoding=source_profile,
+            eol=EOLPolicy.PRESERVE,
         )
-        self._saved_output_eol: EOLName | None = None
+        self._saved_output_format = self._output_format
         self._revision = 0
         self._edit_listeners: list[Callable[[EditOperation], None]] = []
         self._save_listeners: list[Callable[[Path], None]] = []
@@ -70,21 +93,41 @@ class Document:
         path: str | os.PathLike[str],
         *,
         encoding: str | None = None,
+        profile: EncodingProfile | None = None,
         resource_manager: "ResourceManager | None" = None,
     ) -> "Document":
+        if encoding is not None and profile is not None:
+            raise ValueError("profile and encoding cannot both be specified")
         source = ByteSource.open(path)
         try:
-            if encoding is None:
-                encoding_info = detect_encoding(source)
-            else:
+            if profile is not None:
+                source_profile = profile
+                selected = _decoder_encoding(source_profile)
                 encoding_info = EncodingInfo(
-                    detected=encoding,
+                    detected=selected,
                     confidence=1.0,
-                    bom=matching_bom(source, encoding),
+                    bom=source_profile.bom or None,
                     user_override=True,
-                    output_encoding=encoding,
+                    output_encoding=source_profile.codec,
                 )
-            selected = encoding_info.detected
+            elif encoding is None:
+                encoding_info = detect_encoding(source)
+                source_profile = profile_from_codec(
+                    encoding_info.detected,
+                    encoding_info.bom,
+                )
+                selected = encoding_info.detected
+            else:
+                bom = matching_bom(source, encoding)
+                source_profile = profile_from_codec(encoding, bom)
+                selected = _decoder_encoding(source_profile)
+                encoding_info = EncodingInfo(
+                    detected=selected,
+                    confidence=1.0,
+                    bom=bom,
+                    user_override=True,
+                    output_encoding=source_profile.codec,
+                )
             cache_owner = object()
             mapper = OffsetMapper(
                 source,
@@ -102,6 +145,7 @@ class Document:
             return cls(
                 source,
                 encoding_info,
+                source_profile,
                 mapper,
                 source_line_index,
                 piece_table,
@@ -135,6 +179,10 @@ class Document:
         return self._encoding_info
 
     @property
+    def source_profile(self) -> EncodingProfile:
+        return self._source_profile
+
+    @property
     def offset_mapper(self) -> OffsetMapper:
         return self._offset_mapper
 
@@ -152,7 +200,21 @@ class Document:
 
     @property
     def output_eol(self) -> EOLName | None:
-        return self._output_eol
+        if self._output_format.eol is EOLPolicy.PRESERVE:
+            return None
+        return self._output_format.eol.value  # type: ignore[return-value]
+
+    @property
+    def output_format(self) -> OutputFormat:
+        return self._output_format
+
+    @property
+    def saved_output_format(self) -> OutputFormat:
+        return self._saved_output_format
+
+    @property
+    def source_eol_report(self) -> EOLReport | None:
+        return self._source_eol_report
 
     @property
     def insertion_eol(self) -> EOLName:
@@ -176,7 +238,7 @@ class Document:
 
     @property
     def output_encoding(self) -> str:
-        return self._encoding_info.output_encoding or self._encoding_info.detected
+        return self._output_format.encoding.codec
 
     @property
     def revision(self) -> int:
@@ -190,36 +252,44 @@ class Document:
 
     @property
     def modified(self) -> bool:
-        metadata_modified = (
-            self.output_encoding != self._saved_output_encoding
-            or self._output_eol != self._saved_output_eol
+        return self._history.modified or self._output_format != self._saved_output_format
+
+    def set_output_format(self, output_format: OutputFormat) -> None:
+        self._ensure_open()
+        if not isinstance(output_format, OutputFormat):
+            raise TypeError("output format must be an OutputFormat")
+        if output_format == self._output_format:
+            return
+        self._output_format = output_format
+        self._encoding_info = dataclass_replace(
+            self._encoding_info,
+            output_encoding=output_format.encoding.codec,
         )
-        return self._history.modified or metadata_modified
+        self._notify_metadata()
 
     def set_output_encoding(self, encoding: str) -> None:
         self._ensure_open()
         if not isinstance(encoding, str) or not encoding:
             raise ValueError("output encoding must be a non-empty string")
-        try:
-            codecs.lookup(encoding)
-        except LookupError as exc:
-            raise ValueError(f"unknown output encoding: {encoding}") from exc
-        if encoding == self.output_encoding:
-            return
-        self._encoding_info = dataclass_replace(
-            self._encoding_info,
-            output_encoding=encoding,
+        profile = _output_profile_from_encoding(encoding)
+        self.set_output_format(
+            OutputFormat(
+                encoding=profile,
+                eol=self._output_format.eol,
+            )
         )
-        self._notify_metadata()
 
     def set_output_eol(self, eol: EOLName | None) -> None:
         self._ensure_open()
         if eol not in (None, "LF", "CRLF", "CR"):
             raise ValueError(f"unsupported EOL policy: {eol}")
-        if eol == self._output_eol:
-            return
-        self._output_eol = eol
-        self._notify_metadata()
+        policy = EOLPolicy.PRESERVE if eol is None else EOLPolicy(eol)
+        self.set_output_format(
+            OutputFormat(
+                encoding=self._output_format.encoding,
+                eol=policy,
+            )
+        )
 
     def add_edit_listener(self, listener: Callable[[EditOperation], None]) -> Callable[[], None]:
         self._ensure_open()
@@ -270,7 +340,7 @@ class Document:
 
     def _notify_metadata(self) -> None:
         for listener in tuple(self._metadata_listeners):
-            listener(self.output_encoding, self._output_eol)
+            listener(self.output_encoding, self.output_eol)
 
     @property
     def can_undo(self) -> bool:
@@ -590,12 +660,23 @@ class Document:
         target = self._path if destination is None else Path(destination)
 
         self.assert_safe_overwrite(target)
-        output_encoding = (
-            encoding
-            or self._encoding_info.output_encoding
-            or self._encoding_info.detected
-        )
-        output_eol = self._output_eol if eol is None else eol
+        selected_format = self._output_format
+        if encoding is not None:
+            selected_format = OutputFormat(
+                encoding=_output_profile_from_encoding(encoding),
+                eol=selected_format.eol,
+            )
+        if eol is not None:
+            selected_format = OutputFormat(
+                encoding=selected_format.encoding,
+                eol=EOLPolicy(eol),
+            )
+        output_encoding = selected_format.encoding.codec
+        output_eol: EOLName | None
+        if selected_format.eol is EOLPolicy.PRESERVE:
+            output_eol = None
+        else:
+            output_eol = selected_format.eol.value  # type: ignore[assignment]
         result = save_document(
             self._source,
             self._piece_table,
@@ -610,11 +691,9 @@ class Document:
             self._encoding_info,
             output_encoding=output_encoding,
         )
-        if eol is not None:
-            self._output_eol = eol
+        self._output_format = selected_format
         self._history.mark_saved()
-        self._saved_output_encoding = output_encoding
-        self._saved_output_eol = output_eol
+        self._saved_output_format = selected_format
         self._notify_save(result)
         return result
 
