@@ -10,12 +10,24 @@ from .lines import LineIndex
 from .pieces import AnnotatedText, InvalidByteSpan, EditPiece, EditRef, EditStore, PieceTable, SourcePiece
 from .document import Document
 from .streaming import atomic_copy_source
+from .text_format import (
+    EOLPolicy,
+    EncodingProfile,
+    OutputFormat,
+    encoding_profile,
+    encoding_profiles,
+    format_summary,
+    profile_from_codec,
+)
 
 __all__ = [
     "ByteSource",
     "DecodeError",
     "DecodedSpan",
     "EncodingInfo",
+    "EncodingProfile",
+    "EOLPolicy",
+    "OutputFormat",
     "FileIdentity",
     "ExternalFileChangedError",
     "EOLReport",
@@ -35,4 +47,8 @@ __all__ = [
     "analyze_eol",
     "atomic_copy_source",
     "detect_encoding",
+    "encoding_profile",
+    "encoding_profiles",
+    "format_summary",
+    "profile_from_codec",
 ]
