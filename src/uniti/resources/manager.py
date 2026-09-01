@@ -53,6 +53,14 @@ class ResourceManager:
     def pressure(self) -> PressureState:
         return self._pressure
 
+    @property
+    def cache_budget_bytes(self) -> int:
+        return self.cache.budget_bytes
+
+    @property
+    def worker_count(self) -> int:
+        return self.workers.max_workers
+
     @staticmethod
     def _composite(owner: Hashable, key: Hashable) -> tuple[Hashable, Hashable]:
         return owner, key

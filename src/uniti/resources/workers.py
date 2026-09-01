@@ -45,6 +45,7 @@ class PriorityWorkerPool:
         self._sequence = itertools.count()
         self._lock = threading.Lock()
         self._shutdown = False
+        self._max_workers = max_workers
         self._threads = [
             threading.Thread(
                 target=self._worker,
@@ -55,6 +56,10 @@ class PriorityWorkerPool:
         ]
         for thread in self._threads:
             thread.start()
+
+    @property
+    def max_workers(self) -> int:
+        return self._max_workers
 
     def submit(
         self,

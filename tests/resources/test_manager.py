@@ -54,3 +54,13 @@ def test_evict_owner_removes_only_that_documents_disposable_cache():
         assert manager.get_cache("b", "x") == 2
     finally:
         manager.shutdown()
+
+
+def test_resource_manager_exposes_the_policy_it_constructed():
+    snapshot = MemorySnapshot(physical=16 * GIB, available=10 * GIB)
+    manager = ResourceManager(max_workers=3, initial_snapshot=snapshot)
+    try:
+        assert manager.cache_budget_bytes == manager.cache.budget_bytes
+        assert manager.worker_count == 3
+    finally:
+        manager.shutdown()
