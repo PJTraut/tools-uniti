@@ -8,14 +8,14 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
 - Canonical branch: `main`
-- Baseline when a16 usability work resumed: `052f733`
+- Remote baseline: `origin/main` at `052f733`
+- Latest a16 feature checkpoint: `8151325` — atomic Replace All safety
 - Active milestone: `v0.001a16` — Usable Test Alpha
 - Current display/package metadata: `v0.001a16` / `0.1a16`
-- Latest implemented a16 workstream: startup/bootstrap/initialization at `8bde00f`
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16 tag: none
 
-The working tree contains active a16 work, including the approved root macOS/Windows launchers and this project-record reconciliation. Inspect `git status` rather than assuming a clean tree. Preserve those changes when continuing.
+Local `main` contains the complete automatically verified a16 implementation sequence and is ahead of `origin/main`. Push remains intentionally withheld until the remaining interactive a16 gates are completed and the user approves the push. Inspect `git status` and `git log origin/main..HEAD` for the exact continuation state.
 
 ## Canonical records
 
@@ -29,32 +29,43 @@ The working tree contains active a16 work, including the approved root macOS/Win
 - [Implemented startup/bootstrap workstream](../03_implemented/milestones/2026-09-01-uniti-v0.001a16-startup-bootstrap.md)
 - [Parked capabilities](../04_parked/CATALOG.md)
 - [Architecture decisions](../05_decisions/README.md)
-- [Corrected startup-foundation snapshot](history/2026-09-01-v0.001a16-startup-foundation.md)
 
-## Active work
+## Implemented and verified in the active a16 sequence
 
-a16 exists to make UNITI usable for daily editing/search dogfooding, not to add more architecture. Required work includes core editor commands/navigation, 50-transaction document Undo, independent 50-step Find and Replace histories, editor and F/R zoom, soft wrap, reload/revert, floating modeless Find/Replace, literal/regex mode separation, capture-only reports, atomic Replace All, assignable persisted hotkeys, UI-state persistence, status indicators, and Western/Cyrillic fixed-pitch fonts.
+- 50-transaction document history and coalesced typing/deletion;
+- editor navigation, Go to Line, protected Reload/Revert, clipboard commands, zoom, fixed-pitch Western/Cyrillic coverage, progressive soft wrap, persistence, and status;
+- floating modeless Find/Replace with literal/regex separation, independent zoom/geometry/report state, capture-only reports, and separate 50-step field histories;
+- focus-owned Undo/Redo and clipboard routing across the editor, Find, and Replace areas;
+- scoped shared command registry and persistent Hotkeys popup;
+- single-step undoable Replace and Replace All with no streamed disk-rewrite bypass; and
+- root macOS and Windows launchers through the canonical bootstrap path.
 
-No user manual or feature documentation is required during this milestone. Maintain only current architecture, durable decisions/principles, project grammar, planning state, and handover continuity.
+Fresh evidence at the feature checkpoint:
+
+```text
+409 passed, 4 skipped in 10.38s
+compileall: pass
+alpha_smoke.py: ok=true
+deep offscreen self-check: status=pass, exit_code=0
+```
+
+The skips are one xattr capability case and three Windows launcher cases unavailable on macOS.
+
+## Exact active-plan position
+
+Tasks 1–7 and Task 8 automated steps 1–4 in the [a16 implementation plan](../02_plans/v0.001a16-implementation-plan.md) are complete. Task 8 steps 5–6 remain open:
+
+1. run UNITI interactively on macOS through `./uniti.command`;
+2. exercise representative Western and Cyrillic editing, navigation, search, replace, save, reload, restart, persistence, and hotkey workflows;
+3. capture every blocking/basic usability or text-integrity failure as a failing automated test before fixing it; and
+4. freeze a16 only when no acceptance gap remains.
+
+Do not move a16 to `03_implemented`, activate a17, tag a16, or push milestone completion before those gates close.
 
 ## Queue
 
-After a16, implement in sequence:
-
-1. `v0.001a17` Text Integrity Alpha;
-2. `v0.001a18` Large-File Alpha;
-3. `v0.001a19` Regex Intelligence Alpha;
-4. `v0.001a20` Recovery & Session Alpha;
-5. `v0.001a21` Cross-Platform Alpha;
-6. `v0.001a22` Dogfood / Performance Alpha; and
-7. `v0.001a23` Beta Candidate.
-
-## Verification state and acceptance gate
-
-The historical startup/bootstrap closure recorded `357 passed, 1 skipped`, plus compile, smoke, deep self-check, import-boundary, link, and diff checks. Those results prove that implemented workstream only; active a16 changes require fresh verification.
-
-a16 does not freeze until the full automated suite, deep self-check, and macOS GUI smoke are green; real editing/search dogfooding has found no remaining blocking/basic usability defect; and no known data-loss or text-integrity bug remains.
+After a16, implement in sequence: `v0.001a17` Text Integrity, `v0.001a18` Large-File, `v0.001a19` Regex Intelligence, `v0.001a20` Recovery & Session, `v0.001a21` Cross-Platform, `v0.001a22` Dogfood/Performance, and `v0.001a23` Beta Candidate.
 
 ## Next safe action
 
-Continue the [a16 implementation plan](../02_plans/v0.001a16-implementation-plan.md) test-first. Do not promote a16 to `03_implemented`, tag it, or push milestone completion until every acceptance gate has current evidence.
+Launch `./uniti.command`, perform the interactive macOS smoke and real editing/search dogfood checklist, and report any friction with exact reproduction steps. If the gates are clean, record the evidence, complete Task 8 steps 5–6, move a16 to `03_implemented`, activate a17, rerun verification, then request the final push decision.

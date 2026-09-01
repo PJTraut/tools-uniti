@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
 Date: 2026-09-01
-Baseline: implemented startup/bootstrap foundation within the active `v0.001a16` series on `main`
+Baseline: automatically verified a16 implementation through `8151325` on `main`
 
 ## Lifecycle boundary
 
@@ -80,9 +80,35 @@ QApplication / UNITIMainWindow
 
 `src/uniti/core` and `src/uniti/regex` remain Qt-free. Qt owns presentation and input only; it never becomes the document store.
 
+`EditHistory` retains at most 50 immutable document transactions. When the oldest transaction is evicted, its state is folded into the retained baseline so modified/save-point semantics remain correct. Typing, backspace, and delete may coalesce while contiguous; cursor movement, selection changes, save, Undo/Redo, and explicit operations break coalescing. `Document.replace_many` applies all non-overlapping original-coordinate replacements as one transaction.
+
+## Editor presentation and command flow
+
+`UNITITextView` continues to paint only visible document content through the custom virtual viewport. It selects a concrete fixed-pitch font with Western/Latin and Cyrillic coverage, applies clamped 50–300% font scaling, and handles primary-modifier wheel zoom without transferring text ownership to Qt.
+
+Soft wrap is display-only and defaults off. `ui.wrap_index.VisualRowIndex` incrementally maps logical lines to visual rows at the current viewport width; scrolling advances that index rather than constructing a whole-document Qt layout. Wrap therefore does not insert EOLs or change document coordinates.
+
+Input flows through `EditorState` for insertion/deletion, clipboard operations, selection, Unicode-category word movement, page movement, document start/end, and line navigation. Reload/Revert asks before discarding modifications, reopens through `Document.open`, and installs a fresh history. The status bar receives cursor, encoding/EOL, size, editor zoom, and `Wrap`/`No Wrap` state from the active view.
+
+## Floating Find/Replace
+
+`FindReplaceWindow` is a modeless Qt tool window over the active `UNITITextView`. The document remains editable while it is visible. Its Find and Replace inputs use explicit immutable snapshot histories capped independently at 50 steps; focus routing sends Undo/Redo and clipboard commands to the active field before falling back to the document.
+
+Literal mode escapes the query and alone supplies Case Sensitive and Whole Word options. Regex mode sends raw syntax and inline switches to the authoritative third-party engine. Search remains cancellable and revision-bound. The report pane can be Hidden, Bottom, or Right and renders capture groups `1..N` only, with delimiters between adjacent matches.
+
+Single Replace and Replace All return through the authoritative `Document`. Replace All collects the revision-bound replacement set off the GUI thread, rejects stale results, and submits the entire set to `replace_many` as one Undo operation. The UI does not use the core streaming-rewrite service for Replace All because a disk rewrite would bypass the a16 history contract.
+
+Editor zoom/wrap and Find/Replace zoom/geometry/report placement persist independently through `SettingsStore`.
+
+## Command registry
+
+`app.commands.CommandRegistry` is the Qt-free authority for command definitions, defaults, current shortcuts, categories, and `WINDOW`/`EDITOR`/`FIND_REPLACE` collision scopes. `UNITIMainWindow` creates shared `QAction` handlers from that registry. Editor and modeless-window dispatch use focus-aware action/shortcut forwarding, including interception of native text-control shortcuts so Find/Replace fields keep ownership.
+
+`HotkeysPopup` is a modeless editor over the same registry. It exposes the six approved horizontal categories and Default/Current bindings, and performs assignment, clearing, collision rejection, selected/category/all resets, and portable-text persistence. Menus and customized shortcuts therefore do not maintain competing handler paths.
+
 ## Search, save, recovery, and resources
 
-Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, timeout-aware, revision-bound, compactly stored, and delivered to Qt through queued signals. Save remains streaming, atomic, explicit about encoding/EOL conversion, metadata-aware where supported, and protected against external file replacement.
+Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, timeout-aware, revision-bound, compactly stored, and delivered to Qt through queued signals. Core streaming replacement remains available for future bounded large-file work but is not a UI Replace All path in a16. Save remains streaming, atomic, explicit about encoding/EOL conversion, metadata-aware where supported, and protected against external file replacement.
 
 `RecoveryManager` serializes journal durability independently from disposable background work. The application-wide `ResourceManager` remains the single cache/pressure/worker policy owner and now exposes its constructed cache budget and worker count for state and diagnostics.
 
@@ -94,4 +120,4 @@ The completed startup snapshot is passed into `UNITIMainWindow` and the diagnost
 
 ## Active-plan boundary
 
-The floating Find/Replace utility, bounded 50-step editor and field histories, zoom/wrap behavior, configurable hotkeys, additional navigation, reload/revert, and their persisted UI state are approved a16 changes but are not part of this current architecture until implemented and verified. Their governing boundaries are recorded in the [active a16 plan](../02_plans/v0.001a16-usable-test-alpha.md) and [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md).
+The planned a16 functionality is implemented and automatically verified, so it is part of current architecture. The milestone remains active only because interactive macOS smoke, sustained real editing/search dogfood, and the final no-known-integrity-defect review require human evidence. Those gates are recorded in the [active a16 plan](../02_plans/v0.001a16-usable-test-alpha.md) and [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Queued a17+ behavior is not current architecture.

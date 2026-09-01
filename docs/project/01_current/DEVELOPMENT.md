@@ -106,10 +106,11 @@ Qt-focused coverage:
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
-  tests/test_a16_startup_bootstrap_acceptance.py tests/app tests/ui
+  tests/test_a16_startup_bootstrap_acceptance.py \
+  tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-Before completion, verify that `src/uniti/core`, `src/uniti/regex`, and `src/uniti/resources` do not import PySide6, that the working tree is clean, and that remote integration is a normal fast-forward-safe push.
+The automated a16 checkpoint at `8151325` recorded `409 passed, 4 skipped`, clean compilation, a passing alpha smoke, and a passing deep offscreen self-check. Before milestone completion, also run the interactive macOS GUI smoke and real-use dogfood gate, verify that `src/uniti/core`, `src/uniti/regex`, and `src/uniti/resources` do not import PySide6, confirm the working tree is clean, and ensure remote integration is a normal fast-forward-safe push.
 
 ## Lifecycle files
 

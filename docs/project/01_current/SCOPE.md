@@ -5,7 +5,9 @@ Version: `v0.001a16` / `0.1a16`
 
 ## Product boundary
 
-UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service. Current scope describes implemented behavior only; the remaining a16 usability contract stays in `02_plans` until verified.
+UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
+
+The a16 usability implementation is current and automatically verified. The milestone itself remains active until interactive macOS smoke and sustained real-use dogfood close its remaining acceptance gates.
 
 ## Included lifecycle capabilities
 
@@ -16,8 +18,9 @@ UNITI is a focused, cross-platform power text editor for Unicode correctness, ex
 - pre-Qt application CLI, version output, fast/deep self-check, human/JSON reporting, and lifecycle exit codes;
 - ordered BOOT→READY startup coordination with per-phase atomic state and bounded JSONL logs;
 - schema-1 setup/settings persistence, legacy settings migration, malformed-file preservation, and future-schema refusal;
-- platform application paths, runtime/filesystem/resource/Qt capability reporting, narrow stale cleanup, and per-process session records; and
-- completed startup/setup diagnostics passed into the UI without re-probing.
+- platform application paths, runtime/filesystem/resource/Qt capability reporting, narrow stale cleanup, and per-process session records;
+- completed startup/setup diagnostics passed into the UI without re-probing; and
+- root macOS and Windows launchers that enter the same bootstrap/application path.
 
 ## Included editor capabilities
 
@@ -26,11 +29,17 @@ UNITI is a focused, cross-platform power text editor for Unicode correctness, ex
 - explicit reinterpretation versus convert-on-save and malformed-byte preservation;
 - CR, LF, CRLF, mixed-EOL analysis, source-aware insertion, and explicit output conversion;
 - progressive byte/character and line indexes without whole-file opening decodes;
-- hybrid source/edit piece table, selections, transactions, undo/redo, and giant-line navigation;
+- hybrid source/edit piece table, selections, atomic transactions, and a 50-transaction document Undo/Redo history;
+- coalesced typing/backspace/delete plus Unicode-aware word, page, document, line, and Shift-extended navigation;
+- Cut, Copy, Paste, Select All, Go to Line, and protected Reload/Revert;
+- fixed-pitch Western/Latin and Cyrillic rendering, independent editor zoom, primary-modifier wheel zoom, and progressive display-only soft wrap;
 - streaming atomic Save/Save As with external-file identity and supported metadata protection;
 - asynchronous crash-recovery journals and validated replay;
-- authoritative `regex==2026.5.9`, cancellable/windowed search, compact revision-bound matches, replacement, and streaming rewrite;
-- PySide6 tabs, custom virtual viewport, clipboard, IME, menus, status, inspections, diagnostics, and recovery surfaces; and
+- authoritative `regex==2026.5.9`, cancellable/windowed search, compact revision-bound matches, and document-transaction replacement;
+- floating modeless Find/Replace with literal/regex separation, capture-only reports, independent zoom/geometry/report state, and separate 50-step field histories;
+- one-step undoable Replace All with no disk-rewrite history bypass;
+- a scoped shared command registry and persisted Hotkeys popup for window, editor, and Find/Replace commands;
+- PySide6 tabs, custom virtual viewport, clipboard, IME, menus, zoom/wrap status, inspections, diagnostics, and recovery surfaces; and
 - centralized cache pressure, active/inactive document priority, and shared background workers.
 
 ## Architectural invariants
@@ -46,18 +55,20 @@ UNITI is a focused, cross-platform power text editor for Unicode correctness, ex
 9. Search-result count does not dictate GUI object count or unbounded RAM.
 10. Save remains streaming, atomic, and external-change conscious.
 11. User edits/history are document state, not disposable cache.
-12. Bootstrap mutates only an ownership-validated UNITI runtime.
-13. Ordinary startup never invokes pip or dependency repair.
-14. Managed environments are never deleted, cleared, or silently replaced.
-15. Capability checks and cleanup remain bounded and confined to UNITI-owned paths.
-16. No deliberate 1 GiB ceiling is introduced; at least 1 GiB remains the design target.
+12. Replace All is one document transaction and one Undo operation.
+13. Focus selects editor, Find-field, or Replace-field command/history ownership.
+14. Bootstrap mutates only an ownership-validated UNITI runtime.
+15. Ordinary startup never invokes pip or dependency repair.
+16. Managed environments are never deleted, cleared, or silently replaced.
+17. Capability checks and cleanup remain bounded and confined to UNITI-owned paths.
+18. No deliberate 1 GiB ceiling is introduced; at least 1 GiB remains the design target.
 
-## Approved but not yet current
+## Approved future scope
 
-The active a16 usability work and queued a17-a23 milestones are approved future changes, not implemented current scope. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+The ordered `v0.001a17`–`v0.001a23` milestones are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 
-Host-Python installation, embedded Python, signed polished installers, updater, accounts, telemetry, network-dependent normal startup, persistent multi-document/session architecture beyond testing needs, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, CJK typography specialization, and elaborate preferences remain outside the approved roadmap.
+Host-Python installation, embedded Python, signed polished installers, updater, accounts, telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, CJK typography specialization, and elaborate preferences remain outside the approved roadmap.
 
 See the [Parked Capability Catalog](../04_parked/CATALOG.md) for rationale and re-evaluation triggers.

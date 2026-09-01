@@ -7,49 +7,50 @@ Date: 2026-09-01
 | Item | Current value |
 |---|---|
 | Repository branch | `main` |
-| Baseline when a16 usability work resumed | `052f733` — `docs: record v0.001a16 verification` |
+| Remote baseline | `origin/main` at `052f733` |
+| Verified a16 implementation checkpoint | `8151325` — atomic Replace All safety |
+| Local integration state | `main` contains unpushed a16 commits after `origin/main`; do not push until a16 is approved for push |
 | Active product milestone | `v0.001a16` — Usable Test Alpha |
-| Latest implemented a16 workstream | startup/bootstrap/initialization foundation at `8bde00f` |
-| Display version metadata | `v0.001a16` |
-| PEP 440 package metadata | `0.1a16` |
+| Display/package metadata | `v0.001a16` / `0.1a16` |
 | Latest immutable release tag | `v0.001a15` at `10f419e` |
 | Queued milestones | `v0.001a17` through `v0.001a23` |
 
-The `v0.001a15` tag remains immutable. The post-tag Qt completion fix at `6b81185` and the startup/bootstrap workstream are implemented on `main`. They are foundations inside a16; they do not satisfy the complete Usable Test Alpha exit criteria and do not close the product milestone.
+The `v0.001a15` tag remains immutable. The post-tag Qt completion fix, the startup/bootstrap workstream, the root launchers, and the a16 usability implementation are on local `main`. The a16 product milestone remains active because its interactive macOS and real-use acceptance gates have not yet been recorded.
 
-## Implemented a16 foundation
+## Implemented a16 behavior
 
-- explicit source/local bootstrap under a discovered Python 3.12+;
-- safe environment ownership, adoption, partial-state retention, locking, and repair;
-- canonical managed dependency install, validation, and fingerprinting;
-- atomic setup/settings schemas and bounded lifecycle logs;
-- ordered BOOT→READY startup coordination and failure taxonomy;
-- runtime/filesystem/resource/Qt capabilities and bounded cleanup;
-- stable fast/deep self-check reports and offscreen functional coverage; and
-- completed startup state in diagnostics.
+- document Undo/Redo is capped at 50 transactions, with coalesced typing/backspace/delete and correct save-point behavior;
+- Cut, Copy, Paste, Select All, Go to Line, Reload/Revert, page/document/Unicode-word navigation, and Shift selection dispatch through the editor state;
+- editor zoom, primary-modifier wheel zoom, fixed-pitch Western/Cyrillic font selection, progressive soft wrap, and zoom/wrap status indicators are implemented;
+- editor zoom and wrap persist through the existing settings store;
+- Find/Replace is a floating modeless utility with independent zoom and geometry, separate 50-step Find and Replace histories, focus-owned editing commands, and Hidden/Bottom/Right report placement;
+- literal and raw-regex modes are explicit; Case Sensitive and Whole Word belong only to literal mode; capture reports show groups `1..N` and exclude group `0`;
+- Replace and Replace All mutate the authoritative `Document`; Replace All is one atomic undoable transaction and never bypasses history through a disk rewrite;
+- the top-level Hotkeys popup exposes the six approved horizontal categories, Default/Current columns, assignment, clearing, collision detection, selected/category/all resets, scoped dispatch, and persisted overrides; and
+- root macOS and Windows launchers use the canonical bootstrap path and forward arguments and exit status.
 
-## Active a16 outcome
+## Fresh verification evidence
 
-The remaining a16 work is deliberately implementation-led: make UNITI usable as a routine basic editor and use it daily to expose friction and defects. The active scope covers editor commands/navigation, bounded undo, editor and Find/Replace zoom, soft wrap, reload/revert, the floating modeless Find/Replace workflow, safe replacement, assignable hotkeys, persisted UI state, status indicators, and Western/Cyrillic fixed-pitch font coverage.
-
-The authoritative exit contract is the [a16 Usable Test Alpha plan](../02_plans/v0.001a16-usable-test-alpha.md). Planned behavior is not treated as current until its tests and acceptance evidence pass.
-
-## Recorded verification evidence
-
-The startup/bootstrap workstream closure at `8bde00f` recorded:
+At the `8151325` implementation checkpoint:
 
 ```text
-357 passed, 1 skipped
+409 passed, 4 skipped in 10.38s
 ```
 
-Compilation, headless alpha smoke, managed-runtime bootstrap, deep offscreen self-check, import boundaries, documentation links, and `git diff --check` also passed at that historical baseline. Fresh verification for active a16 work supersedes this count as implementation proceeds.
+The four skips are one platform xattr capability case and three Windows launcher cases unavailable on macOS. The following gates also exited zero:
 
-## Known usability gaps
+- `python -m compileall -q src scripts tests`;
+- `python scripts/alpha_smoke.py` with `"ok": true`;
+- deep offscreen self-check with top-level `"status": "pass"` and `"exit_code": 0`; and
+- the integrated a16 acceptance checks for atomic Replace All, persisted UI state, focused command ownership, and status indicators.
 
-- Find/Replace is still an embedded bottom panel rather than the approved floating modeless utility.
-- Editor zoom, independent F/R zoom, soft wrap, Go to Line, Reload/Revert, and configurable hotkeys are not yet complete.
-- The current core history is not yet capped at 50 document transactions, and Find/Replace fields do not yet provide the approved independent bounded histories.
-- Required a16 state persistence, report placement, status indicators, literal/regex mode split, and complete navigation behavior are still active work.
-- The a16 dogfood, macOS GUI smoke, and no-known-integrity-defect gates have not yet closed.
+## Remaining a16 gates
 
-See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and [Implemented](../03_implemented/README.md).
+- run the interactive macOS GUI smoke through `./uniti.command`;
+- use UNITI for representative real editing, search, replace, save, reload, and restart work;
+- add a failing automated test before correcting every blocking/basic usability or text-integrity defect discovered; and
+- confirm that no known data-loss or text-integrity defect remains after that use.
+
+Automated implementation is green, but those human-observation gates are part of the milestone contract. Until they pass, a16 stays in `02_plans`, no a16 tag is created, and a17 remains queued.
+
+See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and [the active a16 plan](../02_plans/v0.001a16-usable-test-alpha.md).
