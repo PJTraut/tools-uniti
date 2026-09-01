@@ -11,8 +11,12 @@ from uniti.core.offsets import OffsetMapper
 from uniti.core.pieces import EditStore, PieceTable
 from uniti.core.save import (
     SaveVerificationError,
+    SaveOptions,
+    UnrepresentableCharacterError,
+    UnresolvedMalformedBytesError,
     commit_staged_document,
     discard_staged_document,
+    save_document,
     stage_document,
     verify_staged_document,
 )
@@ -279,3 +283,90 @@ def test_preserve_staging_keeps_mixed_line_endings(tmp_path):
     finally:
         source.close()
     assert target.read_bytes() == b"a\r\nb\nc\r"
+
+
+@pytest.mark.parametrize(
+    "selected",
+    [
+        OutputFormat(encoding_profile("utf-16-le"), EOLPolicy.PRESERVE),
+        OutputFormat(encoding_profile("utf-8"), EOLPolicy.CRLF),
+    ],
+)
+def test_unresolved_malformed_bytes_block_any_transformation(tmp_path, selected):
+    path = tmp_path / "invalid.txt"
+    path.write_bytes(b"A\xffB\n")
+    source = ByteSource.open(path)
+    mapper = OffsetMapper(source, "utf-8", checkpoint_bytes=2)
+    table = PieceTable(source, "utf-8", mapper, EditStore())
+    target = tmp_path / "target.txt"
+    target.write_bytes(b"untouched")
+    try:
+        with pytest.raises(UnresolvedMalformedBytesError) as exc_info:
+            stage_document(
+                source,
+                table,
+                source_profile=encoding_profile("utf-8"),
+                destination=target,
+                output_format=selected,
+                chunk_chars=2,
+            )
+        assert exc_info.value.position == 1
+        assert exc_info.value.raw == b"\xff"
+    finally:
+        source.close()
+    assert target.read_bytes() == b"untouched"
+    assert list(tmp_path.glob(".target.txt.*.uniti-tmp")) == []
+
+
+def test_unrepresentable_error_reports_document_position_before_staging(tmp_path):
+    source, table = table_for(tmp_path / "source.txt", "AПривет\n")
+    target = tmp_path / "target.txt"
+    try:
+        with pytest.raises(UnrepresentableCharacterError) as exc_info:
+            stage_document(
+                source,
+                table,
+                source_profile=encoding_profile("utf-8"),
+                destination=target,
+                output_format=OutputFormat(
+                    encoding_profile("windows-1252"), EOLPolicy.PRESERVE
+                ),
+            )
+        assert exc_info.value.character == "П"
+        assert exc_info.value.position == 1
+    finally:
+        source.close()
+    assert not target.exists()
+    assert list(tmp_path.glob(".target.txt.*.uniti-tmp")) == []
+
+
+def test_save_document_discards_stage_when_verifier_refuses(
+    tmp_path,
+    monkeypatch,
+):
+    source, table = table_for(tmp_path / "source.txt", "alpha\n")
+    target = tmp_path / "target.txt"
+    target.write_bytes(b"untouched")
+
+    def refuse(*_args, **_kwargs):
+        raise SaveVerificationError("injected verification refusal")
+
+    monkeypatch.setattr("uniti.core.save.verify_staged_document", refuse)
+    try:
+        with pytest.raises(SaveVerificationError, match="injected"):
+            save_document(
+                source,
+                table,
+                source_encoding="utf-8",
+                source_bom=None,
+                destination=target,
+                options=SaveOptions(
+                    output_format=OutputFormat(
+                        encoding_profile("utf-8"), EOLPolicy.LF
+                    )
+                ),
+            )
+    finally:
+        source.close()
+    assert target.read_bytes() == b"untouched"
+    assert list(tmp_path.glob(".target.txt.*.uniti-tmp")) == []

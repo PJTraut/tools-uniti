@@ -442,3 +442,31 @@ def test_assert_safe_overwrite_detects_external_atomic_replacement(tmp_path: Pat
         replacement.replace(source)
         with pytest.raises(ExternalFileChangedError):
             document.assert_safe_overwrite()
+
+
+def test_document_rejects_staged_save_after_revision_changes(
+    tmp_path: Path,
+    monkeypatch,
+):
+    import uniti.core.save as save_module
+    from uniti.core.save import StaleDocumentRevisionError
+
+    path = tmp_path / "stale-save.txt"
+    path.write_text("abc", encoding="utf-8")
+    original_verify = save_module.verify_staged_document
+
+    with Document.open(path) as document:
+        document.insert(3, "X")
+
+        def verify_then_edit(staged, chunks):
+            original_verify(staged, chunks)
+            document.insert(document.total_chars(), "Y")
+
+        monkeypatch.setattr(save_module, "verify_staged_document", verify_then_edit)
+        with pytest.raises(StaleDocumentRevisionError):
+            document.save()
+        assert document.read(0, document.total_chars()) == "abcXY"
+        assert document.modified is True
+
+    assert path.read_bytes() == b"abc"
+    assert list(tmp_path.glob(".stale-save.txt.*.uniti-tmp")) == []

@@ -9,7 +9,7 @@ import tempfile
 import stat
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, Iterable, Iterator, Literal
+from typing import BinaryIO, Callable, Iterable, Iterator, Literal
 
 from .byte_source import ByteSource
 from .decoder import iter_decoded_spans
@@ -132,12 +132,81 @@ class _DigestingWriter:
 class UnrepresentableCharacterError(UnicodeError):
     """Raised when strict output encoding cannot represent logical text."""
 
-    def __init__(self, encoding: str, character: str) -> None:
+    def __init__(
+        self,
+        encoding: str,
+        character: str,
+        position: int | None = None,
+    ) -> None:
         self.encoding = encoding
         self.character = character
+        self.position = position
+        location = "" if position is None else f" at document character {position}"
         super().__init__(
-            f"{encoding} cannot represent U+{ord(character):04X} {character!r}"
+            f"{encoding} cannot represent U+{ord(character):04X} "
+            f"{character!r}{location}"
         )
+
+
+class UnresolvedMalformedBytesError(UnicodeError):
+    """Raised when a transformation would replace preserved source bytes."""
+
+    def __init__(self, position: int, raw: bytes) -> None:
+        self.position = position
+        self.raw = raw
+        super().__init__(
+            f"unresolved malformed bytes {raw.hex(' ')} at document character "
+            f"{position} block text-format transformation"
+        )
+
+
+class StaleDocumentRevisionError(RuntimeError):
+    """Raised when edits make staged output older than the current document."""
+
+
+def _validate_encodable(text: str, encoding: str, position: int) -> None:
+    try:
+        text.encode(encoding, errors="strict")
+    except UnicodeEncodeError as exc:
+        character = exc.object[exc.start : exc.start + 1] or "\ufffd"
+        raise UnrepresentableCharacterError(
+            encoding,
+            character,
+            position + exc.start,
+        ) from exc
+
+
+def _preflight_output(
+    piece_table: PieceTable,
+    *,
+    source_profile: EncodingProfile,
+    output_format: OutputFormat,
+    chunk_chars: int,
+) -> bool:
+    preserves_source_bytes = (
+        output_format.encoding == source_profile
+        and output_format.eol is EOLPolicy.PRESERVE
+    )
+    for chunk in piece_table.iter_annotated_text(chunk_chars=chunk_chars):
+        if chunk.invalid_bytes and not preserves_source_bytes:
+            first = chunk.invalid_bytes[0]
+            raise UnresolvedMalformedBytesError(first.start, first.raw)
+        cursor = 0
+        for invalid in chunk.invalid_bytes:
+            local_start = invalid.start - chunk.document_offset
+            local_end = invalid.end - chunk.document_offset
+            _validate_encodable(
+                chunk.text[cursor:local_start],
+                output_format.encoding.codec,
+                chunk.document_offset + cursor,
+            )
+            cursor = local_end
+        _validate_encodable(
+            chunk.text[cursor:],
+            output_format.encoding.codec,
+            chunk.document_offset + cursor,
+        )
+    return preserves_source_bytes
 
 
 def _normalize_encoding(encoding: str) -> str:
@@ -274,6 +343,12 @@ def stage_document(
 
     if chunk_bytes <= 0 or chunk_chars <= 0:
         raise ValueError("save chunk sizes must be positive")
+    preserve_bytes = _preflight_output(
+        piece_table,
+        source_profile=source_profile,
+        output_format=output_format,
+        chunk_chars=chunk_chars,
+    )
     target = Path(destination)
     metadata = _capture_target_metadata(target)
     fd: int | None = None
@@ -290,10 +365,6 @@ def stage_document(
             writer = _DigestingWriter(handle)
             if output_format.encoding.bom:
                 writer.write(output_format.encoding.bom)
-            preserve_bytes = (
-                output_format.encoding == source_profile
-                and output_format.eol is EOLPolicy.PRESERVE
-            )
             if preserve_bytes:
                 _write_preserved_segments(
                     writer,  # type: ignore[arg-type]
@@ -517,6 +588,7 @@ def save_document(
     source_bom: bytes | None,
     destination: str | os.PathLike[str],
     options: SaveOptions | None = None,
+    before_commit: Callable[[], None] | None = None,
 ) -> Path:
     """Stage, verify, and atomically replace one exact document output."""
 
@@ -536,6 +608,8 @@ def save_document(
     )
     try:
         verify_staged_document(staged, piece_table.iter_text(chunk_chars=opts.chunk_chars))
+        if before_commit is not None:
+            before_commit()
         return commit_staged_document(staged)
     finally:
         discard_staged_document(staged)

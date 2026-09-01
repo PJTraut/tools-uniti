@@ -33,3 +33,20 @@ def test_line_window_annotations_are_absolute_document_offsets(tmp_path: Path):
         assert [(span.start, span.end, span.raw) for span in annotated.invalid_bytes] == [
             (5, 6, b"\xff")
         ]
+
+
+def test_annotated_iteration_is_bounded_and_keeps_absolute_offsets(tmp_path: Path):
+    path = tmp_path / "invalid-chunks.txt"
+    path.write_bytes(b"ab\xffcd\xfeef")
+    with Document.open(path, encoding="utf-8") as document:
+        chunks = list(document.iter_annotated_text(chunk_chars=3))
+    assert [(chunk.document_offset, chunk.text) for chunk in chunks] == [
+        (0, "ab\ufffd"),
+        (3, "cd\ufffd"),
+        (6, "ef"),
+    ]
+    assert [
+        (span.start, span.end, span.raw)
+        for chunk in chunks
+        for span in chunk.invalid_bytes
+    ] == [(2, 3, b"\xff"), (5, 6, b"\xfe")]

@@ -20,8 +20,8 @@ from .file_identity import ExternalFileChangedError, FileIdentity
 from .history import EditHistory, EditOperation, EditTransaction
 from .lines import LineIndex
 from .offsets import OffsetMapper
-from .pieces import AnnotatedText, EditStore, PieceTable
-from .save import EOLName, SaveOptions, save_document
+from .pieces import AnnotatedChunk, AnnotatedText, EditStore, PieceTable
+from .save import EOLName, SaveOptions, StaleDocumentRevisionError, save_document
 from .text_format import (
     EOLPolicy,
     EncodingProfile,
@@ -372,6 +372,20 @@ class Document:
             chunk_chars=chunk_chars,
         )
 
+    def iter_annotated_text(
+        self,
+        start: int = 0,
+        end: int | None = None,
+        *,
+        chunk_chars: int = 65_536,
+    ) -> Iterator[AnnotatedChunk]:
+        self._ensure_open()
+        return self._piece_table.iter_annotated_text(
+            start,
+            end,
+            chunk_chars=chunk_chars,
+        )
+
     def _replace_internal(
         self,
         start: int,
@@ -660,7 +674,8 @@ class Document:
         target = self._path if destination is None else Path(destination)
 
         self.assert_safe_overwrite(target)
-        selected_format = self._output_format
+        baseline_output_format = self._output_format
+        selected_format = baseline_output_format
         if encoding is not None:
             selected_format = OutputFormat(
                 encoding=_output_profile_from_encoding(encoding),
@@ -672,6 +687,18 @@ class Document:
                 eol=EOLPolicy(eol),
             )
         output_encoding = selected_format.encoding.codec
+        staged_revision = self._revision
+
+        def before_commit() -> None:
+            if (
+                self._revision != staged_revision
+                or self._output_format != baseline_output_format
+            ):
+                raise StaleDocumentRevisionError(
+                    "document text or output format changed while save was staged"
+                )
+            self.assert_safe_overwrite(target)
+
         result = save_document(
             self._source,
             self._piece_table,
@@ -679,6 +706,7 @@ class Document:
             source_bom=self._encoding_info.bom,
             destination=target,
             options=SaveOptions(output_format=selected_format),
+            before_commit=before_commit,
         )
         self._path = result
         self._disk_identity = FileIdentity.from_path(result)

@@ -126,6 +126,13 @@ class AnnotatedText:
     invalid_bytes: tuple[InvalidByteSpan, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class AnnotatedChunk:
+    document_offset: int
+    text: str
+    invalid_bytes: tuple[InvalidByteSpan, ...]
+
+
 class PieceTable:
     """List-backed piece table with one optional unresolved final source tail."""
 
@@ -504,6 +511,45 @@ class PieceTable:
             if not text:
                 return
             yield position, text
+            position = requested_end
+
+    def iter_annotated_text(
+        self,
+        start: int = 0,
+        end: int | None = None,
+        *,
+        chunk_chars: int = 65_536,
+    ) -> Iterator[AnnotatedChunk]:
+        """Yield bounded logical text with absolute source-byte annotations."""
+
+        if start < 0:
+            raise ValueError("character offset must be non-negative")
+        if end is not None and end < start:
+            raise ValueError("invalid document character range")
+        if chunk_chars <= 0:
+            raise ValueError("chunk_chars must be positive")
+        position = start
+        while end is None or position < end:
+            requested_end = position + chunk_chars
+            if end is not None:
+                requested_end = min(requested_end, end)
+            try:
+                annotated = self.read_with_annotations(position, requested_end)
+            except ValueError:
+                total = self.total_chars()
+                if position > total or (end is not None and end > total):
+                    raise
+                if position == total:
+                    return
+                requested_end = min(requested_end, total)
+                annotated = self.read_with_annotations(position, requested_end)
+            if not annotated.text:
+                return
+            yield AnnotatedChunk(
+                document_offset=position,
+                text=annotated.text,
+                invalid_bytes=annotated.invalid_bytes,
+            )
             position = requested_end
 
     def total_chars(self) -> int:
