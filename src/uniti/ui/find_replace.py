@@ -197,6 +197,8 @@ class FindReplaceWindow(QDialog):
                 point_size = 12.0
             font.setPointSizeF(point_size * scale)
             widget.setFont(font)
+        for field in (self.find_input, self.replace_input):
+            field.setFixedHeight(max(28, field.fontMetrics().height() + 10))
         self.zoomChanged.emit(percent)
 
     def zoom_in(self) -> None:
@@ -252,6 +254,20 @@ class FindReplaceWindow(QDialog):
         if self.busy:
             self.cancel_search()
         self._clear_results()
+
+    def undo_focused_input(self) -> bool:
+        for field in (self.find_input, self.replace_input):
+            if field.hasFocus():
+                field.undo_input()
+                return True
+        return False
+
+    def redo_focused_input(self) -> bool:
+        for field in (self.find_input, self.replace_input):
+            if field.hasFocus():
+                field.redo_input()
+                return True
+        return False
 
     def _current_view(self):
         return self._view_provider()

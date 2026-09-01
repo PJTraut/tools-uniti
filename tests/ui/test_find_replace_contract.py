@@ -179,8 +179,10 @@ def test_find_replace_report_locations_and_zoom_are_independent(tmp_path: Path):
         view = UNITITextView(EditorState(document))
         panel = FindReplacePanel(lambda: view)
         editor_zoom = view.zoom_percent
+        original_field_height = panel.find_input.height()
         panel.set_zoom_percent(140)
         assert panel.zoom_percent == 140
+        assert panel.find_input.height() > original_field_height
         assert view.zoom_percent == editor_zoom
         panel.set_report_location("Hidden")
         assert panel.report_frame.isVisible() is False

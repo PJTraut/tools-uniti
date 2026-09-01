@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import (
     QColor,
-    QKeyEvent,
     QSyntaxHighlighter,
     QTextCharFormat,
-    QTextCursor,
 )
-from PySide6.QtWidgets import QTextEdit
 
 from uniti.regex.lexer import tokenize_pattern, tokenize_replacement
+from uniti.ui.bounded_text_edit import BoundedSingleLineTextEdit
 
 
 def _format(color: str, *, bold: bool = False) -> QTextCharFormat:
@@ -73,41 +70,13 @@ class ReplacementHighlighter(QSyntaxHighlighter):
             self.setFormat(token.start, token.end - token.start, fmt)
 
 
-class _SingleLineTextEdit(QTextEdit):
-    returnPressed = Signal()
-
-    def __init__(self, parent=None) -> None:
-        super().__init__(parent)
-        self.setAcceptRichText(False)
-        self.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setFixedHeight(max(28, self.fontMetrics().height() + 10))
-        self.document().setDocumentMargin(2.0)
-
-    def text(self) -> str:
-        return self.toPlainText()
-
-    def set_text(self, text: str) -> None:
-        self.setPlainText(text)
-        cursor = self.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        self.setTextCursor(cursor)
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            self.returnPressed.emit()
-            event.accept()
-            return
-        super().keyPressEvent(event)
-
-
-class RegexInput(_SingleLineTextEdit):
+class RegexInput(BoundedSingleLineTextEdit):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.highlighter = PatternHighlighter(self.document())
 
 
-class ReplacementInput(_SingleLineTextEdit):
+class ReplacementInput(BoundedSingleLineTextEdit):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.highlighter = ReplacementHighlighter(self.document())

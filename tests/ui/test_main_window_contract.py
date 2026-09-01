@@ -241,3 +241,36 @@ def test_confirmed_reload_reopens_disk_with_fresh_history(tmp_path: Path, monkey
     window.close_all_documents(force=True)
     window.close()
     app.processEvents()
+
+
+def test_focused_find_field_owns_main_window_undo_redo(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "focus-undo.txt"
+    source.write_text("document", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    view.state.move_document_end()
+    view.state.insert_text("!")
+    window.show_find()
+    field = window._find_replace.find_input
+    field.setFocus()
+    QTest.keyClicks(field, "abc")
+    app.processEvents()
+
+    window.undo_current()
+
+    assert field.text() == "ab"
+    assert view.document.read(0, view.document.total_chars()) == "document!"
+    window.redo_current()
+    assert field.text() == "abc"
+    assert view.document.read(0, view.document.total_chars()) == "document!"
+    window.close_all_documents(force=True)
+    window.close()

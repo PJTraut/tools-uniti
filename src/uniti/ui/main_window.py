@@ -754,6 +754,8 @@ class UNITIMainWindow(QMainWindow):
         return result
 
     def undo_current(self) -> None:
+        if self._find_replace.undo_focused_input():
+            return
         view = self.current_view
         if view is None or not view.isEnabled() or not view.document.can_undo:
             return
@@ -761,6 +763,8 @@ class UNITIMainWindow(QMainWindow):
         view._state_changed()
 
     def redo_current(self) -> None:
+        if self._find_replace.redo_focused_input():
+            return
         view = self.current_view
         if view is None or not view.isEnabled() or not view.document.can_redo:
             return
