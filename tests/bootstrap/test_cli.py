@@ -57,6 +57,19 @@ def test_json_requires_self_check():
     assert caught.value.code == 2
 
 
+def test_parse_args_forwards_application_options_in_original_order():
+    request = cli.parse_args(["--version", "notes.txt"])
+
+    assert request.forwarded == ("--version", "notes.txt")
+
+
+def test_double_dash_forwards_names_that_overlap_bootstrap_options():
+    request = cli.parse_args(["--", "--deep", "notes.txt"])
+
+    assert request.deep is False
+    assert request.forwarded == ("--deep", "notes.txt")
+
+
 def test_managed_command_forwards_self_check_flags_and_files(tmp_path: Path):
     request = BootstrapRequest(
         BootstrapMode.SOURCE,

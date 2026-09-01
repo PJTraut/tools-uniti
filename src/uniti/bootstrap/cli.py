@@ -34,7 +34,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--self-check", action="store_true", help="launch UNITI self-check")
     parser.add_argument("--deep", action="store_true", help="include deep functional checks")
     parser.add_argument("--json", dest="json_output", action="store_true", help="emit self-check JSON")
-    parser.add_argument("forwarded", nargs="*")
     return parser
 
 
@@ -44,7 +43,17 @@ def source_root() -> Path:
 
 def parse_args(argv: Sequence[str]) -> BootstrapRequest:
     parser = build_parser()
-    namespace = parser.parse_args(list(argv))
+    arguments = list(argv)
+    try:
+        separator = arguments.index("--")
+    except ValueError:
+        bootstrap_arguments = arguments
+        forwarded_tail: list[str] = []
+    else:
+        bootstrap_arguments = arguments[:separator]
+        forwarded_tail = arguments[separator + 1 :]
+    namespace, forwarded = parser.parse_known_args(bootstrap_arguments)
+    forwarded.extend(forwarded_tail)
     self_check = bool(namespace.self_check or namespace.deep)
     if namespace.json_output and not self_check:
         parser.error("--json requires --self-check")
@@ -59,7 +68,7 @@ def parse_args(argv: Sequence[str]) -> BootstrapRequest:
         self_check=self_check,
         deep=bool(namespace.deep),
         json_output=bool(namespace.json_output),
-        forwarded=tuple(namespace.forwarded),
+        forwarded=tuple(forwarded),
     )
 
 
