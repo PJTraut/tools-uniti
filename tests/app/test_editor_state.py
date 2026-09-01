@@ -196,3 +196,95 @@ def test_ime_surrounding_text_is_bounded_and_uses_relative_cursor_anchor(tmp_pat
         assert text == "234567"
         assert cursor == 3
         assert anchor == 1
+
+
+def test_word_navigation_handles_western_and_cyrillic_words(tmp_path: Path):
+    with _open(tmp_path, "one два three") as document:
+        state = EditorState(document, cursor=13, anchor=13)
+
+        state.move_word_left()
+        assert state.cursor == 8
+        state.move_word_left(selecting=True)
+        assert state.selection == (4, 8)
+        state.move_word_right()
+        assert state.cursor == 8
+
+
+def test_document_and_page_navigation_extend_selection(tmp_path: Path):
+    with _open(tmp_path, "zero\none\ntwo\nthree\nfour") as document:
+        state = EditorState(document)
+
+        state.move_page(3)
+        assert state.cursor == document.line_start(3)
+        state.move_document_end(selecting=True)
+        assert state.selection == (document.line_start(3), document.total_chars())
+        state.move_document_start()
+        assert state.cursor == 0
+        assert state.selection is None
+
+
+def test_adjacent_typing_is_one_undo_step(tmp_path: Path):
+    with _open(tmp_path, "") as document:
+        state = EditorState(document)
+
+        for character in "word":
+            state.insert_text(character)
+        state.undo()
+
+        assert document.read(0, document.total_chars()) == ""
+        assert document.can_undo is False
+
+
+def test_cursor_movement_breaks_typing_undo_coalescing(tmp_path: Path):
+    with _open(tmp_path, "") as document:
+        state = EditorState(document)
+        state.insert_text("a")
+        state.insert_text("b")
+        state.move_left()
+        state.move_right()
+        state.insert_text("c")
+
+        state.undo()
+        assert document.read(0, document.total_chars()) == "ab"
+        state.undo()
+
+        assert document.read(0, document.total_chars()) == ""
+
+
+def test_save_breaks_typing_undo_coalescing(tmp_path: Path):
+    with _open(tmp_path, "") as document:
+        state = EditorState(document)
+        state.insert_text("a")
+        state.insert_text("b")
+        document.save()
+        state.insert_text("c")
+        state.insert_text("d")
+
+        state.undo()
+
+        assert document.read(0, document.total_chars()) == "ab"
+        assert document.modified is False
+
+
+def test_repeated_backspace_is_one_undo_step(tmp_path: Path):
+    with _open(tmp_path, "abcd") as document:
+        state = EditorState(document, cursor=4, anchor=4)
+
+        state.backspace()
+        state.backspace()
+        assert document.read(0, document.total_chars()) == "ab"
+        state.undo()
+
+        assert document.read(0, document.total_chars()) == "abcd"
+
+
+def test_repeated_forward_delete_is_one_undo_step(tmp_path: Path):
+    with _open(tmp_path, "abcd") as document:
+        state = EditorState(document)
+
+        state.delete_forward()
+        state.delete_forward()
+        assert document.read(0, document.total_chars()) == "cd"
+        state.undo()
+
+        assert document.read(0, document.total_chars()) == "abcd"

@@ -30,6 +30,7 @@ class EditorState:
         return offset
 
     def _set_cursor(self, offset: int, *, selecting: bool, vertical: bool = False) -> None:
+        self.document.break_history_coalescing()
         offset = self._validate_position(offset)
         if not selecting:
             self.anchor = offset
@@ -49,6 +50,46 @@ class EditorState:
         except ValueError:
             return
         self._set_cursor(self.cursor + 1, selecting=selecting)
+
+    @staticmethod
+    def _is_word_character(character: str) -> bool:
+        return character == "_" or character.isalnum()
+
+    def _character_before(self, offset: int) -> str | None:
+        if offset <= 0:
+            return None
+        return self.document.read(offset - 1, offset)
+
+    def _character_at(self, offset: int) -> str | None:
+        try:
+            return self.document.read(offset, offset + 1)
+        except ValueError:
+            return None
+
+    def move_word_left(self, *, selecting: bool = False) -> None:
+        target = self.cursor
+        while target > 0:
+            character = self._character_before(target)
+            if character is not None and self._is_word_character(character):
+                break
+            target -= 1
+        while target > 0:
+            character = self._character_before(target)
+            if character is None or not self._is_word_character(character):
+                break
+            target -= 1
+        self._set_cursor(target, selecting=selecting)
+
+    def move_word_right(self, *, selecting: bool = False) -> None:
+        target = self.cursor
+        character = self._character_at(target)
+        while character is not None and self._is_word_character(character):
+            target += 1
+            character = self._character_at(target)
+        while character is not None and not self._is_word_character(character):
+            target += 1
+            character = self._character_at(target)
+        self._set_cursor(target, selecting=selecting)
 
     def _column(self) -> int:
         line = self.document.line_for_char(self.cursor)
@@ -78,6 +119,22 @@ class EditorState:
     def move_down(self, *, selecting: bool = False) -> None:
         self._move_vertical(1, selecting=selecting)
 
+    def move_page(self, line_delta: int, *, selecting: bool = False) -> None:
+        if line_delta == 0:
+            return
+        direction = 1 if line_delta > 0 else -1
+        for _ in range(abs(line_delta)):
+            previous = self.cursor
+            self._move_vertical(direction, selecting=selecting)
+            if self.cursor == previous:
+                break
+
+    def move_document_start(self, *, selecting: bool = False) -> None:
+        self._set_cursor(0, selecting=selecting)
+
+    def move_document_end(self, *, selecting: bool = False) -> None:
+        self._set_cursor(self.document.total_chars(), selecting=selecting)
+
     def move_home(self, *, selecting: bool = False) -> None:
         line = self.document.line_for_char(self.cursor)
         self._set_cursor(self.document.line_start(line), selecting=selecting)
@@ -87,14 +144,15 @@ class EditorState:
         self._set_cursor(self.document.line_end(line), selecting=selecting)
 
     def select_all(self) -> None:
+        self.document.break_history_coalescing()
         self.anchor = 0
         self.cursor = self.document.total_chars()
         self._preferred_column = None
 
-    def _replace_selection(self, text: str) -> None:
+    def _replace_selection(self, text: str, *, coalesce: str | None = None) -> None:
         selection = self.selection
         if selection is None:
-            self.document.insert(self.cursor, text)
+            self.document.insert(self.cursor, text, coalesce=coalesce)
             self.cursor += len(text)
         else:
             start, end = selection
@@ -105,7 +163,14 @@ class EditorState:
 
     def insert_text(self, text: str) -> None:
         if text:
-            self._replace_selection(text)
+            coalesce = (
+                "typing"
+                if self.selection is None
+                and len(text) == 1
+                and text not in {"\t", "\r", "\n"}
+                else None
+            )
+            self._replace_selection(text, coalesce=coalesce)
 
     def selected_text(self) -> str:
         selection = self.selection
@@ -155,7 +220,11 @@ class EditorState:
             self.cursor = start
             self.anchor = start
         elif self.cursor > 0:
-            self.document.delete(self.cursor - 1, self.cursor)
+            self.document.delete(
+                self.cursor - 1,
+                self.cursor,
+                coalesce="backspace",
+            )
             self.cursor -= 1
             self.anchor = self.cursor
         self._preferred_column = None
@@ -172,7 +241,11 @@ class EditorState:
                 self.document.read(self.cursor, self.cursor + 1)
             except ValueError:
                 return
-            self.document.delete(self.cursor, self.cursor + 1)
+            self.document.delete(
+                self.cursor,
+                self.cursor + 1,
+                coalesce="delete_forward",
+            )
         self._preferred_column = None
 
     def undo(self) -> None:

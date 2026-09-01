@@ -309,6 +309,7 @@ class Document:
         text: str,
         *,
         record: bool,
+        coalesce: str | None = None,
     ) -> EditOperation | None:
         deleted = self._piece_table.read(start, end)
         if deleted == text:
@@ -320,21 +321,49 @@ class Document:
         self._revision += 1
         operation = EditOperation(start, deleted, text)
         if record:
-            self._history.record(EditTransaction((operation,)))
+            self._history.record(EditTransaction((operation,)), coalesce=coalesce)
         self._notify_edit(operation)
         return operation
 
-    def insert(self, char_offset: int, text: str) -> None:
+    def insert(
+        self,
+        char_offset: int,
+        text: str,
+        *,
+        coalesce: str | None = None,
+    ) -> None:
         self._ensure_open()
-        self._replace_internal(char_offset, char_offset, text, record=True)
+        self._replace_internal(
+            char_offset,
+            char_offset,
+            text,
+            record=True,
+            coalesce=coalesce,
+        )
 
-    def delete(self, start: int, end: int) -> None:
+    def delete(
+        self,
+        start: int,
+        end: int,
+        *,
+        coalesce: str | None = None,
+    ) -> None:
         self._ensure_open()
-        self._replace_internal(start, end, "", record=True)
+        self._replace_internal(start, end, "", record=True, coalesce=coalesce)
 
-    def replace(self, start: int, end: int, text: str) -> None:
+    def replace(
+        self,
+        start: int,
+        end: int,
+        text: str,
+        *,
+        coalesce: str | None = None,
+    ) -> None:
         self._ensure_open()
-        self._replace_internal(start, end, text, record=True)
+        self._replace_internal(start, end, text, record=True, coalesce=coalesce)
+
+    def break_history_coalescing(self) -> None:
+        self._history.break_coalescing()
 
     def replace_many(self, replacements: list[tuple[int, int, str]]) -> int:
         """Apply non-overlapping original-coordinate replacements as one history step."""

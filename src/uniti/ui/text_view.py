@@ -412,6 +412,24 @@ class UNITITextView(QAbstractScrollArea):
             self.paste_clipboard()
             event.accept()
             return
+        elif primary and key == Qt.Key.Key_Left:
+            self.state.move_word_left(selecting=selecting)
+        elif primary and key == Qt.Key.Key_Right:
+            self.state.move_word_right(selecting=selecting)
+        elif primary and key in (Qt.Key.Key_Home, Qt.Key.Key_Up):
+            self.state.move_document_start(selecting=selecting)
+        elif primary and key in (Qt.Key.Key_End, Qt.Key.Key_Down):
+            self.state.move_document_end(selecting=selecting)
+        elif key == Qt.Key.Key_PageUp:
+            self.state.move_page(
+                -max(1, self._visible_line_capacity() - 1),
+                selecting=selecting,
+            )
+        elif key == Qt.Key.Key_PageDown:
+            self.state.move_page(
+                max(1, self._visible_line_capacity() - 1),
+                selecting=selecting,
+            )
         elif key == Qt.Key.Key_Left:
             self.state.move_left(selecting=selecting)
         elif key == Qt.Key.Key_Right:

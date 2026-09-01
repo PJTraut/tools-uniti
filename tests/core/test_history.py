@@ -90,3 +90,28 @@ def test_evicted_saved_revision_cannot_appear_clean_again():
 def test_history_rejects_non_positive_limit():
     with pytest.raises(ValueError, match="positive"):
         EditHistory(max_transactions=0)
+
+
+def test_adjacent_typing_transactions_coalesce_into_one_undo_step():
+    history = EditHistory()
+    first = tx(0, "", "a")
+    second = tx(1, "", "b")
+
+    history.record(first, coalesce="typing")
+    history.record(second, coalesce="typing")
+
+    assert history.undo() == EditTransaction(first.operations + second.operations)
+    assert history.can_undo is False
+
+
+def test_break_coalescing_starts_a_new_undo_step():
+    history = EditHistory()
+    first = tx(0, "", "a")
+    second = tx(1, "", "b")
+
+    history.record(first, coalesce="typing")
+    history.break_coalescing()
+    history.record(second, coalesce="typing")
+
+    assert history.undo() == second
+    assert history.undo() == first
