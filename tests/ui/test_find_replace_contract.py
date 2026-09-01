@@ -76,7 +76,7 @@ def test_find_replace_offscreen_smoke_when_pyside6_available(tmp_path: Path):
     with Document.open(path, encoding="utf-8") as document:
         view = UNITITextView(EditorState(document))
         panel = FindReplacePanel(lambda: view)
-        panel.regex_checkbox.setChecked(True)
+        panel.search_mode_combo.setCurrentText("Regex")
         panel.find_input.set_text(r"\d+")
         panel.find_all()
         for _ in range(100):
@@ -134,6 +134,9 @@ def test_literal_and_regex_modes_have_separate_semantics():
     app = QApplication.instance() or QApplication([])
     panel = FindReplacePanel(lambda: None)
     panel.show()
+    assert panel.search_mode_combo.currentText() == "Literal"
+    assert panel.case_sensitive_checkbox.isVisible() is True
+    assert panel.whole_word_checkbox.isVisible() is True
     panel.find_input.set_text("a.c")
     literal = panel.compile_current()
     assert literal.fullmatch("a.c") is not None
@@ -146,7 +149,7 @@ def test_literal_and_regex_modes_have_separate_semantics():
     whole_word = panel.compile_current()
     assert whole_word.search("xa.cy") is None
 
-    panel.regex_checkbox.setChecked(True)
+    panel.search_mode_combo.setCurrentText("Regex")
     panel.find_input.set_text("(?i)a.c")
     raw_regex = panel.compile_current()
     assert raw_regex.pattern == "(?i)a.c"
@@ -156,6 +159,66 @@ def test_literal_and_regex_modes_have_separate_semantics():
     panel.shutdown()
     panel.close()
     app.processEvents()
+
+
+def test_find_replace_window_and_capture_pane_are_resizable_and_collapsible():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    panel.show()
+    panel.set_report_location("Bottom")
+    panel.resize(860, 520)
+    panel.report_splitter.setSizes((220, 260))
+    app.processEvents()
+
+    assert panel.isSizeGripEnabled() is True
+    assert (panel.width(), panel.height()) == (860, 520)
+    assert panel.capture_list.maximumHeight() > 1_000_000
+    assert panel.report_splitter.sizes()[1] > 82
+
+    panel.report_splitter.setSizes((480, 0))
+    app.processEvents()
+    assert panel.report_splitter.sizes()[1] == 0
+    panel.shutdown()
+    panel.close()
+
+
+def test_find_replace_actions_are_grouped_by_operation_scope():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+
+    def button_labels(widget):
+        layout = widget.layout()
+        return [
+            layout.itemAt(index).widget().text()
+            for index in range(layout.count())
+            if layout.itemAt(index).widget() is not None
+        ]
+
+    assert button_labels(panel.batch_actions_widget) == [
+        "Find All",
+        "Replace All",
+    ]
+    assert button_labels(panel.match_actions_widget) == [
+        "Previous",
+        "Next",
+        "Replace",
+    ]
+    panel.shutdown()
+    panel.close()
 
 
 def test_find_replace_report_locations_and_zoom_are_independent(tmp_path: Path):
@@ -253,7 +316,7 @@ def test_capture_report_excludes_group_zero_and_separates_matches(tmp_path: Path
     with Document.open(path, encoding="utf-8") as document:
         view = UNITITextView(EditorState(document))
         panel = FindReplacePanel(lambda: view)
-        panel.regex_checkbox.setChecked(True)
+        panel.search_mode_combo.setCurrentText("Regex")
         panel.find_input.set_text("(a)(b)")
         panel.find_all()
         for _ in range(100):

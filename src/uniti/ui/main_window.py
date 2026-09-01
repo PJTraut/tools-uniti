@@ -93,9 +93,7 @@ def _command_definitions() -> tuple[CommandDefinition, ...]:
         CommandDefinition("find.zoom_in", "Zoom In", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomIn)),
         CommandDefinition("find.zoom_out", "Zoom Out", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
         CommandDefinition("find.zoom_reset", "Reset Zoom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+0"),
-        CommandDefinition("find.report_hidden", "Report Hidden", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, ""),
-        CommandDefinition("find.report_bottom", "Report Bottom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, ""),
-        CommandDefinition("find.report_right", "Report Right", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, ""),
+        CommandDefinition("find.report_cycle", "Cycle Report Position", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+Alt+R"),
     )
 
 
@@ -398,20 +396,8 @@ class UNITIMainWindow(QMainWindow):
         find_view_menu.addSeparator()
         find_view_menu.addAction(
             self._command_action(
-                "find.report_hidden",
-                lambda: self._find_replace.set_report_location("Hidden"),
-            )
-        )
-        find_view_menu.addAction(
-            self._command_action(
-                "find.report_bottom",
-                lambda: self._find_replace.set_report_location("Bottom"),
-            )
-        )
-        find_view_menu.addAction(
-            self._command_action(
-                "find.report_right",
-                lambda: self._find_replace.set_report_location("Right"),
+                "find.report_cycle",
+                self._find_replace.cycle_report_location,
             )
         )
 

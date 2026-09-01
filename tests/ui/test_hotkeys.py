@@ -209,6 +209,52 @@ def test_disjoint_editor_and_find_shortcuts_dispatch_by_focus(tmp_path: Path):
     window.close()
 
 
+def test_report_cycle_hotkey_rotates_hidden_bottom_right(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.commands import CommandCategory
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "report-cycle.txt"
+    source.write_text("text", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    window.open_path(source)
+    window.show()
+    window.show_find()
+    panel = window._find_replace
+    panel.find_input.setFocus()
+    panel.set_report_location("Hidden")
+    app.processEvents()
+
+    definition = window._command_registry.definition("find.report_cycle")
+    assert definition.default_shortcut == "Ctrl+Alt+R"
+    report_commands = [
+        candidate.command_id
+        for candidate in window._command_registry.definitions(
+            category=CommandCategory.FIND_REPLACE_VIEW
+        )
+        if candidate.command_id.startswith("find.report_")
+    ]
+    assert report_commands == ["find.report_cycle"]
+    for expected in ("Bottom", "Right", "Hidden"):
+        QTest.keyClick(
+            panel.find_input,
+            Qt.Key.Key_R,
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.AltModifier,
+        )
+        assert panel.report_location == expected
+
+    window.close_all_documents(force=True)
+    window.close()
+
+
 def test_editing_shortcut_reaches_focused_find_field(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

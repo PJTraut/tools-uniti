@@ -53,6 +53,7 @@ class FindReplaceWindow(QDialog):
         super().__init__(parent)
         self.setModal(False)
         self.setWindowFlag(Qt.WindowType.Tool, True)
+        self.setSizeGripEnabled(True)
         self.setWindowTitle("Find / Replace")
         self.resize(720, 320)
         self._view_provider = view_provider
@@ -79,8 +80,8 @@ class FindReplaceWindow(QDialog):
         self.replace_input = ReplacementInput(self)
         self.status_label = QLabel("0 matches", self)
         self.capture_list = QListWidget(self)
-        self.capture_list.setMaximumHeight(82)
-        self.regex_checkbox = QCheckBox("Regex", self)
+        self.search_mode_combo = QComboBox(self)
+        self.search_mode_combo.addItems(("Literal", "Regex"))
         self.case_sensitive_checkbox = QCheckBox("Case Sensitive", self)
         self.whole_word_checkbox = QCheckBox("Whole Word", self)
         self.report_location_combo = QComboBox(self)
@@ -94,33 +95,43 @@ class FindReplaceWindow(QDialog):
         replace_row.addWidget(self.replace_input, 1)
 
         options_row = QHBoxLayout()
-        options_row.addWidget(self.regex_checkbox)
+        options_row.addWidget(QLabel("Mode:"))
+        options_row.addWidget(self.search_mode_combo)
         options_row.addWidget(self.case_sensitive_checkbox)
         options_row.addWidget(self.whole_word_checkbox)
         options_row.addStretch(1)
         options_row.addWidget(QLabel("Report:"))
         options_row.addWidget(self.report_location_combo)
 
-        self.find_all_button = QPushButton("Find All", self)
-        self.previous_button = QPushButton("Previous", self)
-        self.next_button = QPushButton("Next", self)
-        self.replace_button = QPushButton("Replace", self)
-        self.replace_all_button = QPushButton("Replace All", self)
+        self.batch_actions_widget = QWidget(self)
+        batch_actions = QHBoxLayout(self.batch_actions_widget)
+        batch_actions.setContentsMargins(0, 0, 0, 0)
+        batch_actions.setSpacing(4)
+        self.find_all_button = QPushButton("Find All", self.batch_actions_widget)
+        self.replace_all_button = QPushButton(
+            "Replace All", self.batch_actions_widget
+        )
+        batch_actions.addWidget(self.find_all_button)
+        batch_actions.addWidget(self.replace_all_button)
+
+        self.match_actions_widget = QWidget(self)
+        match_actions = QHBoxLayout(self.match_actions_widget)
+        match_actions.setContentsMargins(0, 0, 0, 0)
+        match_actions.setSpacing(4)
+        self.previous_button = QPushButton("Previous", self.match_actions_widget)
+        self.next_button = QPushButton("Next", self.match_actions_widget)
+        self.replace_button = QPushButton("Replace", self.match_actions_widget)
+        match_actions.addWidget(self.previous_button)
+        match_actions.addWidget(self.next_button)
+        match_actions.addWidget(self.replace_button)
+
         self.cancel_button = QPushButton("Cancel", self)
         self.cancel_button.setEnabled(False)
 
-        controls = QHBoxLayout()
-        for button in (
-            self.find_all_button,
-            self.previous_button,
-            self.next_button,
-            self.replace_button,
-            self.replace_all_button,
-            self.cancel_button,
-        ):
-            controls.addWidget(button)
-        controls.addStretch(1)
-        controls.addWidget(self.status_label)
+        footer = QHBoxLayout()
+        footer.addWidget(self.cancel_button)
+        footer.addStretch(1)
+        footer.addWidget(self.status_label)
 
         controls_widget = QWidget(self)
         controls_layout = QVBoxLayout(controls_widget)
@@ -129,7 +140,9 @@ class FindReplaceWindow(QDialog):
         controls_layout.addLayout(find_row)
         controls_layout.addLayout(replace_row)
         controls_layout.addLayout(options_row)
-        controls_layout.addLayout(controls)
+        controls_layout.addWidget(self.batch_actions_widget)
+        controls_layout.addWidget(self.match_actions_widget)
+        controls_layout.addLayout(footer)
 
         self.report_frame = QFrame(self)
         report_layout = QVBoxLayout(self.report_frame)
@@ -139,6 +152,11 @@ class FindReplaceWindow(QDialog):
         self.report_splitter = QSplitter(Qt.Orientation.Vertical, self)
         self.report_splitter.addWidget(controls_widget)
         self.report_splitter.addWidget(self.report_frame)
+        self.report_splitter.setChildrenCollapsible(True)
+        self.report_splitter.setCollapsible(0, False)
+        self.report_splitter.setCollapsible(1, True)
+        self.report_splitter.setStretchFactor(0, 1)
+        self.report_splitter.setStretchFactor(1, 1)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.report_splitter)
@@ -152,7 +170,9 @@ class FindReplaceWindow(QDialog):
         self.find_input.returnPressed.connect(self.next_match)
         self.replace_input.returnPressed.connect(self.replace_current)
         self.find_input.textChanged.connect(self._pattern_changed)
-        self.regex_checkbox.toggled.connect(self._search_mode_changed)
+        self.search_mode_combo.currentTextChanged.connect(
+            self._search_mode_changed
+        )
         self.case_sensitive_checkbox.toggled.connect(self._pattern_changed)
         self.whole_word_checkbox.toggled.connect(self._pattern_changed)
         self.report_location_combo.currentTextChanged.connect(
@@ -165,7 +185,7 @@ class FindReplaceWindow(QDialog):
         self._jobCompleted.connect(
             self._poll_job, Qt.ConnectionType.QueuedConnection
         )
-        self._search_mode_changed(False)
+        self._search_mode_changed("Literal")
         self.set_report_location("Bottom")
         for widget in self.findChildren(QWidget):
             widget.installEventFilter(self)
@@ -232,17 +252,31 @@ class FindReplaceWindow(QDialog):
         if location not in {"Hidden", "Bottom", "Right"}:
             raise ValueError(f"unsupported report location: {location}")
         if self.report_location_combo.currentText() != location:
+            blocked = self.report_location_combo.blockSignals(True)
             self.report_location_combo.setCurrentText(location)
+            self.report_location_combo.blockSignals(blocked)
         self.report_frame.setHidden(location == "Hidden")
         if location == "Bottom":
             self.report_splitter.setOrientation(Qt.Orientation.Vertical)
-            self.capture_list.setMaximumHeight(82)
+            if self.report_splitter.sizes()[1] == 0:
+                self.report_splitter.setSizes((220, 100))
         elif location == "Right":
             self.report_splitter.setOrientation(Qt.Orientation.Horizontal)
-            self.capture_list.setMaximumHeight(16_777_215)
+            if self.report_splitter.sizes()[1] == 0:
+                self.report_splitter.setSizes((460, 260))
         self.reportLocationChanged.emit(location)
 
-    def _search_mode_changed(self, regex_mode: bool) -> None:
+    def cycle_report_location(self) -> None:
+        locations = ("Hidden", "Bottom", "Right")
+        current = locations.index(self.report_location)
+        self.set_report_location(locations[(current + 1) % len(locations)])
+
+    @property
+    def regex_mode(self) -> bool:
+        return self.search_mode_combo.currentText() == "Regex"
+
+    def _search_mode_changed(self, mode: str) -> None:
+        regex_mode = mode == "Regex"
         self.case_sensitive_checkbox.setVisible(not regex_mode)
         self.whole_word_checkbox.setVisible(not regex_mode)
         self._pattern_changed()
@@ -304,7 +338,7 @@ class FindReplaceWindow(QDialog):
             self.replace_input.set_groups(0, {})
             return None
         flags = 0
-        if not self.regex_checkbox.isChecked():
+        if not self.regex_mode:
             pattern = regex.escape(pattern)
             if self.whole_word_checkbox.isChecked():
                 pattern = rf"\b(?:{pattern})\b"
@@ -324,7 +358,7 @@ class FindReplaceWindow(QDialog):
 
     def _replacement_expression(self) -> str:
         replacement = self.replace_input.text()
-        if self.regex_checkbox.isChecked():
+        if self.regex_mode:
             return replacement
         return replacement.replace("\\", "\\\\")
 
