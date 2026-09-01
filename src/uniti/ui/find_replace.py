@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -137,12 +138,22 @@ class FindReplaceWindow(QDialog):
         controls_layout = QVBoxLayout(controls_widget)
         controls_layout.setContentsMargins(4, 4, 4, 4)
         controls_layout.setSpacing(3)
-        controls_layout.addLayout(find_row)
-        controls_layout.addLayout(replace_row)
-        controls_layout.addLayout(options_row)
-        controls_layout.addWidget(self.batch_actions_widget)
-        controls_layout.addWidget(self.match_actions_widget)
-        controls_layout.addLayout(footer)
+        controls_layout.addLayout(find_row, 1)
+        controls_layout.addLayout(replace_row, 1)
+
+        self.bottom_controls_widget = QWidget(controls_widget)
+        self.bottom_controls_widget.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
+        bottom_controls_layout = QVBoxLayout(self.bottom_controls_widget)
+        bottom_controls_layout.setContentsMargins(0, 0, 0, 0)
+        bottom_controls_layout.setSpacing(3)
+        bottom_controls_layout.addLayout(options_row)
+        bottom_controls_layout.addWidget(self.batch_actions_widget)
+        bottom_controls_layout.addWidget(self.match_actions_widget)
+        bottom_controls_layout.addLayout(footer)
+        controls_layout.addWidget(self.bottom_controls_widget)
 
         self.report_frame = QFrame(self)
         report_layout = QVBoxLayout(self.report_frame)
@@ -212,7 +223,7 @@ class FindReplaceWindow(QDialog):
             font.setPointSizeF(point_size * scale)
             widget.setFont(font)
         for field in (self.find_input, self.replace_input):
-            field.setFixedHeight(max(28, field.fontMetrics().height() + 10))
+            field.setMinimumHeight(max(28, field.fontMetrics().height() + 10))
         self.zoomChanged.emit(percent)
 
     def zoom_in(self) -> None:

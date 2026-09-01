@@ -30,7 +30,7 @@ class BoundedSingleLineTextEdit(QTextEdit):
         self.setAcceptRichText(False)
         self.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setFixedHeight(max(28, self.fontMetrics().height() + 10))
+        self.setMinimumHeight(max(28, self.fontMetrics().height() + 10))
         self.document().setDocumentMargin(2.0)
         self.document().setUndoRedoEnabled(False)
         self._current_snapshot = self._snapshot()

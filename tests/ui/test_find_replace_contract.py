@@ -189,6 +189,40 @@ def test_find_replace_window_and_capture_pane_are_resizable_and_collapsible():
     panel.close()
 
 
+def test_find_replace_inputs_split_height_above_bottom_control_stack():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    panel.set_report_location("Hidden")
+    panel.resize(720, 600)
+    panel.show()
+    app.processEvents()
+
+    controls = panel.report_splitter.widget(0)
+    assert panel.find_input.height() > 100
+    assert abs(panel.find_input.height() - panel.replace_input.height()) <= 2
+    assert panel.batch_actions_widget.height() <= (
+        panel.batch_actions_widget.sizeHint().height() + 2
+    )
+    assert panel.match_actions_widget.height() <= (
+        panel.match_actions_widget.sizeHint().height() + 2
+    )
+    cancel_bottom = panel.cancel_button.mapTo(
+        controls,
+        panel.cancel_button.rect().bottomLeft(),
+    ).y()
+    assert cancel_bottom >= controls.height() - 6
+
+    panel.shutdown()
+    panel.close()
+
+
 def test_find_replace_actions_are_grouped_by_operation_scope():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
@@ -240,10 +274,12 @@ def test_find_replace_report_locations_and_zoom_are_independent(tmp_path: Path):
         view = UNITITextView(EditorState(document))
         panel = FindReplacePanel(lambda: view)
         editor_zoom = view.zoom_percent
-        original_field_height = panel.find_input.height()
+        original_font_size = panel.find_input.font().pointSizeF()
+        original_minimum_height = panel.find_input.minimumHeight()
         panel.set_zoom_percent(140)
         assert panel.zoom_percent == 140
-        assert panel.find_input.height() > original_field_height
+        assert panel.find_input.font().pointSizeF() > original_font_size
+        assert panel.find_input.minimumHeight() > original_minimum_height
         assert view.zoom_percent == editor_zoom
         panel.set_report_location("Hidden")
         assert panel.report_frame.isVisible() is False
