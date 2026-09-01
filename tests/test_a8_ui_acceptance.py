@@ -13,7 +13,8 @@ def test_editor_state_open_edit_save_forms_ui_engine_contract(tmp_path: Path):
         state = EditorState(document)
         state.move_to(3)
         state.insert_text("!")
-        document.save(target, eol="LF")
+        document.set_output_eol("LF")
+        document.export_copy(target, output_format=document.output_format)
     assert target.read_text(encoding="utf-8") == "one!\ntwo\n"
 
 

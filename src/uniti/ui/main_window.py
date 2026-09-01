@@ -887,7 +887,10 @@ class UNITIMainWindow(QMainWindow):
                 return None
             destination = filename
         try:
-            result = view.document.save(destination)
+            result = view.document.export_copy(
+                destination,
+                output_format=view.document.output_format,
+            )
         except Exception as exc:
             self._show_save_error(exc)
             return None

@@ -322,7 +322,8 @@ class SelfCheckRunner:
         output_path = root / "eol-converted.txt"
         source_path.write_bytes(b"a\r\nb\r\n")
         with Document.open(source_path) as document:
-            document.save(output_path, eol="LF")
+            document.set_output_eol("LF")
+            document.export_copy(output_path, output_format=document.output_format)
         if output_path.read_bytes() != b"a\nb\n":
             raise RuntimeError("EOL conversion failed")
         return "LF, CRLF, CR, and conversion passed", observed
@@ -370,7 +371,7 @@ class SelfCheckRunner:
         source.write_text("alpha\n", encoding="utf-8")
         with Document.open(source) as document:
             document.insert(document.total_chars(), "beta\n")
-            document.save(output)
+            document.export_copy(output, output_format=document.output_format)
         with Document.open(output) as reopened:
             text = reopened.read(0, reopened.total_chars())
         if text != "alpha\nbeta\n":

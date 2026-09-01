@@ -31,11 +31,16 @@ class ExternalFileChangedError(RuntimeError):
     def __init__(
         self,
         path: Path,
-        expected: FileIdentity,
+        expected: FileIdentity | None,
         actual: FileIdentity | None,
     ) -> None:
         self.path = path
         self.expected = expected
         self.actual = actual
-        detail = "is no longer present" if actual is None else "has changed on disk"
+        if expected is None and actual is not None:
+            detail = "appeared on disk"
+        elif actual is None:
+            detail = "is no longer present"
+        else:
+            detail = "has changed on disk"
         super().__init__(f"{path} {detail}; refusing to overwrite it")

@@ -27,7 +27,7 @@ def _run_in(directory: Path) -> dict[str, object]:
         replacements = replace_all(document, pattern, r"\g<name> [\g<date>]")
         document.set_output_encoding("utf-16-le")
         document.set_output_eol("LF")
-        document.save(regex_output)
+        document.export_copy(regex_output, output_format=document.output_format)
     with Document.open(regex_output, encoding="utf-16-le") as reopened:
         utf16_output = reopened.read(0, reopened.total_chars())
 
@@ -36,7 +36,7 @@ def _run_in(directory: Path) -> dict[str, object]:
     legacy_source.write_bytes(b"caf\xe9\rlegacy\r")
     with Document.open(legacy_source, encoding="windows-1252") as document:
         document.set_output_eol("LF")
-        document.save(legacy_output)
+        document.export_copy(legacy_output, output_format=document.output_format)
     legacy_output_text = legacy_output.read_bytes().decode("windows-1252")
 
     recovery_source = directory / "recovery-source.txt"

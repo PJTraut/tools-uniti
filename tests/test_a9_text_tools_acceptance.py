@@ -31,8 +31,8 @@ def test_a9_text_tools_end_to_end(tmp_path: Path):
 
         document.set_output_encoding("utf-16-le")
         document.set_output_eol("LF")
-        document.save(output)
-        assert not document.modified
+        document.export_copy(output, output_format=document.output_format)
+        assert document.modified
 
     saved = output.read_bytes().decode("utf-16-le")
     assert saved == "Pieter [2026-08-31]\nJohn [2026-09-01]\n"

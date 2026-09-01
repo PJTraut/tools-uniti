@@ -14,6 +14,7 @@ from typing import BinaryIO, Callable, Iterable, Iterator, Literal
 from .byte_source import ByteSource
 from .decoder import iter_decoded_spans
 from .eol import analyze_eol
+from .file_identity import ExternalFileChangedError, FileIdentity
 from .pieces import EditSegment, PieceTable, SourceSegment
 from .text_format import (
     EOLPolicy,
@@ -102,6 +103,7 @@ class StagedSave:
     byte_length: int
     digest: str
     metadata: _TargetMetadata
+    target_identity: FileIdentity | None
     preserves_source_bytes: bool
     _verified: bool = False
 
@@ -351,6 +353,10 @@ def stage_document(
     )
     target = Path(destination)
     metadata = _capture_target_metadata(target)
+    try:
+        target_identity = FileIdentity.from_path(target)
+    except FileNotFoundError:
+        target_identity = None
     fd: int | None = None
     temp_path: Path | None = None
     try:
@@ -395,6 +401,7 @@ def stage_document(
             byte_length=byte_length,
             digest=digest,
             metadata=metadata,
+            target_identity=target_identity,
             preserves_source_bytes=preserve_bytes,
         )
     except Exception:
@@ -565,6 +572,16 @@ def commit_staged_document(staged: StagedSave) -> Path:
     length, digest = _file_length_and_digest(staged.temporary)
     if length != staged.byte_length or digest != staged.digest:
         raise SaveVerificationError("staged output changed after verification")
+    try:
+        target_identity = FileIdentity.from_path(staged.destination)
+    except FileNotFoundError:
+        target_identity = None
+    if target_identity != staged.target_identity:
+        raise ExternalFileChangedError(
+            staged.destination,
+            staged.target_identity,
+            target_identity,
+        )
     _apply_target_metadata(staged.temporary, staged.metadata)
     os.replace(staged.temporary, staged.destination)
     _fsync_parent(staged.destination)

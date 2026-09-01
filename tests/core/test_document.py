@@ -163,20 +163,98 @@ def test_document_save_writes_edits_and_clears_modified(tmp_path: Path):
     assert path.read_bytes() == b"aXbc\n"
 
 
-def test_document_save_as_updates_logical_path_and_output_encoding(tmp_path: Path):
+def test_verified_in_place_save_updates_format_and_save_point(tmp_path: Path):
+    path = tmp_path / "document.txt"
+    path.write_bytes(b"a\nb\n")
+    with Document.open(path) as document:
+        document.replace(0, 1, "A")
+        selected = OutputFormat(
+            encoding_profile("utf-16-be-bom"),
+            EOLPolicy.CRLF,
+        )
+        result = document.save(output_format=selected)
+        assert result == path
+        assert document.path == path
+        assert document.source_profile == selected.encoding
+        assert document.output_format == selected
+        assert document.saved_output_format == selected
+        assert document.modified is False
+        assert document.read(0, document.total_chars()) == "A\r\nb\r\n"
+    assert path.read_bytes() == b"\xfe\xff" + "A\r\nb\r\n".encode("utf-16-be")
+
+
+def test_export_copy_leaves_source_document_state_unchanged(tmp_path: Path):
+    source = tmp_path / "source.txt"
+    target = tmp_path / "target.txt"
+    source.write_text("abc\n", encoding="utf-8")
+    with Document.open(source) as document:
+        document.insert(3, "!")
+        before = (
+            document.path,
+            document.disk_identity,
+            document.revision,
+            document.can_undo,
+            document.can_redo,
+            document.modified,
+            document.source_profile,
+            document.output_format,
+            document.saved_output_format,
+        )
+        selected = OutputFormat(encoding_profile("utf-8"), EOLPolicy.CRLF)
+        result = document.export_copy(target, output_format=selected)
+        after = (
+            document.path,
+            document.disk_identity,
+            document.revision,
+            document.can_undo,
+            document.can_redo,
+            document.modified,
+            document.source_profile,
+            document.output_format,
+            document.saved_output_format,
+        )
+        assert result == target
+        assert after == before
+    assert target.read_bytes() == b"abc!\r\n"
+
+
+def test_export_copy_rejects_current_document_path(tmp_path: Path):
+    path = tmp_path / "same.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path) as document:
+        with pytest.raises(ValueError, match="in-place Save"):
+            document.export_copy(path, output_format=document.output_format)
+    assert path.read_bytes() == b"abc"
+
+
+def test_save_no_longer_accepts_a_destination_argument(tmp_path: Path):
+    path = tmp_path / "source.txt"
+    target = tmp_path / "target.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path) as document:
+        with pytest.raises(TypeError):
+            document.save(target)
+    assert not target.exists()
+
+
+def test_export_copy_writes_selected_format_without_retargeting_source(tmp_path: Path):
     source = tmp_path / "source.txt"
     target = tmp_path / "target.txt"
     source.write_text("café\n", encoding="utf-8")
     with Document.open(source) as doc:
-        result = doc.save(target, encoding="windows-1252", eol="CRLF")
+        selected = OutputFormat(
+            encoding_profile("windows-1252"),
+            EOLPolicy.CRLF,
+        )
+        result = doc.export_copy(target, output_format=selected)
         assert result == target
-        assert doc.path == target
+        assert doc.path == source
         assert doc.encoding_info.detected == "utf-8"
-        assert doc.encoding_info.output_encoding == "windows-1252"
-        assert doc.output_eol == "CRLF"
+        assert doc.output_format == doc.saved_output_format
         doc.insert(doc.total_chars(), "fin")
         doc.save()
-    assert target.read_bytes() == b"caf\xe9\r\nfin"
+    assert target.read_bytes() == b"caf\xe9\r\n"
+    assert source.read_bytes() == b"caf\xc3\xa9\nfin"
 
 
 def test_failed_document_save_keeps_modified_state_and_path(tmp_path: Path):
@@ -188,7 +266,13 @@ def test_failed_document_save_keeps_modified_state_and_path(tmp_path: Path):
     with Document.open(source) as doc:
         doc.insert(3, " ₹")
         with pytest.raises(UnrepresentableCharacterError):
-            doc.save(target, encoding="windows-1252")
+            doc.export_copy(
+                target,
+                output_format=OutputFormat(
+                    encoding_profile("windows-1252"),
+                    EOLPolicy.PRESERVE,
+                ),
+            )
         assert doc.modified
         assert doc.path == source
         assert not target.exists()
@@ -284,16 +368,15 @@ def test_read_line_window_does_not_materialize_single_huge_line(tmp_path: Path):
 
 def test_output_encoding_policy_marks_document_modified_until_save(tmp_path: Path):
     path = tmp_path / "encoding-policy.txt"
-    target = tmp_path / "encoding-policy-out.txt"
     path.write_text("café", encoding="utf-8")
     with Document.open(path, encoding="utf-8") as document:
         assert not document.modified
         document.set_output_encoding("windows-1252")
         assert document.modified
         assert document.encoding_info.output_encoding == "windows-1252"
-        document.save(target)
+        document.save()
         assert not document.modified
-    assert target.read_bytes() == b"caf\xe9"
+    assert path.read_bytes() == b"caf\xe9"
 
 
 def test_output_eol_policy_can_be_changed_and_reverted_without_text_edit(tmp_path: Path):
@@ -344,21 +427,21 @@ def test_document_refuses_current_path_save_after_external_change(tmp_path: Path
 
 
 def test_document_save_as_allowed_after_atomic_external_replacement(tmp_path: Path):
-    from uniti.core.file_identity import FileIdentity
-
     source = tmp_path / "source-external.txt"
     replacement = tmp_path / "replacement.txt"
     target = tmp_path / "safe-copy.txt"
     source.write_text("abc", encoding="utf-8")
     with Document.open(source) as doc:
+        baseline = doc.disk_identity
         doc.insert(3, "X")
         replacement.write_text("external", encoding="utf-8")
         replacement.replace(source)
-        result = doc.save(target)
+        result = doc.export_copy(target, output_format=doc.output_format)
         assert result == target
         assert target.read_text(encoding="utf-8") == "abcX"
-        assert doc.path == target
-        assert doc.disk_identity == FileIdentity.from_path(target)
+        assert doc.path == source
+        assert doc.disk_identity == baseline
+        assert doc.modified is True
 
 
 def test_document_save_as_refuses_same_inode_source_mutation(tmp_path: Path):
@@ -371,7 +454,7 @@ def test_document_save_as_refuses_same_inode_source_mutation(tmp_path: Path):
         doc.insert(3, "X")
         source.write_text("external", encoding="utf-8")
         with pytest.raises(ExternalFileChangedError):
-            doc.save(target)
+            doc.export_copy(target, output_format=doc.output_format)
         assert not target.exists()
 
 
@@ -462,7 +545,10 @@ def test_document_rejects_staged_save_after_revision_changes(
             original_verify(staged, chunks)
             document.insert(document.total_chars(), "Y")
 
-        monkeypatch.setattr(save_module, "verify_staged_document", verify_then_edit)
+        monkeypatch.setattr(
+            "uniti.core.document.verify_staged_document",
+            verify_then_edit,
+        )
         with pytest.raises(StaleDocumentRevisionError):
             document.save()
         assert document.read(0, document.total_chars()) == "abcXY"
@@ -470,3 +556,35 @@ def test_document_rejects_staged_save_after_revision_changes(
 
     assert path.read_bytes() == b"abc"
     assert list(tmp_path.glob(".stale-save.txt.*.uniti-tmp")) == []
+
+
+def test_export_rejects_destination_replaced_after_staging(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from uniti.core.file_identity import ExternalFileChangedError
+    from uniti.core.save import verify_staged_document as real_verify
+
+    source = tmp_path / "source.txt"
+    target = tmp_path / "target.txt"
+    replacement = tmp_path / "replacement.txt"
+    source.write_text("source", encoding="utf-8")
+    target.write_text("original target", encoding="utf-8")
+    replacement.write_text("external replacement", encoding="utf-8")
+
+    def verify_then_replace(staged, chunks):
+        real_verify(staged, chunks)
+        replacement.replace(target)
+
+    monkeypatch.setattr(
+        "uniti.core.document.verify_staged_document",
+        verify_then_replace,
+    )
+    with Document.open(source) as document:
+        with pytest.raises(ExternalFileChangedError):
+            document.export_copy(target, output_format=document.output_format)
+        assert document.path == source
+        assert document.modified is False
+
+    assert target.read_text(encoding="utf-8") == "external replacement"
+    assert list(tmp_path.glob(".target.txt.*.uniti-tmp")) == []

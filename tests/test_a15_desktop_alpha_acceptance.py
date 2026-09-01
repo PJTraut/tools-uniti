@@ -31,7 +31,7 @@ def test_alpha_candidate_roundtrips_utf16_utf32_endianness_with_edit_and_save(
         state = EditorState(document)
         state.move_end()
         state.insert_text("Ω")
-        document.save(destination)
+        document.export_copy(destination, output_format=document.output_format)
 
     with Document.open(destination) as reopened:
         assert reopened.encoding_info.detected == encoding

@@ -15,8 +15,8 @@ def test_streaming_save_handles_normal_large_workload_without_whole_document_cop
 
     with Document.open(source, encoding="utf-8") as doc:
         doc.insert(8, "X")
-        doc.save(target)
-        assert not doc.modified
+        doc.export_copy(target, output_format=doc.output_format)
+        assert doc.modified
 
     assert target.stat().st_size == original_size + 1
     with target.open("rb") as handle:

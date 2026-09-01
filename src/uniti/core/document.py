@@ -21,7 +21,14 @@ from .history import EditHistory, EditOperation, EditTransaction
 from .lines import LineIndex
 from .offsets import OffsetMapper
 from .pieces import AnnotatedChunk, AnnotatedText, EditStore, PieceTable
-from .save import EOLName, SaveOptions, StaleDocumentRevisionError, save_document
+from .save import (
+    EOLName,
+    StaleDocumentRevisionError,
+    commit_staged_document,
+    discard_staged_document,
+    stage_document,
+    verify_staged_document,
+)
 from .text_format import (
     EOLPolicy,
     EncodingProfile,
@@ -67,6 +74,7 @@ class Document:
         self._disk_identity = self._source_identity
         self._encoding_info = encoding_info
         self._source_profile = source_profile
+        self._piece_source_profile = source_profile
         self._offset_mapper = offset_mapper
         self._source_line_index = source_line_index
         self._piece_table = piece_table
@@ -663,33 +671,32 @@ class Document:
                     actual_identity,
                 )
 
-    def save(
+    @staticmethod
+    def _same_resolved_file(left: Path, right: Path) -> bool:
+        if left.resolve(strict=False) == right.resolve(strict=False):
+            return True
+        try:
+            return os.path.samefile(left, right)
+        except OSError:
+            return False
+
+    def _write_verified_output(
         self,
-        destination: str | os.PathLike[str] | None = None,
-        *,
-        encoding: str | None = None,
-        eol: EOLName | None = None,
+        destination: Path,
+        output_format: OutputFormat,
     ) -> Path:
-        self._ensure_open()
-        target = self._path if destination is None else Path(destination)
-
-        self.assert_safe_overwrite(target)
-        baseline_output_format = self._output_format
-        selected_format = baseline_output_format
-        if encoding is not None:
-            selected_format = OutputFormat(
-                encoding=_output_profile_from_encoding(encoding),
-                eol=selected_format.eol,
-            )
-        if eol is not None:
-            selected_format = OutputFormat(
-                encoding=selected_format.encoding,
-                eol=EOLPolicy(eol),
-            )
-        output_encoding = selected_format.encoding.codec
+        self.assert_safe_overwrite(destination)
         staged_revision = self._revision
-
-        def before_commit() -> None:
+        baseline_output_format = self._output_format
+        staged = stage_document(
+            self._source,
+            self._piece_table,
+            source_profile=self._piece_source_profile,
+            destination=destination,
+            output_format=output_format,
+        )
+        try:
+            verify_staged_document(staged, self._piece_table.iter_text())
             if (
                 self._revision != staged_revision
                 or self._output_format != baseline_output_format
@@ -697,28 +704,100 @@ class Document:
                 raise StaleDocumentRevisionError(
                     "document text or output format changed while save was staged"
                 )
-            self.assert_safe_overwrite(target)
+            self.assert_safe_overwrite(destination)
+            return commit_staged_document(staged)
+        finally:
+            discard_staged_document(staged)
 
-        result = save_document(
-            self._source,
-            self._piece_table,
-            source_encoding=self._encoding_info.detected,
-            source_bom=self._encoding_info.bom,
-            destination=target,
-            options=SaveOptions(output_format=selected_format),
-            before_commit=before_commit,
+    def _reload_verified_save(self, output_format: OutputFormat) -> None:
+        source = ByteSource.open(self._path)
+        decoder_encoding = _decoder_encoding(output_format.encoding)
+        cache_owner = object()
+        try:
+            mapper = OffsetMapper(
+                source,
+                decoder_encoding,
+                resource_manager=self._resource_manager,
+                cache_owner=cache_owner,
+            )
+            source_line_index = LineIndex(source, decoder_encoding)
+            source_eol_report = analyze_eol(
+                source,
+                encoding=decoder_encoding,
+                end=min(source.size, 65_536),
+            )
+            piece_table = PieceTable(
+                source,
+                decoder_encoding,
+                mapper,
+                EditStore(),
+            )
+            document_line_index = DocumentLineIndex(piece_table)
+            identity = FileIdentity.from_path(self._path)
+        except Exception:
+            if self._resource_manager is not None:
+                self._resource_manager.evict_owner(cache_owner)
+            source.close()
+            raise
+
+        old_source = self._source
+        old_cache_owner = self._cache_owner
+        self._source = source
+        self._source_identity = identity
+        self._disk_identity = identity
+        self._encoding_info = EncodingInfo(
+            detected=decoder_encoding,
+            confidence=1.0,
+            bom=output_format.encoding.bom or None,
+            user_override=True,
+            output_encoding=output_format.encoding.codec,
         )
-        self._path = result
-        self._disk_identity = FileIdentity.from_path(result)
-        self._encoding_info = dataclass_replace(
-            self._encoding_info,
-            output_encoding=output_encoding,
-        )
-        self._output_format = selected_format
-        self._history.mark_saved()
-        self._saved_output_format = selected_format
+        self._source_profile = output_format.encoding
+        self._piece_source_profile = output_format.encoding
+        self._offset_mapper = mapper
+        self._source_line_index = source_line_index
+        self._piece_table = piece_table
+        self._document_line_index = document_line_index
+        self._source_eol_report = source_eol_report
+        self._cache_owner = cache_owner
+        if self._resource_manager is not None and old_cache_owner is not None:
+            self._resource_manager.evict_owner(old_cache_owner)
+        old_source.close()
+
+    def save(self, *, output_format: OutputFormat | None = None) -> Path:
+        """Save the current document in place and advance its save point."""
+
+        self._ensure_open()
+        selected = self._output_format if output_format is None else output_format
+        if not isinstance(selected, OutputFormat):
+            raise TypeError("output format must be an OutputFormat")
+        result = self._write_verified_output(self._path, selected)
+        self._reload_verified_save(selected)
+        if selected.eol is not EOLPolicy.PRESERVE:
+            self._history = EditHistory()
+            self._revision += 1
+        else:
+            self._history.mark_saved()
+        self._output_format = selected
+        self._saved_output_format = selected
         self._notify_save(result)
         return result
+
+    def export_copy(
+        self,
+        destination: str | os.PathLike[str],
+        *,
+        output_format: OutputFormat,
+    ) -> Path:
+        """Write another path without changing this document's identity or state."""
+
+        self._ensure_open()
+        target = Path(destination)
+        if self._same_resolved_file(self._path, target):
+            raise ValueError("use in-place Save for the current document path")
+        if not isinstance(output_format, OutputFormat):
+            raise TypeError("output format must be an OutputFormat")
+        return self._write_verified_output(target, output_format)
 
     def total_chars(self) -> int:
         self._ensure_open()
