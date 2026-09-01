@@ -7,14 +7,20 @@ from concurrent.futures import Future
 
 import regex
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QPushButton,
     QMessageBox,
+    QSplitter,
     QVBoxLayout,
+    QWidget,
 )
 
 from uniti.regex.engine import compile_pattern
@@ -36,10 +42,13 @@ from uniti.ui.regex_input import RegexInput, ReplacementInput
 STREAM_REPLACE_THRESHOLD = 50_000
 
 
-class FindReplacePanel(QFrame):
-    """Compact bottom panel; match records remain data, never per-match widgets."""
+class FindReplaceWindow(QDialog):
+    """Modeless Find/Replace utility; match records never become document state."""
 
     streamReplaceCommitted = Signal(object, str, int)
+    zoomChanged = Signal(int)
+    reportLocationChanged = Signal(str)
+    geometryChanged = Signal(tuple)
     _jobCompleted = Signal()
 
     def __init__(
@@ -50,6 +59,10 @@ class FindReplacePanel(QFrame):
         resource_manager: ResourceManager | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setModal(False)
+        self.setWindowFlag(Qt.WindowType.Tool, True)
+        self.setWindowTitle("Find / Replace")
+        self.resize(720, 320)
         self._view_provider = view_provider
         self._resource_manager = resource_manager
         self._owns_pool = resource_manager is None
@@ -68,12 +81,18 @@ class FindReplacePanel(QFrame):
         self._result_listener_remove = None
         self._current_index: int | None = None
         self._results_compiled = None
+        self._zoom_percent = 100
 
         self.find_input = RegexInput(self)
         self.replace_input = ReplacementInput(self)
         self.status_label = QLabel("0 matches", self)
         self.capture_list = QListWidget(self)
         self.capture_list.setMaximumHeight(82)
+        self.regex_checkbox = QCheckBox("Regex", self)
+        self.case_sensitive_checkbox = QCheckBox("Case Sensitive", self)
+        self.whole_word_checkbox = QCheckBox("Whole Word", self)
+        self.report_location_combo = QComboBox(self)
+        self.report_location_combo.addItems(("Hidden", "Bottom", "Right"))
 
         find_row = QHBoxLayout()
         find_row.addWidget(QLabel("F>"))
@@ -81,6 +100,14 @@ class FindReplacePanel(QFrame):
         replace_row = QHBoxLayout()
         replace_row.addWidget(QLabel("R>"))
         replace_row.addWidget(self.replace_input, 1)
+
+        options_row = QHBoxLayout()
+        options_row.addWidget(self.regex_checkbox)
+        options_row.addWidget(self.case_sensitive_checkbox)
+        options_row.addWidget(self.whole_word_checkbox)
+        options_row.addStretch(1)
+        options_row.addWidget(QLabel("Report:"))
+        options_row.addWidget(self.report_location_combo)
 
         self.find_all_button = QPushButton("Find All", self)
         self.previous_button = QPushButton("Previous", self)
@@ -103,13 +130,26 @@ class FindReplacePanel(QFrame):
         controls.addStretch(1)
         controls.addWidget(self.status_label)
 
+        controls_widget = QWidget(self)
+        controls_layout = QVBoxLayout(controls_widget)
+        controls_layout.setContentsMargins(4, 4, 4, 4)
+        controls_layout.setSpacing(3)
+        controls_layout.addLayout(find_row)
+        controls_layout.addLayout(replace_row)
+        controls_layout.addLayout(options_row)
+        controls_layout.addLayout(controls)
+
+        self.report_frame = QFrame(self)
+        report_layout = QVBoxLayout(self.report_frame)
+        report_layout.setContentsMargins(4, 4, 4, 4)
+        report_layout.addWidget(self.capture_list)
+
+        self.report_splitter = QSplitter(Qt.Orientation.Vertical, self)
+        self.report_splitter.addWidget(controls_widget)
+        self.report_splitter.addWidget(self.report_frame)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(3)
-        layout.addLayout(find_row)
-        layout.addLayout(replace_row)
-        layout.addLayout(controls)
-        layout.addWidget(self.capture_list)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.report_splitter)
 
         self.find_all_button.clicked.connect(self.find_all)
         self.previous_button.clicked.connect(self.previous_match)
@@ -120,6 +160,12 @@ class FindReplacePanel(QFrame):
         self.find_input.returnPressed.connect(self.next_match)
         self.replace_input.returnPressed.connect(self.replace_current)
         self.find_input.textChanged.connect(self._pattern_changed)
+        self.regex_checkbox.toggled.connect(self._search_mode_changed)
+        self.case_sensitive_checkbox.toggled.connect(self._pattern_changed)
+        self.whole_word_checkbox.toggled.connect(self._pattern_changed)
+        self.report_location_combo.currentTextChanged.connect(
+            self.set_report_location
+        )
 
         # Worker futures may finish before the next Qt timer tick.  Deliver
         # completion through a queued Qt signal so result application happens
@@ -127,6 +173,59 @@ class FindReplacePanel(QFrame):
         self._jobCompleted.connect(
             self._poll_job, Qt.ConnectionType.QueuedConnection
         )
+        self._search_mode_changed(False)
+        self.set_report_location("Bottom")
+
+    @property
+    def zoom_percent(self) -> int:
+        return self._zoom_percent
+
+    @property
+    def report_location(self) -> str:
+        return self.report_location_combo.currentText()
+
+    def set_zoom_percent(self, percent: int) -> None:
+        percent = max(50, min(300, int(percent)))
+        if percent == self._zoom_percent:
+            return
+        scale = percent / self._zoom_percent
+        self._zoom_percent = percent
+        for widget in (self.find_input, self.replace_input, self.capture_list):
+            font = QFont(widget.font())
+            point_size = font.pointSizeF()
+            if point_size <= 0:
+                point_size = 12.0
+            font.setPointSizeF(point_size * scale)
+            widget.setFont(font)
+        self.zoomChanged.emit(percent)
+
+    def zoom_in(self) -> None:
+        self.set_zoom_percent(self._zoom_percent + 10)
+
+    def zoom_out(self) -> None:
+        self.set_zoom_percent(self._zoom_percent - 10)
+
+    def reset_zoom(self) -> None:
+        self.set_zoom_percent(100)
+
+    def set_report_location(self, location: str) -> None:
+        if location not in {"Hidden", "Bottom", "Right"}:
+            raise ValueError(f"unsupported report location: {location}")
+        if self.report_location_combo.currentText() != location:
+            self.report_location_combo.setCurrentText(location)
+        self.report_frame.setHidden(location == "Hidden")
+        if location == "Bottom":
+            self.report_splitter.setOrientation(Qt.Orientation.Vertical)
+            self.capture_list.setMaximumHeight(82)
+        elif location == "Right":
+            self.report_splitter.setOrientation(Qt.Orientation.Horizontal)
+            self.capture_list.setMaximumHeight(16_777_215)
+        self.reportLocationChanged.emit(location)
+
+    def _search_mode_changed(self, regex_mode: bool) -> None:
+        self.case_sensitive_checkbox.setVisible(not regex_mode)
+        self.whole_word_checkbox.setVisible(not regex_mode)
+        self._pattern_changed()
 
     @property
     def result_count(self) -> int:
@@ -157,20 +256,36 @@ class FindReplacePanel(QFrame):
     def _current_view(self):
         return self._view_provider()
 
-    def _compile_current(self):
+    def compile_current(self):
         pattern = self.find_input.text()
         if not pattern:
             self.status_label.setText("enter a pattern")
             self.replace_input.set_groups(0, {})
             return None
+        flags = 0
+        if not self.regex_checkbox.isChecked():
+            pattern = regex.escape(pattern)
+            if self.whole_word_checkbox.isChecked():
+                pattern = rf"\b(?:{pattern})\b"
+            if not self.case_sensitive_checkbox.isChecked():
+                flags |= regex.IGNORECASE
         try:
-            compiled = compile_pattern(pattern)
+            compiled = compile_pattern(pattern, flags)
         except regex.error as exc:
             self.status_label.setText(f"regex error: {exc}")
             self.replace_input.set_groups(0, {})
             return None
         self.replace_input.set_groups(compiled.groups, dict(compiled.groupindex))
         return compiled
+
+    def _compile_current(self):
+        return self.compile_current()
+
+    def _replacement_expression(self) -> str:
+        replacement = self.replace_input.text()
+        if self.regex_checkbox.isChecked():
+            return replacement
+        return replacement.replace("\\", "\\\\")
 
     def _pattern_changed(self) -> None:
         if self.busy:
@@ -263,7 +378,7 @@ class FindReplacePanel(QFrame):
             return collect_replacements(
                 view.document,
                 compiled,
-                self.replace_input.text(),
+                self._replacement_expression(),
                 options=SearchOptions(timeout=0.5, max_matches=target_index + 1),
                 cancelled=lambda: token.cancelled,
             )
@@ -283,7 +398,7 @@ class FindReplacePanel(QFrame):
             return
         token = CancellationToken()
         revision = view.document.revision
-        replacement_text = self.replace_input.text()
+        replacement_text = self._replacement_expression()
 
         def work():
             return probe_replacements(
@@ -508,20 +623,21 @@ class FindReplacePanel(QFrame):
         text = text.replace("\r", "\\r").replace("\n", "\\n")
         return text if len(text) <= limit else text[: limit - 1] + "…"
 
-    def _show_capture_details(self, view, record: MatchRecord) -> None:
-        self.capture_list.clear()
-        if not record.captures and self._results_compiled is not None:
-            try:
-                record = resolve_captures(
-                    view.document,
-                    self._results_compiled,
-                    record,
-                    timeout=0.15,
-                )
-            except Exception:
-                pass
-        whole = self._display_text(view.document.read(record.start, record.end))
-        self.capture_list.addItem(f"0  {whole}")
+    def _resolved_capture_record(self, view, record: MatchRecord) -> MatchRecord:
+        if record.captures or self._results_compiled is None:
+            return record
+        try:
+            return resolve_captures(
+                view.document,
+                self._results_compiled,
+                record,
+                timeout=0.15,
+            )
+        except Exception:
+            return record
+
+    def _append_capture_record(self, view, record: MatchRecord) -> None:
+        record = self._resolved_capture_record(view, record)
         for capture in record.captures:
             label = str(capture.group)
             if capture.name:
@@ -531,7 +647,35 @@ class FindReplacePanel(QFrame):
                 for start, end in capture.spans[:5]
             ]
             suffix = " …" if len(capture.spans) > 5 else ""
-            self.capture_list.addItem(f"{label}  {' | '.join(values)}{suffix}")
+            self.capture_list.addItem(
+                f"{label} │ {' | '.join(values)}{suffix}"
+            )
+
+    def _show_capture_details(self, view, record: MatchRecord) -> None:
+        self.capture_list.clear()
+        self._append_capture_record(view, record)
+        if len(self._results) > 1 and self._current_index is not None:
+            next_index = (self._current_index + 1) % len(self._results)
+            next_record = self._results.records[next_index]
+            self.capture_list.addItem("─────────────────")
+            self._append_capture_record(view, next_record)
+
+    def reject(self) -> None:
+        self.hide()
+
+    def _emit_geometry(self) -> None:
+        geometry = self.geometry()
+        self.geometryChanged.emit(
+            (geometry.x(), geometry.y(), geometry.width(), geometry.height())
+        )
+
+    def moveEvent(self, event) -> None:
+        super().moveEvent(event)
+        self._emit_geometry()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._emit_geometry()
 
     def shutdown(self) -> None:
         self.cancel_search()
@@ -539,3 +683,8 @@ class FindReplacePanel(QFrame):
             self._target_view.setEnabled(True)
         if self._owns_pool:
             self._pool.shutdown(wait=False, cancel_pending=True)
+
+
+# Compatibility name for implemented callers while the project migrates from
+# the embedded-panel vocabulary to the floating utility.
+FindReplacePanel = FindReplaceWindow

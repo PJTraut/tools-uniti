@@ -31,7 +31,7 @@ from uniti.core.file_identity import ExternalFileChangedError
 from uniti.resources import ResourceManager, WorkPriority
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
-from uniti.ui.find_replace import FindReplacePanel
+from uniti.ui.find_replace import FindReplaceWindow
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
 
@@ -75,14 +75,28 @@ class UNITIMainWindow(QMainWindow):
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
         central_layout.addWidget(self._tabs, 1)
-        self._find_replace = FindReplacePanel(
-            lambda: self.current_view, central, resource_manager=self._resources
+        self._find_replace = FindReplaceWindow(
+            lambda: self.current_view, self, resource_manager=self._resources
         )
         self._find_replace.streamReplaceCommitted.connect(
             self._reload_after_stream_replace
         )
         self._find_replace.hide()
-        central_layout.addWidget(self._find_replace, 0)
+        self._find_replace.set_zoom_percent(
+            self._settings.find_replace_zoom_percent
+        )
+        self._find_replace.set_report_location(
+            self._settings.find_replace_report_location
+        )
+        if self._settings.find_replace_geometry is not None:
+            self._find_replace.setGeometry(*self._settings.find_replace_geometry)
+        self._find_replace.zoomChanged.connect(self._on_find_replace_zoom_changed)
+        self._find_replace.reportLocationChanged.connect(
+            self._on_find_replace_report_location_changed
+        )
+        self._find_replace.geometryChanged.connect(
+            self._on_find_replace_geometry_changed
+        )
         self.setCentralWidget(central)
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
@@ -105,6 +119,37 @@ class UNITIMainWindow(QMainWindow):
         except Exception:
             # Memory telemetry must never interfere with editing.
             return
+
+    def _save_settings(self) -> None:
+        if self._settings_store is not None:
+            try:
+                self._settings_store.save(self._settings)
+            except OSError:
+                pass
+
+    def _on_find_replace_zoom_changed(self, percent: int) -> None:
+        self._settings = dataclass_replace(
+            self._settings,
+            find_replace_zoom_percent=percent,
+        )
+        self._save_settings()
+
+    def _on_find_replace_report_location_changed(self, location: str) -> None:
+        self._settings = dataclass_replace(
+            self._settings,
+            find_replace_report_location=location,
+        )
+        self._save_settings()
+
+    def _on_find_replace_geometry_changed(
+        self,
+        geometry: tuple[int, int, int, int],
+    ) -> None:
+        self._settings = dataclass_replace(
+            self._settings,
+            find_replace_geometry=geometry,
+        )
+        self._save_settings()
 
     @property
     def current_view(self) -> UNITITextView | None:
@@ -244,11 +289,7 @@ class UNITIMainWindow(QMainWindow):
     def _remember_directory(self, path: str | Path) -> None:
         directory = str(Path(path).parent)
         self._settings = dataclass_replace(self._settings, last_directory=directory)
-        if self._settings_store is not None:
-            try:
-                self._settings_store.save(self._settings)
-            except OSError:
-                pass
+        self._save_settings()
 
     def open_dialog(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
@@ -356,11 +397,7 @@ class UNITIMainWindow(QMainWindow):
             self._settings,
             editor_zoom_percent=percent,
         )
-        if self._settings_store is not None:
-            try:
-                self._settings_store.save(self._settings)
-            except OSError:
-                pass
+        self._save_settings()
 
     def _on_view_wrap_changed(self, view: UNITITextView, enabled: bool) -> None:
         if view is self.current_view:
@@ -368,11 +405,7 @@ class UNITIMainWindow(QMainWindow):
             if self._wrap_action.isChecked() != enabled:
                 self._wrap_action.setChecked(enabled)
         self._settings = dataclass_replace(self._settings, soft_wrap=enabled)
-        if self._settings_store is not None:
-            try:
-                self._settings_store.save(self._settings)
-            except OSError:
-                pass
+        self._save_settings()
 
     def zoom_in_editor(self) -> None:
         view = self.current_view

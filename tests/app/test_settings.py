@@ -47,6 +47,20 @@ def test_settings_reject_invalid_editor_view_state(tmp_path: Path):
     assert settings.soft_wrap is False
 
 
+def test_find_replace_view_state_round_trips(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    expected = Settings(
+        find_replace_zoom_percent=140,
+        find_replace_report_location="Right",
+        find_replace_geometry=(20, 30, 700, 360),
+    )
+
+    store.save(expected)
+
+    assert store.load() == expected
+
+
 def test_settings_store_ignores_unknown_keys_for_forward_compatibility(tmp_path: Path):
     path = tmp_path / "settings.json"
     path.write_text('{"last_directory":"/tmp","future":42}', encoding="utf-8")
@@ -85,6 +99,9 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
     assert result.preserved_path.read_text(encoding="utf-8") == "broken"
     assert json.loads(path.read_text(encoding="utf-8")) == {
         "editor_zoom_percent": 100,
+        "find_replace_geometry": None,
+        "find_replace_report_location": "Bottom",
+        "find_replace_zoom_percent": 100,
         "last_directory": None,
         "performance_mode": "Automatic",
         "schema": 1,
