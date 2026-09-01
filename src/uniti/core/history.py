@@ -24,7 +24,10 @@ class EditTransaction:
 class EditHistory:
     """Cursor-based immutable transaction history with saved-revision tracking."""
 
-    def __init__(self) -> None:
+    def __init__(self, max_transactions: int = 50) -> None:
+        if max_transactions <= 0:
+            raise ValueError("max_transactions must be positive")
+        self._max_transactions = max_transactions
         self._transactions: list[EditTransaction] = []
         self._cursor = 0
         self._saved_cursor: int | None = 0
@@ -54,6 +57,20 @@ class EditHistory:
             del self._transactions[self._cursor :]
         self._transactions.append(transaction)
         self._cursor += 1
+        self._enforce_limit()
+
+    def _enforce_limit(self) -> None:
+        excess = len(self._transactions) - self._max_transactions
+        if excess <= 0:
+            return
+        del self._transactions[:excess]
+        self._cursor -= excess
+        if self._saved_cursor is not None:
+            self._saved_cursor = (
+                self._saved_cursor - excess
+                if self._saved_cursor >= excess
+                else None
+            )
 
     def undo(self) -> EditTransaction:
         if not self.can_undo:
