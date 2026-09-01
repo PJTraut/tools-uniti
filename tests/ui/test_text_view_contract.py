@@ -248,6 +248,14 @@ def test_multi_click_selects_word_visual_line_and_logical_line(tmp_path: Path):
         view._select_click_unit(x, y, 2)
         assert state.selected_text() == "bravo"
 
+        word_right_edge = (
+            view._gutter_width
+            + view.fontMetrics().horizontalAdvance("alpha bravo")
+            - 1
+        )
+        view._select_click_unit(word_right_edge, y, 2)
+        assert state.selected_text() == "bravo"
+
         first_visual_row = view._wrapped_row_index().row(0)
         view._select_click_unit(x, y, 3)
         assert state.selection == (

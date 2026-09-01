@@ -465,6 +465,14 @@ class UNITITextView(QAbstractScrollArea):
         if position >= total:
             return total, total
         character = self.document.read(position, position + 1)
+        if (
+            not self.state._is_word_character(character)
+            and position > 0
+        ):
+            previous = self.document.read(position - 1, position)
+            if self.state._is_word_character(previous):
+                position -= 1
+                character = previous
         if not self.state._is_word_character(character):
             return position, position
         start = position
