@@ -37,7 +37,7 @@ The a16 usability milestone is implemented and verified, including its real-use 
 - streaming atomic Save/Save As with external-file identity and supported metadata protection;
 - asynchronous crash-recovery journals and validated replay;
 - authoritative `regex==2026.5.9`, cancellable/windowed search, compact revision-bound matches, and document-transaction replacement;
-- mouse-resizable floating Find/Replace with explicit Literal/Regex selection, equal-height inputs that divide the space above a compact bottom-anchored control stack, grouped batch/match actions, an unrestricted collapsible capture splitter, capture-only reports, independent zoom/geometry/report state, report-position cycling, and separate 50-step field histories;
+- mouse-resizable floating Find/Replace with explicit Literal/Regex selection, equal-height inputs that divide the space above a compact bottom-anchored control stack, grouped batch/match actions, clear editor highlighting of every visible Find All result, an unrestricted collapsible capture splitter, capture-only reports, independent zoom/geometry/report state, report-position cycling, and separate 50-step field histories;
 - one-step undoable Replace All with no disk-rewrite history bypass;
 - a scoped shared command registry and persisted Hotkeys popup for window, editor, and Find/Replace commands;
 - a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with native shortcut display and no duplicate pre-Cot top-level command groupings;

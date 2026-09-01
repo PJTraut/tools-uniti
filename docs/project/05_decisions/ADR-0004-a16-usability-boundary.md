@@ -23,6 +23,7 @@ UNITI's text engine and startup lifecycle exist, but the desktop shell is not ye
 12. Double-click selects a word, triple-click selects a visual line, and quadruple-click selects a complete logical line through its terminating line break.
 13. Find/Replace uses an explicit `Literal | Regex` selector. Its window and capture splitter are mouse-resizable, the capture child is collapsible, batch and match actions occupy separate groups, and one configurable `Ctrl+Alt+R` command cycles `Hidden → Bottom → Right → Hidden` report placement.
 14. The Find and Replace input editors divide the available controls-frame height equally. Every non-input control remains in one compact stack anchored to the bottom; field zoom changes readable font/minimum sizing without reinstating fixed-height inputs.
+15. Find All installs the complete revision-bound result index on the editor. Every visible match receives a clear theme-derived background while the current match remains the stronger selection; painting remains limited to visible intersections and stale results clear on text or pattern changes.
 
 ## Consequences
 

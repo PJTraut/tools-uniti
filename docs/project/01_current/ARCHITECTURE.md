@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
 Date: 2026-09-01
-Baseline: verified a16 implementation through `61d1250` on `main`
+Baseline: verified a16 implementation through `c6f7faa` on `main`
 
 ## Lifecycle boundary
 
@@ -111,6 +111,8 @@ An explicit `Literal | Regex` selector owns search semantics. Literal mode escap
 
 The capture report is the collapsible second child of an unrestricted `QSplitter`, so it can be resized to any useful Bottom or Right proportion or dragged closed. `Report: Hidden | Bottom | Right` remains the explicit selector. The scoped `Cycle Report Position` command rotates those locations with default portable binding `Ctrl+Alt+R`. Capture rendering remains groups `1..N` only, with delimiters between adjacent matches.
 
+Find All installs its complete revision-bound `MatchStore` on the active editor view. The virtual viewport queries only intersections with each visible text window and paints every visible result with a clear theme-derived highlight; the current match remains visually stronger through normal selection highlighting. Pattern changes, edits, replacement, and document changes clear the installed results rather than leaving stale highlights.
+
 Single Replace and Replace All return through the authoritative `Document`. Replace All collects the revision-bound replacement set off the GUI thread, rejects stale results, and submits the entire set to `replace_many` as one Undo operation. The UI does not use the core streaming-rewrite service for Replace All because a disk rewrite would bypass the a16 history contract.
 
 Editor zoom/wrap and Find/Replace zoom/geometry/report placement persist independently through `SettingsStore`.
@@ -159,4 +161,4 @@ The completed startup snapshot is passed into `UNITIMainWindow` and the diagnost
 
 ## Planned-change boundary
 
-The complete a16 product milestone, including the compact menu, focus-owned F/R wheel zoom, multiple-click selection, and expanding F/R input layout corrections discovered during real use, is implemented and verified current architecture. Its historical scope and execution records are retained in [`03_implemented`](../03_implemented/README.md), with command ownership governed by [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Active a17 and queued a18+ behavior are planned intent and are not current architecture.
+The complete a16 product milestone, including the compact menu, focus-owned F/R wheel zoom, multiple-click selection, expanding F/R input layout, and clear Find All result highlighting corrections discovered during real use, is implemented and verified current architecture. Its historical scope and execution records are retained in [`03_implemented`](../03_implemented/README.md), with command ownership governed by [ADR-0004](../05_decisions/ADR-0004-a16-usability-boundary.md). Active a17 and queued a18+ behavior are planned intent and are not current architecture.

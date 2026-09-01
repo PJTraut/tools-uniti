@@ -8,7 +8,7 @@ Date: 2026-09-01
 |---|---|
 | Repository branch | `main` |
 | Remote baseline | `origin/main` at `052f733` |
-| Verified a16 implementation checkpoint | `61d1250` — expanding F/R inputs with bottom-anchored controls |
+| Verified a16 implementation checkpoint | `c6f7faa` — clear Find All editor highlights |
 | Local integration state | `main` contains unpushed a16 completion commits after `origin/main`; push remains a separate user decision |
 | Latest implemented milestone | `v0.001a16` — Usable Test Alpha |
 | Active product milestone | `v0.001a17` — Text Integrity Alpha |
@@ -26,6 +26,7 @@ The `v0.001a15` tag remains immutable. The post-tag Qt completion fix, startup/b
 - editor zoom, primary-modifier wheel zoom, fixed-pitch Western/Cyrillic font selection, progressive soft wrap, persistence, and zoom/wrap status are implemented;
 - Find/Replace is a mouse-resizable floating utility with independent keyboard/mouse zoom, geometry, separate 50-step histories, explicit Literal/Regex modes, equal-height expanding input cells, a compact bottom-anchored control stack, grouped batch/match actions, and an unrestricted collapsible capture splitter;
 - report placement remains `Hidden | Bottom | Right` and rotates through one scoped, configurable `Ctrl+Alt+R` command;
+- Find All highlights every visible match through the virtual editor viewport while the current match remains the stronger selection;
 - literal and raw-regex modes are explicit; Case Sensitive and Whole Word belong only to literal mode; capture reports show groups `1..N` and exclude group `0`;
 - Replace and Replace All mutate the authoritative `Document`; Replace All is one atomic undoable transaction and never bypasses history through a disk rewrite;
 - the compact menu bar is `File | Edit | Format | View | Find | Tools | Hotkeys`, with the former top-level Navigation, Search, F/R View, Encoding, and EOL artifacts removed;
@@ -37,7 +38,7 @@ The `v0.001a15` tag remains immutable. The post-tag Qt completion fix, startup/b
 Fresh verification after the final usability corrections reported:
 
 ```text
-420 passed, 4 skipped in 10.68s
+421 passed, 4 skipped in 11.34s
 compileall: pass
 alpha_smoke.py: ok=true
 deep offscreen self-check: status=pass, exit_code=0
@@ -45,9 +46,10 @@ Qt-free core/regex/resource boundary: pass
 ./uniti.command --version: v0.001a16
 native Qt platform: cocoa
 native Cocoa equal 224/224 px F/R inputs and bottom-anchored controls: pass
+native Cocoa Find All: 3/3 matches visibly highlighted, contrast 573/270/270: pass
 ```
 
-The four skips are one platform xattr capability case and three Windows launcher cases unavailable on macOS. Automated coverage also retains F/R window/capture resizing, capture collapse, action grouping, Literal/Regex semantics, and report-hotkey rotation. Real-use feedback exposed the remaining basic usability defects: legacy menu accumulation, missing focus-owned F/R mouse zoom, missing multiple-click selection units, and constrained/ambiguous F/R controls and input sizing. Each correction was locked by automated coverage before the final full and native-macOS runs. No known data-loss or text-integrity defect remains at this baseline.
+The four skips are one platform xattr capability case and three Windows launcher cases unavailable on macOS. Automated coverage also retains F/R window/capture resizing, capture collapse, action grouping, Literal/Regex semantics, and report-hotkey rotation. Real-use feedback exposed the remaining basic usability defects: legacy menu accumulation, missing focus-owned F/R mouse zoom, missing multiple-click selection units, constrained/ambiguous F/R controls and input sizing, and insufficient contrast on non-current Find All results. Each correction was locked by automated coverage before the final full and native-macOS runs. No known data-loss or text-integrity defect remains at this baseline.
 
 All five a16 acceptance gates are therefore recorded as passed. The milestone scope and execution plan now reside in [`03_implemented`](../03_implemented/README.md), and a17 is the active outstanding milestone.
 

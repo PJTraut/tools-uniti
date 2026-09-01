@@ -110,7 +110,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
   tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-The final a16 checkpoint at `61d1250` recorded `420 passed, 4 skipped`, clean compilation, a passing alpha smoke, a passing deep offscreen self-check, a clean Qt-free core/regex/resource boundary, and `v0.001a16` through `./uniti.command --version`. A self-closing native Cocoa run also passed equal-height expanding F/R inputs and bottom-anchored controls; the full suite retains window/capture resizing, capture collapse, action grouping, Literal/Regex semantics, and report-hotkey rotation coverage. Before remote integration, confirm the working tree is clean and ensure the push is normal and fast-forward safe.
+The final a16 checkpoint at `c6f7faa` recorded `421 passed, 4 skipped`, clean compilation, a passing alpha smoke, a passing deep offscreen self-check, a clean Qt-free core/regex/resource boundary, and `v0.001a16` through `./uniti.command --version`. Self-closing native Cocoa runs passed equal-height expanding F/R inputs, bottom-anchored controls, and clear highlighting of all three Find All results; the full suite retains window/capture resizing, capture collapse, action grouping, Literal/Regex semantics, and report-hotkey rotation coverage. Before remote integration, confirm the working tree is clean and ensure the push is normal and fast-forward safe.
 
 ## Lifecycle files
 
