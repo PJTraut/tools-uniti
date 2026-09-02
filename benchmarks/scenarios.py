@@ -73,27 +73,73 @@ def _open_first_paint(manifest: CorpusManifest) -> ScenarioResult:
 
 
 def _navigation(manifest: CorpusManifest) -> ScenarioResult:
-    from uniti.core.document import Document
+    if manifest.spec.kind is CorpusKind.SPARSE_FILE:
+        from uniti.core.document import Document
 
-    start_current = current_process_rss_bytes()
-    start_peak = peak_process_rss_bytes()
-    with Document.open(manifest.path, encoding="utf-8") as document:
-        started = time.perf_counter()
-        if manifest.spec.kind is CorpusKind.SPARSE_FILE:
+        start_current = current_process_rss_bytes()
+        start_peak = peak_process_rss_bytes()
+        with Document.open(manifest.path, encoding="utf-8") as document:
+            started = time.perf_counter()
             target_line = None
             offset = manifest.marker_offsets[-1]
             observed = document.read(offset, offset + len("UNITI_MARKER"))
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
             integrity = observed == "UNITI_MARKER"
-        else:
-            target_line = max(0, (manifest.spec.size_bytes // 32) * 9 // 10)
-            offset = document.line_start(target_line)
-            integrity = offset == target_line * 32
-        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        interaction_ms = elapsed_ms
+        heartbeat_ms = elapsed_ms
+        completion_ms = elapsed_ms
+    else:
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+
+        from uniti.ui.main_window import UNITIMainWindow
+
+        app = QApplication.instance() or QApplication([])
+        resources = ResourceManager()
+        window = UNITIMainWindow(resource_manager=resources)
+        start_current = current_process_rss_bytes()
+        start_peak = peak_process_rss_bytes()
+        view = window.open_path(manifest.path)
+        app.processEvents()
+        target_line = max(0, (manifest.spec.size_bytes // 32) * 9 // 10)
+        started = time.perf_counter()
+        accepted = window.go_to_line(target_line + 1)
+        interaction_ms = (time.perf_counter() - started) * 1000.0
+        heartbeat_ms = 0.0
+        deadline = time.perf_counter() + 30.0
+        while window._navigation_jobs and time.perf_counter() < deadline:
+            heartbeat_started = time.perf_counter()
+            app.processEvents()
+            heartbeat_ms = max(
+                heartbeat_ms,
+                (time.perf_counter() - heartbeat_started) * 1000.0,
+            )
+            time.sleep(0.001)
+        heartbeat_started = time.perf_counter()
+        app.processEvents()
+        heartbeat_ms = max(
+            heartbeat_ms,
+            (time.perf_counter() - heartbeat_started) * 1000.0,
+        )
+        completion_ms = (time.perf_counter() - started) * 1000.0
+        offset = view.state.cursor if view is not None else -1
+        integrity = (
+            accepted
+            and view is not None
+            and not window._navigation_jobs
+            and offset == target_line * 32
+        )
+        window.close_all_documents(force=True)
+        window.close()
+        resources.shutdown()
+        app.processEvents()
     peak_mib, retained_mib = _rss_facts(start_current, start_peak)
     return ScenarioResult.success(
         scenario="navigation",
         metrics={
-            "interaction_max_ms": MetricSample((elapsed_ms,)),
+            "interaction_max_ms": MetricSample((interaction_ms,)),
+            "gui_heartbeat_max_ms": MetricSample((heartbeat_ms,)),
+            "navigation_completion_ms": MetricSample((completion_ms,)),
             "peak_rss_mib": MetricSample((peak_mib,)),
             "retained_rss_mib": MetricSample((retained_mib,)),
         },

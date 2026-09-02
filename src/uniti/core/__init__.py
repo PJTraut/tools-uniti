@@ -7,6 +7,13 @@ from .file_identity import ExternalFileChangedError, FileIdentity
 from .eol import EOLAnalysisCancelled, EOLReport, analyze_eol
 from .offsets import OffsetCheckpoint, OffsetMapper
 from .lines import LineIndex
+from .document_lines import (
+    DocumentLineIndex,
+    LineChunkDetail,
+    LineChunkSummary,
+    LineIndexBatch,
+)
+from .index_jobs import LineNavigationResult, build_line_index_batch
 from .pieces import AnnotatedChunk, AnnotatedText, InvalidByteSpan, EditPiece, EditRef, EditStore, PieceTable, SourcePiece
 from .document import Document
 from .snapshot import DocumentReadSnapshot, EditStoreSnapshot, PieceTableSnapshot
@@ -39,6 +46,11 @@ __all__ = [
     "OffsetCheckpoint",
     "OffsetMapper",
     "LineIndex",
+    "DocumentLineIndex",
+    "LineChunkDetail",
+    "LineChunkSummary",
+    "LineIndexBatch",
+    "LineNavigationResult",
     "AnnotatedText",
     "AnnotatedChunk",
     "InvalidByteSpan",
@@ -54,6 +66,7 @@ __all__ = [
     "PieceTableSnapshot",
     "decode_span",
     "iter_decoded_spans",
+    "build_line_index_batch",
     "analyze_eol",
     "atomic_copy_source",
     "detect_encoding",

@@ -7,7 +7,7 @@ from bisect import bisect_left
 from collections.abc import Iterator
 
 from .byte_source import ByteSource
-from .decoder import decode_span
+from .decoder import decode_span, iter_decoded_spans
 from .offsets import OffsetMapper, ReadIntent
 
 
@@ -567,6 +567,33 @@ class PieceTable:
             raise ValueError("invalid document character range")
         if chunk_chars <= 0:
             raise ValueError("chunk_chars must be positive")
+
+        if (
+            intent is ReadIntent.STREAMING
+            and start == 0
+            and end is None
+            and len(self._pieces) == 1
+            and isinstance(self._pieces[0], SourcePiece)
+            and self._pieces[0].source_char_start == 0
+            and self._pieces[0].char_length is None
+            and self._mapper.indexed_char_end == 0
+            and self._mapper.indexed_byte_end == self._pieces[0].byte_start
+        ):
+            piece = self._pieces[0]
+            position = 0
+            for span in iter_decoded_spans(
+                self._source,
+                self._encoding,
+                start=piece.byte_start,
+                end=piece.byte_end,
+                chunk_size=chunk_chars,
+            ):
+                self._mapper.publish_decoded_span(span)
+                yield position, span.text
+                position += len(span.text)
+            piece.char_length = position
+            return
+
         position = start
         while end is None or position < end:
             requested_end = position + chunk_chars

@@ -6,6 +6,7 @@ from uniti.core.byte_source import ByteSource
 from uniti.core.document_lines import DocumentLineIndex
 from uniti.core.offsets import OffsetMapper
 from uniti.core.pieces import EditStore, PieceTable
+from uniti.resources import MemorySnapshot, ResourceManager
 
 
 def make_table(path: Path, text: str, *, checkpoint_bytes: int = 8):
@@ -71,14 +72,54 @@ def test_line_index_is_progressive_for_early_lookup(tmp_path: Path):
         source.close()
 
 
-def test_invalidate_rebuilds_only_from_containing_line(tmp_path: Path):
+def test_newline_dense_index_keeps_only_bounded_detail(tmp_path: Path):
+    source, _, table = make_table(tmp_path / "dense.txt", "\n" * 2_000_000)
+    try:
+        index = DocumentLineIndex(
+            table,
+            chunk_chars=65_536,
+            detail_budget_bytes=2 << 20,
+        )
+
+        assert index.total_lines() == 2_000_001
+        assert index.line_start(1_900_000) == 1_900_000
+        assert index.summary_bytes < 1 << 20
+        assert index.resident_detail_bytes <= 2 << 20
+    finally:
+        source.close()
+
+
+def test_document_line_details_use_shared_disposable_cache(tmp_path: Path):
+    source, _, table = make_table(tmp_path / "cached-lines.txt", "line\n" * 1000)
+    manager = ResourceManager(
+        max_workers=1,
+        initial_snapshot=MemorySnapshot(16 << 30, 8 << 30),
+    )
+    try:
+        index = DocumentLineIndex(
+            table,
+            chunk_chars=128,
+            resource_manager=manager,
+            cache_owner="document",
+        )
+        index.total_lines()
+
+        assert manager.get_cache("document", ("line-detail", 0)) is not None
+        manager.evict_owner("document")
+        assert index.resident_detail_bytes == 0
+    finally:
+        manager.shutdown()
+        source.close()
+
+
+def test_invalidate_rebuilds_only_from_containing_chunk(tmp_path: Path):
     source, _, table = make_table(tmp_path / "invalidate.txt", "aa\nbb\ncc\ndd")
     try:
         index = DocumentLineIndex(table, chunk_chars=4)
         assert index.total_lines() == 4
         table.insert(5, "\nX")
         index.invalidate_from_char(5)
-        assert index.indexed_char_end == 3
+        assert index.indexed_char_end == 4
         assert index.line_start(0) == 0
         assert index.line_start(1) == 3
         assert index.total_lines() == 5

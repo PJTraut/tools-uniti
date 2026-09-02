@@ -34,6 +34,7 @@ class UNITITextView(QAbstractScrollArea):
     cursorPositionChanged = Signal(int, int)
     zoomChanged = Signal(int)
     wrapChanged = Signal(bool)
+    navigationRequested = Signal(str, bool)
 
     def __init__(self, state: EditorState, parent=None) -> None:
         super().__init__(parent)
@@ -60,6 +61,7 @@ class UNITITextView(QAbstractScrollArea):
         self._last_click_position = (0.0, 0.0)
         self._preedit_text = ""
         self._match_index = MatchIndex(())
+        self._progressive_navigation = False
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
         self.setMouseTracking(True)
@@ -166,6 +168,9 @@ class UNITITextView(QAbstractScrollArea):
     @property
     def document(self):
         return self.state.document
+
+    def set_progressive_navigation(self, enabled: bool) -> None:
+        self._progressive_navigation = bool(enabled)
 
     def set_match_index(self, match_index: MatchIndex | MatchStore | None) -> None:
         self._match_index = MatchIndex(()) if match_index is None else match_index
@@ -727,6 +732,10 @@ class UNITITextView(QAbstractScrollArea):
         elif primary and key in (Qt.Key.Key_Home, Qt.Key.Key_Up):
             self.state.move_document_start(selecting=selecting)
         elif primary and key in (Qt.Key.Key_End, Qt.Key.Key_Down):
+            if self._progressive_navigation:
+                self.navigationRequested.emit("document_end", selecting)
+                event.accept()
+                return
             self.state.move_document_end(selecting=selecting)
         elif key == Qt.Key.Key_PageUp:
             self.state.move_page(

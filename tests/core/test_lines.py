@@ -15,14 +15,15 @@ def test_line_index_records_mixed_line_starts(tmp_path: Path):
         assert index.line_start(3) == 7
 
 
-def test_line_offsets_use_compact_unsigned_64_bit_array(tmp_path: Path):
+def test_line_offsets_use_bounded_chunk_details(tmp_path: Path):
     path = tmp_path / "lines.txt"
-    path.write_bytes(b"a\nb\n")
+    path.write_bytes(b"\n" * 2_000_000)
     with ByteSource.open(path) as source:
-        index = LineIndex(source, "utf-8")
-        index.total_lines()
-        assert index._starts.typecode == "Q"
-        assert index._starts.itemsize == 8
+        index = LineIndex(source, "utf-8", detail_budget_bytes=2 << 20)
+        assert index.total_lines() == 2_000_001
+        assert index.line_start(1_900_000) == 1_900_000
+        assert index.summary_bytes < 1 << 20
+        assert index.resident_detail_bytes <= 2 << 20
 
 
 def test_crlf_crossing_decode_windows_is_one_line_ending(tmp_path: Path):

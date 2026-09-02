@@ -135,3 +135,22 @@ def test_streaming_mapping_builds_checkpoints_without_populating_cache(tmp_path:
             assert manager.cache.used_bytes == 0
     finally:
         manager.shutdown()
+
+
+def test_snapshot_mapping_progress_can_be_published_without_rescanning(tmp_path: Path):
+    path = tmp_path / "published-map.txt"
+    path.write_text("é" * 100_000, encoding="utf-8")
+    with ByteSource.open(path) as source:
+        live = OffsetMapper(source, "utf-8", checkpoint_bytes=4096)
+        background = OffsetMapper(source.fork(), "utf-8", checkpoint_bytes=4096)
+        try:
+            assert background.total_chars(intent=ReadIntent.STREAMING) == 100_000
+
+            assert live.publish_progress(
+                background.checkpoints,
+                complete=background.complete,
+            )
+            assert live.complete
+            assert live.char_to_byte(90_000) == 180_000
+        finally:
+            background._source.close()

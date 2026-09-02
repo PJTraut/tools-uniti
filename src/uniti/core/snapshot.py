@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .byte_source import ByteSource
 from .file_identity import FileIdentity
-from .offsets import OffsetMapper, ReadIntent
+from .offsets import OffsetCheckpoint, OffsetMapper, ReadIntent
 from .pieces import (
     AnnotatedChunk,
     AnnotatedText,
@@ -66,6 +66,14 @@ class PieceTableSnapshot:
     @property
     def piece_count(self) -> int:
         return self._table.piece_count
+
+    @property
+    def offset_checkpoints(self) -> tuple[OffsetCheckpoint, ...]:
+        return self._table._mapper.checkpoints
+
+    @property
+    def offset_mapping_complete(self) -> bool:
+        return self._table._mapper.complete
 
     def read(
         self,

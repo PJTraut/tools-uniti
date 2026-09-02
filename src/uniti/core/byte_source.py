@@ -93,23 +93,17 @@ class ByteSource:
         return data
 
     def fork(self) -> "ByteSource":
-        """Duplicate the captured file identity without reopening its path."""
+        """Duplicate the captured file identity with bounded seek/read access."""
 
         self._ensure_open()
         descriptor = os.dup(self._handle.fileno())
         handle = os.fdopen(descriptor, "rb", closefd=True)
         try:
-            mapping: mmap.mmap | None = None
-            if self._mapping is not None and self._size > 0:
-                try:
-                    mapping = mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ)
-                except (OSError, ValueError, BufferError):
-                    mapping = None
             return ByteSource(
                 self._path,
                 handle,
                 self._size,
-                mapping,
+                None,
                 self._io_lock,
             )
         except Exception:

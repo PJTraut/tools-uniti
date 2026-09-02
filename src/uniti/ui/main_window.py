@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from concurrent.futures import Future
 from dataclasses import dataclass, replace as dataclass_replace
 import os
 from pathlib import Path
+import sys
 import weakref
 
 from PySide6.QtCore import QEvent, Qt, QTimer
@@ -35,6 +37,11 @@ from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
+from uniti.core.index_jobs import (
+    LineNavigationResult,
+    build_line_index_batch,
+    resolve_line_in_batch,
+)
 from uniti.core.text_format import (
     EOLPolicy,
     EncodingProfile,
@@ -48,7 +55,17 @@ from uniti.core.text_inspection import (
     inspect_source,
     preview_source,
 )
-from uniti.resources import ResourceManager, TaskContext, TaskHandle, TaskKind, TaskSpec
+from uniti.resources import (
+    MemorySnapshot,
+    ResourceManager,
+    TaskAdmissionError,
+    TaskContext,
+    TaskHandle,
+    TaskKind,
+    TaskSpec,
+    WorkPriority,
+    probe_memory,
+)
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
 from uniti.ui.file_format_dialogs import (
@@ -112,6 +129,15 @@ class _EOLJob:
     view_ref: weakref.ReferenceType
     document: Document
     identity: FileIdentity
+
+
+@dataclass(frozen=True, slots=True)
+class _NavigationJob:
+    handle: TaskHandle[LineNavigationResult]
+    view_ref: weakref.ReferenceType
+    document: Document
+    revision: int
+    selecting: bool
 
 
 class UNITIMainWindow(QMainWindow):
@@ -186,15 +212,30 @@ class UNITIMainWindow(QMainWindow):
         self._eol_timer = QTimer(self)
         self._eol_timer.setInterval(80)
         self._eol_timer.timeout.connect(self._poll_eol_jobs)
+        self._navigation_jobs: dict[str, _NavigationJob] = {}
+        self._navigation_timer = QTimer(self)
+        self._navigation_timer.setInterval(20)
+        self._navigation_timer.timeout.connect(self._poll_navigation_jobs)
         self._resource_timer = QTimer(self)
         self._resource_timer.setInterval(1000)
         self._resource_timer.timeout.connect(self._observe_resource_pressure)
+        self._resource_probe_future: Future[MemorySnapshot] | None = None
         self._resource_timer.start()
         self._build_menus()
 
     def _observe_resource_pressure(self) -> None:
+        future = self._resource_probe_future
+        if future is None:
+            self._resource_probe_future = self._resources.workers.submit(
+                WorkPriority.PREFETCH,
+                probe_memory,
+            )
+            return
+        if not future.done():
+            return
+        self._resource_probe_future = None
         try:
-            self._resources.observe_memory()
+            self._resources.observe_memory(future.result())
         except Exception:
             # Memory telemetry must never interfere with editing.
             return
@@ -480,6 +521,7 @@ class UNITIMainWindow(QMainWindow):
                 )
 
     def _connect_view(self, view: UNITITextView) -> None:
+        view.set_progressive_navigation(True)
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
         view.cursorPositionChanged.connect(self._status.update_cursor)
         view.zoomChanged.connect(
@@ -488,6 +530,13 @@ class UNITIMainWindow(QMainWindow):
         view.wrapChanged.connect(
             lambda enabled, view=view: self._on_view_wrap_changed(view, enabled)
         )
+        view.navigationRequested.connect(
+            lambda operation, selecting, view=view: self._on_navigation_requested(
+                view,
+                operation,
+                selecting,
+            )
+        )
         for definition in self._command_registry.definitions():
             if definition.scope == CommandScope.EDITOR:
                 view.addAction(self._command_actions[definition.command_id])
@@ -495,6 +544,9 @@ class UNITIMainWindow(QMainWindow):
     def _move_editor(self, method_name: str) -> None:
         view = self.current_view
         if view is None or not view.isEnabled():
+            return
+        if method_name == "move_document_end":
+            self.go_to_document_end()
             return
         getattr(view.state, method_name)()
         view._state_changed()
@@ -680,6 +732,11 @@ class UNITIMainWindow(QMainWindow):
             view.set_soft_wrap(enabled)
 
     def _on_view_state_changed(self, view: UNITITextView) -> None:
+        if any(
+            job.view_ref() is view and job.revision != view.document.revision
+            for job in self._navigation_jobs.values()
+        ):
+            self._cancel_navigation(view)
         index = self._tabs.indexOf(view)
         if index >= 0:
             self._tabs.setTabText(index, self._tab_label(view))
@@ -889,17 +946,176 @@ class UNITIMainWindow(QMainWindow):
             raise
         view.setFocus()
 
+    @staticmethod
+    def _build_navigation_result(
+        snapshot,
+        target_line: int | None,
+        context: TaskContext,
+    ) -> LineNavigationResult:
+        try:
+            batch = build_line_index_batch(
+                snapshot,
+                start_char=0,
+                max_chars=sys.maxsize,
+                context=context,
+            )
+            if target_line is not None:
+                result = resolve_line_in_batch(snapshot, batch, target_line)
+            elif not batch.complete:
+                result = LineNavigationResult(batch, None)
+            else:
+                total_lines = 1
+                if batch.summaries:
+                    final = batch.summaries[-1]
+                    total_lines += (
+                        final.line_count_before + final.line_starts_in_chunk
+                    )
+                seeded = resolve_line_in_batch(snapshot, batch, total_lines - 1)
+                result = LineNavigationResult(
+                    seeded.batch,
+                    batch.indexed_char_end,
+                )
+            return dataclass_replace(
+                result,
+                source_checkpoints=snapshot.piece_table.offset_checkpoints,
+                source_mapping_complete=snapshot.piece_table.offset_mapping_complete,
+            )
+        finally:
+            snapshot.close()
+
+    def _schedule_navigation(
+        self,
+        view: UNITITextView,
+        *,
+        target_line: int | None,
+        selecting: bool = False,
+    ) -> bool:
+        self._cancel_navigation(view)
+        snapshot = view.document.snapshot()
+        revision = view.document.revision
+        spec = TaskSpec.create(
+            TaskKind.NAVIGATION,
+            foreground=True,
+            document_key=str(id(view.document)),
+            revision=revision,
+            estimated_memory_bytes=4 << 20,
+        )
+        try:
+            handle = self._resources.tasks.submit(
+                spec,
+                lambda context: self._build_navigation_result(
+                    snapshot,
+                    target_line,
+                    context,
+                ),
+            )
+        except TaskAdmissionError:
+            snapshot.close()
+            return False
+        handle.future.add_done_callback(lambda _future: snapshot.close())
+        self._navigation_jobs[spec.task_id] = _NavigationJob(
+            handle,
+            weakref.ref(view),
+            view.document,
+            revision,
+            selecting,
+        )
+        self._navigation_timer.start()
+        return True
+
+    def _cancel_navigation(self, view: UNITITextView) -> None:
+        for task_id, job in tuple(self._navigation_jobs.items()):
+            if job.view_ref() is not view:
+                continue
+            self._navigation_jobs.pop(task_id, None)
+            job.handle.cancel()
+        if not self._navigation_jobs:
+            self._navigation_timer.stop()
+
+    def _poll_navigation_jobs(self) -> None:
+        for task_id, job in tuple(self._navigation_jobs.items()):
+            if not job.handle.done:
+                continue
+            self._navigation_jobs.pop(task_id, None)
+            view = job.view_ref()
+            if (
+                view is None
+                or self._tabs.indexOf(view) < 0
+                or view.document is not job.document
+                or view.document.revision != job.revision
+            ):
+                continue
+            try:
+                result = job.handle.future.result()
+            except Exception:
+                continue
+            if result.target_char is None:
+                continue
+            if result.source_checkpoints:
+                view.document.offset_mapper.publish_progress(
+                    result.source_checkpoints,
+                    complete=result.source_mapping_complete,
+                )
+            if not view.document.document_line_index.publish(
+                result.batch,
+                expected_revision=job.revision,
+            ):
+                continue
+            view.document.break_history_coalescing()
+            if not job.selecting:
+                view.state.anchor = result.target_char
+            view.state.cursor = result.target_char
+            view.state._preferred_column = None
+            view._state_changed()
+        if not self._navigation_jobs:
+            self._navigation_timer.stop()
+
+    def _on_navigation_requested(
+        self,
+        view: UNITITextView,
+        operation: str,
+        selecting: bool,
+    ) -> None:
+        if view is not self.current_view or not view.isEnabled():
+            return
+        if operation == "document_end":
+            self.go_to_document_end(selecting=selecting)
+
+    def go_to_document_end(self, *, selecting: bool = False) -> bool:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return False
+        index = view.document.document_line_index
+        if index.complete or view.document.source.size <= 1 << 20:
+            view.state.move_document_end(selecting=selecting)
+            view._state_changed()
+            return True
+        return self._schedule_navigation(
+            view,
+            target_line=None,
+            selecting=selecting,
+        )
+
     def go_to_line(self, line_number: int) -> bool:
         view = self.current_view
         if view is None or not view.isEnabled() or line_number < 1:
             return False
-        try:
-            target = view.document.line_start(line_number - 1)
-        except ValueError:
+        target_line = line_number - 1
+        index = view.document.document_line_index
+        if (
+            target_line < index.indexed_line_count
+            or view.document.source.size <= 1 << 20
+        ):
+            try:
+                target = view.document.line_start(target_line)
+            except ValueError:
+                return False
+            view.state.move_to(target)
+            view._state_changed()
+            return True
+        if index.complete:
             return False
-        view.state.move_to(target)
-        view._state_changed()
-        return True
+        return self._schedule_navigation(view, target_line=target_line)
 
     def go_to_line_dialog(self) -> bool:
         view = self.current_view
@@ -925,6 +1141,7 @@ class UNITIMainWindow(QMainWindow):
         initial_eol_complete: bool = True,
     ) -> None:
         old_document = view.document
+        self._cancel_navigation(view)
         self._cancel_eol_analysis(view)
         self._dismiss_eol_dialog(view)
         if self._recovery_manager is not None:
@@ -1418,6 +1635,7 @@ class UNITIMainWindow(QMainWindow):
             return False
         if not force and not self._confirm_close(widget):
             return False
+        self._cancel_navigation(widget)
         self._cancel_eol_analysis(widget)
         self._dismiss_eol_dialog(widget)
         self._eol_reports.pop(id(widget), None)
@@ -1448,7 +1666,11 @@ class UNITIMainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.close_all_documents(force=False):
+            self._navigation_timer.stop()
             self._resource_timer.stop()
+            if self._resource_probe_future is not None:
+                self._resource_probe_future.cancel()
+                self._resource_probe_future = None
             self._find_replace.shutdown()
             if self._recovery_manager is not None:
                 self._recovery_manager.shutdown()

@@ -63,7 +63,7 @@ def test_merge_scenario_repetitions_preserves_every_metric_sample():
 
 def test_navigation_child_writes_one_schema_result(tmp_path: Path):
     manifest = generate_corpus(
-        CorpusSpec(CorpusKind.ORDINARY_LINES, size_bytes=1 << 20),
+        CorpusSpec(CorpusKind.ORDINARY_LINES, size_bytes=2 << 20),
         tmp_path / "corpus",
     )
     manifest_path = tmp_path / "manifest.json"
@@ -91,6 +91,8 @@ def test_navigation_child_writes_one_schema_result(tmp_path: Path):
     assert result.scenario == "navigation"
     assert result.state is ResultState.PASS
     assert result.metrics["interaction_max_ms"].values[0] >= 0
+    assert result.metrics["gui_heartbeat_max_ms"].values[0] >= 0
+    assert result.metrics["navigation_completion_ms"].values[0] >= 0
     assert result.facts["integrity_ok"] is True
 
 

@@ -156,7 +156,14 @@ class Document:
             )
             edit_store = EditStore()
             piece_table = PieceTable(source, selected, mapper, edit_store)
-            document_line_index = DocumentLineIndex(piece_table)
+            if resource_manager is None:
+                document_line_index = DocumentLineIndex(piece_table)
+            else:
+                document_line_index = DocumentLineIndex(
+                    piece_table,
+                    resource_manager=resource_manager,
+                    cache_owner=cache_owner,
+                )
             return cls(
                 source,
                 encoding_info,
@@ -797,7 +804,14 @@ class Document:
                 mapper,
                 EditStore(),
             )
-            document_line_index = DocumentLineIndex(piece_table)
+            if self._resource_manager is None:
+                document_line_index = DocumentLineIndex(piece_table)
+            else:
+                document_line_index = DocumentLineIndex(
+                    piece_table,
+                    resource_manager=self._resource_manager,
+                    cache_owner=cache_owner,
+                )
             identity = FileIdentity.from_path(self._path)
         except Exception:
             if self._resource_manager is not None:

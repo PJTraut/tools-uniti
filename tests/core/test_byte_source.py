@@ -71,3 +71,16 @@ def test_fork_retains_open_file_after_path_replacement_and_parent_close(tmp_path
         assert not fork.uses_mmap
     finally:
         fork.close()
+
+
+def test_fork_from_mapped_parent_uses_bounded_file_io(tmp_path: Path):
+    path = tmp_path / "mapped-parent.bin"
+    path.write_bytes(b"x" * (2 << 20))
+    with ByteSource.open(path) as source:
+        assert source.uses_mmap
+        fork = source.fork()
+        try:
+            assert not fork.uses_mmap
+            assert fork.read(1 << 20, 1) == b"x"
+        finally:
+            fork.close()

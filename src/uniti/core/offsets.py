@@ -91,6 +91,60 @@ class OffsetMapper:
     def checkpoints(self) -> tuple[OffsetCheckpoint, ...]:
         return tuple(self._checkpoints)
 
+    def publish_progress(
+        self,
+        checkpoints: tuple[OffsetCheckpoint, ...],
+        *,
+        complete: bool,
+    ) -> bool:
+        """Adopt farther immutable-source mapping progress from a snapshot."""
+
+        if not checkpoints:
+            raise ValueError("mapping progress must include its initial checkpoint")
+        first = checkpoints[0]
+        if first != self._checkpoints[0]:
+            raise ValueError("mapping progress starts at a different visible source offset")
+        previous = first
+        for checkpoint in checkpoints[1:]:
+            if (
+                checkpoint.byte_offset <= previous.byte_offset
+                or checkpoint.char_offset <= previous.char_offset
+                or checkpoint.byte_offset > self._source.size
+            ):
+                raise ValueError("mapping progress checkpoints must be monotonic")
+            previous = checkpoint
+        final = checkpoints[-1]
+        if complete and final.byte_offset != self._source.size:
+            raise ValueError("complete mapping progress must reach source EOF")
+        if final.byte_offset < self._indexed_byte_end:
+            return False
+        if (
+            final.byte_offset == self._indexed_byte_end
+            and final.char_offset < self._indexed_char_end
+        ):
+            return False
+        self._checkpoints = list(checkpoints)
+        self._indexed_byte_end = final.byte_offset
+        self._indexed_char_end = final.char_offset
+        self._complete = bool(complete)
+        self._span_cache.clear()
+        return True
+
+    def publish_decoded_span(self, span: DecodedSpan) -> None:
+        """Advance mapping from a span already decoded by a streaming reader."""
+
+        if span.byte_start != self._indexed_byte_end:
+            raise ValueError("decoded span does not continue current mapping progress")
+        self._indexed_byte_end = span.byte_end
+        self._indexed_char_end += len(span.text)
+        checkpoint = OffsetCheckpoint(
+            self._indexed_byte_end,
+            self._indexed_char_end,
+        )
+        if checkpoint != self._checkpoints[-1]:
+            self._checkpoints.append(checkpoint)
+        self._complete = self._indexed_byte_end >= self._source.size
+
     def _advance(self, intent: ReadIntent = ReadIntent.RANDOM) -> None:
         if self._complete:
             return
