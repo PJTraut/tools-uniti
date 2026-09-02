@@ -125,6 +125,19 @@ def _iter_engine_matches(
     eof = False
     scanned = 0
     last_progress = 0
+    emitted_overlap: list[tuple[int, int]] = []
+
+    def should_emit(
+        record: MatchRecord,
+        replayed: list[tuple[int, int]],
+        emitted_this_pass: list[tuple[int, int]],
+    ) -> bool:
+        if record.span in replayed:
+            replayed.remove(record.span)
+            emitted_this_pass.append(record.span)
+            return False
+        emitted_this_pass.append(record.span)
+        return True
 
     while True:
         _check_cancelled(cancelled)
@@ -152,6 +165,8 @@ def _iter_engine_matches(
 
         _check_cancelled(cancelled)
         if eof:
+            replayed = list(emitted_overlap)
+            emitted_this_pass: list[tuple[int, int]] = []
             try:
                 matches = list(
                     _finditer(
@@ -168,6 +183,8 @@ def _iter_engine_matches(
                     record = _record_match(
                         match, buffer_start, include_captures=options.include_captures
                     )
+                    if not should_emit(record, replayed, emitted_this_pass):
+                        continue
                     yield record, match
                     emitted += 1
                     if options.max_matches is not None and emitted >= options.max_matches:
@@ -181,6 +198,8 @@ def _iter_engine_matches(
             return
 
         unsafe_start = len(buffer)
+        replayed = list(emitted_overlap)
+        emitted_this_pass = []
         try:
             matches = list(
                 _finditer(
@@ -197,12 +216,18 @@ def _iter_engine_matches(
                 if match.partial:
                     unsafe_start = min(unsafe_start, match.start())
                     break
-                if match.end() == len(buffer):
+                provisional_terminal_newline = (
+                    buffer.endswith("\n")
+                    and match.end() == len(buffer) - 1
+                )
+                if match.end() == len(buffer) or provisional_terminal_newline:
                     unsafe_start = min(unsafe_start, match.start())
                     break
                 record = _record_match(
                     match, buffer_start, include_captures=options.include_captures
                 )
+                if not should_emit(record, replayed, emitted_this_pass):
+                    continue
                 yield record, match
                 emitted += 1
                 if options.max_matches is not None and emitted >= options.max_matches:
@@ -219,6 +244,10 @@ def _iter_engine_matches(
                 "regex requires more retained context than allowed "
                 f"({options.max_context_chars:,} characters)"
             )
+        retained_start = buffer_start + context_start
+        emitted_overlap = [
+            span for span in emitted_this_pass if span[1] >= retained_start
+        ]
         buffer_start += context_start
         buffer = buffer[context_start:]
         search_pos = unsafe_start - context_start

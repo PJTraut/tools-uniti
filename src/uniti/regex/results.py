@@ -79,3 +79,20 @@ class MatchIndex:
             return None
         index = bisect_left(self._starts, position) - 1
         return len(self._records) - 1 if index < 0 else index
+
+
+def advance_result_index(
+    current: int | None,
+    count: int,
+    delta: int,
+) -> int | None:
+    """Advance by result identity, wrapping without relying on match spans."""
+    if count < 0:
+        raise ValueError("result count must be non-negative")
+    if count == 0:
+        return None
+    if current is None:
+        return 0 if delta >= 0 else count - 1
+    if current < 0 or current >= count:
+        raise IndexError(current)
+    return (current + delta) % count

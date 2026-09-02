@@ -59,6 +59,38 @@ def test_zero_width_search_progresses_across_windows(tmp_path: Path):
     assert [result.span for result in results] == [(0, 0), (1, 1), (2, 2)]
 
 
+@pytest.mark.parametrize(
+    ("pattern", "text", "expected"),
+    (
+        (r"(?=a)", "aaa", [(0, 0), (1, 1), (2, 2)]),
+        (r"^|$", "ab", [(0, 0), (2, 2)]),
+        (r"^|$", "a\na", [(0, 0), (3, 3)]),
+        (r"a$", "a\na", [(2, 3)]),
+        (r"a*?", "a\n", [(0, 0), (0, 1), (1, 1), (2, 2)]),
+        (r"(?m)^|$", "a\nb", [(0, 0), (1, 1), (2, 2), (3, 3)]),
+        (r"\b", "ab cd", [(0, 0), (2, 2), (3, 3), (5, 5)]),
+    ),
+)
+def test_zero_width_results_are_exact_across_tiny_windows(
+    tmp_path: Path,
+    pattern: str,
+    text: str,
+    expected: list[tuple[int, int]],
+):
+    path = tmp_path / "zero-boundary.txt"
+    path.write_text(text, encoding="utf-8")
+    with Document.open(path) as document:
+        results = list(
+            search_document(
+                document,
+                compile_pattern(pattern),
+                options=SearchOptions(window_chars=1),
+            )
+        )
+
+    assert [record.span for record in results] == expected
+
+
 def test_search_can_cancel_before_engine_work(tmp_path: Path):
     path = tmp_path / "cancel.txt"
     path.write_text("abc" * 1000, encoding="utf-8")

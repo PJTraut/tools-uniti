@@ -61,3 +61,35 @@ def test_match_store_rejects_out_of_order_append():
             raise AssertionError("out-of-order match append was accepted")
     finally:
         store.close()
+
+
+def test_spilled_match_store_preserves_append_order_for_equal_spans():
+    store = MatchStore(memory_budget_bytes=1, page_size=1)
+    try:
+        for name in ("first", "second", "third"):
+            store.append(
+                MatchRecord(2, 2, (CaptureRecord(1, name, ((2, 2),)),))
+            )
+
+        assert store.spilled
+        assert [record.captures[0].name for record in store] == [
+            "first",
+            "second",
+            "third",
+        ]
+    finally:
+        store.close()
+
+
+def test_match_store_rejects_invalid_spans():
+    store = MatchStore()
+    try:
+        for record in (MatchRecord(-1, 0), MatchRecord(2, 1)):
+            try:
+                store.append(record)
+            except ValueError as error:
+                assert "span" in str(error)
+            else:
+                raise AssertionError("invalid match span was accepted")
+    finally:
+        store.close()

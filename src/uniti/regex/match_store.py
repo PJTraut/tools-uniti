@@ -128,6 +128,8 @@ class MatchStore:
 
     def append(self, record: MatchRecord) -> None:
         self._ensure_open()
+        if record.start < 0 or record.end < record.start:
+            raise ValueError("invalid match span")
         if self._last_start is not None and record.start < self._last_start:
             raise ValueError("match records must be appended in sorted order")
         estimate = self._estimate(record)

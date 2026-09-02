@@ -1,4 +1,4 @@
-from uniti.regex.results import CaptureRecord, MatchRecord
+from uniti.regex.results import CaptureRecord, MatchRecord, advance_result_index
 
 
 def test_match_record_keeps_only_compact_absolute_spans():
@@ -40,3 +40,27 @@ def test_match_index_handles_empty_and_zero_width_records():
 
     zero = MatchIndex((MatchRecord(3, 3),))
     assert zero.intersecting(3, 4) == (MatchRecord(3, 3),)
+
+
+def test_result_index_navigation_always_advances_when_multiple_results_exist():
+    assert advance_result_index(None, 3, 1) == 0
+    assert advance_result_index(0, 3, 1) == 1
+    assert advance_result_index(2, 3, 1) == 0
+    assert advance_result_index(0, 3, -1) == 2
+    assert advance_result_index(0, 1, 1) == 0
+    assert advance_result_index(None, 0, 1) is None
+
+
+def test_match_index_preserves_input_order_for_equal_spans():
+    from uniti.regex.results import MatchIndex
+
+    records = tuple(
+        MatchRecord(2, 2, (CaptureRecord(1, name, ((2, 2),)),))
+        for name in ("first", "second", "third")
+    )
+
+    assert [record.captures[0].name for record in MatchIndex(records).records] == [
+        "first",
+        "second",
+        "third",
+    ]
