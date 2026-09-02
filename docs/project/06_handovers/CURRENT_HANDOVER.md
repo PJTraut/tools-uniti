@@ -16,7 +16,7 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16/a17/a18 tags: none
 
-a18 is implemented, verified, and synchronized on local and remote `main`. The proposed a19 design follows locally and awaits written review; no tag or later push is implied.
+a18 is implemented, verified, and synchronized on local and remote `main`. The a19 design is approved and its test-first execution plan follows locally; no tag or later push is implied.
 
 ## Canonical records
 
@@ -26,7 +26,8 @@ a18 is implemented, verified, and synchronized on local and remote `main`. The p
 - [Development and performance workflow](../01_current/DEVELOPMENT.md)
 - [Ordered roadmap](../02_plans/ROADMAP.md)
 - [Active a19 scope](../02_plans/v0.001a19-regex-intelligence-alpha.md)
-- [Proposed a19 design](../02_plans/v0.001a19-regex-intelligence-design.md)
+- [Approved a19 design](../02_plans/v0.001a19-regex-intelligence-design.md)
+- [Active a19 execution plan](../02_plans/v0.001a19-regex-intelligence-implementation.md)
 - [Implemented a18 milestone](../03_implemented/milestones/2026-09-02-uniti-v0.001a18-large-file-alpha.md)
 - [Implemented a18 design](../03_implemented/designs/2026-09-02-uniti-v0.001a18-large-file-design.md)
 - [Implemented a18 execution plan](../03_implemented/milestones/2026-09-02-uniti-v0.001a18-large-file-implementation.md)
@@ -64,4 +65,4 @@ Post-a18 verification reproduced an intermittent ordering race in task-status de
 
 ## Next safe action
 
-Review and approve the proposed a19 design, then create its test-first executable implementation plan before changing regex behavior. Do not create or move a release tag unless separately requested.
+Execute the active a19 implementation plan from Task 1, making the task-status delivery race monotonic before adding new asynchronous regex work. Use RED -> GREEN -> refactor and the focused commit boundary in every task. Do not create or move a release tag unless separately requested.

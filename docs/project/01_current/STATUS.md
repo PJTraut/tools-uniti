@@ -9,7 +9,7 @@ Date: 2026-09-02
 | Repository branch | `main` |
 | Remote baseline | `origin/main` at `84407e3` |
 | Verified a18 implementation sequence | `d56da90` through `40009ad`, followed by the recorded freeze evidence |
-| Local integration state | local and remote `main` contain the verified a18 closure; the proposed a19 design follows locally and awaits written review |
+| Local integration state | local and remote `main` contain the verified a18 closure; the approved a19 design and execution plan follow locally |
 | Latest implemented milestone | `v0.001a18` — Large-File Alpha |
 | Active product milestone | `v0.001a19` — Regex Intelligence Alpha |
 | Display/package metadata | `v0.001a18` / `0.1a18` |
@@ -80,4 +80,4 @@ The a18 milestone, design, and implementation plan are retained in [Implemented]
 
 ## Post-freeze baseline finding
 
-Fresh verification while designing a19 exposed an intermittent status-delivery ordering defect in `tests/ui/test_progressive_save.py::test_progressive_save_as_locks_only_source_and_cancel_preserves_target`. Concurrent Qt and worker emitters can deliver an older `SAVE queued/no-progress` snapshot after newer `SAVE Writing` progress, causing the status bar to clear the active operation. An instrumented diagnostic run reproduced the inversion after eight passing iterations. The save task, cancellation, and target-preservation paths remain unaffected; the defect is in presentation of task progress. The proposed a19 asynchronous-task design requires the GUI to refresh from latest coordinator state rather than trust cross-thread snapshot delivery order.
+Fresh verification while designing a19 exposed an intermittent status-delivery ordering defect in `tests/ui/test_progressive_save.py::test_progressive_save_as_locks_only_source_and_cancel_preserves_target`. Concurrent Qt and worker emitters can deliver an older `SAVE queued/no-progress` snapshot after newer `SAVE Writing` progress, causing the status bar to clear the active operation. An instrumented diagnostic run reproduced the inversion after eight passing iterations. The save task, cancellation, and target-preservation paths remain unaffected; the defect is in presentation of task progress. The approved a19 asynchronous-task design and execution plan require the GUI to refresh from latest coordinator state rather than trust cross-thread snapshot delivery order; this is Task 1 before regex behavior changes.
