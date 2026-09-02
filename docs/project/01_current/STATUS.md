@@ -7,16 +7,16 @@ Date: 2026-09-02
 | Item | Current value |
 |---|---|
 | Repository branch | `main` |
-| Remote baseline | `origin/main` at `052f733` |
-| Verified a17 implementation checkpoint | `c016007` — a17 acceptance matrix, deep text-integrity check, and combined smoke |
-| Local integration state | `main` contains unpushed a16 and a17 completion commits after `origin/main`; push remains a separate user decision |
+| Remote baseline | `origin/main` at `e36348d` |
+| Verified a17 implementation checkpoint | `e36348d` — a17 implementation and documentation closure |
+| Local integration state | local `main` contains the proposed a18 design after the synchronized remote a17 closure; later integration remains a separate decision |
 | Latest implemented milestone | `v0.001a17` — Text Integrity Alpha |
 | Active product milestone | `v0.001a18` — Large-File Alpha |
 | Display/package metadata | `v0.001a17` / `0.1a17` |
 | Latest immutable release tag | `v0.001a15` at `10f419e` |
 | Queued milestones | `v0.001a19` through `v0.001a23` |
 
-The `v0.001a15` tag remains immutable. a16 and a17 are implemented on local `main` without new tags. No tag or push is implied by milestone completion.
+The `v0.001a15` tag remains immutable. a16 and a17 are implemented on `main` without new tags. No future tag or push is implied by milestone completion.
 
 ## Implemented a17 behavior
 

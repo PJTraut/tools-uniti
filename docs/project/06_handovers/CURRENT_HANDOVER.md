@@ -8,15 +8,15 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
 - Canonical branch: `main`
-- Remote baseline: `origin/main` at `052f733`
-- Final a17 implementation checkpoint: `c016007` — acceptance matrix, text-integrity self-check, and combined smoke
+- Remote baseline: `origin/main` at `e36348d`
+- Final a17 closure checkpoint: `e36348d` — implementation, verification, and documentation closure
 - Latest implemented milestone: `v0.001a17` — Text Integrity Alpha
 - Active milestone: `v0.001a18` — Large-File Alpha
 - Current display/package metadata: `v0.001a17` / `0.1a17`
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16/a17 tags: none
 
-Local `main` contains the completed a16 and a17 sequences after `origin/main`. No tag or push is implied by milestone completion. Inspect `git status` and `git log origin/main..HEAD`, then obtain or confirm the user's integration decision before changing the remote.
+Local `main`, `origin/main`, and GitHub `main` were synchronized at `e36348d` after the completed a16 and a17 sequences were pushed normally. Local a18 design work follows that remote closure and awaits its own review/integration decision. No later tag or push is implied by milestone completion. Inspect current Git state before any future integration.
 
 ## Canonical records
 
@@ -26,6 +26,7 @@ Local `main` contains the completed a16 and a17 sequences after `origin/main`. N
 - [Development workflow](../01_current/DEVELOPMENT.md)
 - [Ordered roadmap](../02_plans/ROADMAP.md)
 - [Active a18 scope](../02_plans/v0.001a18-large-file-alpha.md)
+- [Proposed a18 design](../02_plans/v0.001a18-large-file-design.md)
 - [Implemented a17 milestone](../03_implemented/milestones/2026-09-01-uniti-v0.001a17-text-integrity-alpha.md)
 - [Implemented a17 design](../03_implemented/designs/2026-09-01-uniti-v0.001a17-text-integrity-design.md)
 - [Implemented a17 execution plan](../03_implemented/milestones/2026-09-01-uniti-v0.001a17-text-integrity-implementation.md)
@@ -59,4 +60,4 @@ Extension-sensed file-type profiles and syntax highlighting remain parked with n
 
 ## Next safe action
 
-Review the a17 verification and documentation closure, then—only with explicit user confirmation—perform a normal non-force push of `main`. After integration, turn the approved a18 scope into an evidence-based design and test-first executable implementation plan before changing large-file behavior. Do not tag a17 unless separately requested.
+Review and approve the written a18 design, then create its test-first executable implementation plan before changing large-file behavior. Do not tag a17 unless separately requested.
