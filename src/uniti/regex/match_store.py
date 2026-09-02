@@ -6,6 +6,7 @@ from array import array
 import pickle
 import struct
 import tempfile
+import uuid
 from collections.abc import Iterator, Sequence
 
 from .results import MatchRecord
@@ -49,6 +50,7 @@ class MatchStore:
             raise ValueError("page_size must be positive")
         self._budget = int(memory_budget_bytes)
         self._page_size = int(page_size)
+        self._store_id = uuid.uuid4().hex
         self.document_revision = int(document_revision)
         self._memory_records: list[MatchRecord] = []
         self._memory_estimate = 0
@@ -66,6 +68,10 @@ class MatchStore:
     @property
     def records(self) -> Sequence[MatchRecord]:
         return self._records_view
+
+    @property
+    def store_id(self) -> str:
+        return self._store_id
 
     @property
     def spilled(self) -> bool:

@@ -262,54 +262,33 @@ def resolve_captures(
     context_chars: int = 65_536,
     timeout: float | None = 0.25,
 ) -> MatchRecord:
-    """Resolve capture spans for one stored match using bounded local context.
-
-    The match store can omit captures for millions of results. The capture
-    inspector calls this only for the current match. Patterns needing more
-    than *context_chars* around the stored match retain their whole-match span
-    but return no detailed captures rather than forcing a document-scale read.
-    """
+    """Compatibility adapter over the bounded capture-report resolver."""
 
     if record.captures or compiled.groups == 0:
         return record
     if context_chars <= 0:
         raise ValueError("context_chars must be positive")
-    context_start = max(0, record.start - context_chars)
-    target_end = record.end + context_chars
-    parts: list[str] = []
-    expected = context_start
-    for chunk_start, text in document.iter_text(start=context_start, chunk_chars=65_536):
-        if chunk_start != expected:
-            raise RuntimeError("document iterator returned a discontinuous capture window")
-        remaining = target_end - expected
-        if remaining <= 0:
-            break
-        piece = text[:remaining]
-        parts.append(piece)
-        expected += len(piece)
-        if len(piece) < len(text) or expected >= target_end:
-            break
-    window = "".join(parts)
-    local_start = record.start - context_start
-    try:
-        matches = _finditer(
+    if timeout is not None and timeout <= 0:
+        raise ValueError("timeout must be positive")
+
+    from .captures import MAX_CAPTURE_CONTEXT_CHARS, _resolve_exact_match
+
+    with document.snapshot() as snapshot:
+        resolution = _resolve_exact_match(
+            snapshot,
             compiled,
-            window,
-            pos=local_start,
-            partial=False,
+            record,
+            context_chars=min(context_chars, MAX_CAPTURE_CONTEXT_CHARS),
             timeout=timeout,
+            cancelled=None,
         )
-        for match in matches:
-            absolute_start = context_start + match.start()
-            if absolute_start > record.start:
-                break
-            if absolute_start == record.start and context_start + match.end() == record.end:
-                return _record_match(match, context_start, include_captures=True)
-    except TimeoutError as exc:
-        if isinstance(exc, RegexSearchTimeout):
-            raise
-        raise RegexSearchTimeout("regex capture resolution timed out") from exc
-    return record
+    if resolution.match is None:
+        return record
+    return _record_match(
+        resolution.match,
+        resolution.context_start,
+        include_captures=True,
+    )
 
 def search_document(
     document: Document,

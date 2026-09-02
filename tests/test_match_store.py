@@ -19,6 +19,7 @@ def test_match_store_behaves_like_navigation_index_before_spill():
             store.append(record)
 
         assert len(store) == 3
+        assert len(store.store_id) == 32
         assert store.document_revision == 7
         assert store.records[1].span == (10, 13)
         assert [record.span for record in store.intersecting(2, 11)] == [(0, 3), (10, 13)]
@@ -27,6 +28,28 @@ def test_match_store_behaves_like_navigation_index_before_spill():
         assert not store.spilled
     finally:
         store.close()
+
+
+def test_match_store_identity_is_unique_and_survives_spill_and_close():
+    store = MatchStore(memory_budget_bytes=1, page_size=1)
+    other = MatchStore(memory_budget_bytes=1, page_size=1)
+    store_id = store.store_id
+    try:
+        store.append(MatchRecord(0, 1))
+        assert store.spilled
+        assert store.store_id == store_id
+        assert other.store_id != store_id
+        try:
+            store.store_id = "replacement"
+        except AttributeError:
+            pass
+        else:
+            raise AssertionError("match-store identity was mutable")
+    finally:
+        store.close()
+        other.close()
+
+    assert store.store_id == store_id
 
 
 def test_match_store_spills_records_but_keeps_random_access():

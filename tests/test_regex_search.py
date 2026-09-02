@@ -5,6 +5,7 @@ import regex
 
 from uniti.core.document import Document
 from uniti.regex.engine import compile_pattern
+from uniti.regex.results import MatchRecord
 from uniti.regex.search import (
     RegexSearchCancelled,
     RegexSearchTimeout,
@@ -225,3 +226,84 @@ def test_deferred_capture_spans_can_be_resolved_for_current_match(tmp_path: Path
         resolved = resolve_captures(doc, compiled, first)
     assert resolved.captures[0].name == "digit"
     assert resolved.captures[0].spans == ((0, 1), (1, 2), (2, 3))
+
+
+def test_deferred_capture_adapter_refuses_a_match_above_the_report_bound(
+    tmp_path: Path,
+):
+    from uniti.regex.search import resolve_captures
+
+    path = tmp_path / "oversized-captures.txt"
+    path.write_text("a" * 65_537, encoding="utf-8")
+    compiled = compile_pattern(r"(a+)")
+    with Document.open(path) as doc:
+        resolved = resolve_captures(doc, compiled, MatchRecord(0, 65_537))
+
+    assert resolved.span == (0, 65_537)
+    assert resolved.captures == ()
+
+
+def test_deferred_capture_adapter_preserves_all_repeated_spans(tmp_path: Path):
+    from uniti.regex.search import resolve_captures
+
+    path = tmp_path / "repeated-captures.txt"
+    path.write_text("aaaaaa", encoding="utf-8")
+    compiled = compile_pattern(r"(?P<item>a)+")
+    with Document.open(path) as doc:
+        resolved = resolve_captures(doc, compiled, MatchRecord(0, 6))
+
+    assert resolved.captures[0].spans == tuple((index, index + 1) for index in range(6))
+
+
+def test_deferred_capture_adapter_honors_custom_context_bound(tmp_path: Path):
+    from uniti.regex.search import resolve_captures
+
+    path = tmp_path / "context-captures.txt"
+    path.write_text("xxa", encoding="utf-8")
+    compiled = compile_pattern(r"(?<=xx)(a)")
+    with Document.open(path) as doc:
+        resolved = resolve_captures(
+            doc,
+            compiled,
+            MatchRecord(2, 3),
+            context_chars=1,
+        )
+
+    assert resolved.captures == ()
+
+
+def test_deferred_capture_adapter_honors_custom_timeout(tmp_path: Path):
+    from uniti.regex.search import resolve_captures
+
+    observed: list[float | None] = []
+
+    class FakeMatch:
+        def span(self, group: int = 0) -> tuple[int, int]:
+            return (0, 1)
+
+        def spans(self, group: int) -> list[tuple[int, int]]:
+            return [(0, 1)]
+
+    class FakeCompiled:
+        pattern = "(x)"
+        groups = 1
+        groupindex = {}
+
+        def finditer(self, text: str, **options):
+            observed.append(options.get("timeout"))
+            match = FakeMatch()
+            match.re = self
+            return iter((match,))
+
+    path = tmp_path / "timeout-captures.txt"
+    path.write_text("x", encoding="utf-8")
+    with Document.open(path) as doc:
+        resolved = resolve_captures(
+            doc,
+            FakeCompiled(),
+            MatchRecord(0, 1),
+            timeout=0.123,
+        )
+
+    assert resolved.captures[0].spans == ((0, 1),)
+    assert observed == [0.123]
