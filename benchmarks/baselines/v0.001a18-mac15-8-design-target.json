@@ -1,0 +1,178 @@
+{
+  "evaluations": [
+    {
+      "messages": [],
+      "scenario": "open_first_paint",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "navigation",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "search_sparse",
+      "state": "PASS"
+    }
+  ],
+  "host": {
+    "architecture": "arm64",
+    "available_memory": 16382836736,
+    "corpus_schema": 1,
+    "cpu_model": "Apple M3 Max",
+    "display_refresh_hz": null,
+    "display_scale": null,
+    "filesystem_type": "/",
+    "free_disk": 300528795648,
+    "git_commit": "99e959788924b660a1ef7a050a9e80bd1165a811",
+    "load_per_logical_core": 0.390655517578125,
+    "logical_cores": 16,
+    "physical_cores": 16,
+    "physical_memory": 51539607552,
+    "platform": "darwin",
+    "platform_release": "25.6.0",
+    "power_state": null,
+    "process_rss": 27934720,
+    "python_version": "3.12.4",
+    "qt_version": "6.11.2",
+    "schema": 1,
+    "sparse_files": true,
+    "temp_root": "/private/var/folders/lh/jxs8qjhx1k54ks8n0dwgnmgc0000gp/T",
+    "thermal_state": null,
+    "uniti_version": "0.1a18"
+  },
+  "mode": "baseline",
+  "scenarios": [
+    {
+      "facts": {
+        "integrity_ok": true,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 1,
+        "source_bytes": 1073741824
+      },
+      "messages": [],
+      "metrics": {
+        "open_to_usable_ms": {
+          "values": [
+            14.51712497510016
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            4.015625
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            4.015625
+          ]
+        }
+      },
+      "scenario": "open_first_paint",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "integrity_ok": true,
+        "lazy_source_navigation": true,
+        "mapped_bytes": 0,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 1,
+        "target_line": null,
+        "target_offset": 1073737716
+      },
+      "messages": [],
+      "metrics": {
+        "gui_heartbeat_max_ms": {
+          "values": [
+            0.0
+          ]
+        },
+        "interaction_max_ms": {
+          "values": [
+            0.2614579861983657
+          ]
+        },
+        "navigation_completion_ms": {
+          "values": [
+            0.2614579861983657
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            0.21875
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            0.21875
+          ]
+        }
+      },
+      "scenario": "navigation",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "cancelled": true,
+        "integrity_ok": true,
+        "matches": 2,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 1,
+        "spilled": false
+      },
+      "messages": [],
+      "metrics": {
+        "first_progress_ms": {
+          "values": [
+            1.5145420329645276
+          ]
+        },
+        "gui_heartbeat_max_ms": {
+          "values": [
+            0.3345420118421316
+          ]
+        },
+        "gui_heartbeat_p95_ms": {
+          "values": [
+            0.04254095256328583
+          ]
+        },
+        "interaction_max_ms": {
+          "values": [
+            0.13337493874132633
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            3.59375
+          ]
+        },
+        "progress_gap_ms": {
+          "values": [
+            1.9660419784486294
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            3.59375
+          ]
+        },
+        "search_completion_ms": {
+          "values": [
+            458.3674590103328
+          ]
+        }
+      },
+      "scenario": "search_sparse",
+      "schema": 1,
+      "state": "PASS"
+    }
+  ],
+  "schema": 1,
+  "state": "PASS",
+  "tier": "design_target"
+}

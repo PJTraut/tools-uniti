@@ -1,4 +1,4 @@
-"""Platform helpers for deterministic sparse benchmark fixtures."""
+"""Platform helper for bounded sparse validation fixtures."""
 
 from __future__ import annotations
 

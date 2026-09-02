@@ -1,7 +1,7 @@
 # UNITI Current Development Workflow
 
 Date: 2026-09-02
-Version: `v0.001a17` / `0.1a17`
+Version: `v0.001a18` / `0.1a18`
 
 ## Requirements and policy
 
@@ -97,12 +97,32 @@ Exit codes:
 
 ```bash
 .venv/bin/python -m pytest -q
-.venv/bin/python -m compileall -q src scripts tests
+.venv/bin/python -m compileall -q src scripts benchmarks tests
 .venv/bin/python -m uniti --self-check --deep
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m uniti --smoke
 .venv/bin/python -m uniti --smoke
 git diff --check
 ```
+
+The host-aware a18 user-experience suite uses the packaged policy table in `src/uniti/resources/performance_policy.toml`:
+
+```bash
+# 10 MiB, three isolated repetitions per daily-use scenario
+QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/performance_suite.py --tier quick
+
+# controlled 100 MiB freeze baseline
+QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/performance_suite.py \
+  --tier routine --mode baseline --output benchmarks/baselines/a18-routine.json
+
+# sparse 1 GiB lazy-open/design probe
+QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/performance_suite.py \
+  --tier design-target --mode baseline --output benchmarks/baselines/a18-design-target.json
+
+# real macOS window-system UX run
+.venv/bin/python scripts/performance_suite.py --tier quick --native-gui
+```
+
+Use `--scenario NAME` to isolate a workflow, `--compare BASELINE.json` only for a compatible host fingerprint, and `--temp-root PATH` only for an owned location with adequate capacity. `PASS`, `WARN`, `FAIL`, `INVALID`, and `NOT RUN` are distinct; never describe an ineligible or contended controlled run as passing.
 
 Qt-focused coverage:
 
@@ -113,7 +133,16 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
   tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-The final a17 freeze gate recorded `552 passed, 4 skipped`, a passing deep self-check with `text-integrity`, a passing offscreen combined smoke, and a passing native Cocoa combined smoke with a real shown-and-closed window. Disposable non-pytest dogfood exercised UTF-8 without BOM/CRLF, UTF-8 BOM/LF, Windows-1252/CRLF, UTF-16 LE without BOM, UTF-16 BE BOM, UTF-32 LE BOM, mixed EOL, and malformed UTF-8 through open, search, edit, Save, Save As, SHA-256 comparison, and second reopen. Before remote integration, confirm the working tree is clean and ensure the push is normal and fast-forward safe.
+The a18 freeze gate adds `large-file` to deep self-check and retains all a17 byte-integrity coverage. Its selected evidence is stored under `benchmarks/baselines/`: controlled 100 MiB routine, sparse 1 GiB design target, and native Cocoa 10 MiB quick runs. All required scenarios passed on the recorded Apple M3 Max host. Before remote integration, confirm the working tree is clean and ensure the push is normal and fast-forward safe.
+
+## Large-file change discipline
+
+- Long index, EOL, navigation, search, replacement-plan, and save work consumes a snapshot and publishes only for its captured revision/identity.
+- Use `TaskCoordinator` for admission, priorities, progress, cancellation, and background-pause semantics; do not create competing worker ownership.
+- Use `ReadIntent.STREAMING` for sequential scans that must not populate reusable decoded-span cache.
+- Account disposable caches by bytes and explicit priority; never put authoritative text, Undo/Redo, recovery, or unsaved state in cache.
+- Keep viewport and wrap details bounded. Do not restore one Python or Qt object per line, visual row, or match.
+- Add a deterministic scenario and integrity fact when changing a measured daily-use path. Threshold values change only in the packaged policy table after real-use evidence.
 
 ## Text-integrity change discipline
 
@@ -137,6 +166,6 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a17` is implemented without a new tag; `v0.001a18` is the active planned milestone.
+Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a18` is implemented without a new tag; `v0.001a19` is the active planned milestone.
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.

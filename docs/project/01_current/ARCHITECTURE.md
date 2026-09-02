@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
 Date: 2026-09-02
-Baseline: verified a17 implementation through `c016007` on `main`
+Baseline: verified a18 implementation through `99e9597` plus the a18 freeze tree on `main`
 
 ## Lifecycle boundary
 
@@ -82,11 +82,32 @@ QApplication / UNITIMainWindow
 
 `EditHistory` retains at most 50 immutable document transactions. When the oldest transaction is evicted, its state is folded into the retained baseline so modified/save-point semantics remain correct. Typing, backspace, and delete may coalesce while contiguous; cursor movement, selection changes, save, Undo/Redo, and explicit operations break coalescing. `Document.replace_many` applies all non-overlapping original-coordinate replacements as one transaction.
 
+`Document.snapshot()` captures one immutable revision and a forked source handle for background work. Index, navigation, EOL, search, replacement-plan, and save results publish only while their document revision and destination identity remain current. A stale result is discarded; it never replaces newer text or format state.
+
+## Resource and task authority
+
+`uniti.resources.ResourceManager` is the sole application authority for host profile, live resource state, disposable cache, worker capacity, admission, background pause, and observable task state. It uses the packaged schema-1 [`performance_policy.toml`](../../../src/uniti/resources/performance_policy.toml) rather than duplicating thresholds in UI or benchmark code.
+
+```text
+read-only host profile + one-second live samples
+    -> ResourceManager
+       -> ResourceState: Normal | Busy | Constrained | Critical
+       -> CacheManager byte budget and priority eviction
+       -> PriorityWorkerPool active worker limit
+       -> TaskCoordinator admission / priority / cancellation / progress
+    -> TaskBridge queued Qt snapshots
+       -> status text, task progress, diagnostics, nonmodal pressure notice
+```
+
+Normal hosts use up to eight workers while reserving one logical core for the GUI. Busy and constrained states reduce worker/cache capacity; critical state clears disposable cache and admits only one worker. Recovery requires two healthier samples to prevent oscillation. `Pause Background Work` defers index, EOL, and prefetch tasks but never foreground Save, navigation, search, replacement, or recovery work.
+
+Cache entries carry explicit intent—visible, nearby, search, index, recent, inactive, or stale—and are byte-accounted. Closing a document evicts only its disposable entries. User text, edit history, recovery state, and unsaved changes are never disposable cache.
+
 ## Text-format authority and inspection
 
 `core.text_format` owns the exact input/output grammar. Encoding profiles are indivisible values: `UTF-8`, `UTF-8 BOM`, `Windows-1252`, UTF-16 LE/BE with and without BOM, and UTF-32 LE/BE with and without BOM. Omission of `BOM` always means no BOM. Line endings are a separate `PRESERVE | LF | CRLF | CR` policy, never a hidden property of an encoding choice.
 
-`core.text_inspection` performs bounded preview decoding and independent full streaming EOL analysis over a temporary `ByteSource`. Its `EncodingAssessment` and `EOLReport` remain separate because uncertain or contradictory encoding evidence is serious, while mixed line endings are usually remediable. Confidence below `0.75`, contradictory BOM evidence, or malformed preview bytes requires an exact-profile modal before a tab is constructed. Mixed EOL opens a separate modeless report and never normalizes automatically.
+`core.text_inspection` performs bounded preview decoding and a bounded initial EOL sample before a tab is constructed. Its `EncodingAssessment` and `EOLReport` remain separate because uncertain or contradictory encoding evidence is serious, while mixed line endings are usually remediable. Confidence below `0.75`, contradictory BOM evidence, or malformed preview bytes requires an exact-profile modal. After Open becomes usable, full streaming EOL analysis runs through `TaskCoordinator` against a snapshot and publishes only for the current revision. Mixed EOL opens a separate modeless report and never normalizes automatically.
 
 `Document` remains authoritative for `source_profile`, `saved_output_format`, `output_format`, source EOL evidence, dirty state, and history. Reinterpretation reopens immutable source bytes under another exact profile and is blocked while the document is dirty. A pending codec, byte-order, BOM, or EOL change is metadata-dirty even before the logical text changes.
 
@@ -94,7 +115,9 @@ The status bar renders encoding and EOL as one compact statement. A saved UTF-8 
 
 ## Verified Save and Save As transaction
 
-Every output is streamed to a sibling temporary, flushed and synced, then reread before replacement. Verification proves exact BOM presence or absence, codec/byte order, strict decoding when applicable, requested EOL policy, logical-text equality, byte length, and SHA-256. The destination is atomically replaced only after verification; destination identity is checked from UI preflight through staging and again before commit. Failure discards the temporary and preserves destination bytes and document state.
+Every output is streamed to a sibling temporary, flushed and synced, then reread before replacement. Verification proves exact BOM presence or absence, codec/byte order, strict decoding when applicable, requested EOL policy, logical-text equality, byte length, and SHA-256. The destination is atomically replaced only after verification; destination identity is checked from UI preflight through staging and again before commit. Failure or cancellation discards the temporary and preserves destination bytes and document state.
+
+Interactive Save and Save As run preparation, writing, syncing, and verification through `FileOperationController` and `TaskCoordinator`. Only the source tab is temporarily locked; other tabs, repainting, and task cancellation remain responsive. A verified temporary carries an identity seal so GUI-thread commit does not rehash the output, while any post-verification mutation is still refused. The synchronous document methods remain compatibility helpers rather than menu handlers.
 
 Same-profile `PRESERVE` is the sole malformed-byte exception: unresolved annotated source spans are copied byte-for-byte. Encoding or EOL transformation is blocked until malformed spans are resolved. Strict output encoding reports an unrepresentable character and document position rather than substituting bytes.
 
@@ -104,7 +127,7 @@ In-place `Document.save()` advances the current tab's save point only after veri
 
 `UNITITextView` continues to paint only visible document content through the custom virtual viewport. It selects a concrete fixed-pitch font with Western/Latin and Cyrillic coverage, applies clamped 50–300% font scaling, and handles primary-modifier wheel zoom without transferring text ownership to Qt.
 
-Soft wrap is display-only and defaults off. `ui.wrap_index.WrappedRowIndex` incrementally maps logical lines to visual rows at the current viewport width; scrolling advances that index rather than constructing a whole-document Qt layout. Wrap therefore does not insert EOLs or change document coordinates.
+Soft wrap is display-only and defaults off. `ui.wrap_index.WrappedRowIndex` incrementally maps logical lines to visual rows at the current viewport width, retains sparse checkpoints plus at most four 512-row detail blocks, and never constructs a whole-document Qt layout. Wrap therefore does not insert EOLs or change document coordinates. Unwrapped giant lines render bounded horizontal text windows rather than materializing the full line.
 
 Input flows through `EditorState` for insertion/deletion, clipboard operations, selection, Unicode-category word movement, page movement, document start/end, and line navigation. `UNITITextView` interprets double-click as word selection, triple-click as visual-line selection, and quadruple-click as logical-line selection through the terminating line break. Reload/Revert asks before discarding modifications, reopens through `Document.open`, and installs a fresh history. The status bar receives cursor, exact saved/pending format, size, editor zoom, and `Wrap`/`No Wrap` state from the active view.
 
@@ -129,9 +152,9 @@ An explicit `Literal | Regex` selector owns search semantics. Literal mode escap
 
 The capture report is the collapsible second child of an unrestricted `QSplitter`, so it can be resized to any useful Bottom or Right proportion or dragged closed. `Report: Hidden | Bottom | Right` remains the explicit selector. The scoped `Cycle Report Position` command rotates those locations with default portable binding `Ctrl+Alt+R`. Capture rendering remains groups `1..N` only, with delimiters between adjacent matches.
 
-Find All installs its complete revision-bound `MatchStore` on the active editor view. The virtual viewport queries only intersections with each visible text window and paints every visible result with a clear theme-derived highlight; the current match remains visually stronger through normal selection highlighting. Pattern changes, edits, replacement, and document changes clear the installed results rather than leaving stale highlights.
+Find All runs against an immutable document snapshot through the shared task coordinator and installs its complete revision-bound `MatchStore` on the active editor view. Match records use compact fixed-size pages and spill to an owned temporary file after their memory budget; visible lookup stays indexed without one Qt object per match. The virtual viewport queries only intersections with each visible text window and paints every visible result with a clear theme-derived highlight. Pattern changes, edits, replacement, and document changes cancel or clear stale results.
 
-Single Replace and Replace All return through the authoritative `Document`. Replace All collects the revision-bound replacement set off the GUI thread, rejects stale results, and submits the entire set to `replace_many` as one Undo operation. The UI does not use the core streaming-rewrite service for Replace All because a disk rewrite would bypass the a16 history contract.
+Single Replace and Replace All return through the authoritative `Document`. Replace All builds a compact, spillable `ReplacementPlan` off the GUI thread, rejects stale or over-budget application, and rebuilds piece ranges in one monotonic pass. The admitted plan is one document transaction and one Undo operation. The UI does not use the core streaming-rewrite service for Replace All because a disk rewrite would bypass the history contract.
 
 Editor zoom/wrap and Find/Replace zoom/geometry/report placement persist independently through `SettingsStore`.
 
@@ -165,20 +188,26 @@ Keyboard Zoom In/Out/Reset and primary-modifier mouse-wheel zoom are focus-owned
 
 The pre-Cot top-level Navigation, Search, F/R View, Encoding, and EOL groupings no longer exist. Menu reachability, live native shortcut display, focus-scoped keyboard zoom, and focus-scoped wheel zoom are covered by the a16 UI contract tests.
 
+## Progressive indexing and navigation
+
+`OffsetMapper` retains sparse byte/character checkpoints and uses linear boundaries for fixed-width decoded spans or compact `array('I')` boundaries only where Unicode decoding requires them. Visible/nearby reads may cache a few spans; `ReadIntent.STREAMING` advances checkpoints without populating reusable span cache.
+
+`DocumentLineIndex` stores compact per-chunk summaries and only a bounded LRU of local line-start details. Background index jobs publish revision-bound batches. Nearby movement stays direct; far Go to Line and document-end movement are submitted as cancellable navigation tasks so the GUI interaction returns immediately and the cursor moves only when the matching revision completes.
+
 ## Search, save, recovery, and resources
 
 Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, timeout-aware, revision-bound, compactly stored, and delivered to Qt through queued signals. Core streaming replacement remains available for future bounded large-file work but is not a UI Replace All path. Save uses the verified transaction above and remains streaming, atomic, metadata-aware where supported, and protected against external file replacement.
 
-`RecoveryManager` serializes journal durability independently from disposable background work. The application-wide `ResourceManager` remains the single cache/pressure/worker policy owner and now exposes its constructed cache budget and worker count for state and diagnostics.
+`RecoveryManager` serializes journal durability independently from disposable background work. Resource pressure may reduce derived background work but never weakens recovery durability or save verification.
 
 ## Self-check and diagnostics
 
-`uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, offscreen Qt/view, and a distinct `text-integrity` check for the exact profile registry, verified staging, reopen, and verifier-refusal cleanup.
+`uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, offscreen Qt/view, `text-integrity`, and `large-file`. The large-file check verifies lazy access to a marker beyond 1 GiB, cache-free streaming intent, task cancellation, and artifact cleanup without embedding the 100 MiB benchmark suite.
 
 The application CLI's `--smoke` mode runs the core alpha probe and a self-closing real `UNITIMainWindow` on the selected Qt platform. `QT_QPA_PLATFORM=offscreen` provides the automated platform gate; an unmodified macOS environment exercises native Cocoa separately.
 
-The completed startup snapshot is passed into `UNITIMainWindow` and the diagnostics dialog. Diagnostics consume that snapshot and do not repeat ambient probes.
+The completed startup snapshot is passed into `UNITIMainWindow`. Diagnostics combine it with the authoritative resource manager's CPU generation/core profile, current load/memory/RSS/disk state, cache budget/use, active worker limit, queue, background pause state, and active task progress.
 
 ## Planned-change boundary
 
-The complete a17 Text Integrity Alpha is implemented and verified current architecture. Its milestone, approved design, and execution record are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a18` Large-File Alpha is now the sole active milestone; a18 and queued a19+ behavior remain planned intent and are not current architecture. Extension-sensed file-type profiles and syntax highlighting remain parked outside the approved roadmap.
+The complete a18 Large-File Alpha is implemented and verified current architecture. Its milestone, approved design, and execution record are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a19` Regex Intelligence Alpha is now the sole active milestone; a19 and queued a20+ behavior remain planned intent and are not current architecture. Extension-sensed file-type profiles and syntax highlighting remain parked outside the approved roadmap.

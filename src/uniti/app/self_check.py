@@ -21,7 +21,7 @@ from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.encoding import detect_encoding
 from uniti.core.eol import analyze_eol
-from uniti.core.offsets import OffsetMapper
+from uniti.core.offsets import OffsetMapper, ReadIntent
 from uniti.core.pieces import EditStore, PieceTable
 from uniti.core.save import (
     SaveVerificationError,
@@ -39,13 +39,19 @@ from uniti.core.text_format import (
 from uniti.core.text_inspection import inspect_source
 from uniti.regex.engine import compile_pattern
 from uniti.regex.replace import replace_all
-from uniti.resources import ResourceManager
+from uniti.resources import (
+    ResourceManager,
+    TaskKind,
+    TaskSpec,
+    WorkCancelled,
+)
 
 from .capabilities import CapabilityStatus, probe_filesystem, probe_runtime
 from .paths import AppPaths
 from .recovery_manager import RecoveryManager
 from .settings import SettingsStore
 from .setup_state import SetupStateStore
+from .sparse import deallocate_file_range
 from .startup import ExitCode
 
 
@@ -589,6 +595,96 @@ class SelfCheckRunner:
         return "recovery journal creation and replay passed", {"candidates": 1}
 
     @staticmethod
+    def _deep_large_file(root: Path) -> tuple[str, Mapping[str, object]]:
+        sparse_path = root / "large-file-sparse.txt"
+        streaming_path = root / "large-file-streaming.txt"
+        tail_offset = (1 << 30) + 12_345
+        marker = b"UNITI_TAIL"
+        manager = ResourceManager(max_workers=1)
+        cancelled = False
+        cache_bypassed = False
+        lazy_open = False
+        cleanup_ok = False
+        try:
+            with sparse_path.open("wb") as handle:
+                handle.write(b"hello\n")
+                handle.seek(tail_offset)
+                handle.write(marker)
+                handle.flush()
+                deallocate_file_range(
+                    handle.fileno(),
+                    8192,
+                    tail_offset + len(marker) - 16_384,
+                )
+            sparse_stat = sparse_path.stat()
+            sparse_blocks = getattr(sparse_stat, "st_blocks", None)
+            allocated_bytes = (
+                None if sparse_blocks is None else sparse_blocks * 512
+            )
+            if (
+                allocated_bytes is not None
+                and allocated_bytes >= sparse_stat.st_size // 2
+            ):
+                raise RuntimeError("large-file fixture is not physically sparse")
+            with Document.open(sparse_path, encoding="utf-8") as document:
+                lazy_open = (
+                    document.source.size == tail_offset + len(marker)
+                    and document.source.read(tail_offset, len(marker)) == marker
+                    and document.read(0, 6) == "hello\n"
+                    and not document.offset_mapper.complete
+                    and not document.document_line_index.complete
+                    and document.offset_mapper.indexed_byte_end < (1 << 20)
+                )
+
+            streaming_path.write_bytes(b"x" * (2 << 20))
+            with ByteSource.open(streaming_path) as source:
+                mapper = OffsetMapper(
+                    source,
+                    "utf-8",
+                    resource_manager=manager,
+                    cache_owner="deep-large-file",
+                )
+                before = manager.cache.used_bytes
+                chars = mapper.total_chars(intent=ReadIntent.STREAMING)
+                cache_bypassed = (
+                    chars == 2 << 20 and manager.cache.used_bytes == before
+                )
+
+            def cancellation_probe(context):
+                context.report("Checking cancellation", 1, 2)
+                while not context.token.wait(0.01):
+                    pass
+                context.check_cancelled()
+
+            task = manager.tasks.submit(
+                TaskSpec.create(TaskKind.INDEX, foreground=False),
+                cancellation_probe,
+            )
+            task.wait_for_progress(timeout=1.0)
+            task.cancel()
+            try:
+                task.future.result(timeout=1.0)
+            except WorkCancelled:
+                cancelled = True
+            if not (lazy_open and cache_bypassed and cancelled):
+                raise RuntimeError("large-file bounded-work invariant failed")
+        finally:
+            manager.shutdown()
+            sparse_path.unlink(missing_ok=True)
+            streaming_path.unlink(missing_ok=True)
+            cleanup_ok = not sparse_path.exists() and not streaming_path.exists()
+        if not cleanup_ok:
+            raise RuntimeError("large-file probe cleanup failed")
+        return "sparse access, streaming cache, and cancellation passed", {
+            "sparse_bytes": tail_offset + len(marker),
+            "allocated_bytes": allocated_bytes,
+            "lazy_open": lazy_open,
+            "streaming_cache_bypassed": cache_bypassed,
+            "task_cancelled": cancelled,
+            "cleanup_ok": cleanup_ok,
+        }
+
+    @staticmethod
     def _deep_qt(root: Path) -> tuple[str, Mapping[str, object]]:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
@@ -637,6 +733,7 @@ class SelfCheckRunner:
                     ("regex-functional", self._deep_regex),
                     ("streaming-save", self._deep_save),
                     ("text-integrity", self._deep_text_integrity),
+                    ("large-file", self._deep_large_file),
                     ("recovery", self._deep_recovery),
                     ("qt-offscreen", self._deep_qt),
                 )

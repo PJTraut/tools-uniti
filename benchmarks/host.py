@@ -15,7 +15,7 @@ from typing import Mapping
 import uniti
 
 from benchmarks.models import ResultState
-from benchmarks.sparse import deallocate_file_range
+from uniti.app.sparse import deallocate_file_range
 from uniti.resources import (
     PerformancePolicy,
     current_process_rss_bytes,

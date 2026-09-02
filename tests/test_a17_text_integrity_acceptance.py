@@ -18,14 +18,16 @@ from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
 from uniti.core.text_inspection import inspect_source
 
 
-def test_a17_release_metadata_is_canonical():
+def test_a17_or_later_release_metadata_remains_coherent():
     import uniti
 
     project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
-    assert Path("VERSION").read_text(encoding="utf-8").strip() == "v0.001a17"
-    assert uniti.__version__ == "0.1a17"
-    assert uniti.__display_version__ == "v0.001a17"
-    assert project["project"]["version"] == "0.1a17"
+    display = Path("VERSION").read_text(encoding="utf-8").strip()
+    assert display == uniti.__display_version__
+    assert project["project"]["version"] == uniti.__version__
+    assert display.startswith("v0.001a")
+    assert uniti.__version__.startswith("0.1a")
+    assert int(display.removeprefix("v0.001a")) >= 17
 
 
 PROFILE_KEYS = (

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from benchmarks.sparse import deallocate_file_range
+from uniti.app.sparse import deallocate_file_range
 
 
 class CorpusKind(StrEnum):

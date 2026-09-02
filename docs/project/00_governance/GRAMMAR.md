@@ -1,6 +1,6 @@
 # UNITI Project Grammar
 
-Date: 2026-09-01
+Date: 2026-09-02
 
 UNITI uses a controlled vocabulary so status and directory placement mean the same thing across roadmaps, plans, decisions, and handovers.
 
@@ -19,6 +19,9 @@ UNITI uses a controlled vocabulary so status and directory placement mean the sa
 | `decision` | A durable record of a consequential architectural or project-policy choice and its effects. |
 | `handover` | A concise continuation snapshot that points to canonical project records. It is not a specification or controlling prompt. |
 | `verified` | Supported by fresh, recorded evidence proportionate to the change. |
+| `baseline` | A selected schema-versioned measurement on a recorded compatible host. A baseline is comparison evidence, not a timeless performance promise. |
+| `gate` | An explicit acceptance threshold whose result can block milestone progression. |
+| `design target` | A scale or behavior the architecture must accommodate and characterize without declaring it an ordinary workload, hard limit, or delivery ceiling. |
 
 ## Delivery progression
 
@@ -33,6 +36,20 @@ Normally exactly one milestone is `active`. Reordering `queued` milestones requi
 A milestone may contain several workstreams. Each verified workstream moves to `03_implemented` immediately and becomes part of current reality, but the milestone remains `active` until every exit criterion and acceptance gate for the complete milestone passes. A completed workstream never implies completion of its parent milestone.
 
 `Implemented` is the only canonical status and folder term for completed historical work. The project does not use `implemented_archive`, `archive`, or `archived` as directory or lifecycle names.
+
+## Performance result grammar
+
+Measured suites use five exact states:
+
+| State | Meaning |
+|---|---|
+| `PASS` | The scenario ran on an eligible host, preserved its integrity contract, and stayed below warning thresholds. |
+| `WARN` | The scenario completed safely but reached a warning or compatible-baseline regression threshold. |
+| `FAIL` | Execution, integrity, cleanup, or a failure threshold did not pass. |
+| `INVALID` | A controlled measurement was attempted under conditions that make comparison evidence invalid, such as disallowed host contention. |
+| `NOT RUN` | Capacity or required capability made execution ineligible; this is never equivalent to `PASS`. |
+
+`controlled` or `baseline` mode records comparison evidence only after its host preflight passes. `real-world` mode records actual current conditions and may remain diagnostically useful under contention. Neither mode may relabel `INVALID` or `NOT RUN` as success.
 
 ## Parked progression
 
