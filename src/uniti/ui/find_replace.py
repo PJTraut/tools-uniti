@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from concurrent.futures import Future
+from dataclasses import dataclass
 
-import regex
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from PySide6.QtGui import QFont, QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -24,7 +24,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from uniti.regex.engine import compile_pattern
+from uniti.regex.analysis import (
+    AnalysisState,
+    ExpressionRole,
+    RegexAnalysis,
+    analyze_pattern,
+    analyze_replacement,
+    pending_pattern_analysis,
+)
 from uniti.regex.match_store import MatchStore
 from uniti.regex.replace import (
     Replacement,
@@ -33,8 +40,15 @@ from uniti.regex.replace import (
 )
 from uniti.regex.replacement_plan import ReplacementPlan
 from uniti.regex.results import MatchIndex, MatchRecord
-from uniti.regex.search import SearchOptions, resolve_captures, search_document
+from uniti.regex.search import (
+    RegexContextLimitError,
+    RegexSearchTimeout,
+    SearchOptions,
+    resolve_captures,
+    search_document,
+)
 from uniti.resources import (
+    LatestTaskSlot,
     ResourceManager,
     TaskAdmissionError,
     TaskContext,
@@ -45,6 +59,14 @@ from uniti.resources import (
 from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 
+@dataclass(frozen=True, slots=True)
+class OperationSeal:
+    pattern_generation: int
+    pattern_text: str
+    document_key: str
+    revision: int
+
+
 class FindReplaceWindow(QDialog):
     """Modeless Find/Replace utility; match records never become document state."""
 
@@ -52,6 +74,7 @@ class FindReplaceWindow(QDialog):
     reportLocationChanged = Signal(str)
     geometryChanged = Signal(tuple)
     _jobCompleted = Signal()
+    _analysisCompleted = Signal(int, object)
 
     def __init__(
         self,
@@ -81,6 +104,30 @@ class FindReplaceWindow(QDialog):
         self._current_index: int | None = None
         self._results_compiled = None
         self._zoom_percent = 100
+        self._pattern_generation = 0
+        self._pattern_analysis = RegexAnalysis.empty(
+            role=ExpressionRole.PATTERN,
+            expression="",
+            engine_pattern="",
+            generation=0,
+            state=AnalysisState.PENDING,
+        )
+        self._replacement_generation = 0
+        self._replacement_analysis = RegexAnalysis.empty(
+            role=ExpressionRole.REPLACEMENT,
+            expression="",
+            engine_pattern="",
+            generation=0,
+            pattern_generation=0,
+            state=AnalysisState.PENDING,
+        )
+        self._analysis_timer = QTimer(self)
+        self._analysis_timer.setSingleShot(True)
+        self._analysis_timer.setInterval(150)
+        self._analysis_slot: LatestTaskSlot[RegexAnalysis] = LatestTaskSlot(
+            self._resource_manager.tasks,
+            self._analysis_task_finished,
+        )
 
         self.find_input = RegexInput(self)
         self.replace_input = ReplacementInput(self)
@@ -186,6 +233,7 @@ class FindReplaceWindow(QDialog):
         self.find_input.returnPressed.connect(self.next_match)
         self.replace_input.returnPressed.connect(self.replace_current)
         self.find_input.textChanged.connect(self._pattern_changed)
+        self.replace_input.textChanged.connect(self._replacement_changed)
         self.search_mode_combo.currentTextChanged.connect(
             self._search_mode_changed
         )
@@ -201,6 +249,11 @@ class FindReplaceWindow(QDialog):
         self._jobCompleted.connect(
             self._poll_job, Qt.ConnectionType.QueuedConnection
         )
+        self._analysisCompleted.connect(
+            self._apply_pattern_analysis,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._analysis_timer.timeout.connect(self._submit_pattern_analysis)
         self._search_mode_changed("Literal")
         self.set_report_location("Bottom")
         for widget in self.findChildren(QWidget):
@@ -348,26 +401,14 @@ class FindReplaceWindow(QDialog):
         return self._view_provider()
 
     def compile_current(self):
-        pattern = self.find_input.text()
-        if not pattern:
-            self.status_label.setText("enter a pattern")
-            self.replace_input.set_groups(0, {})
-            return None
-        flags = 0
-        if not self.regex_mode:
-            pattern = regex.escape(pattern)
-            if self.whole_word_checkbox.isChecked():
-                pattern = rf"\b(?:{pattern})\b"
-            if not self.case_sensitive_checkbox.isChecked():
-                flags |= regex.IGNORECASE
-        try:
-            compiled = compile_pattern(pattern, flags)
-        except regex.error as exc:
-            self.status_label.setText(f"regex error: {exc}")
-            self.replace_input.set_groups(0, {})
-            return None
-        self.replace_input.set_groups(compiled.groups, dict(compiled.groupindex))
-        return compiled
+        analysis = self._pattern_analysis
+        if (
+            analysis.state is AnalysisState.VALID
+            and analysis.generation == self._pattern_generation
+            and analysis.expression == self.find_input.text()
+        ):
+            return analysis.compiled
+        return None
 
     def _compile_current(self):
         return self.compile_current()
@@ -378,11 +419,174 @@ class FindReplaceWindow(QDialog):
             return replacement
         return replacement.replace("\\", "\\\\")
 
-    def _pattern_changed(self) -> None:
+    def _pattern_changed(self, *_args) -> None:
         if self.busy:
             self.cancel_search()
+        self._analysis_slot.cancel()
+        self._analysis_timer.stop()
+        self._pattern_generation += 1
         self._clear_results()
-        self._compile_current()
+        expression = self.find_input.text()
+        self._pattern_analysis = pending_pattern_analysis(
+            expression,
+            self._pattern_generation,
+            literal=not self.regex_mode,
+            case_sensitive=self.case_sensitive_checkbox.isChecked(),
+            whole_word=self.whole_word_checkbox.isChecked(),
+        )
+        self.replace_input.set_groups(0, {})
+        self._reanalyze_replacement()
+        if expression and self._pattern_analysis.state is AnalysisState.PENDING:
+            self._analysis_timer.start()
+        self._refresh_analysis_status()
+        self._update_actions()
+
+    def _replacement_changed(self, *_args) -> None:
+        self._reanalyze_replacement()
+        self._refresh_analysis_status()
+        self._update_actions()
+
+    def _reanalyze_replacement(self) -> None:
+        self._replacement_generation += 1
+        self._replacement_analysis = analyze_replacement(
+            self.replace_input.text(),
+            self._pattern_analysis,
+            self._replacement_generation,
+            literal=not self.regex_mode,
+        )
+
+    def _submit_pattern_analysis(self) -> None:
+        generation = self._pattern_generation
+        expression = self.find_input.text()
+        if (
+            not expression
+            or self._pattern_analysis.state is not AnalysisState.PENDING
+            or self._pattern_analysis.generation != generation
+        ):
+            return
+        options = {
+            "literal": not self.regex_mode,
+            "case_sensitive": self.case_sensitive_checkbox.isChecked(),
+            "whole_word": self.whole_word_checkbox.isChecked(),
+        }
+        spec = TaskSpec.create(
+            TaskKind.REGEX_ANALYSIS,
+            foreground=False,
+            estimated_memory_bytes=min(len(expression), 65_536) * 16,
+        )
+        self._analysis_slot.request(
+            generation,
+            spec,
+            lambda _context: analyze_pattern(expression, generation, **options),
+        )
+
+    def _analysis_task_finished(
+        self,
+        generation: int,
+        handle: TaskHandle[RegexAnalysis],
+    ) -> None:
+        self._analysisCompleted.emit(generation, handle)
+
+    def _apply_pattern_analysis(
+        self,
+        generation: int,
+        handle: TaskHandle[RegexAnalysis],
+    ) -> None:
+        try:
+            analysis = handle.future.result()
+        except Exception:
+            return
+        if (
+            generation != self._pattern_generation
+            or analysis.generation != generation
+            or analysis.expression != self.find_input.text()
+        ):
+            return
+        self._pattern_analysis = analysis
+        if analysis.state is AnalysisState.VALID:
+            self.replace_input.set_groups(
+                analysis.group_count,
+                dict(analysis.group_names),
+            )
+        else:
+            self.replace_input.set_groups(0, {})
+        self._reanalyze_replacement()
+        self._refresh_analysis_status()
+        self._update_actions()
+
+    def _pattern_is_current(self) -> bool:
+        return (
+            bool(self.find_input.text())
+            and self.compile_current() is not None
+        )
+
+    def _replacement_is_current(self) -> bool:
+        analysis = self._replacement_analysis
+        return (
+            analysis.state is AnalysisState.VALID
+            and analysis.expression == self.replace_input.text()
+            and analysis.pattern_generation == self._pattern_generation
+        )
+
+    def _refresh_analysis_status(self) -> None:
+        if self.busy:
+            return
+        expression = self.find_input.text()
+        if not expression:
+            self.status_label.setText("enter a pattern")
+            return
+        pattern = self._pattern_analysis
+        if pattern.state is AnalysisState.PENDING:
+            self.status_label.setText("checking pattern…")
+            return
+        if pattern.state in {AnalysisState.INVALID, AnalysisState.OVER_LIMIT}:
+            message = (
+                pattern.diagnostics[0].message
+                if pattern.diagnostics
+                else "invalid pattern"
+            )
+            self.status_label.setText(message)
+            return
+        replacement = self._replacement_analysis
+        if replacement.state in {AnalysisState.INVALID, AnalysisState.OVER_LIMIT}:
+            message = (
+                replacement.diagnostics[0].message
+                if replacement.diagnostics
+                else "invalid replacement"
+            )
+            self.status_label.setText(message)
+            return
+        if len(self._results):
+            if self._current_index is None:
+                self.status_label.setText(f"{len(self._results):,} matches")
+            else:
+                self.status_label.setText(
+                    f"match {self._current_index + 1:,}/{len(self._results):,}"
+                )
+            return
+        suffix = "group" if pattern.group_count == 1 else "groups"
+        self.status_label.setText(
+            f"valid pattern — {pattern.group_count:,} {suffix}"
+        )
+
+    def _update_actions(self) -> None:
+        view = self._current_view()
+        idle = not self.busy
+        pattern_valid = view is not None and self._pattern_is_current()
+        replacement_valid = pattern_valid and self._replacement_is_current()
+        results_current = bool(
+            view is not None
+            and len(self._results)
+            and self._results_are_current(view)
+        )
+        self.find_all_button.setEnabled(idle and pattern_valid)
+        self.previous_button.setEnabled(idle and results_current)
+        self.next_button.setEnabled(idle and results_current)
+        self.replace_button.setEnabled(
+            idle and results_current and replacement_valid
+        )
+        self.replace_all_button.setEnabled(idle and replacement_valid)
+        self.cancel_button.setEnabled(not idle)
 
     def _clear_results(self) -> None:
         if self._result_listener_remove is not None:
@@ -398,6 +602,34 @@ class FindReplaceWindow(QDialog):
         self._current_index = None
         self.capture_list.clear()
         self._results_compiled = None
+        self._update_actions()
+
+    def _operation_seal(self, view) -> OperationSeal:
+        return OperationSeal(
+            pattern_generation=self._pattern_generation,
+            pattern_text=self.find_input.text(),
+            document_key=str(id(view.document)),
+            revision=view.document.revision,
+        )
+
+    def _seal_is_current(self, seal: OperationSeal, view) -> bool:
+        return (
+            view is not None
+            and seal.pattern_generation == self._pattern_generation
+            and seal.pattern_text == self.find_input.text()
+            and seal.document_key == str(id(view.document))
+            and seal.revision == view.document.revision
+        )
+
+    @staticmethod
+    def _safe_operation_error(error: Exception) -> str:
+        if isinstance(error, RegexSearchTimeout):
+            return "regex operation timed out"
+        if isinstance(error, RegexContextLimitError):
+            return "regex requires more bounded context than allowed"
+        if isinstance(error, TaskAdmissionError):
+            return "operation refused by current resource limits"
+        return "regex operation failed"
 
     def _start_job(
         self,
@@ -437,10 +669,9 @@ class FindReplaceWindow(QDialog):
             self._job_context = None
             self._target_view = None
             self.cancel_button.setEnabled(False)
-            if isinstance(exc, TaskAdmissionError):
-                self.status_label.setText(f"operation refused: {exc}")
-                return False
-            raise
+            self.status_label.setText(self._safe_operation_error(exc))
+            self._update_actions()
+            return False
         self._future = self._task_handle.future
         self._job_edit_listener_remove = view.document.add_edit_listener(
             lambda _operation, view=view: self._cancel_for_edit(view)
@@ -450,6 +681,7 @@ class FindReplaceWindow(QDialog):
                 lambda _future: rejected_cleanup()
             )
         self._future.add_done_callback(lambda _future: self._jobCompleted.emit())
+        self._update_actions()
         return True
 
     def _cancel_for_edit(self, view) -> None:
@@ -460,10 +692,11 @@ class FindReplaceWindow(QDialog):
 
     def find_all(self) -> None:
         view = self._current_view()
-        compiled = self._compile_current()
+        compiled = self.compile_current()
         if view is None or compiled is None:
             return
-        revision = view.document.revision
+        seal = self._operation_seal(view)
+        revision = seal.revision
         snapshot = view.document.snapshot()
 
         def work(context: TaskContext):
@@ -492,20 +725,24 @@ class FindReplaceWindow(QDialog):
             view,
             work,
             task_kind=TaskKind.SEARCH,
-            context=compiled,
+            context=(compiled, seal),
             rejected_cleanup=snapshot.close,
         )
 
     def replace_current(self) -> None:
         view = self._current_view()
-        compiled = self._compile_current()
-        if view is None or compiled is None:
+        compiled = self.compile_current()
+        if (
+            view is None
+            or compiled is None
+            or not self._replacement_is_current()
+        ):
             return
         if self._current_index is None:
             self.find_all()
             return
         target_index = self._current_index
-        revision = view.document.revision
+        seal = self._operation_seal(view)
         replacement_text = self._replacement_expression()
         snapshot = view.document.snapshot()
 
@@ -527,16 +764,21 @@ class FindReplaceWindow(QDialog):
             view,
             work,
             task_kind=TaskKind.REPLACE,
-            context=(target_index, revision),
+            context=(target_index, seal),
             rejected_cleanup=snapshot.close,
         )
 
     def replace_all(self) -> None:
         view = self._current_view()
-        compiled = self._compile_current()
-        if view is None or compiled is None:
+        compiled = self.compile_current()
+        if (
+            view is None
+            or compiled is None
+            or not self._replacement_is_current()
+        ):
             return
-        revision = view.document.revision
+        seal = self._operation_seal(view)
+        revision = seal.revision
         replacement_text = self._replacement_expression()
         snapshot = view.document.snapshot()
 
@@ -561,7 +803,7 @@ class FindReplaceWindow(QDialog):
             view,
             work,
             task_kind=TaskKind.REPLACE,
-            context=revision,
+            context=seal,
             rejected_cleanup=snapshot.close,
         )
 
@@ -587,6 +829,7 @@ class FindReplaceWindow(QDialog):
             self._job_edit_listener_remove()
             self._job_edit_listener_remove = None
         self.cancel_button.setEnabled(False)
+        self._update_actions()
         try:
             payload = future.result()
         except Exception as exc:
@@ -594,7 +837,7 @@ class FindReplaceWindow(QDialog):
                 if self.status_label.text() != "text changed — search again":
                     self.status_label.setText("cancelled")
                 return
-            self.status_label.setText(f"operation failed: {exc}")
+            self.status_label.setText(self._safe_operation_error(exc))
             return
 
         if task_handle is not None and task_handle.token.cancelled:
@@ -611,12 +854,19 @@ class FindReplaceWindow(QDialog):
         elif kind == "replace_all":
             self._apply_replace_all(view, payload, context)
 
-    def _apply_find_results(self, view, store: MatchStore, compiled) -> None:
-        if view is None or view.document.revision != store.document_revision:
+    def _apply_find_results(self, view, store: MatchStore, context) -> None:
+        if (
+            not isinstance(context, tuple)
+            or len(context) != 2
+            or not isinstance(context[1], OperationSeal)
+            or not self._seal_is_current(context[1], view)
+            or view.document.revision != store.document_revision
+        ):
             store.close()
             self._clear_results()
             self.status_label.setText("text changed — search again")
             return
+        compiled = context[0]
         self._clear_results()
         self._results = store
         self._results_view = view
@@ -631,6 +881,7 @@ class FindReplaceWindow(QDialog):
             self._navigate_to(self._current_index)
         else:
             self.capture_list.clear()
+        self._update_actions()
 
     def _invalidate_results_for_edit(self, view) -> None:
         if view is not self._results_view:
@@ -656,8 +907,9 @@ class FindReplaceWindow(QDialog):
             not isinstance(context, tuple)
             or len(context) != 2
             or not isinstance(context[0], int)
+            or not isinstance(context[1], OperationSeal)
             or view is None
-            or view.document.revision != context[1]
+            or not self._seal_is_current(context[1], view)
             or context[0] >= len(replacements)
         ):
             self.status_label.setText("match changed — search again")
@@ -669,9 +921,15 @@ class FindReplaceWindow(QDialog):
         self._clear_results()
         view._state_changed()
         self.status_label.setText("1 replaced")
+        self._update_actions()
 
-    def _apply_replace_all(self, view, plan: ReplacementPlan, revision) -> None:
-        if view is None or view.document.revision != revision:
+    def _apply_replace_all(
+        self,
+        view,
+        plan: ReplacementPlan,
+        seal: OperationSeal,
+    ) -> None:
+        if not isinstance(seal, OperationSeal) or not self._seal_is_current(seal, view):
             plan.close()
             self.status_label.setText("text changed — search again")
             return
@@ -682,17 +940,18 @@ class FindReplaceWindow(QDialog):
         try:
             count = view.document.apply_replacement_plan(
                 plan,
-                expected_revision=revision,
+                expected_revision=seal.revision,
                 memory_limit_bytes=memory_limit,
             )
         except Exception as exc:
-            self.status_label.setText(f"operation failed: {exc}")
+            self.status_label.setText(self._safe_operation_error(exc))
             return
         finally:
             plan.close()
         self._clear_results()
         view._state_changed()
         self.status_label.setText(f"{count:,} replaced")
+        self._update_actions()
 
     def next_match(self) -> None:
         if not len(self._results):
@@ -793,6 +1052,8 @@ class FindReplaceWindow(QDialog):
         self._emit_geometry()
 
     def shutdown(self) -> None:
+        self._analysis_timer.stop()
+        self._analysis_slot.close()
         self.cancel_search()
         if self._job_edit_listener_remove is not None:
             self._job_edit_listener_remove()

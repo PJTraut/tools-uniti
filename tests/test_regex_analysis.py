@@ -230,3 +230,12 @@ def test_replacement_waits_for_pending_pattern_without_semantic_colors():
     assert replacement.state is AnalysisState.PENDING
     assert replacement.pattern_generation == 40
     assert all(token.color_key is None for token in replacement.tokens)
+
+
+def test_literal_replacement_keeps_backslashes_neutral():
+    pattern = analyze_pattern("a", generation=50, literal=True)
+    replacement = analyze_replacement(r"\2", pattern, generation=51, literal=True)
+
+    assert replacement.state is AnalysisState.VALID
+    assert [token.kind for token in replacement.tokens] == ["literal"]
+    assert replacement.tokens[0].text == r"\2"

@@ -370,6 +370,8 @@ def analyze_replacement(
     expression: str,
     pattern: RegexAnalysis,
     generation: int,
+    *,
+    literal: bool = False,
 ) -> RegexAnalysis:
     """Validate replacement references against one exact pattern generation."""
     if not isinstance(expression, str):
@@ -385,16 +387,23 @@ def analyze_replacement(
         )
         return replace(result, diagnostics=(_length_diagnostic(expression),))
 
-    from .lexer import tokenize_replacement
-
     pattern_valid = pattern.state is AnalysisState.VALID
     group_names = dict(pattern.group_names) if pattern_valid else {}
     group_count = pattern.group_count if pattern_valid else 0
-    scanned = tokenize_replacement(
-        expression,
-        group_count=group_count,
-        group_names=group_names,
-    )
+    if literal:
+        scanned = (
+            (RegexToken("literal", 0, len(expression), expression),)
+            if expression
+            else ()
+        )
+    else:
+        from .lexer import tokenize_replacement
+
+        scanned = tokenize_replacement(
+            expression,
+            group_count=group_count,
+            group_names=group_names,
+        )
     if not pattern_valid:
         state = (
             AnalysisState.PENDING

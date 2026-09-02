@@ -13,6 +13,41 @@ VIEW = Path("src/uniti/ui/text_view.py")
 MAIN = Path("src/uniti/ui/main_window.py")
 
 
+def _wait_until(app, predicate, timeout: float = 5.0):
+    deadline = time.perf_counter() + timeout
+    while time.perf_counter() < deadline:
+        app.processEvents()
+        if predicate():
+            return
+        time.sleep(0.001)
+    raise AssertionError("condition did not become true before timeout")
+
+
+def _make_panel(tmp_path: Path, text: str):
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.find_replace import FindReplacePanel
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "analysis.txt"
+    path.write_text(text, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    document = Document.open(path, encoding="utf-8")
+    view = UNITITextView(EditorState(document))
+    panel = FindReplacePanel(lambda: view)
+    return app, document, view, panel
+
+
+def _close_panel(app, document, view, panel):
+    panel.shutdown()
+    panel.close()
+    view.close()
+    document.close()
+    app.processEvents()
+
+
 def test_regex_inputs_use_syntax_highlighting_and_lexers():
     assert REGEX_INPUT.exists()
     source = REGEX_INPUT.read_text()
@@ -82,6 +117,7 @@ def test_find_replace_offscreen_smoke_when_pyside6_available(tmp_path: Path):
         panel = FindReplacePanel(lambda: view)
         panel.search_mode_combo.setCurrentText("Regex")
         panel.find_input.set_text(r"\d+")
+        _wait_until(app, lambda: panel.compile_current() is not None)
         panel.find_all()
         for _ in range(100):
             app.processEvents()
@@ -120,6 +156,7 @@ def test_find_all_renders_every_visible_match_with_clear_contrast(tmp_path: Path
 
         panel = FindReplacePanel(lambda: view)
         panel.find_input.set_text("one")
+        _wait_until(app, lambda: panel.compile_current() is not None)
         panel.find_all()
         for _ in range(200):
             app.processEvents()
@@ -157,6 +194,70 @@ def test_find_replace_uses_shared_resource_task_coordinator():
     source = PANEL.read_text()
     assert "resource_manager" in source
     assert "_resource_manager.tasks.submit" in source
+
+
+def test_regex_analysis_is_debounced_serialized_and_stale_safe(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import uniti.ui.find_replace as find_replace
+
+    calls: list[str] = []
+    real = find_replace.analyze_pattern
+
+    def observed(expression, generation, **options):
+        calls.append(expression)
+        if expression == "slow":
+            time.sleep(0.05)
+        return real(expression, generation, **options)
+
+    monkeypatch.setattr(find_replace, "analyze_pattern", observed)
+    app, document, view, panel = _make_panel(tmp_path, "abc")
+    try:
+        panel.search_mode_combo.setCurrentText("Regex")
+        panel.find_input.set_text("slow")
+        panel.find_input.set_text("(fast)")
+        assert panel.status_label.text() == "checking pattern…"
+        assert not panel.find_all_button.isEnabled()
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        assert panel._pattern_analysis.expression == "(fast)"
+        assert panel._pattern_analysis.generation == panel._pattern_generation
+        assert calls[-1] == "(fast)"
+        assert panel.find_all_button.isEnabled()
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_invalid_and_over_limit_patterns_expose_exact_nonmodal_states(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from uniti.regex.analysis import AnalysisState
+
+    app, document, view, panel = _make_panel(tmp_path, "abc")
+    try:
+        panel.search_mode_combo.setCurrentText("Regex")
+        panel.find_input.set_text("(")
+        _wait_until(
+            app,
+            lambda: panel._pattern_analysis.state is AnalysisState.INVALID,
+        )
+        assert "column" in panel.status_label.text()
+        assert not panel.replace_all_button.isEnabled()
+        panel.find_input.set_text("x" * 65_537)
+        _wait_until(
+            app,
+            lambda: panel._pattern_analysis.state is AnalysisState.OVER_LIMIT,
+        )
+        assert "65,536" in panel.status_label.text()
+        assert panel.find_input.text().endswith("x")
+    finally:
+        _close_panel(app, document, view, panel)
 
 
 def test_replace_current_captures_widget_text_before_worker_starts():
@@ -227,9 +328,10 @@ def test_find_job_keeps_editor_enabled_and_edit_cancels_stale_snapshot(
         view = window.open_path(path)
         panel = window._find_replace
         panel.find_input.set_text("one")
+        _wait_until(app, lambda: panel.compile_current() is not None)
         panel.find_all()
 
-        assert started.wait(1.0)
+        _wait_until(app, started.is_set)
         assert view.isEnabled()
         view.document.insert(0, "edited ")
         view._state_changed()
@@ -264,19 +366,23 @@ def test_literal_and_regex_modes_have_separate_semantics():
     assert panel.case_sensitive_checkbox.isVisible() is True
     assert panel.whole_word_checkbox.isVisible() is True
     panel.find_input.set_text("a.c")
+    _wait_until(app, lambda: panel.compile_current() is not None)
     literal = panel.compile_current()
     assert literal.fullmatch("a.c") is not None
     assert literal.fullmatch("A.C") is not None
     assert literal.fullmatch("abc") is None
     panel.case_sensitive_checkbox.setChecked(True)
+    _wait_until(app, lambda: panel.compile_current() is not None)
     case_sensitive = panel.compile_current()
     assert case_sensitive.fullmatch("A.C") is None
     panel.whole_word_checkbox.setChecked(True)
+    _wait_until(app, lambda: panel.compile_current() is not None)
     whole_word = panel.compile_current()
     assert whole_word.search("xa.cy") is None
 
     panel.search_mode_combo.setCurrentText("Regex")
     panel.find_input.set_text("(?i)a.c")
+    _wait_until(app, lambda: panel.compile_current() is not None)
     raw_regex = panel.compile_current()
     assert raw_regex.pattern == "(?i)a.c"
     assert raw_regex.fullmatch("ABC") is not None
@@ -480,6 +586,7 @@ def test_capture_report_excludes_group_zero_and_separates_matches(tmp_path: Path
         panel = FindReplacePanel(lambda: view)
         panel.search_mode_combo.setCurrentText("Regex")
         panel.find_input.set_text("(a)(b)")
+        _wait_until(app, lambda: panel.compile_current() is not None)
         panel.find_all()
         for _ in range(100):
             app.processEvents()
