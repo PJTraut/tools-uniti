@@ -122,6 +122,8 @@ def test_a18_search_and_replace_scenarios_are_registered_for_routine_runs():
     assert "search_sparse" in names
     assert "search_dense" in names
     assert "replace" in names
+    assert "save" in names
+    assert "save_as" in names
     assert corpus_kind_for_scenario("search_dense") is CorpusKind.SEARCH_DENSE
     assert corpus_kind_for_scenario("replace") is CorpusKind.SEARCH_DENSE
 
@@ -142,3 +144,18 @@ def test_dense_search_and_replace_scenarios_preserve_integrity(tmp_path: Path):
     assert replace.facts["integrity_ok"] is True
     assert replace.facts["safe_refusal"] is True
     assert replace.facts["atomic_undo"] is True
+
+
+def test_progressive_save_scenarios_preserve_integrity(tmp_path: Path):
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.ORDINARY_LINES, size_bytes=1 << 20),
+        tmp_path / "save",
+    )
+
+    save = run_scenario("save", manifest)
+    save_as = run_scenario("save_as", manifest)
+
+    assert save.state is ResultState.PASS
+    assert save.facts["integrity_ok"] is True
+    assert save_as.state is ResultState.PASS
+    assert save_as.facts["integrity_ok"] is True

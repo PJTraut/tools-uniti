@@ -25,9 +25,14 @@ from .save import (
     EOLName,
     StaleDocumentRevisionError,
     commit_staged_document,
-    discard_staged_document,
     stage_document,
     verify_staged_document,
+)
+from .save_job import (
+    DocumentSaveRequest,
+    ImmediateSaveContext,
+    PreparedDocumentSave,
+    prepare_document_save,
 )
 from .text_format import (
     EOLPolicy,
@@ -771,54 +776,98 @@ class Document:
         except OSError:
             return False
 
-    def _write_verified_output(
+    def create_save_request(
         self,
-        destination: Path,
+        destination: str | os.PathLike[str],
         output_format: OutputFormat,
         *,
         expected_destination_identity: (
             FileIdentity | None | _UnspecifiedDestinationIdentity
         ) = _UNSPECIFIED_DESTINATION_IDENTITY,
-    ) -> Path:
-        self.assert_safe_overwrite(destination)
-        staged_revision = self._revision
-        baseline_output_format = self._output_format
-        staged = stage_document(
-            self._source,
-            self._piece_table,
-            source_profile=self._piece_source_profile,
-            destination=destination,
-            output_format=output_format,
-        )
+    ) -> DocumentSaveRequest:
+        """Capture one revision and target identity for staged output work."""
+
+        self._ensure_open()
+        if not isinstance(output_format, OutputFormat):
+            raise TypeError("output_format must be an OutputFormat")
+        target = Path(destination)
+        self.assert_safe_overwrite(target)
         try:
-            if (
-                expected_destination_identity
-                is not _UNSPECIFIED_DESTINATION_IDENTITY
-                and staged.target_identity != expected_destination_identity
-            ):
-                assert expected_destination_identity is None or isinstance(
-                    expected_destination_identity, FileIdentity
-                )
-                raise ExternalFileChangedError(
-                    destination,
-                    expected_destination_identity,
-                    staged.target_identity,
-                )
-            verify_staged_document(
-                staged,
-                self._piece_table.iter_text(intent=ReadIntent.STREAMING),
+            actual_identity = FileIdentity.from_path(target)
+        except FileNotFoundError:
+            actual_identity = None
+        if (
+            expected_destination_identity
+            is not _UNSPECIFIED_DESTINATION_IDENTITY
+            and actual_identity != expected_destination_identity
+        ):
+            assert expected_destination_identity is None or isinstance(
+                expected_destination_identity, FileIdentity
             )
-            if (
-                self._revision != staged_revision
-                or self._output_format != baseline_output_format
-            ):
-                raise StaleDocumentRevisionError(
-                    "document text or output format changed while save was staged"
-                )
-            self.assert_safe_overwrite(destination)
-            return commit_staged_document(staged)
-        finally:
-            discard_staged_document(staged)
+            raise ExternalFileChangedError(
+                target,
+                expected_destination_identity,
+                actual_identity,
+            )
+        expected = (
+            actual_identity
+            if expected_destination_identity is _UNSPECIFIED_DESTINATION_IDENTITY
+            else expected_destination_identity
+        )
+        assert expected is None or isinstance(expected, FileIdentity)
+        snapshot = self.snapshot()
+        return DocumentSaveRequest(
+            snapshot=snapshot,
+            destination=target,
+            output_format=output_format,
+            expected_destination_identity=expected,
+            in_place=self._same_resolved_file(self._path, target),
+        )
+
+    def _validate_prepared_save(
+        self,
+        prepared: PreparedDocumentSave,
+        *,
+        in_place: bool,
+    ) -> None:
+        self._ensure_open()
+        if not isinstance(prepared, PreparedDocumentSave):
+            raise TypeError("prepared must be a PreparedDocumentSave")
+        request = prepared.request
+        if request.in_place is not in_place:
+            operation = "Save" if in_place else "export"
+            raise ValueError(f"prepared request is not an in-place {operation}")
+        if (
+            request.snapshot.revision != self._revision
+            or request.snapshot.output_format != self._output_format
+        ):
+            raise StaleDocumentRevisionError(
+                "document text or output format changed while save was staged"
+            )
+        self.assert_safe_overwrite(request.destination)
+
+    def commit_prepared_save(self, prepared: PreparedDocumentSave) -> Path:
+        """Commit verified in-place output and advance the document save point."""
+
+        self._validate_prepared_save(prepared, in_place=True)
+        selected = prepared.request.output_format
+        result = commit_staged_document(prepared.staged)
+        self._reload_verified_save(selected)
+        if selected.eol is not EOLPolicy.PRESERVE:
+            self._history = EditHistory()
+            self._revision += 1
+        else:
+            self._history.mark_saved()
+        self._output_format = selected
+        self._saved_output_format = selected
+        self._notify_save(result)
+        return result
+
+    def commit_prepared_export(self, prepared: PreparedDocumentSave) -> Path:
+        """Commit verified output to another path without retargeting source."""
+
+        self._validate_prepared_save(prepared, in_place=False)
+        return commit_staged_document(prepared.staged)
 
     def _reload_verified_save(self, output_format: OutputFormat) -> None:
         source = ByteSource.open(self._path)
@@ -889,17 +938,17 @@ class Document:
         selected = self._output_format if output_format is None else output_format
         if not isinstance(selected, OutputFormat):
             raise TypeError("output format must be an OutputFormat")
-        result = self._write_verified_output(self._path, selected)
-        self._reload_verified_save(selected)
-        if selected.eol is not EOLPolicy.PRESERVE:
-            self._history = EditHistory()
-            self._revision += 1
-        else:
-            self._history.mark_saved()
-        self._output_format = selected
-        self._saved_output_format = selected
-        self._notify_save(result)
-        return result
+        request = self.create_save_request(self._path, selected)
+        prepared = prepare_document_save(
+            request,
+            ImmediateSaveContext(),
+            stage=stage_document,
+            verify=verify_staged_document,
+        )
+        try:
+            return self.commit_prepared_save(prepared)
+        finally:
+            prepared.discard()
 
     def export_copy(
         self,
@@ -918,11 +967,21 @@ class Document:
             raise ValueError("use in-place Save for the current document path")
         if not isinstance(output_format, OutputFormat):
             raise TypeError("output format must be an OutputFormat")
-        return self._write_verified_output(
+        request = self.create_save_request(
             target,
             output_format,
             expected_destination_identity=expected_destination_identity,
         )
+        prepared = prepare_document_save(
+            request,
+            ImmediateSaveContext(),
+            stage=stage_document,
+            verify=verify_staged_document,
+        )
+        try:
+            return self.commit_prepared_export(prepared)
+        finally:
+            prepared.discard()
 
     def total_chars(self) -> int:
         self._ensure_open()

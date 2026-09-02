@@ -73,6 +73,7 @@ from uniti.ui.file_format_dialogs import (
     OpenFormatDialog,
     SaveAsFormatDialog,
 )
+from uniti.ui.file_operations import FileOperationController, FileOperationHandle
 from uniti.ui.find_replace import FindReplaceWindow
 from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.status_bar import UNITIStatusBar
@@ -140,6 +141,25 @@ class _NavigationJob:
     selecting: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _SaveAsDecision:
+    destination: Path
+    output_format: OutputFormat
+    target_view: UNITITextView | None
+    expected_target_identity: FileIdentity | None
+    in_place: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _SaveJob:
+    operation: FileOperationHandle
+    view_ref: weakref.ReferenceType
+    document: Document
+    output_format: OutputFormat
+    target_view_ref: weakref.ReferenceType | None
+    target_document: Document | None
+
+
 class UNITIMainWindow(QMainWindow):
     def __init__(
         self,
@@ -164,6 +184,12 @@ class UNITIMainWindow(QMainWindow):
         self._command_registry.add_listener(self._on_command_binding_changed)
         self._owns_resources = resource_manager is None
         self._resources = resource_manager or ResourceManager()
+        self._file_operations = FileOperationController(self._resources, self)
+        self._file_operations.operationFinished.connect(
+            self._finish_file_operation,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._save_jobs: dict[str, _SaveJob] = {}
         self._startup_snapshot = dict(startup_snapshot or {})
         self.setWindowTitle("UNITI")
         self.resize(1100, 760)
@@ -338,8 +364,12 @@ class UNITIMainWindow(QMainWindow):
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
         file_menu.addAction(self._command_action("file.open", self.open_dialog))
-        file_menu.addAction(self._command_action("file.save", self.save_current))
-        file_menu.addAction(self._command_action("file.save_as", self.save_current_as))
+        file_menu.addAction(
+            self._command_action("file.save", self.start_save_current)
+        )
+        file_menu.addAction(
+            self._command_action("file.save_as", self.start_save_current_as)
+        )
         file_menu.addAction(self._command_action("file.reload", self.reload_current))
         file_menu.addSeparator()
         file_menu.addAction(self._command_action("file.close", self.close_current))
@@ -1350,7 +1380,11 @@ class UNITIMainWindow(QMainWindow):
         profile: EncodingProfile,
     ) -> TextFileInspection:
         with ByteSource.open(path) as source:
-            return inspect_source(source, override=profile)
+            return inspect_source(
+                source,
+                override=profile,
+                eol_max_bytes=65_536,
+            )
 
     def _refresh_saved_format(
         self,
@@ -1358,12 +1392,17 @@ class UNITIMainWindow(QMainWindow):
         profile: EncodingProfile,
     ) -> None:
         inspection = self._inspect_known_output(view.document.path, profile)
-        self._eol_reports[id(view)] = inspection.eol
         view.document.set_source_eol_report(inspection.eol)
         self._dismiss_eol_dialog(view)
-        if inspection.eol.kind == "MIXED":
+        if inspection.eol_complete:
+            self._eol_reports[id(view)] = inspection.eol
+        else:
+            self._eol_reports.pop(id(view), None)
+        if inspection.eol_complete and inspection.eol.kind == "MIXED":
             self._show_mixed_eol_report(view, inspection.eol)
         self._on_view_state_changed(view)
+        if not inspection.eol_complete:
+            self._schedule_eol_analysis(view)
 
     def _open_verified_export(
         self,
@@ -1383,6 +1422,7 @@ class UNITIMainWindow(QMainWindow):
                 return self._add_document(
                     document,
                     initial_eol_report=inspection.eol,
+                    initial_eol_complete=inspection.eol_complete,
                 )
             except Exception:
                 document.close()
@@ -1392,12 +1432,260 @@ class UNITIMainWindow(QMainWindow):
                 existing_view,
                 document,
                 initial_eol_report=inspection.eol,
+                initial_eol_complete=inspection.eol_complete,
             )
         except Exception:
             document.close()
             raise
         self._tabs.setCurrentWidget(existing_view)
         return existing_view
+
+    def _resolve_save_as_decision(
+        self,
+        view: UNITITextView,
+        path: str | Path | None,
+        output_format: OutputFormat | None,
+    ) -> _SaveAsDecision | None:
+        destination = Path(path).expanduser() if path is not None else None
+        selected = output_format or view.document.output_format
+        if not isinstance(selected, OutputFormat):
+            raise TypeError("output_format must be an OutputFormat")
+
+        if destination is None:
+            dialog = SaveAsFormatDialog(
+                initial_directory=view.document.path.parent,
+                initial_name=view.document.path.name,
+                initial_format=selected,
+                parent=self,
+            )
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            selection = dialog.result_selection()
+            if selection is None:
+                return None
+            destination = selection.destination.expanduser()
+            selected = selection.output_format
+
+        destination = destination.resolve(strict=False)
+        if self._same_resolved_path(destination, view.document.path):
+            if not self._confirm_encoding_change(
+                view.document.path,
+                view.document.saved_output_format.encoding,
+                selected.encoding,
+            ):
+                return None
+            return _SaveAsDecision(
+                destination,
+                selected,
+                None,
+                view.document.disk_identity,
+                True,
+            )
+
+        target_view = self._view_for_path(destination, excluding=view)
+        if target_view is not None and (
+            target_view.document.modified or not target_view.isEnabled()
+        ):
+            QMessageBox.warning(
+                self,
+                "Target Has Unsaved Changes",
+                (
+                    f"{destination} is already open with unsaved changes or an "
+                    "active operation. Save or close that tab before replacing it."
+                ),
+                QMessageBox.StandardButton.Ok,
+                QMessageBox.StandardButton.Ok,
+            )
+            return None
+
+        expected_target_identity: FileIdentity | None = None
+        if destination.exists():
+            try:
+                expected_target_identity = FileIdentity.from_path(destination)
+            except OSError:
+                expected_target_identity = None
+            decision = self._inspect_open_path(destination)
+            if decision is None:
+                return None
+            confirmed_profile, target_inspection = decision
+            target_profile = (
+                confirmed_profile or target_inspection.encoding.suggested
+            )
+            if not self._confirm_existing_replacement(
+                destination,
+                selected,
+                target_inspection,
+            ):
+                return None
+            if not self._confirm_encoding_change(
+                destination,
+                target_profile,
+                selected.encoding,
+            ):
+                return None
+            if target_view is not None and not self._confirm_open_replacement(
+                destination
+            ):
+                return None
+
+        if target_view is not None and (
+            target_view.document.modified or not target_view.isEnabled()
+        ):
+            QMessageBox.warning(
+                self,
+                "Target Has Unsaved Changes",
+                f"{destination} changed while replacement was being confirmed.",
+                QMessageBox.StandardButton.Ok,
+                QMessageBox.StandardButton.Ok,
+            )
+            return None
+        return _SaveAsDecision(
+            destination,
+            selected,
+            target_view,
+            expected_target_identity,
+            False,
+        )
+
+    def _begin_file_operation(
+        self,
+        view: UNITITextView,
+        decision: _SaveAsDecision,
+    ) -> FileOperationHandle | None:
+        try:
+            operation = self._file_operations.start(
+                view.document,
+                decision.destination,
+                decision.output_format,
+                expected_destination_identity=decision.expected_target_identity,
+            )
+        except Exception as exc:
+            self._show_save_error(exc)
+            return None
+        target_document = (
+            None if decision.target_view is None else decision.target_view.document
+        )
+        self._save_jobs[operation.task_id] = _SaveJob(
+            operation,
+            weakref.ref(view),
+            view.document,
+            decision.output_format,
+            (
+                None
+                if decision.target_view is None
+                else weakref.ref(decision.target_view)
+            ),
+            target_document,
+        )
+        view.setEnabled(False)
+        self.statusBar().showMessage("Saving…")
+        return operation
+
+    def start_save_current(self) -> FileOperationHandle | None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return None
+        selected = view.document.output_format
+        if not self._confirm_encoding_change(
+            view.document.path,
+            view.document.saved_output_format.encoding,
+            selected.encoding,
+        ):
+            return None
+        return self._begin_file_operation(
+            view,
+            _SaveAsDecision(
+                view.document.path,
+                selected,
+                None,
+                view.document.disk_identity,
+                True,
+            ),
+        )
+
+    def start_save_current_as(
+        self,
+        path: str | Path | None = None,
+        output_format: OutputFormat | None = None,
+    ) -> FileOperationHandle | None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return None
+        decision = self._resolve_save_as_decision(view, path, output_format)
+        if decision is None:
+            return None
+        return self._begin_file_operation(view, decision)
+
+    def _finish_file_operation(self, operation: FileOperationHandle) -> None:
+        job = self._save_jobs.pop(operation.task_id, None)
+        if job is None:
+            return
+        view = job.view_ref()
+        prepared = None
+        try:
+            prepared = operation.task.future.result()
+            if operation.task.token.cancelled:
+                self.statusBar().showMessage("Save cancelled", 3000)
+                return
+            if view is None or view.document is not job.document:
+                return
+            if job.target_view_ref is not None:
+                target_view = job.target_view_ref()
+                if (
+                    target_view is None
+                    or target_view.document is not job.target_document
+                    or target_view.document.modified
+                    or not target_view.isEnabled()
+                ):
+                    QMessageBox.warning(
+                        self,
+                        "Target Has Unsaved Changes",
+                        (
+                            f"{operation.request.destination} changed while the "
+                            "save was being prepared. UNITI did not overwrite it."
+                        ),
+                        QMessageBox.StandardButton.Ok,
+                        QMessageBox.StandardButton.Ok,
+                    )
+                    return
+            if operation.request.in_place:
+                result = job.document.commit_prepared_save(prepared)
+                view.setEnabled(True)
+                self._refresh_saved_format(view, job.output_format.encoding)
+            else:
+                result = job.document.commit_prepared_export(prepared)
+                view.setEnabled(True)
+                target_view = (
+                    None
+                    if job.target_view_ref is None
+                    else job.target_view_ref()
+                )
+                self._open_verified_export(
+                    result,
+                    job.output_format,
+                    existing_view=target_view,
+                )
+                self._remember_directory(result)
+                self._on_view_state_changed(view)
+                self._on_current_changed(self._tabs.currentIndex())
+            self.statusBar().showMessage(f"Saved {result}", 3000)
+        except Exception as exc:
+            if operation.task.token.cancelled:
+                self.statusBar().showMessage("Save cancelled", 3000)
+            else:
+                self._show_save_error(exc)
+        finally:
+            if prepared is not None:
+                prepared.discard()
+            if view is not None and view.document is job.document:
+                view.setEnabled(True)
+
+    def cancel_active_operation(self) -> None:
+        view = self.current_view
+        for job in reversed(tuple(self._save_jobs.values())):
+            if view is None or job.view_ref() is view:
+                job.operation.cancel()
+                return
 
     def save_current(self) -> Path | None:
         view = self.current_view
@@ -1671,6 +1959,7 @@ class UNITIMainWindow(QMainWindow):
             if self._resource_probe_future is not None:
                 self._resource_probe_future.cancel()
                 self._resource_probe_future = None
+            self._file_operations.shutdown()
             self._find_replace.shutdown()
             if self._recovery_manager is not None:
                 self._recovery_manager.shutdown()

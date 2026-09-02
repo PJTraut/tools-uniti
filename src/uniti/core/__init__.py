@@ -15,7 +15,12 @@ from .document_lines import (
 )
 from .index_jobs import LineNavigationResult, build_line_index_batch
 from .pieces import AnnotatedChunk, AnnotatedText, InvalidByteSpan, EditPiece, EditRef, EditStore, PieceTable, SourcePiece
-from .document import Document
+from .document import Document, ReplacementPlanLimitError
+from .save_job import (
+    DocumentSaveRequest,
+    PreparedDocumentSave,
+    prepare_document_save,
+)
 from .snapshot import DocumentReadSnapshot, EditStoreSnapshot, PieceTableSnapshot
 from .streaming import atomic_copy_source
 from .text_format import (
@@ -61,6 +66,9 @@ __all__ = [
     "PieceTable",
     "TextFileInspection",
     "Document",
+    "DocumentSaveRequest",
+    "PreparedDocumentSave",
+    "ReplacementPlanLimitError",
     "DocumentReadSnapshot",
     "EditStoreSnapshot",
     "PieceTableSnapshot",
@@ -76,4 +84,5 @@ __all__ = [
     "inspect_source",
     "profile_from_codec",
     "preview_source",
+    "prepare_document_save",
 ]

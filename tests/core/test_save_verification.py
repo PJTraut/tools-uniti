@@ -265,6 +265,76 @@ def test_unverified_stage_cannot_be_committed(tmp_path):
         source.close()
 
 
+def test_verified_is_exposed_read_only(tmp_path):
+    source, table = table_for(tmp_path / "source.txt", "alpha\n")
+    target = tmp_path / "target.txt"
+    try:
+        staged = stage_document(
+            source,
+            table,
+            source_profile=encoding_profile("utf-8"),
+            destination=target,
+            output_format=OutputFormat(encoding_profile("utf-8"), EOLPolicy.LF),
+        )
+        assert staged.verified is False
+        verify_staged_document(staged, table.iter_text())
+        assert staged.verified is True
+        with pytest.raises((AttributeError, TypeError)):
+            staged.verified = False
+    finally:
+        discard_staged_document(staged)
+        source.close()
+
+
+def test_commit_uses_verified_identity_seal_without_rehashing(
+    tmp_path,
+    monkeypatch,
+):
+    source, table = table_for(tmp_path / "source.txt", "alpha\n")
+    target = tmp_path / "target.txt"
+    try:
+        staged = stage_document(
+            source,
+            table,
+            source_profile=encoding_profile("utf-8"),
+            destination=target,
+            output_format=OutputFormat(encoding_profile("utf-8"), EOLPolicy.LF),
+        )
+        verify_staged_document(staged, table.iter_text())
+        monkeypatch.setattr(
+            "uniti.core.save._file_length_and_digest",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("commit rehashed verified output")
+            ),
+        )
+
+        assert commit_staged_document(staged) == target
+    finally:
+        discard_staged_document(staged)
+        source.close()
+
+
+def test_commit_rejects_same_size_temp_mutation_after_verification(tmp_path):
+    source, table = table_for(tmp_path / "source.txt", "alpha\n")
+    target = tmp_path / "target.txt"
+    try:
+        staged = stage_document(
+            source,
+            table,
+            source_profile=encoding_profile("utf-8"),
+            destination=target,
+            output_format=OutputFormat(encoding_profile("utf-8"), EOLPolicy.LF),
+        )
+        verify_staged_document(staged, table.iter_text())
+        staged.temporary.write_bytes(b"omega\n")
+
+        with pytest.raises(SaveVerificationError, match="changed after verification"):
+            commit_staged_document(staged)
+    finally:
+        discard_staged_document(staged)
+        source.close()
+
+
 def test_preserve_staging_keeps_mixed_line_endings(tmp_path):
     source, table = table_for(tmp_path / "source.txt", "a\r\nb\nc\r")
     target = tmp_path / "target.txt"

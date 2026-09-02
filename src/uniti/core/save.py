@@ -26,6 +26,7 @@ from .text_format import (
 )
 
 EOLName = Literal["LF", "CRLF", "CR"]
+SaveProgress = Callable[[str, int, int | None], None]
 
 _EOL_TEXT: dict[str, str] = {"LF": "\n", "CRLF": "\r\n", "CR": "\r"}
 _UTF8_BOM = b"\xef\xbb\xbf"
@@ -107,10 +108,34 @@ class StagedSave:
     target_identity: FileIdentity | None
     preserves_source_bytes: bool
     _verified: bool = False
+    _verified_identity: FileIdentity | None = None
+
+    @property
+    def verified(self) -> bool:
+        return self._verified
 
 
 class SaveVerificationError(RuntimeError):
     """Raised when staged bytes do not prove the requested output contract."""
+
+
+class SaveCancelled(RuntimeError):
+    """Raised before commit when a staged save observes cancellation."""
+
+
+def _check_cancelled(cancelled: Callable[[], bool] | None) -> None:
+    if cancelled is not None and cancelled():
+        raise SaveCancelled("document save cancelled")
+
+
+def _report(
+    progress: SaveProgress | None,
+    phase: str,
+    completed: int,
+    total: int | None,
+) -> None:
+    if progress is not None:
+        progress(phase, completed, total)
 
 
 class _DigestingWriter:
@@ -185,12 +210,17 @@ def _preflight_output(
     source_profile: EncodingProfile,
     output_format: OutputFormat,
     chunk_chars: int,
+    progress: SaveProgress | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> bool:
     preserves_source_bytes = (
         output_format.encoding == source_profile
         and output_format.eol is EOLPolicy.PRESERVE
     )
+    _check_cancelled(cancelled)
+    _report(progress, "Checking output", 0, None)
     for chunk in piece_table.iter_annotated_text(chunk_chars=chunk_chars):
+        _check_cancelled(cancelled)
         if chunk.invalid_bytes and not preserves_source_bytes:
             first = chunk.invalid_bytes[0]
             raise UnresolvedMalformedBytesError(first.start, first.raw)
@@ -209,6 +239,13 @@ def _preflight_output(
             output_format.encoding.codec,
             chunk.document_offset + cursor,
         )
+        _report(
+            progress,
+            "Checking output",
+            chunk.document_offset + len(chunk.text),
+            None,
+        )
+    _check_cancelled(cancelled)
     return preserves_source_bytes
 
 
@@ -240,18 +277,30 @@ def _write_preserved_segments(
     *,
     encoding: str,
     chunk_bytes: int,
+    progress: SaveProgress | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> None:
     encoder = codecs.getincrementalencoder(_content_encoding(encoding))(errors="strict")
+    completed = 0
+    _report(progress, "Writing", 0, None)
     for segment in piece_table.iter_segments():
+        _check_cancelled(cancelled)
         if isinstance(segment, SourceSegment):
             for chunk in source.iter_chunks(
                 start=segment.byte_start,
                 end=segment.byte_end,
                 chunk_size=chunk_bytes,
             ):
+                _check_cancelled(cancelled)
                 handle.write(chunk)
+                completed += len(chunk)
+                _report(progress, "Writing", completed, None)
         elif isinstance(segment, EditSegment):
-            handle.write(_strict_encode(encoder, segment.text, encoding))
+            payload = _strict_encode(encoder, segment.text, encoding)
+            handle.write(payload)
+            completed += len(payload)
+            _report(progress, "Writing", completed, None)
+    _check_cancelled(cancelled)
     tail = _strict_encode(encoder, "", encoding, final=True)
     if tail:
         handle.write(tail)
@@ -296,6 +345,8 @@ def _write_logical_text(
     encoding: str,
     eol: EOLName | None,
     chunk_chars: int,
+    progress: SaveProgress | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> None:
     encoder = codecs.getincrementalencoder(_content_encoding(encoding))(errors="strict")
     chunks: Iterator[str] = _logical_chunks(piece_table, chunk_chars)
@@ -305,8 +356,14 @@ def _write_logical_text(
         except KeyError as exc:
             raise ValueError(f"unsupported EOL policy: {eol}") from exc
         chunks = _normalized_eol_chunks(chunks, target)
+    completed = 0
+    _report(progress, "Writing", 0, None)
     for text in chunks:
+        _check_cancelled(cancelled)
         handle.write(_strict_encode(encoder, text, encoding))
+        completed += len(text)
+        _report(progress, "Writing", completed, None)
+    _check_cancelled(cancelled)
     tail = _strict_encode(encoder, "", encoding, final=True)
     if tail:
         handle.write(tail)
@@ -344,6 +401,8 @@ def stage_document(
     output_format: OutputFormat,
     chunk_bytes: int = 1 << 20,
     chunk_chars: int = 65_536,
+    progress: SaveProgress | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> StagedSave:
     """Write and fsync a sibling temporary without replacing destination."""
 
@@ -354,6 +413,8 @@ def stage_document(
         source_profile=source_profile,
         output_format=output_format,
         chunk_chars=chunk_chars,
+        progress=progress,
+        cancelled=cancelled,
     )
     target = Path(destination)
     metadata = _capture_target_metadata(target)
@@ -382,6 +443,8 @@ def stage_document(
                     piece_table,
                     encoding=output_format.encoding.codec,
                     chunk_bytes=chunk_bytes,
+                    progress=progress,
+                    cancelled=cancelled,
                 )
             else:
                 eol: EOLName | None = None
@@ -393,7 +456,10 @@ def stage_document(
                     encoding=output_format.encoding.codec,
                     eol=eol,
                     chunk_chars=chunk_chars,
+                    progress=progress,
+                    cancelled=cancelled,
                 )
+            _check_cancelled(cancelled)
             handle.flush()
             os.fsync(handle.fileno())
             byte_length = writer.byte_length
@@ -445,16 +511,31 @@ def _verify_exact_bom(staged: StagedSave) -> int:
     return 0
 
 
-def _file_length_and_digest(path: Path, *, chunk_size: int = 1 << 20) -> tuple[int, str]:
+def _file_length_and_digest(
+    path: Path,
+    *,
+    chunk_size: int = 1 << 20,
+    progress: SaveProgress | None = None,
+    cancelled: Callable[[], bool] | None = None,
+    phase: str = "Verifying bytes",
+) -> tuple[int, str]:
     length = 0
     digest = hashlib.sha256()
+    try:
+        total: int | None = path.stat().st_size
+    except OSError:
+        total = None
+    _report(progress, phase, 0, total)
     with path.open("rb") as handle:
         while True:
+            _check_cancelled(cancelled)
             chunk = handle.read(chunk_size)
             if not chunk:
                 break
             length += len(chunk)
             digest.update(chunk)
+            _report(progress, phase, length, total)
+    _check_cancelled(cancelled)
     return length, digest.hexdigest()
 
 
@@ -466,13 +547,21 @@ def _text_chunks(chunks: Iterable[str | tuple[int, str]]) -> Iterator[str]:
             yield chunk
 
 
-def _compare_text_streams(expected: Iterator[str], actual: Iterator[str]) -> None:
+def _compare_text_streams(
+    expected: Iterator[str],
+    actual: Iterator[str],
+    *,
+    progress: SaveProgress | None = None,
+    cancelled: Callable[[], bool] | None = None,
+) -> None:
     expected_buffer = ""
     actual_buffer = ""
     expected_done = False
     actual_done = False
     position = 0
+    _report(progress, "Verifying text", 0, None)
     while True:
+        _check_cancelled(cancelled)
         while not expected_buffer and not expected_done:
             try:
                 expected_buffer = next(expected)
@@ -506,6 +595,7 @@ def _compare_text_streams(expected: Iterator[str], actual: Iterator[str]) -> Non
         expected_buffer = expected_buffer[compared:]
         actual_buffer = actual_buffer[compared:]
         position += compared
+        _report(progress, "Verifying text", position, None)
 
 
 def _decoded_staged_chunks(staged: StagedSave, content_start: int) -> Iterator[str]:
@@ -524,12 +614,28 @@ def _decoded_staged_chunks(staged: StagedSave, content_start: int) -> Iterator[s
             yield span.text
 
 
-def _verify_eol_policy(staged: StagedSave) -> None:
+def _verify_eol_policy(
+    staged: StagedSave,
+    *,
+    progress: SaveProgress | None = None,
+    cancelled: Callable[[], bool] | None = None,
+) -> None:
     policy = staged.output_format.eol
     if policy is EOLPolicy.PRESERVE:
         return
     with ByteSource.open(staged.temporary) as source:
-        report = analyze_eol(source, encoding=staged.output_format.encoding.codec)
+        report = analyze_eol(
+            source,
+            encoding=staged.output_format.encoding.codec,
+            cancelled=cancelled,
+            progress=(
+                None
+                if progress is None
+                else lambda done, total: progress(
+                    "Verifying line endings", done, total
+                )
+            ),
+        )
     counts = {
         EOLPolicy.LF: report.lf,
         EOLPolicy.CRLF: report.crlf,
@@ -545,11 +651,19 @@ def _verify_eol_policy(staged: StagedSave) -> None:
 def verify_staged_document(
     staged: StagedSave,
     expected_chunks: Iterable[str | tuple[int, str]],
+    *,
+    progress: SaveProgress | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> None:
     """Reread staged bytes and prove exact byte and logical output invariants."""
 
     content_start = _verify_exact_bom(staged)
-    length, digest = _file_length_and_digest(staged.temporary)
+    _check_cancelled(cancelled)
+    length, digest = _file_length_and_digest(
+        staged.temporary,
+        progress=progress,
+        cancelled=cancelled,
+    )
     if length != staged.byte_length:
         raise SaveVerificationError(
             f"staged byte length changed: expected {staged.byte_length}, found {length}"
@@ -563,18 +677,29 @@ def verify_staged_document(
             expected,
             _EOL_TEXT[staged.output_format.eol.value],
         )
-    _compare_text_streams(expected, _decoded_staged_chunks(staged, content_start))
-    _verify_eol_policy(staged)
+    _compare_text_streams(
+        expected,
+        _decoded_staged_chunks(staged, content_start),
+        progress=progress,
+        cancelled=cancelled,
+    )
+    _verify_eol_policy(staged, progress=progress, cancelled=cancelled)
+    _check_cancelled(cancelled)
+    verified_identity = FileIdentity.from_path(staged.temporary)
+    object.__setattr__(staged, "_verified_identity", verified_identity)
     object.__setattr__(staged, "_verified", True)
 
 
 def commit_staged_document(staged: StagedSave) -> Path:
     """Atomically replace the destination after successful verification."""
 
-    if not staged._verified:
+    if not staged._verified or staged._verified_identity is None:
         raise SaveVerificationError("staged output has not been verified")
-    length, digest = _file_length_and_digest(staged.temporary)
-    if length != staged.byte_length or digest != staged.digest:
+    try:
+        staged_identity = FileIdentity.from_path(staged.temporary)
+    except FileNotFoundError as exc:
+        raise SaveVerificationError("staged output changed after verification") from exc
+    if staged_identity != staged._verified_identity:
         raise SaveVerificationError("staged output changed after verification")
     try:
         target_identity = FileIdentity.from_path(staged.destination)

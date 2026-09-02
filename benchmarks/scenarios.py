@@ -5,7 +5,6 @@ from __future__ import annotations
 import gc
 import hashlib
 import os
-import tempfile
 import time
 from pathlib import Path
 
@@ -503,36 +502,150 @@ def _replace(manifest: CorpusManifest) -> ScenarioResult:
     )
 
 
-def _save_as(manifest: CorpusManifest) -> ScenarioResult:
-    from uniti.core.document import Document
+def _wait_for_file_operation(app, window, operation, started: float):
+    heartbeats: list[float] = []
+    progress_times: list[float] = []
+    seen_progress_at: float | None = None
+    deadline = time.perf_counter() + 180.0
+    while operation.task_id in window._save_jobs and time.perf_counter() < deadline:
+        heartbeat_started = time.perf_counter()
+        app.processEvents()
+        heartbeats.append((time.perf_counter() - heartbeat_started) * 1000.0)
+        progress = operation.task.progress
+        if progress is not None and progress.updated_at != seen_progress_at:
+            seen_progress_at = progress.updated_at
+            progress_times.append(progress.updated_at)
+        time.sleep(0.001)
+    if operation.task_id in window._save_jobs:
+        operation.cancel()
+        raise TimeoutError("progressive file operation did not complete")
+    completed = time.perf_counter()
+    if operation.task.future.exception() is not None:
+        operation.task.future.result()
+    first_progress_ms = (
+        (progress_times[0] - started) * 1000.0
+        if progress_times
+        else (completed - started) * 1000.0
+    )
+    gaps = [
+        (right - left) * 1000.0
+        for left, right in zip(progress_times, progress_times[1:])
+    ]
+    if progress_times:
+        gaps.append((completed - progress_times[-1]) * 1000.0)
+    return {
+        "gui_heartbeat_p95_ms": _p95(heartbeats),
+        "gui_heartbeat_max_ms": max(heartbeats or [0.0]),
+        "first_progress_ms": first_progress_ms,
+        "progress_gap_ms": max(gaps or [0.0]),
+        "completion_ms": (completed - started) * 1000.0,
+    }
 
+
+def _save_output(manifest: CorpusManifest, *, in_place: bool) -> ScenarioResult:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    scenario_name = "save" if in_place else "save_as"
+    app = QApplication.instance() or QApplication([])
+    resources = ResourceManager()
+    window = UNITIMainWindow(resource_manager=resources)
+    view = window.open_path(manifest.path)
+    app.processEvents()
+    target = (
+        manifest.path
+        if in_place
+        else manifest.path.parent / "uniti-benchmark-save-as.txt"
+    )
+    target.unlink(missing_ok=True) if not in_place else None
+    cancel_target = manifest.path.parent / "uniti-benchmark-cancelled-save.txt"
+    cancel_target.unlink(missing_ok=True)
     start_current = current_process_rss_bytes()
     start_peak = peak_process_rss_bytes()
-    descriptor, raw_target = tempfile.mkstemp(prefix="uniti-benchmark-save-", suffix=".txt")
-    os.close(descriptor)
-    target = Path(raw_target)
-    target.unlink()
     try:
-        with Document.open(manifest.path, encoding="utf-8") as document:
-            started = time.perf_counter()
-            document.export_copy(target, output_format=document.output_format)
-            elapsed_ms = (time.perf_counter() - started) * 1000.0
-        integrity = manifest.digest is None or _digest(target) == manifest.digest
+        started = time.perf_counter()
+        operation = (
+            window.start_save_current()
+            if in_place
+            else window.start_save_current_as(target, view.document.output_format)
+        )
+        interaction_ms = (time.perf_counter() - started) * 1000.0
+        if operation is None:
+            raise RuntimeError("progressive save was not admitted")
+        timings = _wait_for_file_operation(app, window, operation, started)
+        output_digest = _digest(target)
+        output_ok = manifest.digest is None or output_digest == manifest.digest
+        source_identity_ok = view.document.path == manifest.path
+
+        window._tabs.setCurrentWidget(view)
+        cancel_operation = window.start_save_current_as(
+            cancel_target,
+            view.document.output_format,
+        )
+        if cancel_operation is None:
+            raise RuntimeError("cancellation save was not admitted")
+        cancel_deadline = time.perf_counter() + 5.0
+        while (
+            cancel_operation.task.progress is None
+            and not cancel_operation.done
+            and time.perf_counter() < cancel_deadline
+        ):
+            app.processEvents()
+            time.sleep(0.001)
+        cancel_started = time.perf_counter()
+        cancel_operation.cancel()
+        while (
+            cancel_operation.task_id in window._save_jobs
+            and time.perf_counter() < cancel_deadline
+        ):
+            app.processEvents()
+            time.sleep(0.001)
+        cancel_ms = (time.perf_counter() - cancel_started) * 1000.0
+        cancelled_ok = (
+            cancel_operation.task_id not in window._save_jobs
+            and not cancel_target.exists()
+            and view.isEnabled()
+        )
     finally:
-        target.unlink(missing_ok=True)
+        window.close_all_documents(force=True)
+        window.close()
+        resources.shutdown()
+        app.processEvents()
+        if not in_place:
+            target.unlink(missing_ok=True)
+        cancel_target.unlink(missing_ok=True)
     peak_mib, retained_mib = _rss_facts(start_current, start_peak)
     return ScenarioResult.success(
-        scenario="save_as",
+        scenario=scenario_name,
         metrics={
-            "interaction_max_ms": MetricSample((elapsed_ms,)),
+            "interaction_max_ms": MetricSample((interaction_ms,)),
+            "gui_heartbeat_p95_ms": MetricSample((timings["gui_heartbeat_p95_ms"],)),
+            "gui_heartbeat_max_ms": MetricSample((timings["gui_heartbeat_max_ms"],)),
+            "first_progress_ms": MetricSample((timings["first_progress_ms"],)),
+            "progress_gap_ms": MetricSample((timings["progress_gap_ms"],)),
+            "cancel_normal_ms": MetricSample((cancel_ms,)),
+            "save_completion_ms": MetricSample((timings["completion_ms"],)),
             "peak_rss_mib": MetricSample((peak_mib,)),
             "retained_rss_mib": MetricSample((retained_mib,)),
         },
         facts={
             "physical_memory_bytes": probe_memory().physical,
-            "integrity_ok": integrity,
+            "output_digest": output_digest,
+            "cancelled_target_preserved": cancelled_ok,
+            "source_identity_preserved": source_identity_ok,
+            "integrity_ok": output_ok and source_identity_ok and cancelled_ok,
         },
     )
+
+
+def _save(manifest: CorpusManifest) -> ScenarioResult:
+    return _save_output(manifest, in_place=True)
+
+
+def _save_as(manifest: CorpusManifest) -> ScenarioResult:
+    return _save_output(manifest, in_place=False)
 
 
 _SCENARIOS = {
@@ -541,6 +654,7 @@ _SCENARIOS = {
     "search_sparse": _search_sparse,
     "search_dense": _search_dense,
     "replace": _replace,
+    "save": _save,
     "save_as": _save_as,
 }
 
@@ -572,5 +686,6 @@ def initial_scenario_names(tier: str) -> tuple[str, ...]:
         "search_sparse",
         "search_dense",
         "replace",
+        "save",
         "save_as",
     )
