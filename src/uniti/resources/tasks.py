@@ -32,6 +32,8 @@ class TaskKind(StrEnum):
     INDEX = "index"
     EOL = "eol"
     PREFETCH = "prefetch"
+    REGEX_ANALYSIS = "regex_analysis"
+    CAPTURE_REPORT = "capture_report"
 
 
 class TaskState(StrEnum):
@@ -51,6 +53,8 @@ _PRIORITIES = {
     TaskKind.INDEX: WorkPriority.INDEX,
     TaskKind.EOL: WorkPriority.INDEX,
     TaskKind.PREFETCH: WorkPriority.PREFETCH,
+    TaskKind.REGEX_ANALYSIS: WorkPriority.INTERACTIVE,
+    TaskKind.CAPTURE_REPORT: WorkPriority.VISIBLE,
 }
 _BACKGROUND_KINDS = {TaskKind.INDEX, TaskKind.EOL, TaskKind.PREFETCH}
 
@@ -313,7 +317,7 @@ class TaskCoordinator:
         handle: TaskHandle[T] = TaskHandle(spec, token, self._clock, self._notify)
         with self._condition:
             self._handles[spec.task_id] = handle
-            deferred = self._background_paused and not spec.foreground
+            deferred = self._background_paused and spec.kind in _BACKGROUND_KINDS
             if deferred:
                 public_future: Future[T] = Future()
                 handle._set_future(public_future)
@@ -404,3 +408,164 @@ class TaskCoordinator:
             self._condition.notify_all()
         for handle in handles:
             handle.cancel()
+
+
+@dataclass(frozen=True, slots=True)
+class _LatestTaskRequest(Generic[T]):
+    generation: int
+    spec: TaskSpec
+    work: Callable[[TaskContext], T]
+    discard: Callable[[], None]
+
+
+class LatestTaskSlot(Generic[T]):
+    """Serialize one active task and retain only the newest pending request."""
+
+    def __init__(
+        self,
+        coordinator: TaskCoordinator,
+        completed: Callable[[int, TaskHandle[T]], None],
+    ) -> None:
+        self._coordinator = coordinator
+        self._completed = completed
+        self._lock = threading.Lock()
+        self._active: _LatestTaskRequest[T] | None = None
+        self._active_handle: TaskHandle[T] | None = None
+        self._active_cancel_requested = False
+        self._pending: _LatestTaskRequest[T] | None = None
+        self._closed = False
+
+    def request(
+        self,
+        generation: int,
+        spec: TaskSpec,
+        work: Callable[[TaskContext], T],
+        *,
+        discard: Callable[[], None] = lambda: None,
+    ) -> None:
+        request = _LatestTaskRequest(generation, spec, work, discard)
+        start = False
+        reject = False
+        old_pending: _LatestTaskRequest[T] | None = None
+        active_handle: TaskHandle[T] | None = None
+        with self._lock:
+            if self._closed:
+                reject = True
+            elif self._active is None:
+                self._active = request
+                self._active_cancel_requested = False
+                start = True
+            else:
+                old_pending = self._pending
+                self._pending = request
+                self._active_cancel_requested = True
+                active_handle = self._active_handle
+        if reject:
+            request.discard()
+            return
+        if old_pending is not None:
+            old_pending.discard()
+        if active_handle is not None:
+            active_handle.cancel()
+        if start:
+            self._submit(request)
+
+    def cancel(self) -> None:
+        with self._lock:
+            pending = self._pending
+            self._pending = None
+            self._active_cancel_requested = self._active is not None
+            active_handle = self._active_handle
+        if pending is not None:
+            pending.discard()
+        if active_handle is not None:
+            active_handle.cancel()
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            pending = self._pending
+            self._pending = None
+            self._active_cancel_requested = self._active is not None
+            active_handle = self._active_handle
+        if pending is not None:
+            pending.discard()
+        if active_handle is not None:
+            active_handle.cancel()
+
+    def _submit(self, request: _LatestTaskRequest[T]) -> None:
+        with self._lock:
+            if self._active is not request:
+                return
+            if self._closed:
+                self._active = None
+                self._active_cancel_requested = False
+                discard = True
+            else:
+                discard = False
+        if discard:
+            request.discard()
+            return
+
+        started = threading.Event()
+
+        def run(context: TaskContext) -> T:
+            started.set()
+            return request.work(context)
+
+        try:
+            handle = self._coordinator.submit(request.spec, run)
+        except TaskAdmissionError:
+            self._rejected(request)
+            return
+        with self._lock:
+            if self._active is not request:
+                cancel_now = True
+            else:
+                self._active_handle = handle
+                cancel_now = self._closed or self._active_cancel_requested
+        handle.future.add_done_callback(
+            lambda _future: self._finished(request, handle, started.is_set())
+        )
+        if cancel_now:
+            handle.cancel()
+
+    def _rejected(self, request: _LatestTaskRequest[T]) -> None:
+        with self._lock:
+            if self._active is not request:
+                return
+            self._active = None
+            self._active_handle = None
+            self._active_cancel_requested = False
+            pending = None if self._closed else self._pending
+            self._pending = None
+            if pending is not None:
+                self._active = pending
+        request.discard()
+        if pending is not None:
+            self._submit(pending)
+
+    def _finished(
+        self,
+        request: _LatestTaskRequest[T],
+        handle: TaskHandle[T],
+        started: bool,
+    ) -> None:
+        with self._lock:
+            if self._active is not request:
+                return
+            self._active = None
+            self._active_handle = None
+            self._active_cancel_requested = False
+            pending = None if self._closed else self._pending
+            self._pending = None
+            if pending is not None:
+                self._active = pending
+        try:
+            if started:
+                self._completed(request.generation, handle)
+        finally:
+            if pending is not None:
+                self._submit(pending)

@@ -25,6 +25,7 @@ from .telemetry import (
     probe_host_profile,
 )
 from .tasks import (
+    LatestTaskSlot,
     TaskAdmissionError,
     TaskContext,
     TaskCoordinator,
@@ -47,6 +48,7 @@ __all__ = [
     "HostRequirement",
     "HostResourceProfile",
     "MemorySnapshot",
+    "LatestTaskSlot",
     "PerformancePolicy",
     "PressureState",
     "PressureLimits",

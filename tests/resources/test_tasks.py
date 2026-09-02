@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import threading
+import time
 from threading import Event
 
 import pytest
 
 from uniti.resources import MemorySnapshot, ResourceManager
 from uniti.resources.tasks import (
+    LatestTaskSlot,
     TaskAdmissionError,
     TaskKind,
     TaskSpec,
     TaskState,
 )
+from uniti.resources.workers import WorkPriority
 
 
 @pytest.fixture
@@ -153,3 +157,125 @@ def test_cancelled_task_observes_one_shared_token(resource_manager):
     with pytest.raises(RuntimeError, match="cancelled"):
         handle.future.result(timeout=1.0)
     assert handle.state is TaskState.CANCELLED
+
+
+def test_regex_task_kinds_have_visible_priorities_and_ignore_index_pause(
+    resource_manager,
+):
+    analysis_started = Event()
+    resource_manager.pause_background(True)
+
+    analysis = resource_manager.tasks.submit(
+        TaskSpec.create(TaskKind.REGEX_ANALYSIS, foreground=False),
+        lambda _context: analysis_started.set(),
+    )
+
+    assert TaskSpec.create(
+        TaskKind.REGEX_ANALYSIS, foreground=False
+    ).priority is WorkPriority.INTERACTIVE
+    assert TaskSpec.create(
+        TaskKind.CAPTURE_REPORT, foreground=False
+    ).priority is WorkPriority.VISIBLE
+    assert not resource_manager.tasks.kind_is_paused(TaskKind.REGEX_ANALYSIS)
+    assert not resource_manager.tasks.kind_is_paused(TaskKind.CAPTURE_REPORT)
+    assert analysis_started.wait(1)
+    analysis.future.result(timeout=1)
+
+
+def test_latest_task_slot_runs_one_call_and_only_the_newest_pending(
+    resource_manager,
+):
+    entered = threading.Event()
+    release = threading.Event()
+    ran: list[int] = []
+    discarded: list[int] = []
+    completed: list[int] = []
+    slot = LatestTaskSlot(
+        resource_manager.tasks,
+        lambda generation, _handle: completed.append(generation),
+    )
+
+    def first(_context):
+        ran.append(1)
+        entered.set()
+        release.wait(2)
+        return 1
+
+    slot.request(
+        1,
+        TaskSpec.create(TaskKind.REGEX_ANALYSIS, foreground=False),
+        first,
+    )
+    assert entered.wait(1)
+    slot.request(
+        2,
+        TaskSpec.create(TaskKind.REGEX_ANALYSIS, foreground=False),
+        lambda _context: ran.append(2),
+        discard=lambda: discarded.append(2),
+    )
+    slot.request(
+        3,
+        TaskSpec.create(TaskKind.REGEX_ANALYSIS, foreground=False),
+        lambda _context: ran.append(3),
+        discard=lambda: discarded.append(3),
+    )
+    release.set()
+    deadline = time.monotonic() + 2
+    while completed != [1, 3] and time.monotonic() < deadline:
+        time.sleep(0.005)
+
+    assert ran == [1, 3]
+    assert discarded == [2]
+    slot.close()
+
+
+def test_closing_latest_task_slot_cancels_active_and_discards_pending(
+    resource_manager,
+):
+    started = threading.Event()
+    release = threading.Event()
+    discarded: list[str] = []
+    slot = LatestTaskSlot(resource_manager.tasks, lambda *_args: None)
+    slot.request(
+        1,
+        TaskSpec.create(TaskKind.CAPTURE_REPORT, foreground=False),
+        lambda _context: (started.set(), release.wait(2))[1],
+    )
+    assert started.wait(1)
+    slot.request(
+        2,
+        TaskSpec.create(TaskKind.CAPTURE_REPORT, foreground=False),
+        lambda _context: None,
+        discard=lambda: discarded.append("pending snapshot closed"),
+    )
+
+    slot.close()
+    release.set()
+
+    assert discarded == ["pending snapshot closed"]
+
+
+def test_latest_task_slot_discards_a_request_rejected_by_admission(
+    resource_manager,
+):
+    discarded: list[int] = []
+    completed: list[int] = []
+    slot = LatestTaskSlot(
+        resource_manager.tasks,
+        lambda generation, _handle: completed.append(generation),
+    )
+
+    slot.request(
+        1,
+        TaskSpec.create(
+            TaskKind.REGEX_ANALYSIS,
+            foreground=False,
+            estimated_memory_bytes=9 << 30,
+        ),
+        lambda _context: 1,
+        discard=lambda: discarded.append(1),
+    )
+
+    assert discarded == [1]
+    assert completed == []
+    slot.close()
