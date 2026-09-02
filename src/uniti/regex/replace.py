@@ -9,6 +9,7 @@ from typing import Callable
 import regex
 
 from uniti.core.document import Document
+from uniti.core.offsets import ReadIntent
 from .search import SearchOptions, _iter_engine_matches
 
 
@@ -123,7 +124,12 @@ def stream_replace_to_file(
     count_box = [0]
 
     def chunks():
-        source_iter = iter(document.iter_text(chunk_chars=opts.window_chars))
+        source_iter = iter(
+            document.iter_text(
+                chunk_chars=opts.window_chars,
+                intent=ReadIntent.STREAMING,
+            )
+        )
         current_start = 0
         current_text = ""
         current_index = 0

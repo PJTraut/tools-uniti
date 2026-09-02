@@ -5,6 +5,7 @@ from __future__ import annotations
 from bisect import bisect_left, bisect_right
 from collections import OrderedDict
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, Hashable
 
 if TYPE_CHECKING:
@@ -18,6 +19,13 @@ from .decoder import DecodedSpan, decode_span, iter_decoded_spans
 class OffsetCheckpoint:
     byte_offset: int
     char_offset: int
+
+
+class ReadIntent(StrEnum):
+    VISIBLE = "visible"
+    NEARBY = "nearby"
+    RANDOM = "random"
+    STREAMING = "streaming"
 
 
 _BOM_BY_ENCODING: dict[str, bytes] = {
@@ -83,7 +91,7 @@ class OffsetMapper:
     def checkpoints(self) -> tuple[OffsetCheckpoint, ...]:
         return tuple(self._checkpoints)
 
-    def _advance(self) -> None:
+    def _advance(self, intent: ReadIntent = ReadIntent.RANDOM) -> None:
         if self._complete:
             return
         iterator = iter_decoded_spans(
@@ -99,7 +107,8 @@ class OffsetMapper:
             self._complete = True
             return
 
-        self._cache_span(span)
+        if intent is not ReadIntent.STREAMING:
+            self._cache_span(span)
         self._indexed_byte_end = span.byte_end
         self._indexed_char_end += len(span.text)
         checkpoint = OffsetCheckpoint(self._indexed_byte_end, self._indexed_char_end)
@@ -109,7 +118,7 @@ class OffsetMapper:
 
     @staticmethod
     def _span_size(span: DecodedSpan) -> int:
-        return 128 + len(span.text) * 4 + len(span.char_boundaries) * 8 + len(span.errors) * 64
+        return span.retained_size_bytes
 
     def _cache_span(self, span: DecodedSpan) -> None:
         key = (span.byte_start, span.byte_end)
@@ -129,19 +138,27 @@ class OffsetMapper:
         while len(self._span_cache) > self._span_cache_limit:
             self._span_cache.popitem(last=False)
 
-    def _decoded_interval(self, index: int) -> DecodedSpan:
+    def _decoded_interval(
+        self,
+        index: int,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> DecodedSpan:
         checkpoint = self._checkpoints[index]
         if index + 1 >= len(self._checkpoints):
             raise ValueError("mapping interval is not indexed")
         end_checkpoint = self._checkpoints[index + 1]
         key = (checkpoint.byte_offset, end_checkpoint.byte_offset)
-        if self._resource_manager is not None and self._cache_owner is not None:
+        if (
+            intent is not ReadIntent.STREAMING
+            and self._resource_manager is not None
+            and self._cache_owner is not None
+        ):
             cached = self._resource_manager.get_cache(
                 self._cache_owner, ("offset-span",) + key
             )
             if cached is not None:
                 return cached
-        else:
+        elif intent is not ReadIntent.STREAMING:
             cached = self._span_cache.get(key)
             if cached is not None:
                 self._span_cache.move_to_end(key)
@@ -152,28 +169,42 @@ class OffsetMapper:
             end_checkpoint.byte_offset - checkpoint.byte_offset,
             self._encoding,
         )
-        self._cache_span(span)
+        if intent is not ReadIntent.STREAMING:
+            self._cache_span(span)
         return span
 
-    def _ensure_char(self, char_offset: int) -> None:
+    def _ensure_char(
+        self,
+        char_offset: int,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> None:
         if char_offset < 0:
             raise ValueError("character offset must be non-negative")
         while char_offset > self._indexed_char_end and not self._complete:
-            self._advance()
+            self._advance(intent)
         if char_offset > self._indexed_char_end:
             raise ValueError("character offset is beyond end of source")
 
-    def _ensure_byte(self, byte_offset: int) -> None:
+    def _ensure_byte(
+        self,
+        byte_offset: int,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> None:
         visible_start = self._checkpoints[0].byte_offset
         if byte_offset < visible_start or byte_offset > self._source.size:
             raise ValueError("byte offset is outside visible source text")
         while byte_offset > self._indexed_byte_end and not self._complete:
-            self._advance()
+            self._advance(intent)
         if byte_offset > self._indexed_byte_end:
             raise ValueError("byte offset is beyond indexed source")
 
-    def char_to_byte(self, char_offset: int) -> int:
-        self._ensure_char(char_offset)
+    def char_to_byte(
+        self,
+        char_offset: int,
+        *,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> int:
+        self._ensure_char(char_offset, intent)
         char_points = [cp.char_offset for cp in self._checkpoints]
         index = bisect_right(char_points, char_offset) - 1
         checkpoint = self._checkpoints[index]
@@ -182,12 +213,17 @@ class OffsetMapper:
 
         if index + 1 >= len(self._checkpoints):
             raise ValueError("character offset is beyond end of source")
-        span = self._decoded_interval(index)
+        span = self._decoded_interval(index, intent)
         local = char_offset - checkpoint.char_offset
         return span.byte_offset_for_char_boundary(local)
 
-    def byte_to_char(self, byte_offset: int) -> int:
-        self._ensure_byte(byte_offset)
+    def byte_to_char(
+        self,
+        byte_offset: int,
+        *,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> int:
+        self._ensure_byte(byte_offset, intent)
         byte_points = [cp.byte_offset for cp in self._checkpoints]
         index = bisect_right(byte_points, byte_offset) - 1
         checkpoint = self._checkpoints[index]
@@ -196,17 +232,17 @@ class OffsetMapper:
 
         if index + 1 >= len(self._checkpoints):
             raise ValueError("byte offset is not a visible character boundary")
-        span = self._decoded_interval(index)
-        absolute_boundaries = [checkpoint.byte_offset + value for value in span.char_boundaries]
-        boundary_index = bisect_left(absolute_boundaries, byte_offset)
+        span = self._decoded_interval(index, intent)
+        local_byte_offset = byte_offset - checkpoint.byte_offset
+        boundary_index = bisect_left(span.char_boundaries, local_byte_offset)
         if (
-            boundary_index >= len(absolute_boundaries)
-            or absolute_boundaries[boundary_index] != byte_offset
+            boundary_index >= len(span.char_boundaries)
+            or span.char_boundaries[boundary_index] != local_byte_offset
         ):
             raise ValueError("byte offset is not a visible character boundary")
         return checkpoint.char_offset + boundary_index
 
-    def total_chars(self) -> int:
+    def total_chars(self, *, intent: ReadIntent = ReadIntent.RANDOM) -> int:
         while not self._complete:
-            self._advance()
+            self._advance(intent)
         return self._indexed_char_end

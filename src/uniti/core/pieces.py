@@ -8,7 +8,7 @@ from collections.abc import Iterator
 
 from .byte_source import ByteSource
 from .decoder import decode_span
-from .offsets import OffsetMapper
+from .offsets import OffsetMapper, ReadIntent
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,7 +212,12 @@ class PieceTable:
         self._pieces[index : index + 1] = [left, right]
         return index + 1
 
-    def _validate_offset(self, char_offset: int) -> None:
+    def _validate_offset(
+        self,
+        char_offset: int,
+        *,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> None:
         if char_offset < 0:
             raise ValueError("character offset must be non-negative")
         remaining = char_offset
@@ -221,7 +226,10 @@ class PieceTable:
             if length is None:
                 if not isinstance(piece, SourcePiece) or index != len(self._pieces) - 1:
                     raise RuntimeError("only final source tail may have unknown length")
-                self._mapper.char_to_byte(piece.source_char_start + remaining)
+                self._mapper.char_to_byte(
+                    piece.source_char_start + remaining,
+                    intent=intent,
+                )
                 return
             if remaining <= length:
                 return
@@ -323,11 +331,18 @@ class PieceTable:
         if text:
             self.insert(start, text)
 
-    def _read_source_piece(self, piece: SourcePiece, start: int, end: int) -> str:
+    def _read_source_piece(
+        self,
+        piece: SourcePiece,
+        start: int,
+        end: int,
+        *,
+        intent: ReadIntent,
+    ) -> str:
         source_start = piece.source_char_start + start
         source_end = piece.source_char_start + end
-        byte_start = self._mapper.char_to_byte(source_start)
-        byte_end = self._mapper.char_to_byte(source_end)
+        byte_start = self._mapper.char_to_byte(source_start, intent=intent)
+        byte_end = self._mapper.char_to_byte(source_end, intent=intent)
         span = decode_span(
             self._source,
             byte_start,
@@ -343,11 +358,12 @@ class PieceTable:
         end: int,
         *,
         document_start: int,
+        intent: ReadIntent,
     ) -> AnnotatedText:
         source_start = piece.source_char_start + start
         source_end = piece.source_char_start + end
-        byte_start = self._mapper.char_to_byte(source_start)
-        byte_end = self._mapper.char_to_byte(source_end)
+        byte_start = self._mapper.char_to_byte(source_start, intent=intent)
+        byte_end = self._mapper.char_to_byte(source_end, intent=intent)
         span = decode_span(
             self._source,
             byte_start,
@@ -372,11 +388,17 @@ class PieceTable:
             )
         return AnnotatedText(span.text, tuple(invalid))
 
-    def read(self, start: int, end: int) -> str:
+    def read(
+        self,
+        start: int,
+        end: int,
+        *,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> str:
         if start < 0 or end < start:
             raise ValueError("invalid document character range")
         if start == end:
-            self._validate_offset(start)
+            self._validate_offset(start, intent=intent)
             return ""
 
         output: list[str] = []
@@ -391,7 +413,10 @@ class PieceTable:
                 if required == 0:
                     break
                 # Validates that the requested end exists without measuring EOF.
-                self._mapper.char_to_byte(piece.source_char_start + required)
+                self._mapper.char_to_byte(
+                    piece.source_char_start + required,
+                    intent=intent,
+                )
                 piece_length = required
             else:
                 piece_length = known_length
@@ -409,7 +434,14 @@ class PieceTable:
                 if isinstance(piece, EditPiece):
                     output.append(self._edit_store.read(piece.ref, local_start, local_end))
                 else:
-                    output.append(self._read_source_piece(piece, local_start, local_end))
+                    output.append(
+                        self._read_source_piece(
+                            piece,
+                            local_start,
+                            local_end,
+                            intent=intent,
+                        )
+                    )
                 consumed_to = position + local_end
             position = piece_end_position
             if consumed_to >= end:
@@ -419,11 +451,17 @@ class PieceTable:
             raise ValueError("document range extends beyond end of document")
         return "".join(output)
 
-    def read_with_annotations(self, start: int, end: int) -> AnnotatedText:
+    def read_with_annotations(
+        self,
+        start: int,
+        end: int,
+        *,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> AnnotatedText:
         if start < 0 or end < start:
             raise ValueError("invalid document character range")
         if start == end:
-            self._validate_offset(start)
+            self._validate_offset(start, intent=intent)
             return AnnotatedText("", ())
 
         output: list[str] = []
@@ -438,7 +476,10 @@ class PieceTable:
                 required = max(0, end - position)
                 if required == 0:
                     break
-                self._mapper.char_to_byte(piece.source_char_start + required)
+                self._mapper.char_to_byte(
+                    piece.source_char_start + required,
+                    intent=intent,
+                )
                 piece_length = required
             else:
                 piece_length = known_length
@@ -458,7 +499,11 @@ class PieceTable:
                     output.append(self._edit_store.read(piece.ref, local_start, local_end))
                 else:
                     annotated = self._read_source_piece_annotated(
-                        piece, local_start, local_end, document_start=document_start
+                        piece,
+                        local_start,
+                        local_end,
+                        document_start=document_start,
+                        intent=intent,
                     )
                     output.append(annotated.text)
                     invalid.extend(annotated.invalid_bytes)
@@ -485,6 +530,7 @@ class PieceTable:
         end: int | None = None,
         *,
         chunk_chars: int = 65_536,
+        intent: ReadIntent = ReadIntent.RANDOM,
     ) -> Iterator[tuple[int, str]]:
         """Yield bounded logical Unicode chunks without eagerly measuring EOF."""
         if start < 0:
@@ -499,15 +545,15 @@ class PieceTable:
             if end is not None:
                 requested_end = min(requested_end, end)
             try:
-                text = self.read(position, requested_end)
+                text = self.read(position, requested_end, intent=intent)
             except ValueError:
-                total = self.total_chars()
+                total = self.total_chars(intent=intent)
                 if position > total or (end is not None and end > total):
                     raise
                 if position == total:
                     return
                 requested_end = min(requested_end, total)
-                text = self.read(position, requested_end)
+                text = self.read(position, requested_end, intent=intent)
             if not text:
                 return
             yield position, text
@@ -519,6 +565,7 @@ class PieceTable:
         end: int | None = None,
         *,
         chunk_chars: int = 65_536,
+        intent: ReadIntent = ReadIntent.RANDOM,
     ) -> Iterator[AnnotatedChunk]:
         """Yield bounded logical text with absolute source-byte annotations."""
 
@@ -534,15 +581,23 @@ class PieceTable:
             if end is not None:
                 requested_end = min(requested_end, end)
             try:
-                annotated = self.read_with_annotations(position, requested_end)
+                annotated = self.read_with_annotations(
+                    position,
+                    requested_end,
+                    intent=intent,
+                )
             except ValueError:
-                total = self.total_chars()
+                total = self.total_chars(intent=intent)
                 if position > total or (end is not None and end > total):
                     raise
                 if position == total:
                     return
                 requested_end = min(requested_end, total)
-                annotated = self.read_with_annotations(position, requested_end)
+                annotated = self.read_with_annotations(
+                    position,
+                    requested_end,
+                    intent=intent,
+                )
             if not annotated.text:
                 return
             yield AnnotatedChunk(
@@ -552,13 +607,13 @@ class PieceTable:
             )
             position = requested_end
 
-    def total_chars(self) -> int:
+    def total_chars(self, *, intent: ReadIntent = ReadIntent.RANDOM) -> int:
         total = 0
         for piece in self._pieces:
             length = self._known_length(piece)
             if length is None:
                 assert isinstance(piece, SourcePiece)
-                length = self._mapper.total_chars() - piece.source_char_start
+                length = self._mapper.total_chars(intent=intent) - piece.source_char_start
                 piece.char_length = length
             total += length
         return total

@@ -19,7 +19,7 @@ from .document_lines import DocumentLineIndex
 from .file_identity import ExternalFileChangedError, FileIdentity
 from .history import EditHistory, EditOperation, EditTransaction
 from .lines import LineIndex
-from .offsets import OffsetMapper
+from .offsets import OffsetMapper, ReadIntent
 from .pieces import AnnotatedChunk, AnnotatedText, EditStore, PieceTable
 from .save import (
     EOLName,
@@ -365,13 +365,25 @@ class Document:
     def can_redo(self) -> bool:
         return self._history.can_redo
 
-    def read(self, start: int, end: int) -> str:
+    def read(
+        self,
+        start: int,
+        end: int,
+        *,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> str:
         self._ensure_open()
-        return self._piece_table.read(start, end)
+        return self._piece_table.read(start, end, intent=intent)
 
-    def read_with_annotations(self, start: int, end: int) -> AnnotatedText:
+    def read_with_annotations(
+        self,
+        start: int,
+        end: int,
+        *,
+        intent: ReadIntent = ReadIntent.RANDOM,
+    ) -> AnnotatedText:
         self._ensure_open()
-        return self._piece_table.read_with_annotations(start, end)
+        return self._piece_table.read_with_annotations(start, end, intent=intent)
 
     def iter_text(
         self,
@@ -379,12 +391,14 @@ class Document:
         end: int | None = None,
         *,
         chunk_chars: int = 65_536,
+        intent: ReadIntent = ReadIntent.RANDOM,
     ) -> Iterator[tuple[int, str]]:
         self._ensure_open()
         return self._piece_table.iter_text(
             start,
             end,
             chunk_chars=chunk_chars,
+            intent=intent,
         )
 
     def iter_annotated_text(
@@ -393,12 +407,14 @@ class Document:
         end: int | None = None,
         *,
         chunk_chars: int = 65_536,
+        intent: ReadIntent = ReadIntent.RANDOM,
     ) -> Iterator[AnnotatedChunk]:
         self._ensure_open()
         return self._piece_table.iter_annotated_text(
             start,
             end,
             chunk_chars=chunk_chars,
+            intent=intent,
         )
 
     def _replace_internal(
@@ -720,7 +736,10 @@ class Document:
                     expected_destination_identity,
                     staged.target_identity,
                 )
-            verify_staged_document(staged, self._piece_table.iter_text())
+            verify_staged_document(
+                staged,
+                self._piece_table.iter_text(intent=ReadIntent.STREAMING),
+            )
             if (
                 self._revision != staged_revision
                 or self._output_format != baseline_output_format

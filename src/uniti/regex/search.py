@@ -8,6 +8,7 @@ from typing import Callable, Iterator
 import regex
 
 from uniti.core.document import Document
+from uniti.core.offsets import ReadIntent
 from .results import CaptureRecord, MatchRecord
 
 
@@ -107,7 +108,12 @@ def _iter_engine_matches(
     if options.max_matches == 0:
         return
     retain_prefix = _needs_full_prefix(compiled)
-    source_iter = iter(document.iter_text(chunk_chars=options.window_chars))
+    source_iter = iter(
+        document.iter_text(
+            chunk_chars=options.window_chars,
+            intent=ReadIntent.STREAMING,
+        )
+    )
     buffer = ""
     buffer_start = 0
     search_pos = 0

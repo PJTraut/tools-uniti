@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from uniti.core.byte_source import ByteSource
+from uniti.core.boundaries import LinearBoundaries
 from uniti.core.decoder import decode_span, iter_decoded_spans
 
 
@@ -175,3 +176,16 @@ def test_iter_decoded_spans_reassembles_many_small_windows(tmp_path: Path):
         spans = list(iter_decoded_spans(source, "utf-8", chunk_size=5))
     assert "".join(span.text for span in spans) == text
     assert not any(span.errors for span in spans)
+
+
+def test_ascii_span_uses_constant_size_boundary_metadata(tmp_path: Path):
+    path = tmp_path / "ascii-large.txt"
+    path.write_bytes(b"x" * 65_536)
+
+    with ByteSource.open(path) as source:
+        span = decode_span(source, 0, source.size, "utf-8")
+
+    assert isinstance(span.char_boundaries, LinearBoundaries)
+    assert len(span.char_boundaries) == 65_537
+    assert span.char_boundaries[65_536] == 65_536
+    assert span.retained_size_bytes < 128 << 10

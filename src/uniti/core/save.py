@@ -16,6 +16,7 @@ from .decoder import iter_decoded_spans
 from .eol import analyze_eol
 from .file_identity import ExternalFileChangedError, FileIdentity
 from .pieces import EditSegment, PieceTable, SourceSegment
+from .offsets import ReadIntent
 from .text_format import (
     EOLPolicy,
     EncodingProfile,
@@ -257,7 +258,10 @@ def _write_preserved_segments(
 
 
 def _logical_chunks(piece_table: PieceTable, chunk_chars: int) -> Iterator[str]:
-    for _, text in piece_table.iter_text(chunk_chars=chunk_chars):
+    for _, text in piece_table.iter_text(
+        chunk_chars=chunk_chars,
+        intent=ReadIntent.STREAMING,
+    ):
         yield text
 
 
@@ -624,7 +628,13 @@ def save_document(
         chunk_chars=opts.chunk_chars,
     )
     try:
-        verify_staged_document(staged, piece_table.iter_text(chunk_chars=opts.chunk_chars))
+        verify_staged_document(
+            staged,
+            piece_table.iter_text(
+                chunk_chars=opts.chunk_chars,
+                intent=ReadIntent.STREAMING,
+            ),
+        )
         if before_commit is not None:
             before_commit()
         return commit_staged_document(staged)

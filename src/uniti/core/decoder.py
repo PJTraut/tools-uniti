@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import codecs
+import sys
 import threading
 from dataclasses import dataclass
 
 from .byte_source import ByteSource
+from .boundaries import BoundaryMap, LinearBoundaries, boundary_map
 
 
 _ERROR_HANDLER_NAME = "uniti-preserve-decode-bytes-v1"
@@ -39,7 +41,20 @@ class DecodedSpan:
     byte_end: int
     encoding: str
     errors: tuple[DecodeError, ...]
-    char_boundaries: tuple[int, ...]
+    char_boundaries: BoundaryMap
+
+    @property
+    def retained_size_bytes(self) -> int:
+        return (
+            sys.getsizeof(self)
+            + sys.getsizeof(self.text)
+            + self.char_boundaries.retained_size_bytes
+            + sys.getsizeof(self.errors)
+            + sum(
+                sys.getsizeof(error) + sys.getsizeof(error.raw)
+                for error in self.errors
+            )
+        )
 
     def byte_offset_for_char_boundary(self, char_boundary: int) -> int:
         if char_boundary < 0 or char_boundary >= len(self.char_boundaries):
@@ -161,7 +176,11 @@ def decode_span(
             byte_end=start + length,
             encoding=encoding,
             errors=(),
-            char_boundaries=tuple(range(prefix_length, len(raw) + 1)),
+            char_boundaries=LinearBoundaries(
+                prefix_length,
+                1,
+                len(raw) - prefix_length + 1,
+            ),
         )
 
     display: list[str] = []
@@ -215,7 +234,7 @@ def decode_span(
         byte_end=start + length,
         encoding=encoding,
         errors=tuple(errors),
-        char_boundaries=tuple(boundaries),
+        char_boundaries=boundary_map(boundaries),
     )
 
 

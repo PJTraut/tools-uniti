@@ -3,7 +3,8 @@ from pathlib import Path
 import pytest
 
 from uniti.core.byte_source import ByteSource
-from uniti.core.offsets import OffsetMapper
+from uniti.core.offsets import OffsetMapper, ReadIntent
+from uniti.resources import MemorySnapshot, ResourceManager
 
 
 class CountingByteSource(ByteSource):
@@ -112,3 +113,25 @@ def test_repeated_mapping_reuses_checkpoint_decoded_span(tmp_path: Path):
             assert mapper.char_to_byte(char_offset) == char_offset
 
         assert source.read_calls == reads_after_first_mapping
+
+
+def test_streaming_mapping_builds_checkpoints_without_populating_cache(tmp_path: Path):
+    path = tmp_path / "streaming-map.txt"
+    path.write_bytes(b"x" * (4 << 20))
+    manager = ResourceManager(
+        max_workers=1,
+        initial_snapshot=MemorySnapshot(16 << 30, 8 << 30),
+    )
+    try:
+        with ByteSource.open(path) as source:
+            mapper = OffsetMapper(
+                source,
+                "utf-8",
+                resource_manager=manager,
+                cache_owner="stream",
+            )
+
+            assert mapper.total_chars(intent=ReadIntent.STREAMING) == 4 << 20
+            assert manager.cache.used_bytes == 0
+    finally:
+        manager.shutdown()
