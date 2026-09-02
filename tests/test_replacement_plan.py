@@ -109,3 +109,32 @@ def test_bulk_replace_uses_monotonic_builder_not_per_edit_splitting(
             plan.close()
 
         assert document.read(0, 5) == "A B C"
+
+
+def test_bulk_replace_preserves_equal_empty_range_order_in_one_undo_step(
+    tmp_path: Path,
+):
+    path = tmp_path / "empty-ranges.txt"
+    path.write_text("ab", encoding="utf-8")
+    with Document.open(path) as document:
+        plan = ReplacementPlan.from_iterable(
+            document_revision=document.revision,
+            replacements=(
+                Replacement(0, 0, "A"),
+                Replacement(0, 0, "B"),
+                Replacement(1, 1, "C"),
+            ),
+            memory_budget_bytes=1 << 20,
+        )
+        try:
+            assert document.apply_replacement_plan(
+                plan,
+                expected_revision=document.revision,
+                memory_limit_bytes=1 << 20,
+            ) == 3
+        finally:
+            plan.close()
+
+        assert document.read(0, document.total_chars()) == "ABaCb"
+        document.undo()
+        assert document.read(0, document.total_chars()) == "ab"

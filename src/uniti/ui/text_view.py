@@ -27,6 +27,18 @@ from uniti.regex.results import MatchIndex
 from uniti.ui.wrap_index import WrappedRowIndex
 
 
+def _zero_width_visible(
+    position: int,
+    row_start: int,
+    row_end: int,
+    *,
+    owns_end: bool,
+) -> bool:
+    return row_start <= position < row_end or (
+        owns_end and position == row_end
+    )
+
+
 class UNITITextView(QAbstractScrollArea):
     """Paint only visible logical text; the UNITI Document remains authoritative."""
 
@@ -348,20 +360,43 @@ class UNITITextView(QAbstractScrollArea):
 
             line_window_start = line_start + column_start
             line_end = line_window_start + len(text)
+            logical_line_end = self.document.line_end(line_number)
+            owns_end = line_end >= logical_line_end
             if len(self._match_index):
                 match_color = palette.color(QPalette.ColorRole.Highlight)
                 match_color.setAlpha(120)
                 for record in self._match_index.intersecting(line_window_start, line_end + 1):
+                    if record.start == record.end and not _zero_width_visible(
+                        record.start,
+                        line_window_start,
+                        line_end,
+                        owns_end=owns_end,
+                    ):
+                        continue
                     a = max(record.start, line_window_start) - line_window_start
                     b = min(record.end, line_end) - line_window_start
                     a = max(0, min(len(text), a))
                     b = max(0, min(len(text), b))
                     x1 = text_x + self._metrics.horizontalAdvance(text[:a])
-                    if record.start == record.end or b <= a:
-                        painter.fillRect(
-                            int(x1), y, 2, self._line_height, match_color
+                    if record.start == record.end:
+                        marker_width = max(2.0, self.devicePixelRatioF())
+                        marker_x = max(
+                            0.0,
+                            min(
+                                float(x1),
+                                max(0.0, self.viewport().width() - marker_width),
+                            ),
                         )
-                    else:
+                        painter.fillRect(
+                            QRectF(
+                                marker_x,
+                                float(y),
+                                marker_width,
+                                float(self._line_height),
+                            ),
+                            match_color,
+                        )
+                    elif b > a:
                         x2 = text_x + self._metrics.horizontalAdvance(text[:b])
                         painter.fillRect(
                             int(x1),

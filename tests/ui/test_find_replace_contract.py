@@ -377,6 +377,88 @@ def test_palette_change_rebuilds_group_formats_with_accessible_contrast(
         _close_panel(app, document, view, panel)
 
 
+def test_zero_width_navigation_wraps_by_result_index_without_selection(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "aa")
+    try:
+        panel.search_mode_combo.setCurrentText("Regex")
+        panel.find_input.set_text(r"(?=a)")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, lambda: panel.result_count == 2 and not panel.busy)
+        assert (panel._current_index, view.state.cursor, view.state.selection) == (
+            0,
+            0,
+            None,
+        )
+        panel.next_match()
+        assert (panel._current_index, view.state.cursor, view.state.selection) == (
+            1,
+            1,
+            None,
+        )
+        panel.next_match()
+        assert panel._current_index == 0
+        panel.previous_match()
+        assert panel._current_index == 1
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_single_zero_width_result_wraps_to_itself(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "aa")
+    try:
+        panel.search_mode_combo.setCurrentText("Regex")
+        panel.find_input.set_text(r"^")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, lambda: panel.result_count == 1 and not panel.busy)
+        panel.next_match()
+        panel.previous_match()
+
+        assert panel._current_index == 0
+        assert view.state.selection is None
+        assert panel.status_label.text() == "match 1/1"
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_single_zero_width_replace_inserts_once_and_invalidates_results(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "a")
+    try:
+        panel.search_mode_combo.setCurrentText("Regex")
+        panel.find_input.set_text(r"(?=a)")
+        panel.replace_input.set_text("X")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, lambda: panel.result_count == 1 and not panel.busy)
+        panel.replace_current()
+        _wait_until(app, lambda: not panel.busy)
+
+        assert document.read(0, document.total_chars()) == "Xa"
+        assert panel.result_count == 0
+        assert view.state.cursor == 1
+        assert view.state.selection is None
+        assert panel.status_label.text() == "1 replaced"
+    finally:
+        _close_panel(app, document, view, panel)
+
+
 def test_replace_current_captures_widget_text_before_worker_starts():
     source = PANEL.read_text()
     method = source[source.index("    def replace_current(") : source.index("    def replace_all(")]

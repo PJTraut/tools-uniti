@@ -84,6 +84,58 @@ def test_text_view_paints_invalid_byte_annotations_distinctly():
     assert "_paint_invalid_byte_annotations" in source
 
 
+def test_zero_width_marker_row_ownership_is_unambiguous():
+    from uniti.ui.text_view import _zero_width_visible
+
+    assert not _zero_width_visible(2, 0, 2, owns_end=False)
+    assert _zero_width_visible(2, 2, 4, owns_end=True)
+    assert _zero_width_visible(4, 2, 4, owns_end=True)
+    assert not _zero_width_visible(4, 2, 4, owns_end=False)
+
+
+def test_wrapped_zero_width_marker_is_painted_on_only_its_owning_row(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor, QPalette
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.regex.results import MatchIndex, MatchRecord
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "zero-width-wrap.txt"
+    path.write_text("abcd", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        palette = view.palette()
+        palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#204060"))
+        view.setPalette(palette)
+        view.resize(view._gutter_width + view._cell_width * 2 + 10, 100)
+        view.set_soft_wrap(True)
+        view.set_match_index(MatchIndex((MatchRecord(2, 2),)))
+        view.show()
+        app.processEvents()
+        view.viewport().repaint()
+        app.processEvents()
+
+        image = view.viewport().grab().toImage()
+        base = QColor("#ffffff")
+        first_row_x = view._gutter_width + view._metrics.horizontalAdvance("ab")
+        second_row_x = view._gutter_width
+        first = image.pixelColor(first_row_x, view._line_height - 2)
+        second = image.pixelColor(second_row_x, view._line_height * 2 - 2)
+
+        assert first.name() == base.name()
+        assert second.name() != base.name()
+        view.close()
+
+
 def test_text_view_keys_dispatch_word_document_and_page_navigation(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

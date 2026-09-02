@@ -39,7 +39,7 @@ from uniti.regex.replace import (
     collect_replacements,
 )
 from uniti.regex.replacement_plan import ReplacementPlan
-from uniti.regex.results import MatchIndex, MatchRecord
+from uniti.regex.results import MatchIndex, MatchRecord, advance_result_index
 from uniti.regex.search import (
     RegexContextLimitError,
     RegexSearchTimeout,
@@ -949,24 +949,26 @@ class FindReplaceWindow(QDialog):
         self._update_actions()
 
     def next_match(self) -> None:
-        if not len(self._results):
+        index = advance_result_index(
+            self._current_index,
+            len(self._results),
+            1,
+        )
+        if index is None:
             self.find_all()
-            return
-        if self._current_index is None:
-            index = 0
         else:
-            index = (self._current_index + 1) % len(self._results)
-        self._navigate_to(index)
+            self._navigate_to(index)
 
     def previous_match(self) -> None:
-        if not len(self._results):
+        index = advance_result_index(
+            self._current_index,
+            len(self._results),
+            -1,
+        )
+        if index is None:
             self.find_all()
-            return
-        if self._current_index is None:
-            index = len(self._results) - 1
         else:
-            index = (self._current_index - 1) % len(self._results)
-        self._navigate_to(index)
+            self._navigate_to(index)
 
     def _navigate_to(self, index: int) -> None:
         view = self._current_view()

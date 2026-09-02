@@ -53,6 +53,18 @@ def test_replace_all_is_single_undo_step(tmp_path: Path):
         assert doc.read(0, doc.total_chars()) == "[1] [22] [333]"
 
 
+def test_zero_width_replace_all_is_exact_once_and_one_undo(tmp_path: Path):
+    path = tmp_path / "zero-replace.txt"
+    path.write_text("aa", encoding="utf-8")
+    with Document.open(path) as document:
+        count = replace_all(document, compile_pattern(r"(?=a)"), "X")
+
+        assert count == 2
+        assert document.read(0, document.total_chars()) == "XaXa"
+        document.undo()
+        assert document.read(0, document.total_chars()) == "aa"
+
+
 def test_stream_replace_to_file_handles_many_matches_without_mutating_document(tmp_path: Path):
     from uniti.regex.replace import stream_replace_to_file
 
