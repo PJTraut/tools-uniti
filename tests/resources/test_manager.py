@@ -1,5 +1,9 @@
+from pathlib import Path
+
+import uniti.resources.manager as manager_module
 from uniti.resources import (
     CachePriority,
+    HostResourceProfile,
     MemorySnapshot,
     PressureState,
     ResourceManager,
@@ -70,6 +74,34 @@ def test_resource_manager_exposes_the_policy_it_constructed():
         assert manager.cache_budget_bytes == manager.cache.budget_bytes
         assert manager.worker_count == 3
         assert manager.cache_budget_bytes <= 512 << 20
+    finally:
+        manager.shutdown()
+
+
+def test_resource_manager_uses_the_probed_cpu_generation_and_core_counts(
+    monkeypatch,
+    tmp_path: Path,
+):
+    profile = HostResourceProfile(
+        cpu_model="Test CPU Generation",
+        architecture="arm64",
+        physical_cores=4,
+        logical_cores=6,
+        physical_memory=32 << 30,
+        platform="darwin",
+        platform_release="test",
+        temp_root=tmp_path,
+    )
+    monkeypatch.setattr(manager_module, "probe_host_profile", lambda _root: profile)
+
+    manager = ResourceManager(
+        initial_snapshot=MemorySnapshot(physical=16 << 30, available=8 << 30)
+    )
+    try:
+        assert manager.host_profile.cpu_model == "Test CPU Generation"
+        assert manager.host_profile.logical_cores == 6
+        assert manager.host_profile.physical_memory == 16 << 30
+        assert manager.worker_count == 5
     finally:
         manager.shutdown()
 

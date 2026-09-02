@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import platform
 import shutil
 import tempfile
 from collections.abc import Callable, Hashable
@@ -19,7 +17,12 @@ from .policy import (
     load_performance_policy,
 )
 from .tasks import TaskCoordinator
-from .telemetry import HostResourceProfile, ResourceSampler, ResourceSnapshot
+from .telemetry import (
+    HostResourceProfile,
+    ResourceSampler,
+    ResourceSnapshot,
+    probe_host_profile,
+)
 from .workers import PriorityWorkerPool
 
 
@@ -67,25 +70,23 @@ class ResourceManager:
     ) -> None:
         self.policy = policy or load_performance_policy()
         memory = initial_snapshot or probe_memory()
-        logical_cores = max(1, os.cpu_count() or 1)
+        temp_root = Path(tempfile.gettempdir()).resolve()
+        if sampler is None:
+            profile = replace(
+                probe_host_profile(temp_root),
+                physical_memory=memory.physical,
+            )
+            self._sampler = ResourceSampler(profile)
+        else:
+            profile = sampler.profile
+            self._sampler = sampler
+        logical_cores = profile.logical_cores
         workers = max_workers
         if workers is None:
             workers = max(
                 1,
                 min(8, logical_cores - self.policy.resources.gui_core_reserve),
             )
-        temp_root = Path(tempfile.gettempdir()).resolve()
-        profile = HostResourceProfile(
-            cpu_model=platform.processor().strip() or platform.machine() or "unknown",
-            architecture=platform.machine() or "unknown",
-            physical_cores=logical_cores,
-            logical_cores=logical_cores,
-            physical_memory=memory.physical,
-            platform=os.sys.platform,
-            platform_release=platform.release(),
-            temp_root=temp_root,
-        )
-        self._sampler = sampler or ResourceSampler(profile)
         self._hard_cache_cap = self._cache_cap(memory.physical)
         self.cache = CacheManager(budget_bytes=self._hard_cache_cap)
         self.workers = PriorityWorkerPool(
@@ -138,6 +139,10 @@ class ResourceManager:
         return self._status
 
     @property
+    def host_profile(self) -> HostResourceProfile:
+        return self._sampler.profile
+
+    @property
     def pressure(self) -> PressureState:
         return _LEGACY_PRESSURE[self._state]
 
@@ -148,6 +153,15 @@ class ResourceManager:
     @property
     def worker_count(self) -> int:
         return self.workers.max_workers
+
+    def sample_resources(self) -> ResourceSnapshot:
+        """Collect one live local sample without changing resource policy."""
+
+        return self._sampler.sample(
+            cache_used_bytes=self.cache.used_bytes,
+            active_workers=self.workers.active_count,
+            queued_tasks=self.workers.queued_count,
+        )
 
     def add_listener(self, listener: Callable[[ResourceStatus], None]) -> None:
         if listener not in self._listeners:
@@ -263,11 +277,7 @@ class ResourceManager:
         self,
         snapshot: ResourceSnapshot | None = None,
     ) -> ResourceState:
-        raw = snapshot or self._sampler.sample(
-            cache_used_bytes=self.cache.used_bytes,
-            active_workers=self.workers.active_count,
-            queued_tasks=self.workers.queued_count,
-        )
+        raw = snapshot or self.sample_resources()
         self._hard_cache_cap = self._cache_cap(raw.physical_memory)
         candidate = classify_resource_state(raw, self.policy)
         current_level = _SEVERITY[self._state]

@@ -53,6 +53,7 @@ def test_progressive_save_as_locks_only_source_and_cancel_preserves_target(
     started = threading.Event()
 
     def delayed_prepare(request, context):
+        context.report("Writing", 1, 10)
         started.set()
         while True:
             context.check_cancelled()
@@ -66,12 +67,15 @@ def test_progressive_save_as_locks_only_source_and_cancel_preserves_target(
         )
         assert handle is not None
         assert started.wait(1.0)
+        _wait(app, lambda: window.statusBar().active_task is not None)
         assert source.isEnabled() is False
         assert other.isEnabled() is True
+        assert window.statusBar().task_label.text() == "Writing: 10%"
 
         handle.cancel()
         _wait(app, lambda: handle.done)
         _wait(app, lambda: source.isEnabled())
+        _wait(app, lambda: window.statusBar().active_task is None)
 
         assert target.read_bytes() == b"original"
         assert list(tmp_path.glob(".target.txt.*.uniti-tmp")) == []

@@ -227,6 +227,322 @@ def _navigation(manifest: CorpusManifest) -> ScenarioResult:
     )
 
 
+def _open_interaction_window(manifest: CorpusManifest):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    resources = ResourceManager()
+    window = UNITIMainWindow(resource_manager=resources)
+    window.resize(900, 600)
+    view = window.open_path(manifest.path)
+    window.show()
+    view.setFocus()
+    app.processEvents()
+    view.viewport().repaint()
+    app.processEvents()
+    return app, resources, window, view
+
+
+def _close_interaction_window(app, resources, window) -> None:
+    window.close_all_documents(force=True)
+    window.close()
+    resources.shutdown()
+    app.processEvents()
+
+
+def _interaction_metrics(
+    timings: list[float],
+    start_current: int,
+    start_peak: int,
+) -> dict[str, MetricSample]:
+    peak_mib, retained_mib = _rss_facts(start_current, start_peak)
+    return {
+        "interaction_p95_ms": MetricSample((_p95(timings),)),
+        "interaction_max_ms": MetricSample((max(timings or [0.0]),)),
+        "peak_rss_mib": MetricSample((peak_mib,)),
+        "retained_rss_mib": MetricSample((retained_mib,)),
+    }
+
+
+def _measure_gui_action(app, view, action) -> float:
+    started = time.perf_counter()
+    action()
+    view.viewport().repaint()
+    app.processEvents()
+    return (time.perf_counter() - started) * 1000.0
+
+
+def _typing(manifest: CorpusManifest) -> ScenarioResult:
+    app, resources, window, view = _open_interaction_window(manifest)
+    start_current = current_process_rss_bytes()
+    start_peak = peak_process_rss_bytes()
+    original = view.document.read(0, 128)
+    inserted = "UNITI typing sample "
+    timings: list[float] = []
+    try:
+        for character in inserted:
+            timings.append(
+                _measure_gui_action(
+                    app,
+                    view,
+                    lambda character=character: (
+                        view.state.insert_text(character),
+                        view._state_changed(),
+                    ),
+                )
+            )
+        edit_ok = view.document.read(0, len(inserted) + len(original)) == inserted + original
+        view.document.undo()
+        undo_ok = view.document.read(0, len(original)) == original
+        one_atomic_typing_undo = not view.document.can_undo
+    finally:
+        _close_interaction_window(app, resources, window)
+    return ScenarioResult.success(
+        scenario="typing",
+        metrics=_interaction_metrics(timings, start_current, start_peak),
+        facts={
+            "physical_memory_bytes": probe_memory().physical,
+            "keystrokes": len(inserted),
+            "one_atomic_typing_undo": one_atomic_typing_undo,
+            "integrity_ok": edit_ok and undo_ok and one_atomic_typing_undo,
+        },
+    )
+
+
+def _scroll(manifest: CorpusManifest) -> ScenarioResult:
+    app, resources, window, view = _open_interaction_window(manifest)
+    start_current = current_process_rss_bytes()
+    start_peak = peak_process_rss_bytes()
+    revision = view.document.revision
+    first = view.document.read(0, 128)
+    last_start = max(0, manifest.spec.size_bytes - 128)
+    last = view.document.read(last_start, manifest.spec.size_bytes)
+    timings: list[float] = []
+    unwrapped_moved = False
+    wrapped_moved = False
+    try:
+        for _ in range(8):
+            scrollbar = view.verticalScrollBar()
+            before = scrollbar.value()
+            timings.append(
+                _measure_gui_action(
+                    app,
+                    view,
+                    lambda scrollbar=scrollbar: scrollbar.setValue(
+                        min(
+                            scrollbar.maximum(),
+                            scrollbar.value() + max(1, scrollbar.pageStep() // 2),
+                        )
+                    ),
+                )
+            )
+            unwrapped_moved = unwrapped_moved or scrollbar.value() != before
+        timings.append(
+            _measure_gui_action(app, view, lambda: view.set_soft_wrap(True))
+        )
+        for _ in range(8):
+            scrollbar = view.verticalScrollBar()
+            before = scrollbar.value()
+            timings.append(
+                _measure_gui_action(
+                    app,
+                    view,
+                    lambda scrollbar=scrollbar: scrollbar.setValue(
+                        min(
+                            scrollbar.maximum(),
+                            scrollbar.value() + max(1, scrollbar.pageStep() // 2),
+                        )
+                    ),
+                )
+            )
+            wrapped_moved = wrapped_moved or scrollbar.value() != before
+        wrap_index = view._wrapped_row_index()
+        resident_rows = wrap_index.resident_row_count
+        integrity = (
+            view.document.revision == revision
+            and view.document.read(0, 128) == first
+            and view.document.read(last_start, manifest.spec.size_bytes) == last
+            and unwrapped_moved
+            and wrapped_moved
+            and resident_rows <= 2048
+        )
+    finally:
+        _close_interaction_window(app, resources, window)
+    return ScenarioResult.success(
+        scenario="scroll",
+        metrics=_interaction_metrics(timings, start_current, start_peak),
+        facts={
+            "physical_memory_bytes": probe_memory().physical,
+            "unwrapped_scrolled": unwrapped_moved,
+            "wrapped_scrolled": wrapped_moved,
+            "resident_wrapped_rows": resident_rows,
+            "integrity_ok": integrity,
+        },
+    )
+
+
+def _giant_line(manifest: CorpusManifest) -> ScenarioResult:
+    app, resources, window, view = _open_interaction_window(manifest)
+    start_current = current_process_rss_bytes()
+    start_peak = peak_process_rss_bytes()
+    revision = view.document.revision
+    first = view.document.read(0, 128)
+    last_start = max(0, manifest.spec.size_bytes - 128)
+    last = view.document.read(last_start, manifest.spec.size_bytes)
+    timings: list[float] = []
+    horizontal_moved = False
+    wrapped_moved = False
+    try:
+        for _ in range(4):
+            scrollbar = view.horizontalScrollBar()
+            before = scrollbar.value()
+            timings.append(
+                _measure_gui_action(
+                    app,
+                    view,
+                    lambda scrollbar=scrollbar: scrollbar.setValue(
+                        min(
+                            scrollbar.maximum(),
+                            scrollbar.value() + max(1, scrollbar.pageStep()),
+                        )
+                    ),
+                )
+            )
+            horizontal_moved = horizontal_moved or scrollbar.value() != before
+        timings.append(
+            _measure_gui_action(app, view, lambda: view.set_soft_wrap(True))
+        )
+        for _ in range(8):
+            scrollbar = view.verticalScrollBar()
+            before = scrollbar.value()
+            timings.append(
+                _measure_gui_action(
+                    app,
+                    view,
+                    lambda scrollbar=scrollbar: scrollbar.setValue(
+                        min(
+                            scrollbar.maximum(),
+                            scrollbar.value() + max(1, scrollbar.pageStep() // 2),
+                        )
+                    ),
+                )
+            )
+            wrapped_moved = wrapped_moved or scrollbar.value() != before
+        wrap_index = view._wrapped_row_index()
+        resident_rows = wrap_index.resident_row_count
+        integrity = (
+            view.document.revision == revision
+            and view.document.read(0, 128) == first
+            and view.document.read(last_start, manifest.spec.size_bytes) == last
+            and horizontal_moved
+            and wrapped_moved
+            and resident_rows <= 2048
+        )
+    finally:
+        _close_interaction_window(app, resources, window)
+    return ScenarioResult.success(
+        scenario="giant_line",
+        metrics=_interaction_metrics(timings, start_current, start_peak),
+        facts={
+            "physical_memory_bytes": probe_memory().physical,
+            "horizontal_scrolled": horizontal_moved,
+            "wrapped_scrolled": wrapped_moved,
+            "resident_wrapped_rows": resident_rows,
+            "integrity_ok": integrity,
+        },
+    )
+
+
+def _resource_recovery(manifest: CorpusManifest) -> ScenarioResult:
+    from uniti.resources import CachePriority, ResourceSnapshot, ResourceState
+
+    resources = ResourceManager()
+    start_current = current_process_rss_bytes()
+    start_peak = peak_process_rss_bytes()
+    normal_worker_limit = resources.workers.max_workers
+    normal_cache_budget = resources.cache_budget_bytes
+    physical = max(1, resources.status.physical_memory)
+    base = {
+        "physical_memory": physical,
+        "process_rss": current_process_rss_bytes(),
+        "load_per_logical_core": 0.0,
+        "free_disk": resources.status.free_disk,
+        "cache_used": 0,
+        "active_workers": 0,
+        "queued_tasks": 0,
+    }
+    timings: list[float] = []
+    try:
+        resources.put_cache(
+            "benchmark",
+            "disposable",
+            object(),
+            size_bytes=min(1 << 20, max(1, normal_cache_budget)),
+            priority=CachePriority.STALE,
+        )
+        started = time.perf_counter()
+        critical_state = resources.observe_resources(
+            ResourceSnapshot(
+                **base,
+                available_memory=0,
+                captured_at=time.monotonic(),
+            )
+        )
+        timings.append((time.perf_counter() - started) * 1000.0)
+        critical_worker_limit = resources.workers.active_limit
+        critical_cache_budget = resources.cache_budget_bytes
+        cache_released = resources.cache.used_bytes == 0
+
+        resources.pause_background(True)
+        pause_visible = resources.status.background_paused
+        resources.pause_background(False)
+        pause_cleared = not resources.status.background_paused
+
+        recovery_state = critical_state
+        for _ in range(resources.policy.pressure.healthier_samples_before_recovery):
+            started = time.perf_counter()
+            recovery_state = resources.observe_resources(
+                ResourceSnapshot(
+                    **base,
+                    available_memory=physical,
+                    captured_at=time.monotonic(),
+                )
+            )
+            timings.append((time.perf_counter() - started) * 1000.0)
+        recovered_worker_limit = resources.workers.active_limit
+        recovered_cache_budget = resources.cache_budget_bytes
+        integrity = (
+            critical_state is ResourceState.CRITICAL
+            and critical_worker_limit == 1
+            and critical_cache_budget <= normal_cache_budget
+            and cache_released
+            and pause_visible
+            and pause_cleared
+            and recovery_state is ResourceState.NORMAL
+            and recovered_worker_limit == normal_worker_limit
+            and recovered_cache_budget == normal_cache_budget
+        )
+    finally:
+        resources.shutdown()
+    return ScenarioResult.success(
+        scenario="resource_recovery",
+        metrics=_interaction_metrics(timings, start_current, start_peak),
+        facts={
+            "physical_memory_bytes": physical,
+            "source_bytes": manifest.spec.size_bytes,
+            "normal_worker_limit": normal_worker_limit,
+            "critical_worker_limit": critical_worker_limit,
+            "recovered_worker_limit": recovered_worker_limit,
+            "critical_cache_budget": critical_cache_budget,
+            "recovered_cache_budget": recovered_cache_budget,
+            "integrity_ok": integrity,
+        },
+    )
+
+
 def _search(manifest: CorpusManifest, *, scenario_name: str) -> ScenarioResult:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
@@ -651,11 +967,15 @@ def _save_as(manifest: CorpusManifest) -> ScenarioResult:
 _SCENARIOS = {
     "open_first_paint": _open_first_paint,
     "navigation": _navigation,
+    "typing": _typing,
+    "scroll": _scroll,
+    "giant_line": _giant_line,
     "search_sparse": _search_sparse,
     "search_dense": _search_dense,
     "replace": _replace,
     "save": _save,
     "save_as": _save_as,
+    "resource_recovery": _resource_recovery,
 }
 
 
@@ -668,6 +988,8 @@ def run_scenario(name: str, manifest: CorpusManifest) -> ScenarioResult:
 
 
 def corpus_kind_for_scenario(name: str) -> CorpusKind:
+    if name == "giant_line":
+        return CorpusKind.GIANT_LINE
     if name == "search_sparse":
         return CorpusKind.SEARCH_SPARSE
     if name in {"search_dense", "replace"}:
@@ -683,9 +1005,13 @@ def initial_scenario_names(tier: str) -> tuple[str, ...]:
     return (
         "open_first_paint",
         "navigation",
+        "typing",
+        "scroll",
+        "giant_line",
         "search_sparse",
         "search_dense",
         "replace",
         "save",
         "save_as",
+        "resource_recovery",
     )

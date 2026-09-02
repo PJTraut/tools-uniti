@@ -56,15 +56,16 @@ from uniti.core.text_inspection import (
     preview_source,
 )
 from uniti.resources import (
-    MemorySnapshot,
     ResourceManager,
+    ResourceSnapshot,
+    ResourceState,
     TaskAdmissionError,
     TaskContext,
     TaskHandle,
     TaskKind,
     TaskSpec,
+    TaskSystemSnapshot,
     WorkPriority,
-    probe_memory,
 )
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
@@ -117,6 +118,7 @@ def _command_definitions() -> tuple[CommandDefinition, ...]:
         CommandDefinition("editor.zoom_out", "Zoom Out", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
         CommandDefinition("editor.zoom_reset", "Reset Zoom", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, f"{primary}+0"),
         CommandDefinition("editor.wrap", "Soft Line Wrap", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, f"{primary}+Alt+W"),
+        CommandDefinition("view.pause_background", "Pause Background Work", CommandCategory.EDITOR_VIEW, CommandScope.WINDOW, ""),
         CommandDefinition("find.zoom_in", "Zoom In", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomIn)),
         CommandDefinition("find.zoom_out", "Zoom Out", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
         CommandDefinition("find.zoom_reset", "Reset Zoom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+0"),
@@ -231,6 +233,13 @@ class UNITIMainWindow(QMainWindow):
         self.setCentralWidget(central)
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
+        self._resource_notice_active = False
+        self._resource_notice_count = 0
+        self._status.update_resources(self._resources.status)
+        self._file_operations.taskSnapshotChanged.connect(
+            self._apply_task_system_snapshot,
+            Qt.ConnectionType.QueuedConnection,
+        )
 
         self._eol_jobs: dict[str, _EOLJob] = {}
         self._eol_reports: dict[int, EOLReport] = {}
@@ -245,7 +254,7 @@ class UNITIMainWindow(QMainWindow):
         self._resource_timer = QTimer(self)
         self._resource_timer.setInterval(1000)
         self._resource_timer.timeout.connect(self._observe_resource_pressure)
-        self._resource_probe_future: Future[MemorySnapshot] | None = None
+        self._resource_probe_future: Future[ResourceSnapshot] | None = None
         self._resource_timer.start()
         self._build_menus()
 
@@ -254,17 +263,54 @@ class UNITIMainWindow(QMainWindow):
         if future is None:
             self._resource_probe_future = self._resources.workers.submit(
                 WorkPriority.PREFETCH,
-                probe_memory,
+                self._resources.sample_resources,
             )
             return
         if not future.done():
             return
         self._resource_probe_future = None
         try:
-            self._resources.observe_memory(future.result())
+            self._resources.observe_resources(future.result())
+            self._apply_resource_status(self._resources.status)
         except Exception:
             # Memory telemetry must never interfere with editing.
             return
+
+    def _apply_resource_status(self, status) -> None:
+        self._status.update_resources(status)
+        constrained = status.state in {
+            ResourceState.CONSTRAINED,
+            ResourceState.CRITICAL,
+        }
+        if constrained and not self._resource_notice_active:
+            self._resource_notice_active = True
+            self._resource_notice_count += 1
+            self.statusBar().showMessage(
+                f"System resources are {status.state.value}; background work reduced.",
+                5000,
+            )
+        elif not constrained:
+            self._resource_notice_active = False
+
+    def _apply_task_system_snapshot(self, snapshot: TaskSystemSnapshot) -> None:
+        visible = [
+            task
+            for task in snapshot.tasks
+            if task.progress is not None and task.spec.foreground
+        ]
+        if not visible:
+            visible = [task for task in snapshot.tasks if task.progress is not None]
+        if visible:
+            latest = max(
+                visible,
+                key=lambda task: task.progress.updated_at,  # type: ignore[union-attr]
+            )
+            assert latest.progress is not None
+            self._status.update_task(latest.progress)
+            return
+        active = self._status.active_task
+        if active is not None:
+            self._status.clear_task(active.task_id)
 
     def _save_settings(self) -> None:
         if self._settings_store is not None:
@@ -470,6 +516,17 @@ class UNITIMainWindow(QMainWindow):
         )
         self._wrap_action.setChecked(self._settings.soft_wrap)
         editor_view_menu.addAction(self._wrap_action)
+        self._pause_background_action = self._command_action(
+            "view.pause_background",
+            lambda: self.set_pause_background(
+                self._pause_background_action.isChecked()
+            ),
+            checkable=True,
+        )
+        self._pause_background_action.setChecked(
+            self._resources.tasks.snapshot().background_paused
+        )
+        editor_view_menu.addAction(self._pause_background_action)
 
         find_view_menu = view_menu.addMenu("F/R &View")
         find_view_menu.addAction(
@@ -1273,9 +1330,20 @@ class UNITIMainWindow(QMainWindow):
             if isinstance(widget, UNITITextView):
                 documents.append(widget.document)
         dialog = DiagnosticsDialog(
-            diagnostics_snapshot(documents, startup_snapshot=self._startup_snapshot), self
+            diagnostics_snapshot(
+                documents,
+                startup_snapshot=self._startup_snapshot,
+                resource_manager=self._resources,
+            ),
+            self,
         )
         dialog.exec()
+
+    def set_pause_background(self, paused: bool) -> None:
+        self._resources.pause_background(bool(paused))
+        if self._pause_background_action.isChecked() != bool(paused):
+            self._pause_background_action.setChecked(bool(paused))
+        self._apply_resource_status(self._resources.status)
 
     def set_startup_snapshot(self, snapshot: Mapping[str, object]) -> None:
         self._startup_snapshot = dict(snapshot)

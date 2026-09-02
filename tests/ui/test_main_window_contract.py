@@ -109,9 +109,16 @@ def test_main_window_flushes_and_shuts_down_recovery_manager_on_application_clos
 def test_main_window_periodically_observes_resource_memory_pressure():
     source = MAIN.read_text()
     assert "_resource_timer" in source
-    assert "observe_memory" in source
+    assert "observe_resources" in source
     assert "_resource_probe_future" in source
     assert "self._resources.workers.submit" in source
+    assert "sample_resources" in source
+
+
+def test_pause_background_command_stays_in_existing_editor_view_category():
+    source = MAIN.read_text()
+    assert '"view.pause_background"' in source
+    assert "CommandCategory.EDITOR_VIEW" in source
 
 
 def test_main_window_accepts_completed_startup_snapshot_for_diagnostics():
