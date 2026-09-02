@@ -23,6 +23,23 @@ def test_collect_replacements_uses_engine_expand_for_named_groups(tmp_path: Path
     ]
 
 
+def test_collect_replacements_leaves_group_zero_repetition_and_escapes_to_expand(
+    tmp_path: Path,
+):
+    path = tmp_path / "expand.txt"
+    path.write_text("abc", encoding="utf-8")
+    pattern = compile_pattern(r"(?P<item>[a-z])+")
+
+    with Document.open(path) as doc:
+        replacements = collect_replacements(
+            doc,
+            pattern,
+            r"\g<0>:\g<item>:\\",
+        )
+
+    assert [replacement.text for replacement in replacements] == ["abc:c:\\"]
+
+
 def test_replace_all_is_single_undo_step(tmp_path: Path):
     path = tmp_path / "replace-all.txt"
     path.write_text("x1 x22 x333", encoding="utf-8")

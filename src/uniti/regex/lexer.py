@@ -19,16 +19,6 @@ class _GroupContext:
     branch_max: int = 0
 
 
-@dataclass(frozen=True, slots=True)
-class ReplacementToken:
-    kind: str
-    start: int
-    end: int
-    text: str
-    reference: int | str | None = None
-    valid: bool = True
-
-
 _QUANTIFIER = _syntax_re.compile(r"\{\d+(?:,\d*)?\}[?+]?")
 _FLAG_CHARS = "aiLmsuxwfbV01"
 _FLAG_ONLY = _syntax_re.compile(
@@ -409,22 +399,23 @@ def tokenize_replacement(
     *,
     group_count: int = 0,
     group_names: Mapping[str, int] | None = None,
-) -> tuple[ReplacementToken, ...]:
+) -> tuple[RegexToken, ...]:
     if not isinstance(replacement, str):
         raise TypeError("replacement must be a string")
     names = {} if group_names is None else dict(group_names)
-    tokens: list[ReplacementToken] = []
+    names_by_number = {number: name for name, number in names.items()}
+    tokens: list[RegexToken] = []
     i = 0
     while i < len(replacement):
         if replacement[i] != "\\":
             start = i
             while i < len(replacement) and replacement[i] != "\\":
                 i += 1
-            tokens.append(ReplacementToken("literal", start, i, replacement[start:i]))
+            tokens.append(RegexToken("literal", start, i, replacement[start:i]))
             continue
 
         if i + 1 >= len(replacement):
-            tokens.append(ReplacementToken("invalid", i, i + 1, "\\", valid=False))
+            tokens.append(RegexToken("invalid", i, i + 1, "\\", valid=False))
             i += 1
             continue
 
@@ -432,7 +423,7 @@ def tokenize_replacement(
             close = replacement.find(">", i + 3)
             if close < 0:
                 tokens.append(
-                    ReplacementToken("invalid", i, len(replacement), replacement[i:], valid=False)
+                    RegexToken("invalid", i, len(replacement), replacement[i:], valid=False)
                 )
                 break
             raw_ref = replacement[i + 3 : close]
@@ -444,38 +435,50 @@ def tokenize_replacement(
             )
             end = close + 1
             tokens.append(
-                ReplacementToken(
+                RegexToken(
                     "backreference",
                     i,
                     end,
                     replacement[i:end],
-                    reference=reference,
                     valid=valid,
+                    group_number=(
+                        reference if isinstance(reference, int) and valid
+                        else names.get(reference) if valid else None
+                    ),
+                    group_name=(
+                        reference if isinstance(reference, str) and valid
+                        else names_by_number.get(reference) if valid else None
+                    ),
+                    reference=reference,
                 )
             )
             i = end
             continue
 
-        if replacement[i + 1].isdigit():
+        if replacement[i + 1] in "123456789":
             end = i + 2
             while end < len(replacement) and replacement[end].isdigit():
                 end += 1
             reference = int(replacement[i + 1 : end])
             tokens.append(
-                ReplacementToken(
+                RegexToken(
                     "backreference",
                     i,
                     end,
                     replacement[i:end],
-                    reference=reference,
                     valid=0 <= reference <= group_count,
+                    group_number=(
+                        reference if 0 <= reference <= group_count else None
+                    ),
+                    group_name=names_by_number.get(reference),
+                    reference=reference,
                 )
             )
             i = end
             continue
 
         end = i + 2
-        tokens.append(ReplacementToken("escape", i, end, replacement[i:end]))
+        tokens.append(RegexToken("escape", i, end, replacement[i:end]))
         i = end
 
     return tuple(tokens)

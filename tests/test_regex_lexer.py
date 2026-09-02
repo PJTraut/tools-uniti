@@ -45,7 +45,7 @@ def test_pattern_lexer_marks_unmatched_group_close_invalid():
 
 def test_replacement_lexer_validates_numeric_and_named_references():
     tokens = tokenize_replacement(
-        r"\g<word>-\2-\g<missing>-\\",
+        r"\g<word>-\2-\g<missing>-\0-\\",
         group_count=2,
         group_names={"word": 1},
     )
@@ -55,6 +55,7 @@ def test_replacement_lexer_validates_numeric_and_named_references():
         (2, True),
         ("missing", False),
     ]
+    assert any(token.kind == "escape" and token.text == r"\0" for token in tokens)
     assert any(token.kind == "escape" and token.text == r"\\" for token in tokens)
 
 

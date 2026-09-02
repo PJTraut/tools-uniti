@@ -366,6 +366,113 @@ def analyze_pattern(
     )
 
 
+def analyze_replacement(
+    expression: str,
+    pattern: RegexAnalysis,
+    generation: int,
+) -> RegexAnalysis:
+    """Validate replacement references against one exact pattern generation."""
+    if not isinstance(expression, str):
+        raise TypeError("replacement must be a string")
+    if len(expression) > MAX_EXPRESSION_CHARS:
+        result = RegexAnalysis.empty(
+            role=ExpressionRole.REPLACEMENT,
+            expression=expression,
+            engine_pattern=expression,
+            generation=generation,
+            pattern_generation=pattern.generation,
+            state=AnalysisState.OVER_LIMIT,
+        )
+        return replace(result, diagnostics=(_length_diagnostic(expression),))
+
+    from .lexer import tokenize_replacement
+
+    pattern_valid = pattern.state is AnalysisState.VALID
+    group_names = dict(pattern.group_names) if pattern_valid else {}
+    group_count = pattern.group_count if pattern_valid else 0
+    scanned = tokenize_replacement(
+        expression,
+        group_count=group_count,
+        group_names=group_names,
+    )
+    if not pattern_valid:
+        state = (
+            AnalysisState.PENDING
+            if pattern.state is AnalysisState.PENDING
+            else AnalysisState.INVALID
+        )
+        tokens = tuple(
+            replace(token, group_number=None, group_name=None, color_key=None)
+            for token in scanned
+        )
+        return RegexAnalysis(
+            role=ExpressionRole.REPLACEMENT,
+            expression=expression,
+            engine_pattern=expression,
+            generation=generation,
+            pattern_generation=pattern.generation,
+            state=state,
+            tokens=tokens,
+            pairs=(),
+            switches=(),
+            groups=(),
+            diagnostics=(),
+            group_count=0,
+            group_names=(),
+            effective_flags=0,
+            identities_reconciled=False,
+            compiled=None,
+        )
+
+    diagnostics: list[RegexDiagnostic] = []
+    tokens: list[RegexToken] = []
+    for token in scanned:
+        if not token.valid:
+            if token.kind == "backreference":
+                message = f"Replacement refers to unknown group {token.reference}"
+            else:
+                message = "Invalid replacement syntax"
+            diagnostics.append(
+                RegexDiagnostic(
+                    DiagnosticSeverity.ERROR,
+                    message,
+                    token.start,
+                    token.end,
+                )
+            )
+        if token.valid and pattern.identities_reconciled:
+            color_key = (
+                token.group_number
+                if token.group_number is not None and token.group_number > 0
+                else None
+            )
+            tokens.append(replace(token, color_key=color_key))
+        else:
+            tokens.append(
+                replace(token, group_number=None, group_name=None, color_key=None)
+                if not pattern.identities_reconciled
+                else token
+            )
+    return RegexAnalysis(
+        role=ExpressionRole.REPLACEMENT,
+        expression=expression,
+        engine_pattern=expression,
+        generation=generation,
+        pattern_generation=pattern.generation,
+        state=AnalysisState.INVALID if diagnostics else AnalysisState.VALID,
+        tokens=tuple(tokens),
+        pairs=(),
+        switches=(),
+        groups=pattern.groups,
+        diagnostics=tuple(diagnostics),
+        group_count=pattern.group_count,
+        group_names=pattern.group_names,
+        effective_flags=pattern.effective_flags,
+        identities_reconciled=pattern.identities_reconciled,
+        compiled=None,
+    )
+
+
 __all__ = [
     "AnalysisState",
     "DiagnosticSeverity",
@@ -379,5 +486,6 @@ __all__ = [
     "RegexToken",
     "TokenPair",
     "analyze_pattern",
+    "analyze_replacement",
     "pending_pattern_analysis",
 ]

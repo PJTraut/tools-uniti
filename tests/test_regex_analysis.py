@@ -11,6 +11,7 @@ from uniti.regex.analysis import (
     MAX_EXPRESSION_CHARS,
     RegexAnalysis,
     analyze_pattern,
+    analyze_replacement,
     pending_pattern_analysis,
 )
 from uniti.regex.engine import compile_pattern, normalize_compile_error
@@ -52,10 +53,16 @@ def test_analysis_record_carries_exact_generation_and_expression_immutably():
 
 
 def test_regex_package_exports_pattern_analysis_surface():
-    from uniti.regex import PatternStructure, analyze_pattern, pending_pattern_analysis
+    from uniti.regex import (
+        PatternStructure,
+        analyze_pattern,
+        analyze_replacement,
+        pending_pattern_analysis,
+    )
 
     assert PatternStructure is not None
     assert callable(analyze_pattern)
+    assert callable(analyze_replacement)
     assert callable(pending_pattern_analysis)
 
 
@@ -168,3 +175,58 @@ def test_reconciliation_failure_suppresses_all_uncertain_group_identity(monkeypa
     assert all(token.group_name is None for token in analysis.tokens)
     assert all(token.color_key is None for token in analysis.tokens)
     assert analysis.diagnostics[0].severity is DiagnosticSeverity.WARNING
+
+
+def test_replacement_references_share_pattern_group_identity():
+    pattern = analyze_pattern(r"(?P<word>\w+)-(\d+)", generation=11)
+    replacement = analyze_replacement(
+        r"\g<word>:\2:\g<0>", pattern, generation=12
+    )
+
+    assert replacement.state is AnalysisState.VALID
+    references = [
+        token for token in replacement.tokens if token.kind == "backreference"
+    ]
+    assert [
+        (token.reference, token.group_number, token.color_key)
+        for token in references
+    ] == [
+        ("word", 1, 1),
+        (2, 2, 2),
+        (0, 0, None),
+    ]
+    assert replacement.pattern_generation == 11
+
+
+def test_invalid_replacement_reference_blocks_replacement_only():
+    pattern = analyze_pattern(r"(a)", generation=20)
+    replacement = analyze_replacement(
+        r"\2-\g<missing>", pattern, generation=21
+    )
+
+    assert replacement.state is AnalysisState.INVALID
+    assert len(replacement.diagnostics) == 2
+    assert all(
+        diagnostic.severity is DiagnosticSeverity.ERROR
+        for diagnostic in replacement.diagnostics
+    )
+
+
+def test_over_limit_replacement_is_refused_without_losing_editable_text():
+    pattern = analyze_pattern(r"(a)", generation=30)
+    replacement = analyze_replacement(
+        "x" * (MAX_EXPRESSION_CHARS + 1), pattern, generation=31
+    )
+
+    assert replacement.state is AnalysisState.OVER_LIMIT
+    assert replacement.expression.endswith("x")
+    assert replacement.diagnostics[0].start == MAX_EXPRESSION_CHARS
+
+
+def test_replacement_waits_for_pending_pattern_without_semantic_colors():
+    pattern = pending_pattern_analysis(r"(a)", generation=40)
+    replacement = analyze_replacement(r"\1", pattern, generation=41)
+
+    assert replacement.state is AnalysisState.PENDING
+    assert replacement.pattern_generation == 40
+    assert all(token.color_key is None for token in replacement.tokens)

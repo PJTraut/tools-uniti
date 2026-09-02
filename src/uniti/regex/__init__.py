@@ -13,6 +13,7 @@ from .analysis import (
     RegexToken,
     TokenPair,
     analyze_pattern,
+    analyze_replacement,
     pending_pattern_analysis,
 )
 from .replacement_plan import (
@@ -39,5 +40,6 @@ __all__ = [
     "ReplacementPlanLimitError",
     "TokenPair",
     "analyze_pattern",
+    "analyze_replacement",
     "pending_pattern_analysis",
 ]
