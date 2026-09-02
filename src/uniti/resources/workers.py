@@ -44,8 +44,13 @@ class PriorityWorkerPool:
         self._queue: PriorityQueue[_WorkItem] = PriorityQueue()
         self._sequence = itertools.count()
         self._lock = threading.Lock()
+        self._condition = threading.Condition(self._lock)
         self._shutdown = False
+        self._cancel_pending_on_shutdown = False
         self._max_workers = max_workers
+        self._active_limit = max_workers
+        self._active_count = 0
+        self._queued_count = 0
         self._threads = [
             threading.Thread(
                 target=self._worker,
@@ -60,6 +65,26 @@ class PriorityWorkerPool:
     @property
     def max_workers(self) -> int:
         return self._max_workers
+
+    @property
+    def active_limit(self) -> int:
+        with self._lock:
+            return self._active_limit
+
+    @property
+    def active_count(self) -> int:
+        with self._lock:
+            return self._active_count
+
+    @property
+    def queued_count(self) -> int:
+        with self._lock:
+            return self._queued_count
+
+    def set_active_limit(self, limit: int) -> None:
+        with self._condition:
+            self._active_limit = min(self._max_workers, max(1, int(limit)))
+            self._condition.notify_all()
 
     def submit(
         self,
@@ -85,17 +110,31 @@ class PriorityWorkerPool:
                 kwargs=kwargs,
                 token=token,
             )
+            self._queued_count += 1
             self._queue.put(item)
             return future
 
     def _worker(self) -> None:
         while True:
             item = self._queue.get()
+            active = False
             try:
                 if item.fn is None:
                     return
                 future = item.future
                 assert future is not None
+                with self._condition:
+                    while (
+                        self._active_count >= self._active_limit
+                        and not self._cancel_pending_on_shutdown
+                    ):
+                        self._condition.wait()
+                    self._queued_count -= 1
+                    if self._cancel_pending_on_shutdown:
+                        future.cancel()
+                        continue
+                    self._active_count += 1
+                    active = True
                 if not future.set_running_or_notify_cancel():
                     continue
                 try:
@@ -107,6 +146,11 @@ class PriorityWorkerPool:
                 else:
                     future.set_result(result)
             finally:
+                if item.fn is not None:
+                    with self._condition:
+                        if active:
+                            self._active_count -= 1
+                        self._condition.notify_all()
                 self._queue.task_done()
 
     def shutdown(self, *, wait: bool = True, cancel_pending: bool = False) -> None:
@@ -115,6 +159,7 @@ class PriorityWorkerPool:
                 threads = tuple(self._threads)
             else:
                 self._shutdown = True
+                self._cancel_pending_on_shutdown = cancel_pending
                 if cancel_pending:
                     while True:
                         try:
@@ -124,6 +169,7 @@ class PriorityWorkerPool:
                         try:
                             if item.future is not None:
                                 item.future.cancel()
+                                self._queued_count -= 1
                         finally:
                             self._queue.task_done()
                 for _ in self._threads:
@@ -136,6 +182,7 @@ class PriorityWorkerPool:
                         )
                     )
                 threads = tuple(self._threads)
+                self._condition.notify_all()
         if wait:
             for thread in threads:
                 thread.join()

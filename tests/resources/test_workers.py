@@ -67,3 +67,53 @@ def test_submit_after_shutdown_is_rejected():
     pool.shutdown()
     with pytest.raises(RuntimeError, match="shut down"):
         pool.submit(WorkPriority.SEARCH, lambda: None)
+
+
+def test_active_limit_holds_queued_work_until_capacity_increases():
+    pool = PriorityWorkerPool(max_workers=2, thread_name_prefix="uniti-limit")
+    release = threading.Event()
+    both_started = threading.Event()
+    lock = threading.Lock()
+    started: list[int] = []
+
+    def work(index: int):
+        with lock:
+            started.append(index)
+            if len(started) == 2:
+                both_started.set()
+        release.wait(1.0)
+
+    try:
+        pool.set_active_limit(1)
+        first = pool.submit(WorkPriority.SEARCH, work, 1)
+        second = pool.submit(WorkPriority.SEARCH, work, 2)
+        for _ in range(100):
+            with lock:
+                count = len(started)
+            if count:
+                break
+            threading.Event().wait(0.005)
+        assert count == 1
+        assert pool.active_count == 1
+        assert pool.queued_count == 1
+
+        pool.set_active_limit(2)
+        assert both_started.wait(1.0)
+        assert pool.active_count == 2
+        release.set()
+        first.result(timeout=1.0)
+        second.result(timeout=1.0)
+    finally:
+        release.set()
+        pool.shutdown()
+
+
+def test_active_limit_is_clamped_to_pool_capacity():
+    pool = PriorityWorkerPool(max_workers=3)
+    try:
+        pool.set_active_limit(0)
+        assert pool.active_limit == 1
+        pool.set_active_limit(99)
+        assert pool.active_limit == 3
+    finally:
+        pool.shutdown()

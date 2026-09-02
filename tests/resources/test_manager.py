@@ -1,4 +1,11 @@
-from uniti.resources import CachePriority, MemorySnapshot, PressureState, ResourceManager
+from uniti.resources import (
+    CachePriority,
+    MemorySnapshot,
+    PressureState,
+    ResourceManager,
+    ResourceSnapshot,
+    ResourceState,
+)
 from uniti.resources.memory import GIB
 
 
@@ -62,5 +69,57 @@ def test_resource_manager_exposes_the_policy_it_constructed():
     try:
         assert manager.cache_budget_bytes == manager.cache.budget_bytes
         assert manager.worker_count == 3
+        assert manager.cache_budget_bytes <= 512 << 20
+    finally:
+        manager.shutdown()
+
+
+def _snapshot(*, available: int, load: float = 0.2) -> ResourceSnapshot:
+    return ResourceSnapshot(
+        physical_memory=16 << 30,
+        available_memory=available,
+        process_rss=96 << 20,
+        load_per_logical_core=load,
+        free_disk=20 << 30,
+        cache_used=0,
+        active_workers=0,
+        queued_tasks=0,
+        captured_at=12.5,
+    )
+
+
+def test_constrained_state_reduces_admission_and_cache():
+    manager = ResourceManager(
+        max_workers=4,
+        initial_snapshot=MemorySnapshot(16 << 30, 8 << 30),
+    )
+    try:
+        state = manager.observe_resources(_snapshot(available=2 << 30))
+
+        assert state is ResourceState.CONSTRAINED
+        assert manager.workers.active_limit == 1
+        assert manager.cache.budget_bytes <= 128 << 20
+        assert manager.status.state is ResourceState.CONSTRAINED
+    finally:
+        manager.shutdown()
+
+
+def test_cpu_contention_enters_busy_and_two_healthy_samples_recover():
+    manager = ResourceManager(
+        max_workers=4,
+        initial_snapshot=MemorySnapshot(16 << 30, 8 << 30),
+    )
+    try:
+        assert manager.observe_resources(
+            _snapshot(available=8 << 30, load=0.8)
+        ) is ResourceState.BUSY
+        assert manager.workers.active_limit == 2
+        assert manager.observe_resources(
+            _snapshot(available=8 << 30, load=0.2)
+        ) is ResourceState.BUSY
+        assert manager.observe_resources(
+            _snapshot(available=8 << 30, load=0.2)
+        ) is ResourceState.NORMAL
+        assert manager.workers.active_limit == 4
     finally:
         manager.shutdown()

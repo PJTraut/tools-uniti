@@ -1,57 +1,145 @@
-"""Application-wide cache, memory-pressure, and worker ownership."""
+"""Application-wide resource, cache, worker, and task ownership."""
 
 from __future__ import annotations
 
 import os
-from collections.abc import Hashable
+import platform
+import shutil
+import tempfile
+from collections.abc import Callable, Hashable
+from dataclasses import dataclass, replace
+from pathlib import Path
 
 from .cache import CacheManager, CachePriority
-from .memory import (
-    MemorySnapshot,
-    PressureState,
-    automatic_cache_target,
-    pressure_state,
-    probe_memory,
+from .memory import MemorySnapshot, PressureState, probe_memory
+from .policy import (
+    PerformancePolicy,
+    ResourceState,
+    classify_resource_state,
+    load_performance_policy,
 )
+from .tasks import TaskCoordinator
+from .telemetry import HostResourceProfile, ResourceSampler, ResourceSnapshot
 from .workers import PriorityWorkerPool
 
+
 _SEVERITY = {
-    PressureState.GREEN: 0,
-    PressureState.YELLOW: 1,
-    PressureState.ORANGE: 2,
-    PressureState.RED: 3,
+    ResourceState.NORMAL: 0,
+    ResourceState.BUSY: 1,
+    ResourceState.CONSTRAINED: 2,
+    ResourceState.CRITICAL: 3,
+}
+_LEGACY_PRESSURE = {
+    ResourceState.NORMAL: PressureState.GREEN,
+    ResourceState.BUSY: PressureState.YELLOW,
+    ResourceState.CONSTRAINED: PressureState.ORANGE,
+    ResourceState.CRITICAL: PressureState.RED,
 }
 
 
+@dataclass(frozen=True, slots=True)
+class ResourceStatus:
+    state: ResourceState
+    physical_memory: int
+    available_memory: int
+    process_rss: int
+    load_per_logical_core: float | None
+    free_disk: int
+    cache_used: int
+    cache_budget: int
+    active_workers: int
+    active_worker_limit: int
+    queued_tasks: int
+    background_paused: bool
+    captured_at: float
+
+
 class ResourceManager:
-    """Own all disposable application cache and background worker capacity."""
+    """Own all disposable cache, background capacity, and task state."""
 
     def __init__(
         self,
         *,
         max_workers: int | None = None,
         initial_snapshot: MemorySnapshot | None = None,
+        policy: PerformancePolicy | None = None,
+        sampler: ResourceSampler | None = None,
     ) -> None:
-        snapshot = initial_snapshot or probe_memory()
-        budget = automatic_cache_target(snapshot)
-        self.cache = CacheManager(budget_bytes=budget)
+        self.policy = policy or load_performance_policy()
+        memory = initial_snapshot or probe_memory()
+        logical_cores = max(1, os.cpu_count() or 1)
         workers = max_workers
         if workers is None:
-            cpu = os.cpu_count() or 2
-            workers = max(2, min(8, cpu - 1 if cpu > 2 else 2))
+            workers = max(
+                1,
+                min(8, logical_cores - self.policy.resources.gui_core_reserve),
+            )
+        temp_root = Path(tempfile.gettempdir()).resolve()
+        profile = HostResourceProfile(
+            cpu_model=platform.processor().strip() or platform.machine() or "unknown",
+            architecture=platform.machine() or "unknown",
+            physical_cores=logical_cores,
+            logical_cores=logical_cores,
+            physical_memory=memory.physical,
+            platform=os.sys.platform,
+            platform_release=platform.release(),
+            temp_root=temp_root,
+        )
+        self._sampler = sampler or ResourceSampler(profile)
+        self._hard_cache_cap = self._cache_cap(memory.physical)
+        self.cache = CacheManager(budget_bytes=self._hard_cache_cap)
         self.workers = PriorityWorkerPool(
             max_workers=workers,
             thread_name_prefix="uniti-work",
         )
-        self._pressure = pressure_state(snapshot)
+        try:
+            free_disk = max(0, shutil.disk_usage(temp_root).free)
+        except OSError:
+            free_disk = 0
+        initial_resources = ResourceSnapshot(
+            physical_memory=memory.physical,
+            available_memory=memory.effective_available,
+            process_rss=0,
+            load_per_logical_core=None,
+            free_disk=free_disk,
+            cache_used=0,
+            active_workers=0,
+            queued_tasks=0,
+            captured_at=0.0,
+        )
+        self._state = classify_resource_state(initial_resources, self.policy)
         self._better_samples = 0
-        self._entries: dict[tuple[Hashable, Hashable], tuple[Hashable, CachePriority, int]] = {}
+        self._entries: dict[
+            tuple[Hashable, Hashable], tuple[Hashable, CachePriority, int]
+        ] = {}
         self._inactive_owners: set[Hashable] = set()
         self._shutdown = False
+        self._listeners: list[Callable[[ResourceStatus], None]] = []
+        self._status = self._make_status(initial_resources)
+        self.tasks = TaskCoordinator(self.workers, lambda: self._status)
+        self._apply_state()
+        self._status = self._make_status(initial_resources)
+
+    def _cache_cap(self, physical_memory: int) -> int:
+        limits = self.policy.resources
+        absolute = limits.max_cache_mib << 20
+        minimum = limits.min_visible_cache_mib << 20
+        if physical_memory <= 0:
+            return minimum
+        proportional = int(physical_memory * limits.physical_ram_fraction)
+        return max(minimum, min(absolute, proportional))
+
+    @property
+    def state(self) -> ResourceState:
+        return self._state
+
+    @property
+    def status(self) -> ResourceStatus:
+        return self._status
 
     @property
     def pressure(self) -> PressureState:
-        return self._pressure
+        return _LEGACY_PRESSURE[self._state]
 
     @property
     def cache_budget_bytes(self) -> int:
@@ -60,6 +148,18 @@ class ResourceManager:
     @property
     def worker_count(self) -> int:
         return self.workers.max_workers
+
+    def add_listener(self, listener: Callable[[ResourceStatus], None]) -> None:
+        if listener not in self._listeners:
+            self._listeners.append(listener)
+
+    def remove_listener(self, listener: Callable[[ResourceStatus], None]) -> None:
+        if listener in self._listeners:
+            self._listeners.remove(listener)
+
+    def _notify(self) -> None:
+        for listener in tuple(self._listeners):
+            listener(self._status)
 
     @staticmethod
     def _composite(owner: Hashable, key: Hashable) -> tuple[Hashable, Hashable]:
@@ -96,7 +196,9 @@ class ResourceManager:
             self._inactive_owners.discard(owner)
         else:
             self._inactive_owners.add(owner)
-        for composite, (entry_owner, base_priority, _size) in tuple(self._entries.items()):
+        for composite, (entry_owner, base_priority, _size) in tuple(
+            self._entries.items()
+        ):
             if entry_owner != owner:
                 continue
             effective = base_priority if active else CachePriority.INACTIVE
@@ -105,7 +207,9 @@ class ResourceManager:
 
     def evict_owner(self, owner: Hashable) -> int:
         released = 0
-        for composite, (entry_owner, _priority, size) in tuple(self._entries.items()):
+        for composite, (entry_owner, _priority, size) in tuple(
+            self._entries.items()
+        ):
             if entry_owner != owner:
                 continue
             if self.cache.remove(composite) is not None:
@@ -114,42 +218,104 @@ class ResourceManager:
         self._inactive_owners.discard(owner)
         return released
 
-    def observe_memory(self, snapshot: MemorySnapshot | None = None) -> PressureState:
-        raw_snapshot = snapshot or probe_memory()
-        effective = MemorySnapshot(
-            physical=raw_snapshot.physical,
-            available=raw_snapshot.available,
-            reclaimable_cache=self.cache.used_bytes,
+    def _apply_state(self) -> None:
+        pressure = self.policy.pressure
+        if self._state is ResourceState.NORMAL:
+            active_limit = self.workers.max_workers
+            cache_target = self._hard_cache_cap
+        elif self._state is ResourceState.BUSY:
+            active_limit = max(
+                1,
+                int(self.workers.max_workers * pressure.busy_worker_fraction),
+            )
+            cache_target = int(self._hard_cache_cap * pressure.busy_cache_fraction)
+        elif self._state is ResourceState.CONSTRAINED:
+            active_limit = pressure.constrained_worker_limit
+            cache_target = int(
+                self._hard_cache_cap * pressure.constrained_cache_fraction
+            )
+        else:
+            active_limit = 1
+            cache_target = self.policy.resources.min_visible_cache_mib << 20
+            self.cache.clear_disposable()
+        self.workers.set_active_limit(active_limit)
+        self.cache.set_budget(min(self._hard_cache_cap, max(0, cache_target)))
+
+    def _make_status(self, snapshot: ResourceSnapshot) -> ResourceStatus:
+        tasks = self.tasks.snapshot() if hasattr(self, "tasks") else None
+        return ResourceStatus(
+            state=self._state,
+            physical_memory=snapshot.physical_memory,
+            available_memory=snapshot.available_memory,
+            process_rss=snapshot.process_rss,
+            load_per_logical_core=snapshot.load_per_logical_core,
+            free_disk=snapshot.free_disk,
+            cache_used=self.cache.used_bytes,
+            cache_budget=self.cache.budget_bytes,
+            active_workers=self.workers.active_count,
+            active_worker_limit=self.workers.active_limit,
+            queued_tasks=self.workers.queued_count,
+            background_paused=False if tasks is None else tasks.background_paused,
+            captured_at=snapshot.captured_at,
         )
-        candidate = pressure_state(effective)
-        current_level = _SEVERITY[self._pressure]
+
+    def observe_resources(
+        self,
+        snapshot: ResourceSnapshot | None = None,
+    ) -> ResourceState:
+        raw = snapshot or self._sampler.sample(
+            cache_used_bytes=self.cache.used_bytes,
+            active_workers=self.workers.active_count,
+            queued_tasks=self.workers.queued_count,
+        )
+        self._hard_cache_cap = self._cache_cap(raw.physical_memory)
+        candidate = classify_resource_state(raw, self.policy)
+        current_level = _SEVERITY[self._state]
         candidate_level = _SEVERITY[candidate]
         if candidate_level > current_level:
-            self._pressure = candidate
+            self._state = candidate
             self._better_samples = 0
         elif candidate_level < current_level:
             self._better_samples += 1
-            if self._better_samples >= 2:
-                self._pressure = candidate
+            if (
+                self._better_samples
+                >= self.policy.pressure.healthier_samples_before_recovery
+            ):
+                self._state = candidate
                 self._better_samples = 0
         else:
             self._better_samples = 0
+        self._apply_state()
+        self._status = self._make_status(raw)
+        self._notify()
+        return self._state
 
-        target = automatic_cache_target(effective)
-        if self._pressure is PressureState.GREEN:
-            self.cache.set_budget(target)
-        elif self._pressure is PressureState.YELLOW:
-            self.cache.set_budget(min(self.cache.budget_bytes, max(self.cache.used_bytes, target)))
-        elif self._pressure is PressureState.ORANGE:
-            self.cache.evict_to(min(self.cache.used_bytes, target // 2))
-        else:
-            self.cache.clear_disposable()
-        return self._pressure
+    def observe_memory(self, snapshot: MemorySnapshot | None = None) -> PressureState:
+        memory = snapshot or probe_memory()
+        current = self._status
+        resource_snapshot = ResourceSnapshot(
+            physical_memory=memory.physical,
+            available_memory=memory.effective_available,
+            process_rss=current.process_rss,
+            load_per_logical_core=None,
+            free_disk=current.free_disk,
+            cache_used=self.cache.used_bytes,
+            active_workers=self.workers.active_count,
+            queued_tasks=self.workers.queued_count,
+            captured_at=current.captured_at,
+        )
+        return _LEGACY_PRESSURE[self.observe_resources(resource_snapshot)]
+
+    def pause_background(self, paused: bool) -> None:
+        self.tasks.pause_background(paused)
+        self._status = replace(self._status, background_paused=bool(paused))
+        self._notify()
 
     def shutdown(self, *, wait: bool = True) -> None:
         if self._shutdown:
             return
         self._shutdown = True
+        self.tasks.cancel_all()
         self.cache.clear_disposable()
         self._entries.clear()
         self.workers.shutdown(wait=wait, cancel_pending=True)

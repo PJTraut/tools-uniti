@@ -2,7 +2,7 @@
 
 from .cache import CacheManager, CachePriority
 from .cancel import CancellationToken, WorkCancelled
-from .manager import ResourceManager
+from .manager import ResourceManager, ResourceStatus
 from .memory import MemorySnapshot, PressureState, automatic_cache_target, pressure_state, probe_memory
 from .policy import (
     ComparisonLimits,
@@ -24,6 +24,18 @@ from .telemetry import (
     peak_process_rss_bytes,
     probe_host_profile,
 )
+from .tasks import (
+    TaskAdmissionError,
+    TaskContext,
+    TaskCoordinator,
+    TaskHandle,
+    TaskKind,
+    TaskProgress,
+    TaskSnapshot,
+    TaskSpec,
+    TaskState,
+    TaskSystemSnapshot,
+)
 from .workers import PriorityWorkerPool, WorkPriority
 
 __all__ = [
@@ -39,12 +51,23 @@ __all__ = [
     "PressureState",
     "PressureLimits",
     "ResourceManager",
+    "ResourceStatus",
     "ResourceLimits",
     "ResourceSampler",
     "ResourceSnapshot",
     "ResourceState",
     "PriorityWorkerPool",
     "TierPolicy",
+    "TaskAdmissionError",
+    "TaskContext",
+    "TaskCoordinator",
+    "TaskHandle",
+    "TaskKind",
+    "TaskProgress",
+    "TaskSnapshot",
+    "TaskSpec",
+    "TaskState",
+    "TaskSystemSnapshot",
     "WorkCancelled",
     "WorkPriority",
     "automatic_cache_target",
