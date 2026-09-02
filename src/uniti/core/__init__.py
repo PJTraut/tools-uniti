@@ -4,7 +4,7 @@ from .byte_source import ByteSource
 from .decoder import DecodeError, DecodedSpan, decode_span, iter_decoded_spans
 from .encoding import EncodingAssessment, EncodingInfo, detect_encoding
 from .file_identity import ExternalFileChangedError, FileIdentity
-from .eol import EOLReport, analyze_eol
+from .eol import EOLAnalysisCancelled, EOLReport, analyze_eol
 from .offsets import OffsetCheckpoint, OffsetMapper
 from .lines import LineIndex
 from .pieces import AnnotatedChunk, AnnotatedText, InvalidByteSpan, EditPiece, EditRef, EditStore, PieceTable, SourcePiece
@@ -34,6 +34,7 @@ __all__ = [
     "FileIdentity",
     "ExternalFileChangedError",
     "EOLReport",
+    "EOLAnalysisCancelled",
     "FormatPreview",
     "OffsetCheckpoint",
     "OffsetMapper",

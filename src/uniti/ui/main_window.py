@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from concurrent.futures import Future
-from dataclasses import replace as dataclass_replace
+from dataclasses import dataclass, replace as dataclass_replace
 import os
 from pathlib import Path
 import weakref
@@ -49,7 +48,7 @@ from uniti.core.text_inspection import (
     inspect_source,
     preview_source,
 )
-from uniti.resources import ResourceManager, WorkPriority
+from uniti.resources import ResourceManager, TaskContext, TaskHandle, TaskKind, TaskSpec
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
 from uniti.ui.file_format_dialogs import (
@@ -105,6 +104,14 @@ def _command_definitions() -> tuple[CommandDefinition, ...]:
         CommandDefinition("find.zoom_reset", "Reset Zoom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+0"),
         CommandDefinition("find.report_cycle", "Cycle Report Position", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+Alt+R"),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class _EOLJob:
+    handle: TaskHandle[EOLReport]
+    view_ref: weakref.ReferenceType
+    document: Document
+    identity: FileIdentity
 
 
 class UNITIMainWindow(QMainWindow):
@@ -173,8 +180,7 @@ class UNITIMainWindow(QMainWindow):
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
 
-        self._eol_pool = self._resources.workers
-        self._eol_jobs: dict[Future, weakref.ReferenceType] = {}
+        self._eol_jobs: dict[str, _EOLJob] = {}
         self._eol_reports: dict[int, EOLReport] = {}
         self._eol_dialogs: dict[int, LineEndingReportDialog] = {}
         self._eol_timer = QTimer(self)
@@ -513,6 +519,7 @@ class UNITIMainWindow(QMainWindow):
         *,
         attach_recovery: bool = True,
         initial_eol_report: EOLReport | None = None,
+        initial_eol_complete: bool = True,
     ) -> UNITITextView:
         if attach_recovery and self._recovery_manager is not None:
             self._recovery_manager.attach(document)
@@ -524,11 +531,12 @@ class UNITIMainWindow(QMainWindow):
         index = self._tabs.addTab(view, self._tab_label(view))
         self._tabs.setCurrentIndex(index)
         if initial_eol_report is not None:
-            self._eol_reports[id(view)] = initial_eol_report
             document.set_source_eol_report(initial_eol_report)
+            if initial_eol_complete:
+                self._eol_reports[id(view)] = initial_eol_report
         self._set_status_document(view)
         self._status.update_cursor(0, 0)
-        if initial_eol_report is None:
+        if initial_eol_report is None or not initial_eol_complete:
             self._schedule_eol_analysis(view)
         elif initial_eol_report.kind == "MIXED":
             self._show_mixed_eol_report(view, initial_eol_report)
@@ -542,7 +550,11 @@ class UNITIMainWindow(QMainWindow):
         profile: EncodingProfile | None = None,
     ) -> tuple[EncodingProfile | None, TextFileInspection] | None:
         with ByteSource.open(path) as source:
-            inspection = inspect_source(source, override=profile)
+            inspection = inspect_source(
+                source,
+                override=profile,
+                eol_max_bytes=65_536,
+            )
             selected = profile
             if inspection.encoding.requires_confirmation:
                 dialog = OpenFormatDialog(
@@ -554,7 +566,11 @@ class UNITIMainWindow(QMainWindow):
                 if dialog.exec() != QDialog.DialogCode.Accepted:
                     return None
                 selected = dialog.selected_profile()
-                inspection = inspect_source(source, override=selected)
+                inspection = inspect_source(
+                    source,
+                    override=selected,
+                    eol_max_bytes=65_536,
+                )
         return selected, inspection
 
     def open_path(
@@ -576,6 +592,7 @@ class UNITIMainWindow(QMainWindow):
             view = self._add_document(
                 document,
                 initial_eol_report=inspection.eol,
+                initial_eol_complete=inspection.eol_complete,
             )
         except Exception:
             document.close()
@@ -687,28 +704,64 @@ class UNITIMainWindow(QMainWindow):
         self.setWindowTitle(f"UNITI — {view.document.path.name}")
 
     @staticmethod
-    def _analyze_path_eol(path: Path, encoding: str) -> EOLReport:
-        with ByteSource.open(path) as source:
-            return analyze_eol(source, encoding=encoding)
+    def _analyze_path_eol(
+        path: Path,
+        encoding: str,
+        expected_identity: FileIdentity,
+        context: TaskContext,
+    ) -> EOLReport:
+        if FileIdentity.from_path(path) != expected_identity:
+            raise RuntimeError("source identity changed before EOL analysis")
+        with ByteSource.open(path, prefer_mmap=False) as source:
+            report = analyze_eol(
+                source,
+                encoding=encoding,
+                cancelled=lambda: context.token.cancelled,
+                progress=lambda completed, total: context.report(
+                    "Analyzing line endings",
+                    completed,
+                    total,
+                ),
+            )
+        context.check_cancelled()
+        if FileIdentity.from_path(path) != expected_identity:
+            raise RuntimeError("source identity changed during EOL analysis")
+        return report
 
     def _schedule_eol_analysis(self, view: UNITITextView) -> None:
         source_path = view.document.source.path
         encoding = view.document.encoding_info.detected
-        future = self._eol_pool.submit(
-            WorkPriority.INDEX,
-            self._analyze_path_eol,
-            source_path,
-            encoding,
+        identity = view.document.disk_identity
+        spec = TaskSpec.create(
+            TaskKind.EOL,
+            foreground=False,
+            document_key=str(id(view.document)),
+            revision=view.document.revision,
+            estimated_memory_bytes=2 << 20,
         )
-        self._eol_jobs[future] = weakref.ref(view)
+        handle = self._resources.tasks.submit(
+            spec,
+            lambda context: self._analyze_path_eol(
+                source_path,
+                encoding,
+                identity,
+                context,
+            ),
+        )
+        self._eol_jobs[spec.task_id] = _EOLJob(
+            handle,
+            weakref.ref(view),
+            view.document,
+            identity,
+        )
         self._eol_timer.start()
 
     def _cancel_eol_analysis(self, view: UNITITextView) -> None:
-        for future, view_ref in tuple(self._eol_jobs.items()):
-            if view_ref() is not view:
+        for task_id, job in tuple(self._eol_jobs.items()):
+            if job.view_ref() is not view:
                 continue
-            self._eol_jobs.pop(future, None)
-            future.cancel()
+            self._eol_jobs.pop(task_id, None)
+            job.handle.cancel()
         if not self._eol_jobs:
             self._eol_timer.stop()
 
@@ -738,16 +791,22 @@ class UNITIMainWindow(QMainWindow):
         dialog.show()
 
     def _poll_eol_jobs(self) -> None:
-        for future, view_ref in tuple(self._eol_jobs.items()):
-            if not future.done():
+        for task_id, job in tuple(self._eol_jobs.items()):
+            if not job.handle.done:
                 continue
-            self._eol_jobs.pop(future, None)
-            view = view_ref()
-            if view is None:
+            self._eol_jobs.pop(task_id, None)
+            view = job.view_ref()
+            if (
+                view is None
+                or self._tabs.indexOf(view) < 0
+                or view.document is not job.document
+            ):
                 continue
             try:
-                report = future.result()
-            except Exception:
+                report = job.handle.future.result()
+                if FileIdentity.from_path(job.document.path) != job.identity:
+                    continue
+            except (Exception, OSError):
                 continue
             self._eol_reports[id(view)] = report
             view.document.set_source_eol_report(report)
@@ -823,6 +882,7 @@ class UNITIMainWindow(QMainWindow):
                 view,
                 document,
                 initial_eol_report=inspection.eol,
+                initial_eol_complete=inspection.eol_complete,
             )
         except Exception:
             document.close()
@@ -862,6 +922,7 @@ class UNITIMainWindow(QMainWindow):
         replacement: Document,
         *,
         initial_eol_report: EOLReport | None = None,
+        initial_eol_complete: bool = True,
     ) -> None:
         old_document = view.document
         self._cancel_eol_analysis(view)
@@ -872,8 +933,9 @@ class UNITIMainWindow(QMainWindow):
         view.state = EditorState(replacement)
         self._eol_reports.pop(id(view), None)
         if initial_eol_report is not None:
-            self._eol_reports[id(view)] = initial_eol_report
             replacement.set_source_eol_report(initial_eol_report)
+            if initial_eol_complete:
+                self._eol_reports[id(view)] = initial_eol_report
         old_document.close()
         view.set_match_index(None)
         view._max_seen_line_width = 0
@@ -882,7 +944,7 @@ class UNITIMainWindow(QMainWindow):
         view._refresh_scrollbars(advance_index=False)
         self._find_replace.document_changed()
         view._state_changed()
-        if initial_eol_report is None:
+        if initial_eol_report is None or not initial_eol_complete:
             self._schedule_eol_analysis(view)
         elif initial_eol_report.kind == "MIXED":
             self._show_mixed_eol_report(view, initial_eol_report)

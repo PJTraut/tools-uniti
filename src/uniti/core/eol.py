@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import codecs
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -10,6 +11,10 @@ from .byte_source import ByteSource
 
 
 EOLKind = Literal["LF", "CRLF", "CR", "MIXED", "NONE"]
+
+
+class EOLAnalysisCancelled(RuntimeError):
+    """Raised when a caller cancels a progressive EOL scan."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +44,8 @@ def analyze_eol(
     *,
     encoding: str = "utf-8",
     end: int | None = None,
+    cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> EOLReport:
     """Count logical CRLF, LF and CR endings through an incremental decoder."""
 
@@ -76,8 +83,18 @@ def analyze_eol(
         cr += text.count("\r") - pairs
 
     stop = source.size if end is None else min(source.size, max(0, end))
+    scanned = 0
+    if progress is not None:
+        progress(0, stop)
     for chunk in source.iter_chunks(end=stop, chunk_size=chunk_size):
+        if cancelled is not None and cancelled():
+            raise EOLAnalysisCancelled("EOL analysis cancelled")
         consume(decoder.decode(chunk, final=False))
+        scanned += len(chunk)
+        if progress is not None:
+            progress(scanned, stop)
+    if cancelled is not None and cancelled():
+        raise EOLAnalysisCancelled("EOL analysis cancelled")
     consume(decoder.decode(b"", final=True))
 
     if pending_cr:

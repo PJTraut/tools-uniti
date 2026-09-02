@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from uniti.core.byte_source import ByteSource
-from uniti.core.eol import analyze_eol
+from uniti.core.eol import EOLAnalysisCancelled, analyze_eol
 
 
 def report(tmp_path: Path, payload: bytes, *, chunk_size: int = 1 << 20):
@@ -53,3 +55,43 @@ def test_utf32le_crlf_survives_arbitrary_byte_chunks(tmp_path: Path):
     with ByteSource.open(path) as source:
         result = analyze_eol(source, chunk_size=5, encoding="utf-32-le")
     assert (result.lf, result.crlf, result.cr, result.kind) == (0, 2, 0, "CRLF")
+
+
+def test_analysis_reports_monotonic_scanned_bytes(tmp_path: Path):
+    path = tmp_path / "progress.txt"
+    path.write_bytes(b"line\n" * 100)
+    updates: list[tuple[int, int]] = []
+
+    with ByteSource.open(path) as source:
+        result = analyze_eol(
+            source,
+            chunk_size=31,
+            progress=lambda completed, total: updates.append((completed, total)),
+        )
+
+    assert result.kind == "LF"
+    assert updates[0] == (0, path.stat().st_size)
+    assert updates[-1] == (path.stat().st_size, path.stat().st_size)
+    assert [completed for completed, _ in updates] == sorted(
+        completed for completed, _ in updates
+    )
+
+
+def test_analysis_checks_cancellation_between_chunks(tmp_path: Path):
+    path = tmp_path / "cancel.txt"
+    path.write_bytes(b"line\n" * 100)
+    cancelled = False
+
+    def progress(completed: int, _total: int) -> None:
+        nonlocal cancelled
+        if completed:
+            cancelled = True
+
+    with ByteSource.open(path) as source:
+        with pytest.raises(EOLAnalysisCancelled, match="cancelled"):
+            analyze_eol(
+                source,
+                chunk_size=31,
+                cancelled=lambda: cancelled,
+                progress=progress,
+            )

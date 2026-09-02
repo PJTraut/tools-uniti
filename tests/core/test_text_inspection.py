@@ -85,3 +85,26 @@ def test_preview_is_bounded_without_reporting_split_character_as_invalid(tmp_pat
     assert preview.text == "A" * 7
     assert preview.invalid_bytes == ()
     assert preview.truncated is True
+
+
+def test_bounded_inspection_marks_eol_incomplete_and_reports_extent(tmp_path):
+    path = tmp_path / "large.txt"
+    path.write_bytes(b"a\n" * 100_000)
+
+    with ByteSource.open(path) as source:
+        inspection = inspect_source(source, eol_max_bytes=65_536)
+
+    assert inspection.eol_complete is False
+    assert inspection.eol_scanned_bytes == 65_536
+    assert inspection.eol.kind == "LF"
+
+
+def test_default_inspection_reports_complete_full_eol_evidence(tmp_path):
+    path = tmp_path / "complete.txt"
+    path.write_bytes(b"a\n" * 100_000)
+
+    with ByteSource.open(path) as source:
+        inspection = inspect_source(source)
+
+    assert inspection.eol_complete is True
+    assert inspection.eol_scanned_bytes == path.stat().st_size

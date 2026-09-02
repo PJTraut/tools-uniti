@@ -27,6 +27,8 @@ class FormatPreview:
 class TextFileInspection:
     encoding: EncodingAssessment
     eol: EOLReport
+    eol_complete: bool
+    eol_scanned_bytes: int
 
 
 def _observed_bom(source: ByteSource) -> bytes:
@@ -85,11 +87,14 @@ def inspect_source(
     *,
     override: EncodingProfile | None = None,
     sample_bytes: int = 65_536,
+    eol_max_bytes: int | None = None,
 ) -> TextFileInspection:
     """Return separate encoding-severity and line-ending reports."""
 
     if sample_bytes <= 0:
         raise ValueError("sample_bytes must be positive")
+    if eol_max_bytes is not None and eol_max_bytes <= 0:
+        raise ValueError("eol_max_bytes must be positive")
 
     if override is None:
         info = detect_encoding(source, sample_size=sample_bytes)
@@ -147,5 +152,11 @@ def inspect_source(
         malformed_preview=preview.invalid_bytes,
         requires_confirmation=requires_confirmation,
     )
-    eol = analyze_eol(source, encoding=profile.codec)
-    return TextFileInspection(encoding=assessment, eol=eol)
+    eol_end = source.size if eol_max_bytes is None else min(source.size, eol_max_bytes)
+    eol = analyze_eol(source, encoding=profile.codec, end=eol_end)
+    return TextFileInspection(
+        encoding=assessment,
+        eol=eol,
+        eol_complete=eol_end >= source.size,
+        eol_scanned_bytes=eol_end,
+    )

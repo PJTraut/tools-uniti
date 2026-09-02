@@ -97,7 +97,7 @@ def test_main_window_uses_shared_resource_manager_for_workers_and_tab_priority()
     source = MAIN.read_text()
     assert "ResourceManager" in source
     assert "resource_manager" in source
-    assert "self._resources.workers" in source
+    assert "self._resources.tasks" in source
     assert "set_resource_active" in source
 
 
