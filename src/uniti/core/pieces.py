@@ -82,6 +82,11 @@ class EditStore:
             raise ValueError("invalid edit reference slice")
         return EditRef(ref.block, ref.start + start, end - start)
 
+    def snapshot(self):
+        from .snapshot import EditStoreSnapshot
+
+        return EditStoreSnapshot(tuple(block.text() for block in self._blocks))
+
 
 @dataclass(slots=True)
 class SourcePiece:
@@ -162,6 +167,29 @@ class PieceTable:
     @property
     def piece_count(self) -> int:
         return len(self._pieces)
+
+    def snapshot(self, source: ByteSource):
+        from .snapshot import PieceTableSnapshot
+
+        pieces: list[Piece] = []
+        for piece in self._pieces:
+            if isinstance(piece, SourcePiece):
+                pieces.append(
+                    SourcePiece(
+                        piece.byte_start,
+                        piece.byte_end,
+                        piece.source_char_start,
+                        piece.char_length,
+                    )
+                )
+            else:
+                pieces.append(EditPiece(piece.ref))
+        return PieceTableSnapshot.capture(
+            source,
+            self._encoding,
+            tuple(pieces),
+            self._edit_store.snapshot(),
+        )
 
     @staticmethod
     def _known_length(piece: Piece) -> int | None:

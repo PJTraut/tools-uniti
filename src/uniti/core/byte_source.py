@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import mmap
 import os
+import threading
 from pathlib import Path
 from typing import BinaryIO, Iterator
 
@@ -22,11 +23,13 @@ class ByteSource:
         handle: BinaryIO,
         size: int,
         mapping: mmap.mmap | None,
+        io_lock: threading.RLock | None = None,
     ) -> None:
         self._path = path
         self._handle = handle
         self._size = size
         self._mapping = mapping
+        self._io_lock = io_lock or threading.RLock()
         self._closed = False
 
     @classmethod
@@ -82,11 +85,36 @@ class ByteSource:
             return b""
         if self._mapping is not None:
             return self._mapping[start : start + length]
-        self._handle.seek(start)
-        data = self._handle.read(length)
+        with self._io_lock:
+            self._handle.seek(start)
+            data = self._handle.read(length)
         if len(data) != length:
             raise OSError("short read from byte source")
         return data
+
+    def fork(self) -> "ByteSource":
+        """Duplicate the captured file identity without reopening its path."""
+
+        self._ensure_open()
+        descriptor = os.dup(self._handle.fileno())
+        handle = os.fdopen(descriptor, "rb", closefd=True)
+        try:
+            mapping: mmap.mmap | None = None
+            if self._mapping is not None and self._size > 0:
+                try:
+                    mapping = mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ)
+                except (OSError, ValueError, BufferError):
+                    mapping = None
+            return ByteSource(
+                self._path,
+                handle,
+                self._size,
+                mapping,
+                self._io_lock,
+            )
+        except Exception:
+            handle.close()
+            raise
 
     def iter_chunks(
         self,

@@ -9,6 +9,7 @@ from .offsets import OffsetCheckpoint, OffsetMapper
 from .lines import LineIndex
 from .pieces import AnnotatedChunk, AnnotatedText, InvalidByteSpan, EditPiece, EditRef, EditStore, PieceTable, SourcePiece
 from .document import Document
+from .snapshot import DocumentReadSnapshot, EditStoreSnapshot, PieceTableSnapshot
 from .streaming import atomic_copy_source
 from .text_format import (
     EOLPolicy,
@@ -47,6 +48,9 @@ __all__ = [
     "PieceTable",
     "TextFileInspection",
     "Document",
+    "DocumentReadSnapshot",
+    "EditStoreSnapshot",
+    "PieceTableSnapshot",
     "decode_span",
     "iter_decoded_spans",
     "analyze_eol",

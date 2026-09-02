@@ -265,6 +265,28 @@ class Document:
         if self._resource_manager is not None and self._cache_owner is not None:
             self._resource_manager.set_owner_active(self._cache_owner, active)
 
+    def snapshot(self):
+        """Capture immutable source/edit state for independently cancellable work."""
+
+        self._ensure_open()
+        from .snapshot import DocumentReadSnapshot
+
+        source = self._source.fork()
+        try:
+            pieces = self._piece_table.snapshot(source)
+            return DocumentReadSnapshot(
+                revision=self._revision,
+                path=self._path,
+                disk_identity=self._disk_identity,
+                source_profile=self._piece_source_profile,
+                output_format=self._output_format,
+                _source=source,
+                _piece_table=pieces,
+            )
+        except Exception:
+            source.close()
+            raise
+
     @property
     def modified(self) -> bool:
         return self._history.modified or self._output_format != self._saved_output_format

@@ -55,3 +55,19 @@ def test_sparse_file_supports_offsets_above_one_gib(tmp_path: Path):
     with ByteSource.open(path) as source:
         assert source.size == marker_offset + 5
         assert source.read(marker_offset, 5) == b"UNITI"
+
+
+def test_fork_retains_open_file_after_path_replacement_and_parent_close(tmp_path: Path):
+    path = tmp_path / "fork.bin"
+    path.write_bytes(b"original")
+    source = ByteSource.open(path, prefer_mmap=False)
+    fork = source.fork()
+    replacement = tmp_path / "replacement.bin"
+    replacement.write_bytes(b"replaced")
+    replacement.replace(path)
+    source.close()
+    try:
+        assert fork.read(0, 8) == b"original"
+        assert not fork.uses_mmap
+    finally:
+        fork.close()
