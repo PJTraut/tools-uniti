@@ -16,6 +16,14 @@ from .policy import (
     classify_resource_state,
     load_performance_policy,
 )
+from .telemetry import (
+    HostResourceProfile,
+    ResourceSampler,
+    ResourceSnapshot,
+    current_process_rss_bytes,
+    peak_process_rss_bytes,
+    probe_host_profile,
+)
 from .workers import PriorityWorkerPool, WorkPriority
 
 __all__ = [
@@ -25,12 +33,15 @@ __all__ = [
     "ComparisonLimits",
     "GateLimit",
     "HostRequirement",
+    "HostResourceProfile",
     "MemorySnapshot",
     "PerformancePolicy",
     "PressureState",
     "PressureLimits",
     "ResourceManager",
     "ResourceLimits",
+    "ResourceSampler",
+    "ResourceSnapshot",
     "ResourceState",
     "PriorityWorkerPool",
     "TierPolicy",
@@ -38,7 +49,10 @@ __all__ = [
     "WorkPriority",
     "automatic_cache_target",
     "classify_resource_state",
+    "current_process_rss_bytes",
     "load_performance_policy",
+    "peak_process_rss_bytes",
     "pressure_state",
+    "probe_host_profile",
     "probe_memory",
 ]
