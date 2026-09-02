@@ -434,7 +434,7 @@ class FindReplaceWindow(QDialog):
             case_sensitive=self.case_sensitive_checkbox.isChecked(),
             whole_word=self.whole_word_checkbox.isChecked(),
         )
-        self.replace_input.set_groups(0, {})
+        self.find_input.set_analysis(self._pattern_analysis)
         self._reanalyze_replacement()
         if expression and self._pattern_analysis.state is AnalysisState.PENDING:
             self._analysis_timer.start()
@@ -454,6 +454,7 @@ class FindReplaceWindow(QDialog):
             self._replacement_generation,
             literal=not self.regex_mode,
         )
+        self.replace_input.set_analysis(self._replacement_analysis)
 
     def _submit_pattern_analysis(self) -> None:
         generation = self._pattern_generation
@@ -503,13 +504,7 @@ class FindReplaceWindow(QDialog):
         ):
             return
         self._pattern_analysis = analysis
-        if analysis.state is AnalysisState.VALID:
-            self.replace_input.set_groups(
-                analysis.group_count,
-                dict(analysis.group_names),
-            )
-        else:
-            self.replace_input.set_groups(0, {})
+        self.find_input.set_analysis(analysis)
         self._reanalyze_replacement()
         self._refresh_analysis_status()
         self._update_actions()

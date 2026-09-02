@@ -1,85 +1,213 @@
-"""Syntax-aware miniature editors for regex and replacement expressions."""
+"""Analysis-backed miniature editors for regex and replacement expressions."""
 
 from __future__ import annotations
 
-from PySide6.QtGui import (
-    QColor,
-    QSyntaxHighlighter,
-    QTextCharFormat,
-)
+from PySide6.QtCore import QEvent
+from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
 
-from uniti.regex.lexer import tokenize_pattern, tokenize_replacement
+from uniti.regex.analysis import RegexAnalysis
 from uniti.ui.bounded_text_edit import BoundedSingleLineTextEdit
 
 
-def _format(color: str, *, bold: bool = False) -> QTextCharFormat:
-    fmt = QTextCharFormat()
-    fmt.setForeground(QColor(color))
+_GROUP_HUES = (210, 18, 132, 286, 48, 174, 330, 258)
+
+
+def _relative_luminance(color: QColor) -> float:
+    channels: list[float] = []
+    for value in color.getRgbF()[:3]:
+        channels.append(
+            value / 12.92
+            if value <= 0.04045
+            else ((value + 0.055) / 1.055) ** 2.4
+        )
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast_ratio(first: QColor, second: QColor) -> float:
+    high, low = sorted(
+        (_relative_luminance(first), _relative_luminance(second)),
+        reverse=True,
+    )
+    return (high + 0.05) / (low + 0.05)
+
+
+def _group_color(base: QColor, key: int) -> QColor:
+    hue = _GROUP_HUES[(key - 1) % len(_GROUP_HUES)]
+    dark_base = base.lightnessF() < 0.5
+    lightness = 184 if dark_base else 86
+    direction = 8 if dark_base else -8
+    color = QColor.fromHsl(hue, 190, lightness)
+    while _contrast_ratio(color, base) < 4.5 and 8 <= lightness <= 247:
+        lightness += direction
+        color = QColor.fromHsl(hue, 190, max(0, min(255, lightness)))
+    return color
+
+
+def _format(color: QColor, *, bold: bool = False) -> QTextCharFormat:
+    result = QTextCharFormat()
+    result.setForeground(color)
     if bold:
-        fmt.setFontWeight(700)
-    return fmt
+        result.setFontWeight(700)
+    return result
 
 
-_FORMATS = {
-    "literal": _format("#d0d0d0"),
-    "escape": _format("#57c7ff"),
-    "unicode_property": _format("#c792ea"),
-    "char_class": _format("#8bd49c"),
-    "anchor": _format("#ff6b6b", bold=True),
-    "quantifier": _format("#ffb86c", bold=True),
-    "alternation": _format("#ff79c6", bold=True),
-    "group_open": _format("#82aaff", bold=True),
-    "group_close": _format("#82aaff", bold=True),
-    "flag": _format("#b0bec5"),
-    "backreference": _format("#c792ea", bold=True),
-}
-_INVALID_FORMAT = _format("#ff5555", bold=True)
-_INVALID_FORMAT.setUnderlineColor(QColor("#ff5555"))
-_INVALID_FORMAT.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
-
-
-class PatternHighlighter(QSyntaxHighlighter):
-    def highlightBlock(self, text: str) -> None:
-        for token in tokenize_pattern(text):
-            fmt = _FORMATS.get(token.kind, _FORMATS["literal"])
-            if not token.valid or token.kind == "invalid":
-                fmt = _INVALID_FORMAT
-            self.setFormat(token.start, token.end - token.start, fmt)
-
-
-class ReplacementHighlighter(QSyntaxHighlighter):
-    def __init__(self, document) -> None:
+class _AnalysisHighlighter(QSyntaxHighlighter):
+    def __init__(self, document, owner: BoundedSingleLineTextEdit) -> None:
         super().__init__(document)
-        self.group_count = 0
-        self.group_names: dict[str, int] = {}
+        self._owner = owner
+        self.analysis: RegexAnalysis | None = None
+        self.group_palette: tuple[QColor, ...] = ()
+        self._formats: dict[str, QTextCharFormat] = {}
+        self._invalid_color = QColor()
+        self.rebuild_formats()
 
-    def set_groups(self, group_count: int, group_names: dict[str, int]) -> None:
-        self.group_count = group_count
-        self.group_names = dict(group_names)
+    def rebuild_formats(self) -> None:
+        palette = self._owner.palette()
+        base = palette.base().color()
+        text = palette.text().color()
+        self.group_palette = tuple(
+            _group_color(base, index) for index in range(1, len(_GROUP_HUES) + 1)
+        )
+        structural = _group_color(base, 1)
+        secondary = _group_color(base, 2)
+        tertiary = _group_color(base, 3)
+        self._formats = {
+            "literal": _format(text),
+            "escape": _format(secondary),
+            "unicode_property": _format(tertiary),
+            "char_class": _format(tertiary),
+            "anchor": _format(secondary, bold=True),
+            "quantifier": _format(secondary, bold=True),
+            "alternation": _format(tertiary, bold=True),
+            "group_open": _format(structural, bold=True),
+            "group_close": _format(structural, bold=True),
+            "group_name": _format(structural, bold=True),
+            "flag": _format(text),
+            "special": _format(text),
+            "backreference": _format(tertiary, bold=True),
+        }
+        self._invalid_color = _group_color(base, 2)
         self.rehighlight()
 
+    def set_analysis(self, analysis: RegexAnalysis) -> None:
+        self.analysis = analysis
+        self._update_accessibility()
+        self.rehighlight()
+
+    def _update_accessibility(self) -> None:
+        analysis = self.analysis
+        if analysis is None:
+            self._owner.setAccessibleDescription("")
+            self._owner.setToolTip("")
+            return
+        lines: list[str] = []
+        for group in analysis.groups:
+            label = f"Group {group.number}"
+            if group.names:
+                label += " " + ", ".join(group.names)
+            lines.append(label)
+        reference_labels: set[str] = set()
+        for token in analysis.tokens:
+            if (
+                token.kind != "backreference"
+                or not token.valid
+                or token.group_number is None
+            ):
+                continue
+            label = f"Reference to Group {token.group_number}"
+            if token.group_name:
+                label += f" {token.group_name}"
+            reference_labels.add(label)
+        lines.extend(sorted(reference_labels))
+        lines.extend(diagnostic.message for diagnostic in analysis.diagnostics)
+        description = "\n".join(lines)
+        self._owner.setAccessibleDescription(description)
+        self._owner.setToolTip(description)
+
+    def _invalid_format(self, base: QTextCharFormat) -> QTextCharFormat:
+        result = QTextCharFormat(base)
+        result.setUnderlineColor(self._invalid_color)
+        result.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
+        return result
+
     def highlightBlock(self, text: str) -> None:
-        for token in tokenize_replacement(
-            text,
-            group_count=self.group_count,
-            group_names=self.group_names,
-        ):
-            fmt = _FORMATS.get(token.kind, _FORMATS["literal"])
+        analysis = self.analysis
+        if analysis is None or analysis.expression != text:
+            return
+        for token in analysis.tokens:
+            if token.end <= token.start or token.start >= len(text):
+                continue
+            length = min(len(text), token.end) - token.start
+            if token.color_key is not None:
+                color = self.group_palette[
+                    (token.color_key - 1) % len(self.group_palette)
+                ]
+                fmt = _format(color, bold=True)
+            else:
+                fmt = self._formats.get(token.kind, self._formats["literal"])
             if not token.valid or token.kind == "invalid":
-                fmt = _INVALID_FORMAT
-            self.setFormat(token.start, token.end - token.start, fmt)
+                fmt = self._invalid_format(fmt)
+            self.setFormat(token.start, length, fmt)
+
+        for diagnostic in analysis.diagnostics:
+            start = max(0, min(len(text), diagnostic.start))
+            end = max(start, min(len(text), diagnostic.end))
+            if start == end:
+                if not text:
+                    continue
+                start = max(0, start - 1)
+                end = start + 1
+            fmt = self._invalid_format(self.format(start))
+            self.setFormat(start, end - start, fmt)
+
+
+class PatternHighlighter(_AnalysisHighlighter):
+    pass
+
+
+class ReplacementHighlighter(_AnalysisHighlighter):
+    pass
 
 
 class RegexInput(BoundedSingleLineTextEdit):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.highlighter = PatternHighlighter(self.document())
+        self.highlighter = PatternHighlighter(self.document(), self)
+
+    def set_analysis(self, analysis: RegexAnalysis) -> None:
+        blocked = self.blockSignals(True)
+        try:
+            self.highlighter.set_analysis(analysis)
+        finally:
+            self.blockSignals(blocked)
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange:
+            blocked = self.blockSignals(True)
+            try:
+                self.highlighter.rebuild_formats()
+            finally:
+                self.blockSignals(blocked)
 
 
 class ReplacementInput(BoundedSingleLineTextEdit):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.highlighter = ReplacementHighlighter(self.document())
+        self.highlighter = ReplacementHighlighter(self.document(), self)
 
-    def set_groups(self, group_count: int, group_names: dict[str, int]) -> None:
-        self.highlighter.set_groups(group_count, group_names)
+    def set_analysis(self, analysis: RegexAnalysis) -> None:
+        blocked = self.blockSignals(True)
+        try:
+            self.highlighter.set_analysis(analysis)
+        finally:
+            self.blockSignals(blocked)
+
+    def changeEvent(self, event) -> None:
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.PaletteChange:
+            blocked = self.blockSignals(True)
+            try:
+                self.highlighter.rebuild_formats()
+            finally:
+                self.blockSignals(blocked)

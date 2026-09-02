@@ -48,12 +48,40 @@ def _close_panel(app, document, view, panel):
     app.processEvents()
 
 
-def test_regex_inputs_use_syntax_highlighting_and_lexers():
+def _colors_at_token_starts(editor, analysis, *, group_number: int) -> set[str]:
+    formats = editor.document().firstBlock().layout().formats()
+    colors: set[str] = set()
+    for token in analysis.tokens:
+        if token.group_number != group_number or token.color_key is None:
+            continue
+        for item in formats:
+            if item.start <= token.start < item.start + item.length:
+                colors.add(item.format.foreground().color().name())
+    return colors
+
+
+def _contrast_ratio(first, second) -> float:
+    def luminance(color):
+        channels = []
+        for value in color.getRgbF()[:3]:
+            channels.append(
+                value / 12.92
+                if value <= 0.04045
+                else ((value + 0.055) / 1.055) ** 2.4
+            )
+        return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+    high, low = sorted((luminance(first), luminance(second)), reverse=True)
+    return (high + 0.05) / (low + 0.05)
+
+
+def test_regex_inputs_render_supplied_immutable_analysis():
     assert REGEX_INPUT.exists()
     source = REGEX_INPUT.read_text()
     assert "QSyntaxHighlighter" in source
-    assert "tokenize_pattern" in source
-    assert "tokenize_replacement" in source
+    assert "set_analysis" in source
+    assert "tokenize_pattern" not in source
+    assert "tokenize_replacement" not in source
     assert "RegexInput" in source
     assert "ReplacementInput" in source
 
@@ -256,6 +284,95 @@ def test_invalid_and_over_limit_patterns_expose_exact_nonmodal_states(
         )
         assert "65,536" in panel.status_label.text()
         assert panel.find_input.text().endswith("x")
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_pattern_and_replacement_formats_share_group_color(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "word-42")
+    try:
+        panel.search_mode_combo.setCurrentText("Regex")
+        panel.find_input.set_text(r"(?P<word>\w+)-(\d+)\1")
+        panel.replace_input.set_text(r"\g<word>:\2")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        app.processEvents()
+        pattern_colors = _colors_at_token_starts(
+            panel.find_input,
+            panel._pattern_analysis,
+            group_number=1,
+        )
+        replacement_colors = _colors_at_token_starts(
+            panel.replace_input,
+            panel._replacement_analysis,
+            group_number=1,
+        )
+        assert len(pattern_colors) == 1
+        assert replacement_colors == pattern_colors
+        assert len(panel.find_input.highlighter.group_palette) >= 8
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_invalid_diagnostic_has_wave_underline_and_accessible_text(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QTextCharFormat
+
+    from uniti.regex.analysis import AnalysisState
+
+    app, document, view, panel = _make_panel(tmp_path, "abc")
+    try:
+        panel.search_mode_combo.setCurrentText("Regex")
+        panel.find_input.set_text("(")
+        _wait_until(
+            app,
+            lambda: panel._pattern_analysis.state is AnalysisState.INVALID,
+        )
+        formats = panel.find_input.document().firstBlock().layout().formats()
+        assert any(
+            item.format.underlineStyle()
+            == QTextCharFormat.UnderlineStyle.WaveUnderline
+            for item in formats
+        )
+        assert panel.status_label.text() in panel.find_input.accessibleDescription()
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_palette_change_rebuilds_group_formats_with_accessible_contrast(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor, QPalette
+
+    app, document, view, panel = _make_panel(tmp_path, "a")
+    try:
+        panel.search_mode_combo.setCurrentText("Regex")
+        panel.find_input.set_text("(a)")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        before = panel.find_input.highlighter.group_palette[0]
+        palette = panel.find_input.palette()
+        palette.setColor(QPalette.ColorRole.Base, QColor("#101216"))
+        palette.setColor(QPalette.ColorRole.Text, QColor("#f5f5f5"))
+        panel.find_input.setPalette(palette)
+        app.processEvents()
+
+        after = panel.find_input.highlighter.group_palette[0]
+        base = panel.find_input.palette().color(QPalette.ColorRole.Base)
+        assert after.name() != before.name()
+        assert all(
+            _contrast_ratio(color, base) >= 4.5
+            for color in panel.find_input.highlighter.group_palette
+        )
     finally:
         _close_panel(app, document, view, panel)
 
