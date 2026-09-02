@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+
+import pytest
 
 from benchmarks.corpus import CorpusKind, CorpusSpec, generate_corpus
 
@@ -43,6 +46,17 @@ def test_small_sparse_corpus_has_exact_size_and_markers(tmp_path: Path):
         for offset in manifest.marker_offsets:
             handle.seek(offset)
             assert handle.read(12) == b"UNITI_MARKER"
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="APFS-specific hole punching")
+def test_macos_sparse_corpus_retains_holes_around_markers(tmp_path: Path):
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.SPARSE_FILE, size_bytes=16 << 20),
+        tmp_path / "apfs-sparse",
+    )
+
+    stat = manifest.path.stat()
+    assert stat.st_blocks * 512 < stat.st_size // 2
 
 
 def test_sparse_and_dense_search_corpora_have_distinct_match_density(tmp_path: Path):

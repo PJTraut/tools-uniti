@@ -38,6 +38,8 @@ def test_editor_interaction_scenarios_preserve_text_and_stay_bounded(tmp_path: P
         assert result.metrics["interaction_max_ms"].values
 
     assert giant_line.facts["resident_wrapped_rows"] <= 2048
+    assert scroll.facts["integrity_read_bytes"] == 256
+    assert giant_line.facts["integrity_read_bytes"] == 256
 
 
 def test_resource_recovery_scenario_restores_parallel_capacity(tmp_path: Path):
@@ -52,3 +54,17 @@ def test_resource_recovery_scenario_restores_parallel_capacity(tmp_path: Path):
     assert result.facts["integrity_ok"] is True
     assert result.facts["critical_worker_limit"] == 1
     assert result.facts["recovered_worker_limit"] == result.facts["normal_worker_limit"]
+
+
+def test_sparse_design_navigation_stays_lazy(tmp_path: Path):
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.SPARSE_FILE, size_bytes=16 << 20),
+        tmp_path / "sparse-navigation",
+    )
+
+    result = run_scenario("navigation", manifest)
+
+    assert result.state is ResultState.PASS
+    assert result.facts["integrity_ok"] is True
+    assert result.facts["lazy_source_navigation"] is True
+    assert result.facts["mapped_bytes"] < 1 << 20

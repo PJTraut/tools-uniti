@@ -15,6 +15,7 @@ from typing import Mapping
 import uniti
 
 from benchmarks.models import ResultState
+from benchmarks.sparse import deallocate_file_range
 from uniti.resources import (
     PerformancePolicy,
     current_process_rss_bytes,
@@ -102,6 +103,12 @@ def probe_sparse_file_support(root: Path) -> bool:
             handle.seek((8 << 20) - 1)
             handle.write(b"x")
             handle.flush()
+            os.fsync(handle.fileno())
+            deallocate_file_range(
+                handle.fileno(),
+                4096,
+                (8 << 20) - 8192,
+            )
             os.fsync(handle.fileno())
         stat = path.stat()
         blocks = getattr(stat, "st_blocks", None)

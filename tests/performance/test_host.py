@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import sys
+
+import pytest
 
 from benchmarks.host import (
     collect_host_preflight,
@@ -20,6 +23,11 @@ def test_sparse_probe_cleans_up_its_artifact(tmp_path: Path):
 
     assert isinstance(supported, bool)
     assert set(tmp_path.iterdir()) == before
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="APFS-specific hole punching")
+def test_sparse_probe_uses_macos_hole_deallocation(tmp_path: Path):
+    assert probe_sparse_file_support(tmp_path) is True
 
 
 def test_real_preflight_reports_required_local_facts(tmp_path: Path):

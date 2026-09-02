@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from benchmarks.sparse import deallocate_file_range
+
 
 class CorpusKind(StrEnum):
     ORDINARY_LINES = "ordinary-lines"
@@ -138,6 +140,13 @@ def _write_sparse(path: Path, size_bytes: int) -> tuple[int, ...]:
         for offset in offsets:
             handle.seek(offset)
             handle.write(marker)
+        handle.flush()
+        if size_bytes > 16_384:
+            deallocate_file_range(
+                handle.fileno(),
+                8192,
+                size_bytes - 16_384,
+            )
     return offsets
 
 

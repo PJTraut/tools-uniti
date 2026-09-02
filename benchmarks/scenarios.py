@@ -157,11 +157,17 @@ def _navigation(manifest: CorpusManifest) -> ScenarioResult:
             started = time.perf_counter()
             target_line = None
             offset = manifest.marker_offsets[-1]
-            observed = document.read(offset, offset + len("UNITI_MARKER"))
+            observed = document.source.read(offset, len("UNITI_MARKER"))
             elapsed_ms = (time.perf_counter() - started) * 1000.0
-            integrity = observed == "UNITI_MARKER"
+            mapped_bytes = document.offset_mapper.indexed_byte_end
+            lazy_source_navigation = (
+                not document.offset_mapper.complete
+                and not document.document_line_index.complete
+                and mapped_bytes < 1 << 20
+            )
+            integrity = observed == b"UNITI_MARKER" and lazy_source_navigation
         interaction_ms = elapsed_ms
-        heartbeat_ms = elapsed_ms
+        heartbeat_ms = 0.0
         completion_ms = elapsed_ms
     else:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -198,6 +204,8 @@ def _navigation(manifest: CorpusManifest) -> ScenarioResult:
         )
         completion_ms = (time.perf_counter() - started) * 1000.0
         offset = view.state.cursor if view is not None else -1
+        mapped_bytes = view.document.offset_mapper.indexed_byte_end
+        lazy_source_navigation = False
         integrity = (
             accepted
             and view is not None
@@ -222,6 +230,8 @@ def _navigation(manifest: CorpusManifest) -> ScenarioResult:
             "physical_memory_bytes": probe_memory().physical,
             "target_line": target_line,
             "target_offset": offset,
+            "mapped_bytes": mapped_bytes,
+            "lazy_source_navigation": lazy_source_navigation,
             "integrity_ok": integrity,
         },
     )
@@ -319,7 +329,10 @@ def _scroll(manifest: CorpusManifest) -> ScenarioResult:
     revision = view.document.revision
     first = view.document.read(0, 128)
     last_start = max(0, manifest.spec.size_bytes - 128)
-    last = view.document.read(last_start, manifest.spec.size_bytes)
+    last = view.document.source.read(
+        last_start,
+        manifest.spec.size_bytes - last_start,
+    )
     timings: list[float] = []
     unwrapped_moved = False
     wrapped_moved = False
@@ -361,10 +374,15 @@ def _scroll(manifest: CorpusManifest) -> ScenarioResult:
             wrapped_moved = wrapped_moved or scrollbar.value() != before
         wrap_index = view._wrapped_row_index()
         resident_rows = wrap_index.resident_row_count
+        mapped_bytes = view.document.offset_mapper.indexed_byte_end
         integrity = (
             view.document.revision == revision
             and view.document.read(0, 128) == first
-            and view.document.read(last_start, manifest.spec.size_bytes) == last
+            and view.document.source.read(
+                last_start,
+                manifest.spec.size_bytes - last_start,
+            )
+            == last
             and unwrapped_moved
             and wrapped_moved
             and resident_rows <= 2048
@@ -379,6 +397,8 @@ def _scroll(manifest: CorpusManifest) -> ScenarioResult:
             "unwrapped_scrolled": unwrapped_moved,
             "wrapped_scrolled": wrapped_moved,
             "resident_wrapped_rows": resident_rows,
+            "mapped_bytes": mapped_bytes,
+            "integrity_read_bytes": len(first) + len(last),
             "integrity_ok": integrity,
         },
     )
@@ -391,7 +411,10 @@ def _giant_line(manifest: CorpusManifest) -> ScenarioResult:
     revision = view.document.revision
     first = view.document.read(0, 128)
     last_start = max(0, manifest.spec.size_bytes - 128)
-    last = view.document.read(last_start, manifest.spec.size_bytes)
+    last = view.document.source.read(
+        last_start,
+        manifest.spec.size_bytes - last_start,
+    )
     timings: list[float] = []
     horizontal_moved = False
     wrapped_moved = False
@@ -433,10 +456,15 @@ def _giant_line(manifest: CorpusManifest) -> ScenarioResult:
             wrapped_moved = wrapped_moved or scrollbar.value() != before
         wrap_index = view._wrapped_row_index()
         resident_rows = wrap_index.resident_row_count
+        mapped_bytes = view.document.offset_mapper.indexed_byte_end
         integrity = (
             view.document.revision == revision
             and view.document.read(0, 128) == first
-            and view.document.read(last_start, manifest.spec.size_bytes) == last
+            and view.document.source.read(
+                last_start,
+                manifest.spec.size_bytes - last_start,
+            )
+            == last
             and horizontal_moved
             and wrapped_moved
             and resident_rows <= 2048
@@ -451,6 +479,8 @@ def _giant_line(manifest: CorpusManifest) -> ScenarioResult:
             "horizontal_scrolled": horizontal_moved,
             "wrapped_scrolled": wrapped_moved,
             "resident_wrapped_rows": resident_rows,
+            "mapped_bytes": mapped_bytes,
+            "integrity_read_bytes": len(first) + len(last),
             "integrity_ok": integrity,
         },
     )
