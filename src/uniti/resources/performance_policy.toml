@@ -1,0 +1,90 @@
+schema = 1
+
+[tiers.quick]
+size_mib = 10
+repetitions = 3
+
+[tiers.routine]
+size_mib = 100
+repetitions = 3
+
+[tiers.design_target]
+sparse_size_gib = 1
+repetitions = 1
+
+[host_requirements.routine]
+min_physical_memory_gib = 8
+min_available_memory_gib = 4
+min_free_disk_gib = 3
+max_load_per_logical_core = 0.75
+
+[host_requirements.design_target]
+min_available_memory_gib = 4
+requires_sparse_files = true
+
+[gates.open_to_usable_ms]
+warn = 500
+fail = 1000
+
+[gates.gui_heartbeat_p95_ms]
+warn = 20
+fail = 33
+
+[gates.gui_heartbeat_max_ms]
+warn = 50
+fail = 100
+
+[gates.interaction_p95_ms]
+warn = 33
+fail = 50
+
+[gates.interaction_max_ms]
+warn = 50
+fail = 100
+
+[gates.cancel_normal_ms]
+warn = 100
+fail = 250
+
+[gates.cancel_timeout_bound_ms]
+warn = 500
+fail = 750
+
+[gates.first_progress_ms]
+warn = 150
+fail = 250
+
+[gates.progress_gap_ms]
+warn = 250
+fail = 500
+
+[gates.peak_rss_mib]
+warn = 384
+fail = 512
+physical_ram_fraction_fail = 0.125
+
+[gates.retained_rss_mib]
+warn = 32
+fail = 64
+
+[resources]
+max_cache_mib = 512
+physical_ram_fraction = 0.125
+min_visible_cache_mib = 16
+gui_core_reserve = 1
+
+[pressure]
+memory_normal_min_fraction = 0.25
+memory_busy_min_fraction = 0.15
+memory_constrained_min_fraction = 0.08
+cpu_busy_load_per_logical_core = 0.75
+cpu_constrained_load_per_logical_core = 1.0
+busy_worker_fraction = 0.50
+busy_cache_fraction = 0.75
+constrained_worker_limit = 1
+constrained_cache_fraction = 0.25
+healthier_samples_before_recovery = 2
+
+[comparison]
+regression_warning_percent = 15
+regression_failure_percent = 25
