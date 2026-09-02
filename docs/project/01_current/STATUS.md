@@ -8,7 +8,7 @@ Date: 2026-09-02
 |---|---|
 | Repository branch | `main` |
 | Remote baseline | `origin/main` at `e36348d` |
-| Verified a18 implementation sequence | `d56da90` through `99e9597`, followed by this freeze closure |
+| Verified a18 implementation sequence | `d56da90` through `40009ad`, followed by the recorded freeze evidence |
 | Local integration state | a18 is implemented and verified locally; push remains a separate approved action |
 | Latest implemented milestone | `v0.001a18` — Large-File Alpha |
 | Active product milestone | `v0.001a19` — Regex Intelligence Alpha |
@@ -58,22 +58,22 @@ Controlled 100 MiB routine medians:
 
 | Scenario | Responsiveness/completion | Peak / retained RSS delta |
 |---|---:|---:|
-| Open / first paint | 16.62 ms | 6.27 / 6.27 MiB |
-| Far Go to Line | 1.83 ms interaction; 5.09 s completion; 29.06 ms max heartbeat | 20.08 / 20.08 MiB |
-| Typing | 17.88 ms p95; 18.96 ms max | 9.75 / 9.75 MiB |
-| Wrapped/unwrapped scroll | 12.25 ms p95; 14.56 ms max | 7.36 / 7.36 MiB |
-| Giant line | 14.75 ms p95; 22.59 ms max | 2.94 / 0.00 MiB |
-| Sparse Find All | 45.50 ms completion; 0.31 ms max heartbeat | 1.08 / 1.08 MiB |
-| Dense Find All | 810.69 ms; 1.33 ms cancellation | 4.56 / 4.56 MiB |
-| Replace All planning/apply checks | 989.16 ms; 1.31 ms max heartbeat | 5.08 / 5.08 MiB |
-| Save | 556.36 ms; 4.45 ms cancellation; 10.56 ms max heartbeat | 112.38 / 16.45 MiB |
-| Save As | 531.00 ms; 4.52 ms cancellation; 9.10 ms max heartbeat | 110.09 / 16.38 MiB |
-| Critical-to-normal recovery | 0.07 ms max transition | 0.00 / 0.00 MiB |
+| Open / first paint | 16.04 ms | 4.34 / 4.34 MiB |
+| Far Go to Line | 4.70 ms interaction; 4.88 s completion; 23.51 ms max heartbeat | 18.06 / 18.06 MiB |
+| Typing | 15.34 ms p95; 16.40 ms max | 5.30 / 5.30 MiB |
+| Wrapped/unwrapped scroll | 13.74 ms p95; 14.48 ms max | 8.38 / 8.38 MiB |
+| Giant line | 11.87 ms p95; 21.29 ms max | 2.36 / 0.00 MiB |
+| Sparse Find All | 45.42 ms completion; 0.27 ms max heartbeat | 1.41 / 1.41 MiB |
+| Dense Find All | 828.17 ms; 1.30 ms cancellation | 5.58 / 5.58 MiB |
+| Replace All planning/apply checks | 989.61 ms; 1.36 ms max heartbeat | 5.97 / 5.97 MiB |
+| Save | 512.02 ms; 4.43 ms cancellation; 10.57 ms max heartbeat | 115.61 / 18.31 MiB |
+| Save As | 502.29 ms; 4.39 ms cancellation; 8.29 ms max heartbeat | 106.11 / 8.91 MiB |
+| Critical-to-normal recovery | 0.08 ms max transition | 0.00 / 0.00 MiB |
 
-The sparse 1 GiB design target passed with 14.52 ms Open/first paint, 0.26 ms lazy far-marker access, and 458.37 ms sparse Find All. Peak deltas were 4.02 MiB, 0.22 MiB, and 3.59 MiB respectively. Native Cocoa quick passed all eleven daily-use scenarios; representative medians were 16.17 ms Open, 9.80 ms maximum typing interaction, 7.89 ms maximum scroll interaction, 15.21 ms maximum giant-line interaction, 92.45 ms dense search, 107.87 ms Replace All planning, 56.76 ms Save, and 53.13 ms Save As.
+The sparse 1 GiB design target passed with 17.89 ms Open/first paint, 0.25 ms lazy far-marker access, and 452.51 ms sparse Find All. Peak deltas were 4.09 MiB, 0.22 MiB, and 3.80 MiB respectively. Native Cocoa quick passed all eleven daily-use scenarios; representative medians were 16.63 ms Open, 9.56 ms maximum typing interaction, 7.22 ms maximum scroll interaction, 13.54 ms maximum giant-line interaction, 81.22 ms dense search, 99.36 ms Replace All planning, 47.62 ms Save, and 46.27 ms Save As.
 
 ## Defects found during acceptance
 
-Acceptance exposed and closed three harness defects under regression tests: a scroll integrity probe that accidentally warmed the entire random-access cache, APFS seek/write behavior that required `F_PUNCHHOLE` for marker-bearing sparse fixtures, and a sparse navigation probe that translated a known byte marker through the full Unicode map. The corrected 100 MiB scroll retained about 5 MiB rather than the artificial 132 MiB result, and the 1 GiB navigation probe now measures the intended lazy byte-source path. No product data-loss, text-integrity, stale-result, output-identity, or blocking basic-usability defect remains known.
+Acceptance exposed and closed three harness defects under regression tests: a scroll integrity probe that accidentally warmed the entire random-access cache, APFS seek/write behavior that required `F_PUNCHHOLE` for marker-bearing sparse fixtures, and a sparse navigation probe that translated a known byte marker through the full Unicode map. The corrected 100 MiB scroll retained about 8 MiB rather than the artificial 132 MiB result, and the 1 GiB navigation probe now measures the intended lazy byte-source path. No product data-loss, text-integrity, stale-result, output-identity, or blocking basic-usability defect remains known.
 
 The a18 milestone, design, and implementation plan are retained in [Implemented](../03_implemented/README.md). See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).

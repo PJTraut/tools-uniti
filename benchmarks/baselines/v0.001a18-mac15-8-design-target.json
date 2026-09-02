@@ -18,22 +18,22 @@
   ],
   "host": {
     "architecture": "arm64",
-    "available_memory": 16382836736,
+    "available_memory": 15816097792,
     "corpus_schema": 1,
     "cpu_model": "Apple M3 Max",
     "display_refresh_hz": null,
     "display_scale": null,
     "filesystem_type": "/",
-    "free_disk": 300528795648,
-    "git_commit": "99e959788924b660a1ef7a050a9e80bd1165a811",
-    "load_per_logical_core": 0.390655517578125,
+    "free_disk": 300363575296,
+    "git_commit": "40009ada38ed22d8620b1779a6912a7b46c48c1d",
+    "load_per_logical_core": 0.35546875,
     "logical_cores": 16,
     "physical_cores": 16,
     "physical_memory": 51539607552,
     "platform": "darwin",
     "platform_release": "25.6.0",
     "power_state": null,
-    "process_rss": 27934720,
+    "process_rss": 29409280,
     "python_version": "3.12.4",
     "qt_version": "6.11.2",
     "schema": 1,
@@ -55,17 +55,17 @@
       "metrics": {
         "open_to_usable_ms": {
           "values": [
-            14.51712497510016
+            17.890583025291562
           ]
         },
         "peak_rss_mib": {
           "values": [
-            4.015625
+            4.09375
           ]
         },
         "retained_rss_mib": {
           "values": [
-            4.015625
+            4.09375
           ]
         }
       },
@@ -92,12 +92,12 @@
         },
         "interaction_max_ms": {
           "values": [
-            0.2614579861983657
+            0.24629198014736176
           ]
         },
         "navigation_completion_ms": {
           "values": [
-            0.2614579861983657
+            0.24629198014736176
           ]
         },
         "peak_rss_mib": {
@@ -128,42 +128,42 @@
       "metrics": {
         "first_progress_ms": {
           "values": [
-            1.5145420329645276
+            1.6561669763177633
           ]
         },
         "gui_heartbeat_max_ms": {
           "values": [
-            0.3345420118421316
+            0.40320795960724354
           ]
         },
         "gui_heartbeat_p95_ms": {
           "values": [
-            0.04254095256328583
+            0.04066608380526304
           ]
         },
         "interaction_max_ms": {
           "values": [
-            0.13337493874132633
+            0.09183399379253387
           ]
         },
         "peak_rss_mib": {
           "values": [
-            3.59375
+            3.796875
           ]
         },
         "progress_gap_ms": {
           "values": [
-            1.9660419784486294
+            5.978125031106174
           ]
         },
         "retained_rss_mib": {
           "values": [
-            3.59375
+            3.796875
           ]
         },
         "search_completion_ms": {
           "values": [
-            458.3674590103328
+            452.50675000716
           ]
         }
       },
