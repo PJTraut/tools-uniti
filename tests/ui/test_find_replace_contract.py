@@ -1,5 +1,7 @@
 import importlib.util
 import os
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -25,8 +27,8 @@ def test_find_replace_panel_has_worker_cancellation_navigation_and_capture_ui():
     assert PANEL.exists()
     source = PANEL.read_text()
     for required in (
-        "PriorityWorkerPool",
-        "CancellationToken",
+        "TaskSpec",
+        "TaskKind",
         "Find All",
         "Previous",
         "Next",
@@ -39,7 +41,9 @@ def test_find_replace_panel_has_worker_cancellation_navigation_and_capture_ui():
         "resolve_captures",
         "include_captures=False",
         "collect_replacements",
-        "replace_many",
+        "ReplacementPlan",
+        "apply_replacement_plan",
+        ".snapshot()",
     ):
         assert required in source
 
@@ -149,10 +153,20 @@ def test_find_all_renders_every_visible_match_with_clear_contrast(tmp_path: Path
         view.close()
 
 
-def test_find_replace_accepts_shared_resource_manager_instead_of_owning_worker_pool():
+def test_find_replace_uses_shared_resource_task_coordinator():
     source = PANEL.read_text()
     assert "resource_manager" in source
-    assert "resource_manager.workers" in source
+    assert "_resource_manager.tasks.submit" in source
+
+
+def test_replace_current_captures_widget_text_before_worker_starts():
+    source = PANEL.read_text()
+    method = source[source.index("    def replace_current(") : source.index("    def replace_all(")]
+
+    capture = method.index("replacement_text = self._replacement_expression()")
+    worker = method.index("        def work(")
+    assert capture < worker
+    assert "self._replacement_expression()" not in method[worker:]
 
 
 def test_find_replace_is_modeless_and_keeps_document_enabled(tmp_path: Path):
@@ -181,6 +195,58 @@ def test_find_replace_is_modeless_and_keeps_document_enabled(tmp_path: Path):
     assert find_window.isVisible() is False
     window.close_all_documents(force=True)
     window.close()
+
+
+def test_find_job_keeps_editor_enabled_and_edit_cancels_stale_snapshot(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui import find_replace
+    from uniti.ui.main_window import UNITIMainWindow
+
+    real_search = find_replace.search_document
+    started = threading.Event()
+    release = threading.Event()
+
+    def delayed_search(*args, **kwargs):
+        started.set()
+        release.wait(5.0)
+        yield from real_search(*args, **kwargs)
+
+    monkeypatch.setattr(find_replace, "search_document", delayed_search)
+    path = tmp_path / "editable-search.txt"
+    path.write_text("one two one", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        view = window.open_path(path)
+        panel = window._find_replace
+        panel.find_input.set_text("one")
+        panel.find_all()
+
+        assert started.wait(1.0)
+        assert view.isEnabled()
+        view.document.insert(0, "edited ")
+        view._state_changed()
+        release.set()
+        deadline = time.perf_counter() + 5.0
+        while panel.busy and time.perf_counter() < deadline:
+            app.processEvents()
+            time.sleep(0.001)
+
+        assert not panel.busy
+        assert panel.result_count == 0
+        assert panel.status_label.text() in {"cancelled", "text changed — search again"}
+    finally:
+        release.set()
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
 
 
 def test_literal_and_regex_modes_have_separate_semantics():

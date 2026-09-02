@@ -8,6 +8,7 @@ from collections.abc import Iterator
 
 from .byte_source import ByteSource
 from .decoder import decode_span, iter_decoded_spans
+from .history import EditOperation
 from .offsets import OffsetMapper, ReadIntent
 
 
@@ -358,6 +359,197 @@ class PieceTable:
         self.delete(start, end)
         if text:
             self.insert(start, text)
+
+    @staticmethod
+    def _copy_piece(piece: Piece) -> Piece:
+        if isinstance(piece, SourcePiece):
+            return SourcePiece(
+                piece.byte_start,
+                piece.byte_end,
+                piece.source_char_start,
+                piece.char_length,
+            )
+        return EditPiece(piece.ref)
+
+    def replace_many_bulk(self, replacements) -> tuple[EditOperation, ...]:
+        """Build replacement pieces in one forward pass and publish once."""
+
+        original = self._pieces
+        rebuilt: list[Piece] = []
+        operations: list[EditOperation] = []
+        piece_index = 0
+        piece_offset = 0
+        document_offset = 0
+        previous_end = 0
+        delta = 0
+        source_cursor = None
+
+        class SourceCursor:
+            """Map ascending piece-local character boundaries with one span live."""
+
+            def __init__(cursor_self, piece: SourcePiece) -> None:
+                cursor_self.piece = piece
+                cursor_self.iterator = iter_decoded_spans(
+                    self._source,
+                    self._encoding,
+                    start=piece.byte_start,
+                    end=piece.byte_end,
+                    chunk_size=65_536,
+                )
+                cursor_self.span = None
+                cursor_self.span_char_start = 0
+                cursor_self.decoded_chars = 0
+                cursor_self.last_requested = 0
+                cursor_self.eof = piece.byte_start >= piece.byte_end
+
+            def byte_at(cursor_self, local_offset: int) -> int:
+                if local_offset < cursor_self.last_requested:
+                    raise ValueError("source boundaries must be requested in order")
+                cursor_self.last_requested = local_offset
+                if local_offset == 0:
+                    return cursor_self.piece.byte_start
+                while True:
+                    span = cursor_self.span
+                    if span is not None:
+                        span_end = cursor_self.span_char_start + len(span.text)
+                        if local_offset <= span_end:
+                            return span.byte_offset_for_char_boundary(
+                                local_offset - cursor_self.span_char_start
+                            )
+                    if cursor_self.eof:
+                        if local_offset == cursor_self.decoded_chars:
+                            return cursor_self.piece.byte_end
+                        raise ValueError("replacement range extends beyond document")
+                    try:
+                        span = next(cursor_self.iterator)
+                    except StopIteration:
+                        cursor_self.eof = True
+                        continue
+                    cursor_self.span = span
+                    cursor_self.span_char_start = cursor_self.decoded_chars
+                    cursor_self.decoded_chars += len(span.text)
+
+        def current_source_cursor(piece: SourcePiece):
+            nonlocal source_cursor
+            if source_cursor is None:
+                source_cursor = SourceCursor(piece)
+            return source_cursor
+
+        def consume_to(target: int, *, preserve: bool) -> str:
+            nonlocal piece_index, piece_offset, document_offset, source_cursor
+            if target < document_offset:
+                raise ValueError("replacement ranges must be sorted and non-overlapping")
+            collected: list[str] = []
+            while document_offset < target:
+                if piece_index >= len(original):
+                    raise ValueError("replacement range extends beyond document")
+                piece = original[piece_index]
+                known_length = self._known_length(piece)
+                needed = target - document_offset
+                if known_length is None:
+                    take = needed
+                else:
+                    remaining = known_length - piece_offset
+                    if remaining <= 0:
+                        piece_index += 1
+                        piece_offset = 0
+                        source_cursor = None
+                        continue
+                    take = min(needed, remaining)
+                local_start = piece_offset
+                local_end = piece_offset + take
+                if isinstance(piece, SourcePiece):
+                    cursor = current_source_cursor(piece)
+                    byte_start = cursor.byte_at(local_start)
+                    byte_end = cursor.byte_at(local_end)
+                    if preserve:
+                        rebuilt.append(
+                            SourcePiece(
+                                byte_start,
+                                byte_end,
+                                piece.source_char_start + local_start,
+                                take,
+                            )
+                        )
+                    elif byte_end > byte_start:
+                        collected.append(
+                            decode_span(
+                                self._source,
+                                byte_start,
+                                byte_end - byte_start,
+                                self._encoding,
+                            ).text
+                        )
+                else:
+                    if preserve:
+                        rebuilt.append(
+                            EditPiece(
+                                EditStore.slice(piece.ref, local_start, local_end)
+                            )
+                        )
+                    else:
+                        collected.append(
+                            self._edit_store.read(piece.ref, local_start, local_end)
+                        )
+                piece_offset = local_end
+                document_offset += take
+                if known_length is not None and piece_offset == known_length:
+                    piece_index += 1
+                    piece_offset = 0
+                    source_cursor = None
+            return "".join(collected)
+
+        for index, replacement in enumerate(replacements):
+            start = replacement.start
+            end = replacement.end
+            text = replacement.text
+            if start < 0 or end < start:
+                raise ValueError("invalid replacement range")
+            if index and start < previous_end:
+                raise ValueError(
+                    "replacement ranges must be sorted and non-overlapping"
+                )
+            consume_to(start, preserve=True)
+            deleted = consume_to(end, preserve=False)
+            if text:
+                rebuilt.append(EditPiece(self._edit_store.append(text)))
+            actual_start = start + delta
+            operations.append(EditOperation(actual_start, deleted, text))
+            delta += len(text) - len(deleted)
+            previous_end = end
+
+        if piece_index < len(original):
+            piece = original[piece_index]
+            if piece_offset:
+                if isinstance(piece, SourcePiece):
+                    cursor = current_source_cursor(piece)
+                    byte_start = cursor.byte_at(piece_offset)
+                    if byte_start < piece.byte_end:
+                        remaining = (
+                            None
+                            if piece.char_length is None
+                            else piece.char_length - piece_offset
+                        )
+                        rebuilt.append(
+                            SourcePiece(
+                                byte_start,
+                                piece.byte_end,
+                                piece.source_char_start + piece_offset,
+                                remaining,
+                            )
+                        )
+                else:
+                    rebuilt.append(
+                        EditPiece(
+                            EditStore.slice(piece.ref, piece_offset, piece.ref.length)
+                        )
+                    )
+                piece_index += 1
+            rebuilt.extend(self._copy_piece(piece) for piece in original[piece_index:])
+
+        self._pieces = rebuilt
+        self._merge_neighbors()
+        return tuple(operations)
 
     def _read_source_piece(
         self,

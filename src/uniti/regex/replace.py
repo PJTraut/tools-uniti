@@ -10,14 +10,8 @@ import regex
 
 from uniti.core.document import Document
 from uniti.core.offsets import ReadIntent
+from .replacement_plan import Replacement, ReplacementPlan
 from .search import SearchOptions, _iter_engine_matches
-
-
-@dataclass(frozen=True, slots=True)
-class Replacement:
-    start: int
-    end: int
-    text: str
 
 
 def collect_replacements(
@@ -38,6 +32,43 @@ def collect_replacements(
     ):
         replacements.append(Replacement(record.start, record.end, match.expand(replacement)))
     return replacements
+
+
+def collect_replacement_plan(
+    document,
+    compiled: regex.Pattern,
+    replacement: str,
+    *,
+    document_revision: int,
+    memory_budget_bytes: int = 8 << 20,
+    options: SearchOptions | None = None,
+    cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[int, int | None], None] | None = None,
+) -> ReplacementPlan:
+    opts = SearchOptions() if options is None else options
+    plan = ReplacementPlan(
+        memory_budget_bytes=memory_budget_bytes,
+        document_revision=document_revision,
+    )
+    try:
+        for record, match in _iter_engine_matches(
+            document,
+            compiled,
+            options=opts,
+            cancelled=cancelled,
+            progress=progress,
+        ):
+            plan.append(
+                Replacement(
+                    record.start,
+                    record.end,
+                    match.expand(replacement),
+                )
+            )
+    except Exception:
+        plan.close()
+        raise
+    return plan
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,15 +113,22 @@ def replace_all(
     options: SearchOptions | None = None,
     cancelled: Callable[[], bool] | None = None,
 ) -> int:
-    replacements = collect_replacements(
+    plan = collect_replacement_plan(
         document,
         compiled,
         replacement,
+        document_revision=document.revision,
         options=options,
         cancelled=cancelled,
     )
-    document.replace_many([(r.start, r.end, r.text) for r in replacements])
-    return len(replacements)
+    try:
+        return document.apply_replacement_plan(
+            plan,
+            expected_revision=document.revision,
+            memory_limit_bytes=256 << 20,
+        )
+    finally:
+        plan.close()
 
 
 @dataclass(frozen=True, slots=True)

@@ -28,11 +28,20 @@ from uniti.regex.engine import compile_pattern
 from uniti.regex.match_store import MatchStore
 from uniti.regex.replace import (
     Replacement,
+    collect_replacement_plan,
     collect_replacements,
 )
+from uniti.regex.replacement_plan import ReplacementPlan
 from uniti.regex.results import MatchIndex, MatchRecord
 from uniti.regex.search import SearchOptions, resolve_captures, search_document
-from uniti.resources import CancellationToken, PriorityWorkerPool, ResourceManager, WorkPriority
+from uniti.resources import (
+    ResourceManager,
+    TaskAdmissionError,
+    TaskContext,
+    TaskHandle,
+    TaskKind,
+    TaskSpec,
+)
 from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 
@@ -58,18 +67,14 @@ class FindReplaceWindow(QDialog):
         self.setWindowTitle("Find / Replace")
         self.resize(720, 320)
         self._view_provider = view_provider
-        self._resource_manager = resource_manager
-        self._owns_pool = resource_manager is None
-        self._pool = (
-            PriorityWorkerPool(max_workers=1, thread_name_prefix="uniti-regex")
-            if resource_manager is None
-            else resource_manager.workers
-        )
+        self._owns_resources = resource_manager is None
+        self._resource_manager = resource_manager or ResourceManager(max_workers=1)
         self._future: Future | None = None
-        self._token: CancellationToken | None = None
+        self._task_handle: TaskHandle | None = None
         self._job_kind: str | None = None
         self._job_context: object | None = None
         self._target_view = None
+        self._job_edit_listener_remove = None
         self._results = MatchIndex(())
         self._results_view = None
         self._result_listener_remove = None
@@ -400,54 +405,96 @@ class FindReplaceWindow(QDialog):
         view,
         fn,
         *,
-        token: CancellationToken,
+        task_kind: TaskKind,
         context=None,
+        rejected_cleanup: Callable[[], None] | None = None,
     ) -> bool:
         if self.busy:
+            if rejected_cleanup is not None:
+                rejected_cleanup()
             self.status_label.setText("busy — cancel current work first")
             return False
-        self._token = token
         self._job_kind = kind
         self._job_context = context
         self._target_view = view
-        view.setEnabled(False)
         self.cancel_button.setEnabled(True)
         self.status_label.setText(
             "Searching…" if kind == "find" else "Replacing…"
         )
-        self._future = self._pool.submit(
-            WorkPriority.SEARCH,
-            fn,
-            token=token,
+        spec = TaskSpec.create(
+            task_kind,
+            foreground=True,
+            document_key=str(id(view.document)),
+            revision=view.document.revision,
+            estimated_memory_bytes=8 << 20,
         )
+        try:
+            self._task_handle = self._resource_manager.tasks.submit(spec, fn)
+        except Exception as exc:
+            if rejected_cleanup is not None:
+                rejected_cleanup()
+            self._job_kind = None
+            self._job_context = None
+            self._target_view = None
+            self.cancel_button.setEnabled(False)
+            if isinstance(exc, TaskAdmissionError):
+                self.status_label.setText(f"operation refused: {exc}")
+                return False
+            raise
+        self._future = self._task_handle.future
+        self._job_edit_listener_remove = view.document.add_edit_listener(
+            lambda _operation, view=view: self._cancel_for_edit(view)
+        )
+        if rejected_cleanup is not None:
+            self._future.add_done_callback(
+                lambda _future: rejected_cleanup()
+            )
         self._future.add_done_callback(lambda _future: self._jobCompleted.emit())
         return True
+
+    def _cancel_for_edit(self, view) -> None:
+        if view is not self._target_view:
+            return
+        self.cancel_search()
+        self.status_label.setText("text changed — search again")
 
     def find_all(self) -> None:
         view = self._current_view()
         compiled = self._compile_current()
         if view is None or compiled is None:
             return
-        token = CancellationToken()
-
         revision = view.document.revision
+        snapshot = view.document.snapshot()
 
-        def work():
+        def work(context: TaskContext):
             store = MatchStore(document_revision=revision)
             try:
-                for record in search_document(
-                    view.document,
-                    compiled,
-                    options=SearchOptions(timeout=0.5, include_captures=False),
-                    cancelled=lambda: token.cancelled,
-                ):
-                    store.append(record)
+                with snapshot:
+                    for record in search_document(
+                        snapshot,
+                        compiled,
+                        options=SearchOptions(timeout=0.5, include_captures=False),
+                        cancelled=lambda: context.token.cancelled,
+                        progress=lambda completed, total: context.report(
+                            "Searching",
+                            completed,
+                            total,
+                        ),
+                    ):
+                        store.append(record)
             except Exception:
                 store.close()
                 raise
             return store
 
-        self._start_job("find", view, work, token=token, context=compiled)
+        self._start_job(
+            "find",
+            view,
+            work,
+            task_kind=TaskKind.SEARCH,
+            context=compiled,
+            rejected_cleanup=snapshot.close,
+        )
 
     def replace_current(self) -> None:
         view = self._current_view()
@@ -458,23 +505,30 @@ class FindReplaceWindow(QDialog):
             self.find_all()
             return
         target_index = self._current_index
-        token = CancellationToken()
+        revision = view.document.revision
+        replacement_text = self._replacement_expression()
+        snapshot = view.document.snapshot()
 
-        def work():
-            return collect_replacements(
-                view.document,
-                compiled,
-                self._replacement_expression(),
-                options=SearchOptions(timeout=0.5, max_matches=target_index + 1),
-                cancelled=lambda: token.cancelled,
-            )
+        def work(context: TaskContext):
+            with snapshot:
+                return collect_replacements(
+                    snapshot,
+                    compiled,
+                    replacement_text,
+                    options=SearchOptions(
+                        timeout=0.5,
+                        max_matches=target_index + 1,
+                    ),
+                    cancelled=lambda: context.token.cancelled,
+                )
 
         self._start_job(
             "replace_current",
             view,
             work,
-            token=token,
-            context=target_index,
+            task_kind=TaskKind.REPLACE,
+            context=(target_index, revision),
+            rejected_cleanup=snapshot.close,
         )
 
     def replace_all(self) -> None:
@@ -482,30 +536,38 @@ class FindReplaceWindow(QDialog):
         compiled = self._compile_current()
         if view is None or compiled is None:
             return
-        token = CancellationToken()
         revision = view.document.revision
         replacement_text = self._replacement_expression()
+        snapshot = view.document.snapshot()
 
-        def work():
-            return collect_replacements(
-                view.document,
-                compiled,
-                replacement_text,
-                options=SearchOptions(timeout=0.5),
-                cancelled=lambda: token.cancelled,
-            )
+        def work(context: TaskContext):
+            with snapshot:
+                return collect_replacement_plan(
+                    snapshot,
+                    compiled,
+                    replacement_text,
+                    document_revision=revision,
+                    options=SearchOptions(timeout=0.5),
+                    cancelled=lambda: context.token.cancelled,
+                    progress=lambda completed, total: context.report(
+                        "Planning replacements",
+                        completed,
+                        total,
+                    ),
+                )
 
         self._start_job(
             "replace_all",
             view,
             work,
-            token=token,
+            task_kind=TaskKind.REPLACE,
             context=revision,
+            rejected_cleanup=snapshot.close,
         )
 
     def cancel_search(self) -> None:
-        if self._token is not None:
-            self._token.cancel()
+        if self._task_handle is not None:
+            self._task_handle.cancel()
             self.status_label.setText("Cancelling…")
 
     def _poll_job(self) -> None:
@@ -515,23 +577,31 @@ class FindReplaceWindow(QDialog):
         kind = self._job_kind
         context = self._job_context
         view = self._target_view
-        token = self._token
+        task_handle = self._task_handle
         self._future = None
+        self._task_handle = None
         self._job_kind = None
         self._job_context = None
         self._target_view = None
-        self._token = None
+        if self._job_edit_listener_remove is not None:
+            self._job_edit_listener_remove()
+            self._job_edit_listener_remove = None
         self.cancel_button.setEnabled(False)
-        if view is not None:
-            view.setEnabled(True)
-
-        if token is not None and token.cancelled:
-            self.status_label.setText("cancelled")
-            return
         try:
             payload = future.result()
         except Exception as exc:
+            if task_handle is not None and task_handle.token.cancelled:
+                if self.status_label.text() != "text changed — search again":
+                    self.status_label.setText("cancelled")
+                return
             self.status_label.setText(f"operation failed: {exc}")
+            return
+
+        if task_handle is not None and task_handle.token.cancelled:
+            if isinstance(payload, (MatchStore, ReplacementPlan)):
+                payload.close()
+            if self.status_label.text() != "text changed — search again":
+                self.status_label.setText("cancelled")
             return
 
         if kind == "find":
@@ -582,25 +652,44 @@ class FindReplaceWindow(QDialog):
         replacements: list[Replacement],
         context,
     ) -> None:
-        if not isinstance(context, int) or context >= len(replacements):
+        if (
+            not isinstance(context, tuple)
+            or len(context) != 2
+            or not isinstance(context[0], int)
+            or view is None
+            or view.document.revision != context[1]
+            or context[0] >= len(replacements)
+        ):
             self.status_label.setText("match changed — search again")
             self._clear_results()
             return
-        replacement = replacements[context]
+        replacement = replacements[context[0]]
         view.document.replace(replacement.start, replacement.end, replacement.text)
         view.state.move_to(replacement.start + len(replacement.text))
         self._clear_results()
         view._state_changed()
         self.status_label.setText("1 replaced")
 
-    def _apply_replace_all(self, view, replacements, revision) -> None:
+    def _apply_replace_all(self, view, plan: ReplacementPlan, revision) -> None:
         if view is None or view.document.revision != revision:
+            plan.close()
             self.status_label.setText("text changed — search again")
             return
-        view.document.replace_many(
-            [(item.start, item.end, item.text) for item in replacements]
+        memory_limit = max(
+            1 << 20,
+            min(256 << 20, self._resource_manager.status.available_memory // 4),
         )
-        count = len(replacements)
+        try:
+            count = view.document.apply_replacement_plan(
+                plan,
+                expected_revision=revision,
+                memory_limit_bytes=memory_limit,
+            )
+        except Exception as exc:
+            self.status_label.setText(f"operation failed: {exc}")
+            return
+        finally:
+            plan.close()
         self._clear_results()
         view._state_changed()
         self.status_label.setText(f"{count:,} replaced")
@@ -705,10 +794,11 @@ class FindReplaceWindow(QDialog):
 
     def shutdown(self) -> None:
         self.cancel_search()
-        if self._target_view is not None:
-            self._target_view.setEnabled(True)
-        if self._owns_pool:
-            self._pool.shutdown(wait=False, cancel_pending=True)
+        if self._job_edit_listener_remove is not None:
+            self._job_edit_listener_remove()
+            self._job_edit_listener_remove = None
+        if self._owns_resources:
+            self._resource_manager.shutdown(wait=False)
 
 
 # Compatibility name for implemented callers while the project migrates from

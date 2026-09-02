@@ -86,7 +86,10 @@ _PATTERNS = {
     CorpusKind.GIANT_LINE: b"abcdefghijklmnopqrstuvwxyz012345",
     CorpusKind.MIXED_UNICODE: "Café Привет Καλημέρα 東京 🙂\n".encode("utf-8"),
     CorpusKind.SEARCH_SPARSE: b"ordinary text without the token on this line\n",
-    CorpusKind.SEARCH_DENSE: b"UNITI_MATCH ",
+    # One match per 256 bytes is dense enough to force bounded result/plan
+    # spooling at routine scale without manufacturing millions of records that
+    # have no additional user-experience value.
+    CorpusKind.SEARCH_DENSE: b"UNITI_MATCH " + (b"x" * 243) + b"\n",
     CorpusKind.MIXED_EOL: b"alpha\nbeta\r\ngamma\r",
     CorpusKind.MALFORMED_UTF8: b"valid\ninvalid:\xff\xfe\n",
 }

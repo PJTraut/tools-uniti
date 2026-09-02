@@ -28,6 +28,82 @@ def _rss_facts(start_current: int, start_peak: int) -> tuple[float, float]:
     return peak_delta, retained_delta
 
 
+def _p95(values: list[float]) -> float:
+    ordered = sorted(values or [0.0])
+    return ordered[min(len(ordered) - 1, max(0, int(len(ordered) * 0.95) - 1))]
+
+
+def _wait_for_task(app, handle, started: float, *, timeout: float = 180.0):
+    """Pump Qt while one coordinated task runs and capture UX timings."""
+
+    heartbeats: list[float] = []
+    progress_times: list[float] = []
+    seen_progress_at: float | None = None
+    deadline = time.perf_counter() + timeout
+    while not handle.done and time.perf_counter() < deadline:
+        heartbeat_started = time.perf_counter()
+        app.processEvents()
+        heartbeats.append((time.perf_counter() - heartbeat_started) * 1000.0)
+        progress = handle.progress
+        if progress is not None and progress.updated_at != seen_progress_at:
+            seen_progress_at = progress.updated_at
+            progress_times.append(progress.updated_at)
+        time.sleep(0.001)
+    if not handle.done:
+        handle.cancel()
+        raise TimeoutError("performance task did not complete before its deadline")
+    app.processEvents()
+    completed = time.perf_counter()
+    progress = handle.progress
+    if progress is not None and progress.updated_at != seen_progress_at:
+        progress_times.append(progress.updated_at)
+    first_progress_ms = (
+        (progress_times[0] - started) * 1000.0
+        if progress_times
+        else (completed - started) * 1000.0
+    )
+    gaps = [
+        (right - left) * 1000.0
+        for left, right in zip(progress_times, progress_times[1:])
+    ]
+    if progress_times:
+        gaps.append((completed - progress_times[-1]) * 1000.0)
+    return handle.future.result(), {
+        "gui_heartbeat_p95_ms": _p95(heartbeats),
+        "gui_heartbeat_max_ms": max(heartbeats or [0.0]),
+        "first_progress_ms": first_progress_ms,
+        "progress_gap_ms": max(gaps or [0.0]),
+        "completion_ms": (completed - started) * 1000.0,
+    }
+
+
+def _measure_cancellation(app, handle, *, timeout: float = 5.0) -> tuple[float, bool]:
+    """Cancel after observable progress and measure time until worker exit."""
+
+    deadline = time.perf_counter() + timeout
+    while handle.progress is None and not handle.done and time.perf_counter() < deadline:
+        app.processEvents()
+        time.sleep(0.001)
+    if handle.done or handle.progress is None:
+        return 0.0, False
+    started = time.perf_counter()
+    handle.cancel()
+    while not handle.done and time.perf_counter() < deadline:
+        app.processEvents()
+        time.sleep(0.001)
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+    if not handle.done:
+        return elapsed_ms, False
+    try:
+        payload = handle.future.result()
+    except Exception:
+        return elapsed_ms, handle.token.cancelled
+    close = getattr(payload, "close", None)
+    if close is not None:
+        close()
+    return elapsed_ms, False
+
+
 def _digest(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -152,14 +228,15 @@ def _navigation(manifest: CorpusManifest) -> ScenarioResult:
     )
 
 
-def _search_sparse(manifest: CorpusManifest) -> ScenarioResult:
+def _search(manifest: CorpusManifest, *, scenario_name: str) -> ScenarioResult:
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
     from uniti.core.document import Document
     from uniti.regex.engine import compile_pattern
+    from uniti.regex.match_store import MatchStore
     from uniti.regex.search import SearchOptions, search_document
-    from uniti.resources import WorkPriority
+    from uniti.resources import TaskKind, TaskSpec
 
     app = QApplication.instance() or QApplication([])
     resources = ResourceManager()
@@ -170,48 +247,258 @@ def _search_sparse(manifest: CorpusManifest) -> ScenarioResult:
     )
     start_current = current_process_rss_bytes()
     start_peak = peak_process_rss_bytes()
-    beats: list[float] = []
-    previous = time.perf_counter()
-
     pattern = "UNITI_MARKER" if manifest.spec.kind is CorpusKind.SPARSE_FILE else "UNITI_MATCH"
     expected_matches = 2 if manifest.spec.kind is CorpusKind.SPARSE_FILE else 3
+    dense = manifest.spec.kind is CorpusKind.SEARCH_DENSE
+    snapshot = document.snapshot()
 
-    def perform() -> int:
-        return sum(
-            1
-            for _ in search_document(
-                document,
-                compile_pattern(pattern),
-                options=SearchOptions(timeout=None, include_captures=False),
-            )
+    def perform(context):
+        store = MatchStore(memory_budget_bytes=64 << 10)
+        try:
+            with snapshot:
+                for record in search_document(
+                    snapshot,
+                    compile_pattern(pattern),
+                    options=SearchOptions(timeout=None, include_captures=False),
+                    cancelled=lambda: context.token.cancelled,
+                    progress=lambda completed, total: context.report(
+                        "Searching", completed, total
+                    ),
+                ):
+                    store.append(record)
+        except Exception:
+            store.close()
+            raise
+        return store
+
+    spec = TaskSpec.create(
+        TaskKind.SEARCH,
+        foreground=True,
+        document_key=str(manifest.path),
+        revision=document.revision,
+        estimated_memory_bytes=2 << 20,
+    )
+    interaction_started = time.perf_counter()
+    handle = resources.tasks.submit(spec, perform)
+    interaction_ms = (time.perf_counter() - interaction_started) * 1000.0
+    started = interaction_started
+    store, timings = _wait_for_task(app, handle, started)
+    matches = len(store)
+    first = store[0] if matches else None
+    last = store[-1] if matches else None
+    first_text = b""
+    last_text = b""
+    if first is not None and last is not None:
+        with manifest.path.open("rb") as source:
+            source.seek(first.start)
+            first_text = source.read(first.end - first.start)
+            source.seek(last.start)
+            last_text = source.read(last.end - last.start)
+    records_valid = (
+        first is not None
+        and last is not None
+        and first_text == pattern.encode("ascii")
+        and last_text == pattern.encode("ascii")
+    )
+
+    cancel_ms = 0.0
+    cancelled = True
+    if dense:
+        cancel_snapshot = document.snapshot()
+
+        def cancel_work(context):
+            with cancel_snapshot:
+                return sum(
+                    1
+                    for _ in search_document(
+                        cancel_snapshot,
+                        compile_pattern(pattern),
+                        options=SearchOptions(
+                            timeout=None,
+                            include_captures=False,
+                            progress_chars=64 << 10,
+                        ),
+                        cancelled=lambda: context.token.cancelled,
+                        progress=lambda completed, total: context.report(
+                            "Searching", completed, total
+                        ),
+                    )
+                )
+
+        cancel_handle = resources.tasks.submit(
+            TaskSpec.create(
+                TaskKind.SEARCH,
+                foreground=True,
+                document_key=str(manifest.path),
+                revision=document.revision,
+                estimated_memory_bytes=2 << 20,
+            ),
+            cancel_work,
         )
+        cancel_ms, cancelled = _measure_cancellation(app, cancel_handle)
 
-    future = resources.workers.submit(WorkPriority.SEARCH, perform)
-    while not future.done():
-        app.processEvents()
-        now = time.perf_counter()
-        beats.append((now - previous) * 1000.0)
-        previous = now
-        time.sleep(0.001)
-    matches = future.result()
-    beats.append((time.perf_counter() - previous) * 1000.0)
+    spilled = store.spilled
+    store.close()
     document.close()
     resources.shutdown()
     peak_mib, retained_mib = _rss_facts(start_current, start_peak)
-    ordered = sorted(beats or [0.0])
-    p95 = ordered[min(len(ordered) - 1, max(0, int(len(ordered) * 0.95) - 1))]
+    metrics = {
+        "interaction_max_ms": MetricSample((interaction_ms,)),
+        "gui_heartbeat_p95_ms": MetricSample((timings["gui_heartbeat_p95_ms"],)),
+        "gui_heartbeat_max_ms": MetricSample((timings["gui_heartbeat_max_ms"],)),
+        "first_progress_ms": MetricSample((timings["first_progress_ms"],)),
+        "progress_gap_ms": MetricSample((timings["progress_gap_ms"],)),
+        "search_completion_ms": MetricSample((timings["completion_ms"],)),
+        "peak_rss_mib": MetricSample((peak_mib,)),
+        "retained_rss_mib": MetricSample((retained_mib,)),
+    }
+    if dense:
+        metrics["cancel_normal_ms"] = MetricSample((cancel_ms,))
     return ScenarioResult.success(
-        scenario="search_sparse",
+        scenario=scenario_name,
+        metrics=metrics,
+        facts={
+            "physical_memory_bytes": probe_memory().physical,
+            "matches": matches,
+            "spilled": spilled,
+            "cancelled": cancelled,
+            "integrity_ok": (
+                records_valid
+                and cancelled
+                and (matches > 1_000 and spilled if dense else matches == expected_matches)
+            ),
+        },
+    )
+
+
+def _search_sparse(manifest: CorpusManifest) -> ScenarioResult:
+    return _search(manifest, scenario_name="search_sparse")
+
+
+def _search_dense(manifest: CorpusManifest) -> ScenarioResult:
+    return _search(manifest, scenario_name="search_dense")
+
+
+def _replace(manifest: CorpusManifest) -> ScenarioResult:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.core.document import Document, ReplacementPlanLimitError
+    from uniti.regex.engine import compile_pattern
+    from uniti.regex.replace import collect_replacement_plan
+    from uniti.regex.search import SearchOptions
+    from uniti.resources import TaskKind, TaskSpec
+
+    app = QApplication.instance() or QApplication([])
+    resources = ResourceManager()
+    document = Document.open(
+        manifest.path,
+        encoding="utf-8",
+        resource_manager=resources,
+    )
+    start_current = current_process_rss_bytes()
+    start_peak = peak_process_rss_bytes()
+    compiled = compile_pattern("UNITI_MATCH")
+    revision = document.revision
+    snapshot = document.snapshot()
+
+    def perform(context):
+        with snapshot:
+            return collect_replacement_plan(
+                snapshot,
+                compiled,
+                "UNITI_SWAP",
+                document_revision=revision,
+                memory_budget_bytes=64 << 10,
+                options=SearchOptions(timeout=None, include_captures=False),
+                cancelled=lambda: context.token.cancelled,
+                progress=lambda completed, total: context.report(
+                    "Planning replacements", completed, total
+                ),
+            )
+
+    spec = TaskSpec.create(
+        TaskKind.REPLACE,
+        foreground=True,
+        document_key=str(manifest.path),
+        revision=revision,
+        estimated_memory_bytes=2 << 20,
+    )
+    interaction_started = time.perf_counter()
+    handle = resources.tasks.submit(spec, perform)
+    interaction_ms = (time.perf_counter() - interaction_started) * 1000.0
+    plan, timings = _wait_for_task(app, handle, interaction_started)
+    planned = len(plan)
+    spilled = plan.spilled
+    prefix_before = document.read(0, 512)
+    safe_refusal = False
+    try:
+        document.apply_replacement_plan(
+            plan,
+            expected_revision=revision,
+            memory_limit_bytes=16 << 10,
+        )
+    except ReplacementPlanLimitError:
+        safe_refusal = True
+    unchanged_after_refusal = document.read(0, 512) == prefix_before
+    plan.close()
+
+    small_snapshot = document.snapshot()
+    with small_snapshot:
+        small_plan = collect_replacement_plan(
+            small_snapshot,
+            compiled,
+            "UNITI_SWAP",
+            document_revision=document.revision,
+            memory_budget_bytes=1 << 20,
+            options=SearchOptions(
+                timeout=None,
+                max_matches=2,
+                include_captures=False,
+            ),
+        )
+    try:
+        applied = document.apply_replacement_plan(
+            small_plan,
+            expected_revision=document.revision,
+            memory_limit_bytes=1 << 20,
+        )
+    finally:
+        small_plan.close()
+    changed = document.read(0, 512).count("UNITI_SWAP") == 2
+    document.undo()
+    atomic_undo = document.read(0, 512) == prefix_before
+
+    document.close()
+    resources.shutdown()
+    peak_mib, retained_mib = _rss_facts(start_current, start_peak)
+    return ScenarioResult.success(
+        scenario="replace",
         metrics={
-            "gui_heartbeat_p95_ms": MetricSample((p95,)),
-            "gui_heartbeat_max_ms": MetricSample((max(ordered),)),
+            "interaction_max_ms": MetricSample((interaction_ms,)),
+            "gui_heartbeat_p95_ms": MetricSample((timings["gui_heartbeat_p95_ms"],)),
+            "gui_heartbeat_max_ms": MetricSample((timings["gui_heartbeat_max_ms"],)),
+            "first_progress_ms": MetricSample((timings["first_progress_ms"],)),
+            "progress_gap_ms": MetricSample((timings["progress_gap_ms"],)),
+            "replace_completion_ms": MetricSample((timings["completion_ms"],)),
             "peak_rss_mib": MetricSample((peak_mib,)),
             "retained_rss_mib": MetricSample((retained_mib,)),
         },
         facts={
             "physical_memory_bytes": probe_memory().physical,
-            "matches": matches,
-            "integrity_ok": matches == expected_matches,
+            "planned_replacements": planned,
+            "plan_spilled": spilled,
+            "safe_refusal": safe_refusal,
+            "atomic_undo": atomic_undo,
+            "integrity_ok": (
+                planned > 1_000
+                and spilled
+                and safe_refusal
+                and unchanged_after_refusal
+                and applied == 2
+                and changed
+                and atomic_undo
+            ),
         },
     )
 
@@ -252,6 +539,8 @@ _SCENARIOS = {
     "open_first_paint": _open_first_paint,
     "navigation": _navigation,
     "search_sparse": _search_sparse,
+    "search_dense": _search_dense,
+    "replace": _replace,
     "save_as": _save_as,
 }
 
@@ -267,6 +556,8 @@ def run_scenario(name: str, manifest: CorpusManifest) -> ScenarioResult:
 def corpus_kind_for_scenario(name: str) -> CorpusKind:
     if name == "search_sparse":
         return CorpusKind.SEARCH_SPARSE
+    if name in {"search_dense", "replace"}:
+        return CorpusKind.SEARCH_DENSE
     if name in _SCENARIOS:
         return CorpusKind.ORDINARY_LINES
     raise ValueError(f"unknown performance scenario: {name}")
@@ -275,4 +566,11 @@ def corpus_kind_for_scenario(name: str) -> CorpusKind:
 def initial_scenario_names(tier: str) -> tuple[str, ...]:
     if tier == "design_target":
         return ("open_first_paint", "navigation", "search_sparse")
-    return ("open_first_paint", "navigation", "search_sparse", "save_as")
+    return (
+        "open_first_paint",
+        "navigation",
+        "search_sparse",
+        "search_dense",
+        "replace",
+        "save_as",
+    )

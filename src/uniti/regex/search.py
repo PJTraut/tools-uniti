@@ -30,6 +30,7 @@ class SearchOptions:
     timeout: float | None = 0.25
     max_matches: int | None = None
     max_context_chars: int = 1_048_576
+    progress_chars: int = 1_048_576
     include_captures: bool = True
 
     def __post_init__(self) -> None:
@@ -41,6 +42,8 @@ class SearchOptions:
             raise ValueError("max_matches must be non-negative")
         if self.max_context_chars <= 0:
             raise ValueError("max_context_chars must be positive")
+        if self.progress_chars <= 0:
+            raise ValueError("progress_chars must be positive")
 
 
 def _needs_full_prefix(compiled: regex.Pattern) -> bool:
@@ -102,6 +105,7 @@ def _iter_engine_matches(
     *,
     options: SearchOptions,
     cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[int, int | None], None] | None = None,
 ) -> Iterator[tuple[MatchRecord, regex.Match]]:
     """Yield compact records plus transient engine matches for immediate consumers."""
 
@@ -119,6 +123,8 @@ def _iter_engine_matches(
     search_pos = 0
     emitted = 0
     eof = False
+    scanned = 0
+    last_progress = 0
 
     while True:
         _check_cancelled(cancelled)
@@ -136,6 +142,13 @@ def _iter_engine_matches(
                 if chunk_start != expected:
                     raise RuntimeError("document iterator returned a discontinuous range")
                 buffer += text
+                scanned = chunk_start + len(text)
+                if (
+                    progress is not None
+                    and scanned - last_progress >= options.progress_chars
+                ):
+                    progress(scanned, None)
+                    last_progress = scanned
 
         _check_cancelled(cancelled)
         if eof:
@@ -149,6 +162,7 @@ def _iter_engine_matches(
                         timeout=options.timeout,
                     )
                 )
+                _check_cancelled(cancelled)
                 for match in matches:
                     _check_cancelled(cancelled)
                     record = _record_match(
@@ -162,6 +176,8 @@ def _iter_engine_matches(
                 if isinstance(exc, RegexSearchTimeout):
                     raise
                 raise RegexSearchTimeout("regex search timed out") from exc
+            if progress is not None:
+                progress(scanned, scanned)
             return
 
         unsafe_start = len(buffer)
@@ -175,6 +191,7 @@ def _iter_engine_matches(
                     timeout=options.timeout,
                 )
             )
+            _check_cancelled(cancelled)
             for match in matches:
                 _check_cancelled(cancelled)
                 if match.partial:
@@ -195,16 +212,13 @@ def _iter_engine_matches(
                 raise
             raise RegexSearchTimeout("regex search timed out") from exc
 
-        if retain_prefix:
-            if len(buffer) > options.max_context_chars:
-                raise RegexContextLimitError(
-                    "regex requires more retained prefix context than allowed "
-                    f"({options.max_context_chars:,} characters)"
-                )
-            search_pos = unsafe_start
-            continue
-
-        context_start = max(0, unsafe_start - 1)
+        context_start = 0 if retain_prefix else max(0, unsafe_start - 1)
+        retained = len(buffer) - context_start
+        if retained > options.max_context_chars:
+            raise RegexContextLimitError(
+                "regex requires more retained context than allowed "
+                f"({options.max_context_chars:,} characters)"
+            )
         buffer_start += context_start
         buffer = buffer[context_start:]
         search_pos = unsafe_start - context_start
@@ -274,6 +288,7 @@ def search_document(
     *,
     options: SearchOptions | None = None,
     cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[int, int | None], None] | None = None,
 ) -> Iterator[MatchRecord]:
     opts = SearchOptions() if options is None else options
     for record, _ in _iter_engine_matches(
@@ -281,5 +296,6 @@ def search_document(
         compiled,
         options=opts,
         cancelled=cancelled,
+        progress=progress,
     ):
         yield record

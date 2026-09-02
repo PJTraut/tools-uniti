@@ -8,6 +8,11 @@ from pathlib import Path
 from benchmarks.corpus import CorpusKind, CorpusSpec, generate_corpus
 from benchmarks.models import MetricSample, ResultState, ScenarioResult
 from benchmarks.runner import merge_scenario_results, run_child_commands
+from benchmarks.scenarios import (
+    corpus_kind_for_scenario,
+    initial_scenario_names,
+    run_scenario,
+)
 
 
 def test_child_failure_does_not_stop_later_scenario(tmp_path: Path):
@@ -109,3 +114,31 @@ def test_repository_performance_script_exposes_cli_without_running_a_tier():
     assert "--tier" in completed.stdout
     assert "--mode" in completed.stdout
     assert "--native-gui" in completed.stdout
+
+
+def test_a18_search_and_replace_scenarios_are_registered_for_routine_runs():
+    names = initial_scenario_names("routine")
+
+    assert "search_sparse" in names
+    assert "search_dense" in names
+    assert "replace" in names
+    assert corpus_kind_for_scenario("search_dense") is CorpusKind.SEARCH_DENSE
+    assert corpus_kind_for_scenario("replace") is CorpusKind.SEARCH_DENSE
+
+
+def test_dense_search_and_replace_scenarios_preserve_integrity(tmp_path: Path):
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.SEARCH_DENSE, size_bytes=1 << 20),
+        tmp_path / "dense",
+    )
+
+    search = run_scenario("search_dense", manifest)
+    replace = run_scenario("replace", manifest)
+
+    assert search.state is ResultState.PASS
+    assert search.facts["integrity_ok"] is True
+    assert search.facts["spilled"] is True
+    assert replace.state is ResultState.PASS
+    assert replace.facts["integrity_ok"] is True
+    assert replace.facts["safe_refusal"] is True
+    assert replace.facts["atomic_undo"] is True

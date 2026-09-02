@@ -121,6 +121,45 @@ def test_prefix_retaining_regex_is_bounded_by_context_limit(tmp_path: Path):
             )
 
 
+def test_partial_pattern_cannot_grow_search_buffer_without_bound(tmp_path: Path):
+    from uniti.regex.search import RegexContextLimitError
+
+    path = tmp_path / "partial-context.txt"
+    path.write_text("a" + ("x" * 200), encoding="utf-8")
+    with Document.open(path) as doc:
+        with pytest.raises(RegexContextLimitError, match="32"):
+            list(
+                search_document(
+                    doc,
+                    compile_pattern(r"a.*z"),
+                    options=SearchOptions(
+                        window_chars=8,
+                        max_context_chars=32,
+                    ),
+                )
+            )
+
+
+def test_search_reports_bounded_character_progress(tmp_path: Path):
+    path = tmp_path / "progress.txt"
+    path.write_text("line\n" * 100, encoding="utf-8")
+    updates: list[tuple[int, int | None]] = []
+
+    with Document.open(path) as doc:
+        list(
+            search_document(
+                doc,
+                compile_pattern("absent"),
+                options=SearchOptions(window_chars=16, progress_chars=32),
+                progress=lambda completed, total: updates.append((completed, total)),
+            )
+        )
+
+    assert updates
+    assert updates[-1][0] == 500
+    assert all(left[0] <= right[0] for left, right in zip(updates, updates[1:]))
+
+
 def test_search_can_defer_capture_spans_for_large_result_storage(tmp_path: Path):
     path = tmp_path / "lazy-captures.txt"
     path.write_text("123 456", encoding="utf-8")

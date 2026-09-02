@@ -59,6 +59,10 @@ class _UnspecifiedDestinationIdentity:
 _UNSPECIFIED_DESTINATION_IDENTITY = _UnspecifiedDestinationIdentity()
 
 
+class ReplacementPlanLimitError(MemoryError):
+    """A replacement transaction exceeds its admitted apply-memory bound."""
+
+
 class Document:
     """Own the lazy immutable-source services and edited piece table."""
 
@@ -539,6 +543,41 @@ class Document:
             delta += len(text) - len(deleted)
         self._history.record(EditTransaction(tuple(operations)))
         return len(prepared)
+
+    def apply_replacement_plan(
+        self,
+        plan,
+        *,
+        expected_revision: int,
+        memory_limit_bytes: int,
+    ) -> int:
+        """Atomically apply one admitted, revision-bound replacement plan."""
+
+        self._ensure_open()
+        if memory_limit_bytes <= 0:
+            raise ValueError("memory_limit_bytes must be positive")
+        if (
+            expected_revision != self._revision
+            or plan.document_revision != expected_revision
+        ):
+            raise StaleDocumentRevisionError(
+                "replacement plan no longer matches the document revision"
+            )
+        if plan.estimate.apply_bytes > memory_limit_bytes:
+            raise ReplacementPlanLimitError(
+                "replacement plan requires "
+                f"{plan.estimate.apply_bytes:,} apply bytes; "
+                f"limit is {memory_limit_bytes:,}"
+            )
+        operations = self._piece_table.replace_many_bulk(plan)
+        if not operations:
+            return 0
+        self._document_line_index.invalidate_from_char(operations[0].start)
+        self._revision += 1
+        self._history.record(EditTransaction(operations))
+        for operation in operations:
+            self._notify_edit(operation)
+        return len(operations)
 
     def undo(self) -> None:
         self._ensure_open()
