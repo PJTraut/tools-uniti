@@ -1,0 +1,212 @@
+{
+  "evaluations": [
+    {
+      "messages": [],
+      "scenario": "open_first_paint",
+      "state": "PASS"
+    },
+    {
+      "messages": [
+        "interaction_max_ms 6436.03 reached failure limit 100",
+        "retained_rss_mib 73.9219 reached failure limit 64"
+      ],
+      "scenario": "navigation",
+      "state": "FAIL"
+    },
+    {
+      "messages": [
+        "peak_rss_mib 4265.52 reached failure limit 512",
+        "retained_rss_mib 2442.86 reached failure limit 64"
+      ],
+      "scenario": "search_sparse",
+      "state": "FAIL"
+    },
+    {
+      "messages": [
+        "interaction_max_ms 4074.6 reached failure limit 100",
+        "retained_rss_mib 53.125 reached warning limit 32"
+      ],
+      "scenario": "save_as",
+      "state": "FAIL"
+    }
+  ],
+  "host": {
+    "architecture": "arm64",
+    "available_memory": 13292781568,
+    "corpus_schema": 1,
+    "cpu_model": "Apple M3 Max",
+    "display_refresh_hz": null,
+    "display_scale": null,
+    "filesystem_type": "/",
+    "free_disk": 301925998592,
+    "git_commit": "347e407d08c114d86b5b0a138e597d9085e3ff25",
+    "load_per_logical_core": 0.302154541015625,
+    "logical_cores": 16,
+    "physical_cores": 16,
+    "physical_memory": 51539607552,
+    "platform": "darwin",
+    "platform_release": "25.6.0",
+    "power_state": null,
+    "process_rss": 28491776,
+    "python_version": "3.12.4",
+    "qt_version": "6.11.2",
+    "schema": 1,
+    "sparse_files": false,
+    "temp_root": "/private/var/folders/lh/jxs8qjhx1k54ks8n0dwgnmgc0000gp/T",
+    "thermal_state": null,
+    "uniti_version": "0.1a17"
+  },
+  "mode": "baseline",
+  "scenarios": [
+    {
+      "facts": {
+        "integrity_ok": true,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "source_bytes": 104857600
+      },
+      "messages": [],
+      "metrics": {
+        "open_to_usable_ms": {
+          "values": [
+            192.67966703046113,
+            184.24058391246945,
+            179.74895797669888
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            117.53125,
+            116.625,
+            109.375
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            19.453125,
+            18.421875,
+            11.28125
+          ]
+        }
+      },
+      "scenario": "open_first_paint",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "integrity_ok": true,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "target_line": 2949120,
+        "target_offset": 94371840
+      },
+      "messages": [],
+      "metrics": {
+        "interaction_max_ms": {
+          "values": [
+            6559.091583010741,
+            6436.0286250011995,
+            6333.503125002608
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            163.515625,
+            163.09375,
+            165.046875
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            73.921875,
+            73.5,
+            75.546875
+          ]
+        }
+      },
+      "scenario": "navigation",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "integrity_ok": true,
+        "matches": 3,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3
+      },
+      "messages": [],
+      "metrics": {
+        "gui_heartbeat_max_ms": {
+          "values": [
+            35.575499990954995,
+            36.45566699560732,
+            25.353375007398427
+          ]
+        },
+        "gui_heartbeat_p95_ms": {
+          "values": [
+            5.8847080217674375,
+            4.845416988246143,
+            4.980625002644956
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            3966.171875,
+            4266.484375,
+            4265.515625
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            2289.765625,
+            2442.859375,
+            2563.875
+          ]
+        }
+      },
+      "scenario": "search_sparse",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "integrity_ok": true,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3
+      },
+      "messages": [],
+      "metrics": {
+        "interaction_max_ms": {
+          "values": [
+            4074.5998750207946,
+            4172.348459018394,
+            4067.9200830636546
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            253.609375,
+            253.65625,
+            255.6875
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            53.015625,
+            53.125,
+            55.09375
+          ]
+        }
+      },
+      "scenario": "save_as",
+      "schema": 1,
+      "state": "PASS"
+    }
+  ],
+  "schema": 1,
+  "state": "FAIL",
+  "tier": "routine"
+}
