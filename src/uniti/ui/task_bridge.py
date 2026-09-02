@@ -6,7 +6,7 @@ from PySide6.QtCore import QObject, Signal
 
 
 class TaskBridge(QObject):
-    snapshotChanged = Signal(object)
+    snapshotChanged = Signal()
     taskFinished = Signal(object)
 
     def __init__(self, coordinator, parent=None) -> None:
@@ -15,9 +15,9 @@ class TaskBridge(QObject):
         self._closed = False
         coordinator.add_listener(self._forward_snapshot)
 
-    def _forward_snapshot(self, snapshot) -> None:
+    def _forward_snapshot(self) -> None:
         if not self._closed:
-            self.snapshotChanged.emit(snapshot)
+            self.snapshotChanged.emit()
 
     def watch(self, handle) -> None:
         handle.future.add_done_callback(

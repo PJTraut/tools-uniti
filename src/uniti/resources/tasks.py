@@ -123,6 +123,7 @@ class TaskSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class TaskSystemSnapshot:
+    generation: int
     background_paused: bool
     tasks: tuple[TaskSnapshot, ...]
 
@@ -272,24 +273,31 @@ class TaskCoordinator:
         self._deferred: dict[
             str, tuple[TaskHandle, Callable[[TaskContext], object]]
         ] = {}
-        self._listeners: list[Callable[[TaskSystemSnapshot], None]] = []
+        self._generation = 0
+        self._latest_snapshot = TaskSystemSnapshot(0, False, ())
+        self._listeners: list[Callable[[], None]] = []
 
-    def add_listener(self, listener: Callable[[TaskSystemSnapshot], None]) -> None:
+    def add_listener(self, listener: Callable[[], None]) -> None:
         with self._condition:
             if listener not in self._listeners:
                 self._listeners.append(listener)
 
-    def remove_listener(self, listener: Callable[[TaskSystemSnapshot], None]) -> None:
+    def remove_listener(self, listener: Callable[[], None]) -> None:
         with self._condition:
             if listener in self._listeners:
                 self._listeners.remove(listener)
 
     def _notify(self) -> None:
-        snapshot = self.snapshot()
         with self._condition:
+            self._generation += 1
+            self._latest_snapshot = TaskSystemSnapshot(
+                self._generation,
+                self._background_paused,
+                tuple(handle.snapshot() for handle in self._handles.values()),
+            )
             listeners = tuple(self._listeners)
         for listener in listeners:
-            listener(snapshot)
+            listener()
 
     def submit(
         self,
@@ -388,9 +396,7 @@ class TaskCoordinator:
 
     def snapshot(self) -> TaskSystemSnapshot:
         with self._condition:
-            paused = self._background_paused
-            handles = tuple(self._handles.values())
-        return TaskSystemSnapshot(paused, tuple(handle.snapshot() for handle in handles))
+            return self._latest_snapshot
 
     def cancel_all(self) -> None:
         with self._condition:

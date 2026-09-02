@@ -36,7 +36,7 @@ class FileOperationHandle:
 
 class FileOperationController(QObject):
     operationFinished = Signal(object)
-    taskSnapshotChanged = Signal(object)
+    taskSnapshotChanged = Signal()
 
     def __init__(self, resources: ResourceManager, parent=None) -> None:
         super().__init__(parent)

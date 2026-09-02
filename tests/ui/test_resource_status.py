@@ -91,3 +91,48 @@ def test_status_bar_formats_determinate_and_indeterminate_task_progress():
     assert status.task_label.text() == ""
     assert status.active_task is None
     app.processEvents()
+
+
+def test_task_status_ignores_a_deliberately_reordered_old_generation(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.resources import (
+        TaskProgress,
+        TaskSnapshot,
+        TaskSpec,
+        TaskState,
+        TaskSystemSnapshot,
+    )
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    spec = TaskSpec.create(TaskKind.SAVE, foreground=True)
+    new = TaskSystemSnapshot(
+        9,
+        False,
+        (
+            TaskSnapshot(
+                spec,
+                TaskState.RUNNING,
+                TaskProgress(spec.task_id, "Writing", 1, 10, 2.0, True),
+            ),
+        ),
+    )
+    old = TaskSystemSnapshot(
+        8,
+        False,
+        (TaskSnapshot(spec, TaskState.QUEUED, None),),
+    )
+    snapshots = iter((new, old))
+    monkeypatch.setattr(window._resources.tasks, "snapshot", lambda: next(snapshots))
+    try:
+        window._apply_task_system_snapshot()
+        window._apply_task_system_snapshot()
+
+        assert window.statusBar().task_label.text() == "Writing: 10%"
+        assert window._last_task_snapshot_generation == 9
+    finally:
+        window.close()
+        app.processEvents()

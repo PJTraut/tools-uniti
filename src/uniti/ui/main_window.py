@@ -64,7 +64,6 @@ from uniti.resources import (
     TaskHandle,
     TaskKind,
     TaskSpec,
-    TaskSystemSnapshot,
     WorkPriority,
 )
 from uniti.ui.character_inspector import CharacterInspectorDialog
@@ -235,6 +234,7 @@ class UNITIMainWindow(QMainWindow):
         self.setStatusBar(self._status)
         self._resource_notice_active = False
         self._resource_notice_count = 0
+        self._last_task_snapshot_generation = -1
         self._status.update_resources(self._resources.status)
         self._file_operations.taskSnapshotChanged.connect(
             self._apply_task_system_snapshot,
@@ -292,7 +292,11 @@ class UNITIMainWindow(QMainWindow):
         elif not constrained:
             self._resource_notice_active = False
 
-    def _apply_task_system_snapshot(self, snapshot: TaskSystemSnapshot) -> None:
+    def _apply_task_system_snapshot(self) -> None:
+        snapshot = self._resources.tasks.snapshot()
+        if snapshot.generation <= self._last_task_snapshot_generation:
+            return
+        self._last_task_snapshot_generation = snapshot.generation
         visible = [
             task
             for task in snapshot.tasks

@@ -47,6 +47,27 @@ def test_task_progress_and_completion_are_observable(resource_manager):
     assert handle.state is TaskState.COMPLETED
 
 
+def test_task_notifications_wake_consumers_to_read_monotonic_snapshots(
+    resource_manager,
+):
+    seen: list[int] = []
+    coordinator = resource_manager.tasks
+
+    def observe_latest() -> None:
+        seen.append(coordinator.snapshot().generation)
+
+    coordinator.add_listener(observe_latest)
+    handle = coordinator.submit(
+        TaskSpec.create(TaskKind.SAVE, foreground=True),
+        lambda context: (context.report("Writing", 1, 2), "done")[1],
+    )
+
+    assert handle.future.result(timeout=2) == "done"
+    assert seen
+    assert seen == sorted(seen)
+    assert coordinator.snapshot().generation == seen[-1]
+
+
 def test_background_pause_holds_index_but_not_foreground_save(resource_manager):
     background_started = Event()
     save_started = Event()
