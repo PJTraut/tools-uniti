@@ -7,9 +7,9 @@ Date: 2026-09-02
 | Item | Current value |
 |---|---|
 | Repository branch | `main` |
-| Remote baseline | `origin/main` at `e36348d` |
+| Remote baseline | `origin/main` at `84407e3` |
 | Verified a18 implementation sequence | `d56da90` through `40009ad`, followed by the recorded freeze evidence |
-| Local integration state | a18 is implemented and verified locally; push remains a separate approved action |
+| Local integration state | local and remote `main` contain the verified a18 closure; the proposed a19 design follows locally and awaits written review |
 | Latest implemented milestone | `v0.001a18` — Large-File Alpha |
 | Active product milestone | `v0.001a19` — Regex Intelligence Alpha |
 | Display/package metadata | `v0.001a18` / `0.1a18` |
@@ -77,3 +77,7 @@ The sparse 1 GiB design target passed with 17.89 ms Open/first paint, 0.25 ms la
 Acceptance exposed and closed three harness defects under regression tests: a scroll integrity probe that accidentally warmed the entire random-access cache, APFS seek/write behavior that required `F_PUNCHHOLE` for marker-bearing sparse fixtures, and a sparse navigation probe that translated a known byte marker through the full Unicode map. The corrected 100 MiB scroll retained about 8 MiB rather than the artificial 132 MiB result, and the 1 GiB navigation probe now measures the intended lazy byte-source path. No product data-loss, text-integrity, stale-result, output-identity, or blocking basic-usability defect remains known.
 
 The a18 milestone, design, and implementation plan are retained in [Implemented](../03_implemented/README.md). See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
+
+## Post-freeze baseline finding
+
+Fresh verification while designing a19 exposed an intermittent status-delivery ordering defect in `tests/ui/test_progressive_save.py::test_progressive_save_as_locks_only_source_and_cancel_preserves_target`. Concurrent Qt and worker emitters can deliver an older `SAVE queued/no-progress` snapshot after newer `SAVE Writing` progress, causing the status bar to clear the active operation. An instrumented diagnostic run reproduced the inversion after eight passing iterations. The save task, cancellation, and target-preservation paths remain unaffected; the defect is in presentation of task progress. The proposed a19 asynchronous-task design requires the GUI to refresh from latest coordinator state rather than trust cross-thread snapshot delivery order.
