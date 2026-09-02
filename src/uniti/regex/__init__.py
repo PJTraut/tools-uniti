@@ -7,10 +7,13 @@ from .analysis import (
     GroupIdentity,
     InlineSwitch,
     MAX_EXPRESSION_CHARS,
+    PatternStructure,
     RegexAnalysis,
     RegexDiagnostic,
     RegexToken,
     TokenPair,
+    analyze_pattern,
+    pending_pattern_analysis,
 )
 from .replacement_plan import (
     Replacement,
@@ -26,6 +29,7 @@ __all__ = [
     "GroupIdentity",
     "InlineSwitch",
     "MAX_EXPRESSION_CHARS",
+    "PatternStructure",
     "RegexAnalysis",
     "RegexDiagnostic",
     "RegexToken",
@@ -34,4 +38,6 @@ __all__ = [
     "ReplacementPlanEstimate",
     "ReplacementPlanLimitError",
     "TokenPair",
+    "analyze_pattern",
+    "pending_pattern_analysis",
 ]
