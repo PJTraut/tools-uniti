@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import codecs
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Hashable
@@ -17,7 +17,14 @@ from .encoding import EncodingInfo, detect_encoding, matching_bom
 from .eol import EOLReport, analyze_eol
 from .document_lines import DocumentLineIndex
 from .file_identity import ExternalFileChangedError, FileIdentity
-from .history import EditHistory, EditOperation, EditTransaction
+from .history import (
+    EditHistory,
+    EditOperation,
+    EditTransaction,
+    HistoryEvent,
+    HistoryEventKind,
+    HistorySnapshot,
+)
 from .lines import LineIndex
 from .offsets import OffsetMapper, ReadIntent
 from .pieces import AnnotatedChunk, AnnotatedText, EditStore, PieceTable
@@ -107,6 +114,7 @@ class Document:
         self._edit_listeners: list[Callable[[EditOperation], None]] = []
         self._save_listeners: list[Callable[[Path], None]] = []
         self._metadata_listeners: list[Callable[[str, EOLName | None], None]] = []
+        self._history_listeners: list[Callable[[HistoryEvent], None]] = []
         self._resource_manager = resource_manager
         self._cache_owner = cache_owner
         self._closed = False
@@ -383,6 +391,21 @@ class Document:
 
         return remove
 
+    def add_history_listener(
+        self,
+        listener: Callable[[HistoryEvent], None],
+    ) -> Callable[[], None]:
+        self._ensure_open()
+        self._history_listeners.append(listener)
+
+        def remove() -> None:
+            try:
+                self._history_listeners.remove(listener)
+            except ValueError:
+                pass
+
+        return remove
+
     def _notify_edit(self, operation: EditOperation) -> None:
         for listener in tuple(self._edit_listeners):
             listener(operation)
@@ -394,6 +417,54 @@ class Document:
     def _notify_metadata(self) -> None:
         for listener in tuple(self._metadata_listeners):
             listener(self.output_encoding, self.output_eol)
+        self._notify_history(
+            HistoryEventKind.METADATA,
+            metadata=self._history_metadata(),
+        )
+
+    def _history_metadata(self) -> dict[str, object]:
+        return {
+            "output_profile_key": self._output_format.encoding.key,
+            "output_encoding": self.output_encoding,
+            "output_eol": self.output_eol,
+        }
+
+    def _notify_history(
+        self,
+        kind: HistoryEventKind,
+        transaction: EditTransaction | None = None,
+        coalesce: str | None = None,
+        metadata: Mapping[str, object] | None = None,
+    ) -> None:
+        event = HistoryEvent(
+            kind=kind,
+            transaction=transaction,
+            cursor=self._history.cursor,
+            saved_cursor=self._history.saved_cursor,
+            revision=self._revision,
+            coalesce=coalesce,
+            metadata=dict(metadata or {}),
+        )
+        for listener in tuple(self._history_listeners):
+            listener(event)
+
+    def export_history(
+        self,
+        *,
+        max_transactions: int = 50,
+        max_bytes: int = 32 << 20,
+    ) -> HistorySnapshot:
+        self._ensure_open()
+        return self._history.export_snapshot(
+            max_transactions=max_transactions,
+            max_bytes=max_bytes,
+        )
+
+    def restore_history(self, snapshot: HistorySnapshot) -> None:
+        self._ensure_open()
+        if self._revision != 0:
+            raise ValueError("document must be pristine before history restore")
+        self._history.restore(snapshot)
 
     @property
     def can_undo(self) -> bool:
@@ -474,7 +545,13 @@ class Document:
         self._revision += 1
         operation = EditOperation(start, deleted, text)
         if record:
-            self._history.record(EditTransaction((operation,)), coalesce=coalesce)
+            transaction = EditTransaction((operation,))
+            self._history.record(transaction, coalesce=coalesce)
+            self._notify_history(
+                HistoryEventKind.TRANSACTION,
+                transaction,
+                coalesce=coalesce,
+            )
         self._notify_edit(operation)
         return operation
 
@@ -546,7 +623,10 @@ class Document:
             if operation is not None:
                 operations.append(operation)
             delta += len(text) - len(deleted)
-        self._history.record(EditTransaction(tuple(operations)))
+        transaction = EditTransaction(tuple(operations))
+        self._history.record(transaction)
+        if operations:
+            self._notify_history(HistoryEventKind.TRANSACTION, transaction)
         return len(prepared)
 
     def apply_replacement_plan(
@@ -579,7 +659,9 @@ class Document:
             return 0
         self._document_line_index.invalidate_from_char(operations[0].start)
         self._revision += 1
-        self._history.record(EditTransaction(operations))
+        transaction = EditTransaction(operations)
+        self._history.record(transaction)
+        self._notify_history(HistoryEventKind.TRANSACTION, transaction)
         for operation in operations:
             self._notify_edit(operation)
         return len(operations)
@@ -594,6 +676,7 @@ class Document:
                 operation.deleted_text,
                 record=False,
             )
+        self._notify_history(HistoryEventKind.UNDO, transaction)
 
     def redo(self) -> None:
         self._ensure_open()
@@ -605,6 +688,7 @@ class Document:
                 operation.inserted_text,
                 record=False,
             )
+        self._notify_history(HistoryEventKind.REDO, transaction)
 
     def line_count(self) -> int:
         self._ensure_open()
@@ -860,6 +944,10 @@ class Document:
             self._history.mark_saved()
         self._output_format = selected
         self._saved_output_format = selected
+        self._notify_history(
+            HistoryEventKind.SAVE_POINT,
+            metadata=self._history_metadata(),
+        )
         self._notify_save(result)
         return result
 

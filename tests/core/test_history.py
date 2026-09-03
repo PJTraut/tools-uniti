@@ -1,6 +1,11 @@
 import pytest
 
-from uniti.core.history import EditHistory, EditOperation, EditTransaction
+from uniti.core.history import (
+    EditHistory,
+    EditOperation,
+    EditTransaction,
+    HistorySnapshot,
+)
 
 
 def tx(start: int, deleted: str, inserted: str) -> EditTransaction:
@@ -115,3 +120,85 @@ def test_break_coalescing_starts_a_new_undo_step():
 
     assert history.undo() == second
     assert history.undo() == first
+
+
+def test_history_snapshot_round_trips_undo_redo_and_saved_cursor():
+    history = EditHistory()
+    history.record(tx(0, "", "A"))
+    history.mark_saved()
+    history.record(tx(1, "", "B"))
+    history.undo()
+
+    snapshot = history.export_snapshot(max_bytes=1024)
+    restored = EditHistory()
+    restored.restore(snapshot)
+
+    assert restored.cursor == 1
+    assert restored.saved_cursor == 1
+    assert restored.can_undo is True
+    assert restored.can_redo is True
+    assert restored.redo() == snapshot.transactions[1]
+
+
+def test_history_export_uses_depth_or_bytes_whichever_is_first():
+    history = EditHistory(max_transactions=100)
+    for index in range(60):
+        history.record(tx(index, "", "x" * 32))
+
+    snapshot = history.export_snapshot(max_transactions=50, max_bytes=400)
+
+    assert len(snapshot.transactions) < 50
+    assert snapshot.decoded_bytes <= 400
+    assert {item.reason for item in snapshot.truncations} == {
+        "byte_limit",
+        "depth_limit",
+    }
+
+
+def test_one_oversized_transaction_stays_live_but_is_not_persistable():
+    history = EditHistory()
+    history.record(tx(0, "", "x" * 2048))
+
+    snapshot = history.export_snapshot(max_bytes=256)
+
+    assert history.can_undo is True
+    assert snapshot.transactions == ()
+    assert snapshot.persistable is False
+    assert snapshot.truncations[-1].reason == "transaction_over_limit"
+
+
+def test_history_snapshot_retains_coalescing_boundary():
+    history = EditHistory()
+    history.record(tx(0, "", "a"), coalesce="typing")
+
+    snapshot = history.export_snapshot()
+    restored = EditHistory()
+    restored.restore(snapshot)
+    restored.record(tx(1, "", "b"), coalesce="typing")
+
+    assert restored.undo() == EditTransaction(
+        (EditOperation(0, "", "a"), EditOperation(1, "", "b"))
+    )
+    assert restored.can_undo is False
+
+
+@pytest.mark.parametrize(
+    "snapshot",
+    [
+        HistorySnapshot((), 1, 0, None, 0),
+        HistorySnapshot((), 0, 1, None, 0),
+        HistorySnapshot((), 0, 0, "typing", 0),
+        HistorySnapshot((tx(0, "", "A"),), 1, 1, None, 1),
+    ],
+)
+def test_history_restore_rejects_invalid_snapshot(snapshot: HistorySnapshot):
+    with pytest.raises(ValueError):
+        EditHistory().restore(snapshot)
+
+
+def test_history_restore_refuses_to_replace_live_history():
+    history = EditHistory()
+    history.record(tx(0, "", "A"))
+
+    with pytest.raises(ValueError, match="pristine"):
+        history.restore(HistorySnapshot.empty())

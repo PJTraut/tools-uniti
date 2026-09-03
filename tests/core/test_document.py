@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from uniti.core.document import Document
+from uniti.core.history import EditOperation, HistoryEventKind
 from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
 
 
@@ -349,6 +350,54 @@ def test_document_saved_revision_tracks_undo_redo(tmp_path: Path):
         assert not doc.modified
         doc.redo()
         assert doc.modified
+
+
+def test_document_emits_one_semantic_event_per_history_action(tmp_path: Path):
+    path = tmp_path / "semantic-history.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path) as document:
+        events = []
+        document.add_history_listener(events.append)
+
+        document.insert(3, "X", coalesce="typing")
+        document.undo()
+        document.redo()
+        document.save()
+
+        assert [event.kind for event in events] == [
+            HistoryEventKind.TRANSACTION,
+            HistoryEventKind.UNDO,
+            HistoryEventKind.REDO,
+            HistoryEventKind.SAVE_POINT,
+        ]
+        assert events[0].coalesce == "typing"
+        assert events[0].transaction is not None
+        assert events[0].transaction.operations == (EditOperation(3, "", "X"),)
+
+
+def test_document_history_round_trip_restores_undo_without_changing_text(
+    tmp_path: Path,
+):
+    path = tmp_path / "restored-history.txt"
+    path.write_text("abc", encoding="utf-8")
+    with Document.open(path) as original:
+        original.insert(3, "X")
+        original.save()
+        original.insert(4, "Y")
+        original.undo()
+        snapshot = original.export_history()
+        expected_text = original.read(0, original.total_chars())
+
+    with Document.open(path) as restored:
+        restored.restore_history(snapshot)
+
+        assert restored.read(0, restored.total_chars()) == expected_text
+        assert restored.can_undo is True
+        assert restored.can_redo is True
+        restored.undo()
+        assert restored.read(0, restored.total_chars()) == "abc"
+        restored.redo()
+        assert restored.read(0, restored.total_chars()) == "abcX"
 
 
 def test_document_iter_text_is_bounded_and_progressive(tmp_path: Path):
