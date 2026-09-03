@@ -24,6 +24,7 @@ def test_macos_paths_use_library_locations(tmp_path: Path):
     assert paths.data_dir == paths.config_dir
     assert paths.cache_dir == tmp_path / "Library" / "Caches" / "UNITI"
     assert paths.recovery_dir == paths.state_dir / "recovery"
+    assert paths.durable_session_dir == paths.state_dir / "session"
 
 
 def test_windows_paths_use_localappdata_when_available(tmp_path: Path):
@@ -34,6 +35,7 @@ def test_windows_paths_use_localappdata_when_available(tmp_path: Path):
     assert paths.config_dir == local / "UNITI"
     assert paths.data_dir == local / "UNITI"
     assert paths.cache_dir == local / "UNITI" / "Cache"
+    assert paths.durable_session_dir == paths.state_dir / "session"
 
 
 def test_app_paths_ensure_creates_required_directories(tmp_path: Path):
@@ -46,6 +48,7 @@ def test_app_paths_ensure_creates_required_directories(tmp_path: Path):
     assert paths.log_dir.is_dir()
     assert paths.temp_dir.is_dir()
     assert paths.session_dir.is_dir()
+    assert paths.durable_session_dir.is_dir()
 
 
 def test_lifecycle_paths_are_derived_from_owned_roots(tmp_path: Path):
@@ -56,3 +59,21 @@ def test_lifecycle_paths_are_derived_from_owned_roots(tmp_path: Path):
     assert paths.startup_log_file == paths.log_dir / "startup.jsonl"
     assert paths.temp_dir == paths.cache_dir / "temp"
     assert paths.session_dir == paths.cache_dir / "sessions"
+    assert paths.durable_session_dir == paths.state_dir / "session"
+    assert paths.instance_lock_file == paths.state_dir / "uniti-instance.lock"
+    assert paths.instance_endpoint_name.startswith("uniti-")
+    assert len(paths.instance_endpoint_name) == len("uniti-") + 24
+
+
+def test_instance_endpoint_is_stable_per_owned_data_root(tmp_path: Path):
+    first = AppPaths.for_platform("linux", home=tmp_path / "one", environ={})
+    same = AppPaths(
+        config_dir=tmp_path / "elsewhere",
+        data_dir=first.data_dir,
+        state_dir=tmp_path / "other-state",
+        cache_dir=tmp_path / "other-cache",
+    )
+    second = AppPaths.for_platform("linux", home=tmp_path / "two", environ={})
+
+    assert first.instance_endpoint_name == same.instance_endpoint_name
+    assert first.instance_endpoint_name != second.instance_endpoint_name

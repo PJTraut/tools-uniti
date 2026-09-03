@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
 from dataclasses import dataclass
@@ -47,6 +48,21 @@ class AppPaths:
     @property
     def session_dir(self) -> Path:
         return self.cache_dir / "sessions"
+
+    @property
+    def durable_session_dir(self) -> Path:
+        return self.state_dir / "session"
+
+    @property
+    def instance_lock_file(self) -> Path:
+        return self.state_dir / "uniti-instance.lock"
+
+    @property
+    def instance_endpoint_name(self) -> str:
+        digest = hashlib.sha256(
+            str(self.data_dir.resolve()).encode("utf-8")
+        ).hexdigest()
+        return f"uniti-{digest[:24]}"
 
     @classmethod
     def for_platform(
@@ -99,5 +115,6 @@ class AppPaths:
             self.log_dir,
             self.temp_dir,
             self.session_dir,
+            self.durable_session_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
