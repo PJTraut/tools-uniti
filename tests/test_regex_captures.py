@@ -181,7 +181,9 @@ def test_capture_report_bounds_context_preview_count_width_and_payload(
 
             class RecordingSnapshot:
                 def total_chars(self) -> int:
-                    return snapshot.total_chars()
+                    raise AssertionError(
+                        "bounded capture resolution measured the whole document"
+                    )
 
                 def read(self, start: int, end: int) -> str:
                     reads.append((start, end))
@@ -254,8 +256,9 @@ def test_capture_report_discards_all_group_rows_when_payload_would_overflow():
             return 1
 
         def read(self, start: int, end: int) -> str:
-            assert (start, end) == (0, 1)
-            return "x"
+            if start < 0 or end > 1:
+                raise ValueError("outside fake snapshot")
+            return "x"[start:end]
 
     request = CaptureReportRequest(
         pattern_generation=1,
@@ -318,7 +321,9 @@ def test_capture_report_checks_cancellation_between_groups():
             return 1
 
         def read(self, start: int, end: int) -> str:
-            return "x"
+            if start < 0 or end > 1:
+                raise ValueError("outside fake snapshot")
+            return "x"[start:end]
 
     request = CaptureReportRequest(
         pattern_generation=1,

@@ -246,22 +246,34 @@ def _resolve_exact_match(
         )
         return _ExactMatchResolution(None, 0, "", reason)
 
-    document_chars = snapshot.total_chars()
-    if record.end > document_chars:
-        return _ExactMatchResolution(None, 0, "", _OUTSIDE_SNAPSHOT_REASON)
-
     remaining = context_chars - match_chars
     before = min(record.start, remaining // 2)
     context_start = record.start - before
-    context_end = min(document_chars, record.end + (remaining - before))
-    window = snapshot.read(context_start, context_end)
+    requested_end = record.end + (remaining - before)
+    try:
+        window = snapshot.read(context_start, requested_end)
+    except ValueError:
+        document_chars = snapshot.total_chars()
+        if record.end > document_chars:
+            return _ExactMatchResolution(None, 0, "", _OUTSIDE_SNAPSHOT_REASON)
+        context_end = min(document_chars, requested_end)
+        window = snapshot.read(context_start, context_end)
+        excludes_right = False
+    else:
+        context_end = requested_end
+        try:
+            snapshot.read(context_end, context_end + 1)
+        except ValueError:
+            excludes_right = False
+        else:
+            excludes_right = True
     if len(window) > context_chars:
         raise AssertionError("capture resolver exceeded its context bound")
     _check_cancelled(cancelled)
 
     local_start = record.start - context_start
     local_end = record.end - context_start
-    excludes_document_content = context_start > 0 or context_end < document_chars
+    excludes_document_content = context_start > 0 or excludes_right
     if excludes_document_content and _pattern_has_lookaround(compiled):
         return _ExactMatchResolution(None, context_start, window, _CONTEXT_LIMIT_REASON)
     match = _find_exact_match(
@@ -276,7 +288,7 @@ def _resolve_exact_match(
         return _ExactMatchResolution(None, context_start, window, _CONTEXT_LIMIT_REASON)
 
     touches_artificial_left = context_start > 0 and local_start == 0
-    touches_artificial_right = context_end < document_chars and local_end == len(window)
+    touches_artificial_right = excludes_right and local_end == len(window)
     if touches_artificial_left or touches_artificial_right:
         return _ExactMatchResolution(None, context_start, window, _CONTEXT_LIMIT_REASON)
     return _ExactMatchResolution(match, context_start, window)

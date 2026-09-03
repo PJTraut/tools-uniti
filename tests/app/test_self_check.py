@@ -87,10 +87,33 @@ def test_deep_check_exercises_complete_core_matrix(tmp_path: Path, monkeypatch):
         "streaming-save",
         "text-integrity",
         "large-file",
+        "regex-intelligence",
         "recovery",
         "qt-offscreen",
     } <= names
     assert [result.name for result in report.results if result.status is CheckStatus.FAIL] == []
+
+
+def test_regex_intelligence_probe_reports_only_safe_bounded_facts(
+    tmp_path: Path,
+):
+    summary, details = SelfCheckRunner._deep_regex_intelligence(tmp_path)
+
+    assert summary == "regex intelligence, captures, zero-width, and undo passed"
+    assert set(details) == {
+        "regex_version",
+        "advanced_patterns",
+        "zero_width_matches",
+        "report_payload_bytes",
+        "replacement_count",
+        "undo_exact",
+    }
+    assert details["regex_version"] == "2026.5.9"
+    assert details["advanced_patterns"] == 5
+    assert details["zero_width_matches"] == 6
+    assert details["report_payload_bytes"] <= 1 << 20
+    assert details["replacement_count"] == 4
+    assert details["undo_exact"] is True
 
 
 def test_report_uses_most_specific_failure_code():

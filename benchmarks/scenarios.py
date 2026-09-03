@@ -848,6 +848,366 @@ def _replace(manifest: CorpusManifest) -> ScenarioResult:
     )
 
 
+def _regex_intelligence(manifest: CorpusManifest) -> ScenarioResult:
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.core.document import Document
+    from uniti.regex.analysis import AnalysisState, analyze_pattern
+    from uniti.regex.captures import CaptureReportRequest, resolve_capture_report
+    from uniti.regex.engine import compile_pattern
+    from uniti.regex.match_store import MatchStore
+    from uniti.regex.replace import collect_replacement_plan
+    from uniti.regex.search import SearchOptions, search_document
+    from uniti.resources import TaskKind, TaskSpec
+
+    app = QApplication.instance() or QApplication([])
+    resources = ResourceManager()
+    document = Document.open(
+        manifest.path,
+        encoding="utf-8",
+        resource_manager=resources,
+    )
+    start_current = current_process_rss_bytes()
+    start_peak = peak_process_rss_bytes()
+    interaction_timings: list[float] = []
+    stage_timings: list[dict[str, float]] = []
+    store = None
+    plan = None
+    search_snapshot = None
+    report_snapshot = None
+    plan_snapshot = None
+    cancel_snapshot = None
+    cleanup_ok = False
+    try:
+        analysis_started = time.perf_counter()
+        analysis_handle = resources.tasks.submit(
+            TaskSpec.create(
+                TaskKind.REGEX_ANALYSIS,
+                foreground=False,
+                estimated_memory_bytes=2 << 20,
+            ),
+            lambda _context: analyze_pattern(
+                r"(?V1)(?P<item>\p{L}+)(?P<item>\p{L}+)"
+                r"(?|(\d+)|(\p{L}+))(?P=item)",
+                generation=1,
+            ),
+        )
+        interaction_timings.append(
+            (time.perf_counter() - analysis_started) * 1000.0
+        )
+        analysis, analysis_timing = _wait_for_task(
+            app,
+            analysis_handle,
+            analysis_started,
+        )
+        stage_timings.append(analysis_timing)
+        advanced_analysis_ok = (
+            analysis.state is AnalysisState.VALID
+            and analysis.identities_reconciled
+            and analysis.compiled.__class__.__module__ == "_regex"
+        )
+
+        zero_width_pattern = compile_pattern(r"(?P<boundary>\b)")
+        search_snapshot = document.snapshot()
+
+        def search_work(context):
+            result = MatchStore(
+                memory_budget_bytes=64 << 10,
+                document_revision=document.revision,
+            )
+            try:
+                with search_snapshot:
+                    for record in search_document(
+                        search_snapshot,
+                        zero_width_pattern,
+                        options=SearchOptions(
+                            timeout=None,
+                            max_matches=4096,
+                            include_captures=False,
+                        ),
+                        cancelled=lambda: context.token.cancelled,
+                        progress=lambda completed, total: context.report(
+                            "Searching zero-width matches",
+                            completed,
+                            total,
+                        ),
+                    ):
+                        result.append(record)
+            except Exception:
+                result.close()
+                raise
+            return result
+
+        search_started = time.perf_counter()
+        search_handle = resources.tasks.submit(
+            TaskSpec.create(
+                TaskKind.SEARCH,
+                foreground=True,
+                document_key=str(manifest.path),
+                revision=document.revision,
+                estimated_memory_bytes=2 << 20,
+            ),
+            search_work,
+        )
+        interaction_timings.append(
+            (time.perf_counter() - search_started) * 1000.0
+        )
+        store, search_timing = _wait_for_task(app, search_handle, search_started)
+        stage_timings.append(search_timing)
+        zero_width_matches = len(store)
+        search_capture_free = all(
+            not store[index].captures for index in range(len(store))
+        )
+
+        requested_matches = tuple(
+            (index, store[index]) for index in range(min(2, len(store)))
+        )
+        request = CaptureReportRequest(
+            pattern_generation=analysis.generation,
+            pattern_text=zero_width_pattern.pattern,
+            document_key=str(id(document)),
+            revision=document.revision,
+            store_id=store.store_id,
+            requested_index=0,
+            match_count=len(store),
+            matches=requested_matches,
+        )
+        report_snapshot = document.snapshot()
+
+        def report_work(context):
+            with report_snapshot:
+                return resolve_capture_report(
+                    report_snapshot,
+                    zero_width_pattern,
+                    request,
+                    cancelled=lambda: context.token.cancelled,
+                )
+
+        report_started = time.perf_counter()
+        report_handle = resources.tasks.submit(
+            TaskSpec.create(
+                TaskKind.CAPTURE_REPORT,
+                foreground=False,
+                document_key=str(manifest.path),
+                revision=document.revision,
+                estimated_memory_bytes=2 << 20,
+            ),
+            report_work,
+        )
+        interaction_timings.append(
+            (time.perf_counter() - report_started) * 1000.0
+        )
+        report, report_timing = _wait_for_task(app, report_handle, report_started)
+        stage_timings.append(report_timing)
+        capture_report_bounded = (
+            len(report.matches) == 2
+            and report.payload_bytes <= 1 << 20
+            and all(
+                match.unavailable_reason is None
+                and len(match.groups) == 1
+                and len(match.groups[0].previews) <= 5
+                for match in report.matches
+            )
+        )
+        capture_report_matches = len(report.matches)
+        capture_report_payload_bytes = report.payload_bytes
+
+        plan_snapshot = document.snapshot()
+
+        def plan_work(context):
+            with plan_snapshot:
+                return collect_replacement_plan(
+                    plan_snapshot,
+                    zero_width_pattern,
+                    "·",
+                    document_revision=document.revision,
+                    memory_budget_bytes=64 << 10,
+                    options=SearchOptions(
+                        timeout=None,
+                        max_matches=4096,
+                        include_captures=False,
+                    ),
+                    cancelled=lambda: context.token.cancelled,
+                    progress=lambda completed, total: context.report(
+                        "Planning zero-width replacements",
+                        completed,
+                        total,
+                    ),
+                )
+
+        plan_started = time.perf_counter()
+        plan_handle = resources.tasks.submit(
+            TaskSpec.create(
+                TaskKind.REPLACE,
+                foreground=True,
+                document_key=str(manifest.path),
+                revision=document.revision,
+                estimated_memory_bytes=2 << 20,
+            ),
+            plan_work,
+        )
+        interaction_timings.append(
+            (time.perf_counter() - plan_started) * 1000.0
+        )
+        plan, plan_timing = _wait_for_task(app, plan_handle, plan_started)
+        stage_timings.append(plan_timing)
+        zero_width_plan_count = len(plan)
+        zero_width_plan_exact = (
+            zero_width_plan_count == zero_width_matches
+            and all(item.start == item.end for item in plan)
+        )
+
+        cancel_snapshot = document.snapshot()
+
+        def cancel_work(context):
+            with cancel_snapshot:
+                return sum(
+                    1
+                    for _record in search_document(
+                        cancel_snapshot,
+                        zero_width_pattern,
+                        options=SearchOptions(
+                            timeout=None,
+                            include_captures=False,
+                            progress_chars=64 << 10,
+                        ),
+                        cancelled=lambda: context.token.cancelled,
+                        progress=lambda completed, total: context.report(
+                            "Searching for cancellation",
+                            completed,
+                            total,
+                        ),
+                    )
+                )
+
+        cancel_started = time.perf_counter()
+        cancel_handle = resources.tasks.submit(
+            TaskSpec.create(
+                TaskKind.SEARCH,
+                foreground=True,
+                document_key=str(manifest.path),
+                revision=document.revision,
+                estimated_memory_bytes=2 << 20,
+            ),
+            cancel_work,
+        )
+        interaction_timings.append(
+            (time.perf_counter() - cancel_started) * 1000.0
+        )
+        cancel_ms, cancelled = _measure_cancellation(app, cancel_handle)
+    finally:
+        snapshots_closed = True
+        for snapshot in (
+            search_snapshot,
+            report_snapshot,
+            plan_snapshot,
+            cancel_snapshot,
+        ):
+            if snapshot is not None:
+                snapshot.close()
+                snapshots_closed = snapshots_closed and snapshot._closed
+        store_closed = store is None
+        if store is not None:
+            store.close()
+            try:
+                store[0]
+            except ValueError:
+                store_closed = True
+        plan_closed = plan is None
+        if plan is not None:
+            plan.close()
+            try:
+                next(iter(plan))
+            except ValueError:
+                plan_closed = True
+        document.close()
+        document_closed = document._closed
+        resources.shutdown()
+        cleanup_ok = (
+            snapshots_closed
+            and document_closed
+            and store_closed
+            and plan_closed
+            and not resources.tasks.snapshot().tasks
+        )
+
+    digest_ok = (
+        manifest.digest is not None
+        and _digest(manifest.path) == manifest.digest
+    )
+    del analysis, analysis_handle, search_handle, report, report_handle
+    del plan_handle, cancel_handle, request, store, plan, zero_width_pattern
+    del search_work, report_work, plan_work, cancel_work
+    del search_snapshot, report_snapshot, plan_snapshot, cancel_snapshot
+    del document, resources
+    peak_mib, retained_mib = _rss_facts(start_current, start_peak)
+    return ScenarioResult.success(
+        scenario="regex_intelligence",
+        metrics={
+            "interaction_max_ms": MetricSample((max(interaction_timings),)),
+            "gui_heartbeat_p95_ms": MetricSample(
+                (max(item["gui_heartbeat_p95_ms"] for item in stage_timings),)
+            ),
+            "gui_heartbeat_max_ms": MetricSample(
+                (max(item["gui_heartbeat_max_ms"] for item in stage_timings),)
+            ),
+            "first_progress_ms": MetricSample(
+                (
+                    max(
+                        search_timing["first_progress_ms"],
+                        plan_timing["first_progress_ms"],
+                    ),
+                )
+            ),
+            "progress_gap_ms": MetricSample(
+                (
+                    max(
+                        search_timing["progress_gap_ms"],
+                        plan_timing["progress_gap_ms"],
+                    ),
+                )
+            ),
+            "cancel_normal_ms": MetricSample((cancel_ms,)),
+            "analysis_completion_ms": MetricSample(
+                (analysis_timing["completion_ms"],)
+            ),
+            "capture_report_ms": MetricSample((report_timing["completion_ms"],)),
+            "zero_width_plan_ms": MetricSample((plan_timing["completion_ms"],)),
+            "peak_rss_mib": MetricSample((peak_mib,)),
+            "retained_rss_mib": MetricSample((retained_mib,)),
+        },
+        facts={
+            "physical_memory_bytes": probe_memory().physical,
+            "advanced_analysis_ok": advanced_analysis_ok,
+            "zero_width_matches": zero_width_matches,
+            "search_capture_free": search_capture_free,
+            "capture_report_matches": capture_report_matches,
+            "capture_report_payload_bytes": capture_report_payload_bytes,
+            "capture_report_bounded": capture_report_bounded,
+            "zero_width_plan_replacements": zero_width_plan_count,
+            "zero_width_plan_exact": zero_width_plan_exact,
+            "cancelled": cancelled,
+            "source_digest": manifest.digest,
+            "snapshots_closed": snapshots_closed,
+            "document_closed": document_closed,
+            "store_closed": store_closed,
+            "plan_closed": plan_closed,
+            "cleanup_ok": cleanup_ok,
+            "integrity_ok": (
+                advanced_analysis_ok
+                and zero_width_matches == 4096
+                and search_capture_free
+                and capture_report_bounded
+                and zero_width_plan_exact
+                and cancelled
+                and digest_ok
+                and cleanup_ok
+            ),
+        },
+    )
+
+
 def _wait_for_file_operation(app, window, operation, started: float):
     heartbeats: list[float] = []
     progress_times: list[float] = []
@@ -1003,6 +1363,7 @@ _SCENARIOS = {
     "search_sparse": _search_sparse,
     "search_dense": _search_dense,
     "replace": _replace,
+    "regex_intelligence": _regex_intelligence,
     "save": _save,
     "save_as": _save_as,
     "resource_recovery": _resource_recovery,
@@ -1018,6 +1379,8 @@ def run_scenario(name: str, manifest: CorpusManifest) -> ScenarioResult:
 
 
 def corpus_kind_for_scenario(name: str) -> CorpusKind:
+    if name == "regex_intelligence":
+        return CorpusKind.MIXED_UNICODE
     if name == "giant_line":
         return CorpusKind.GIANT_LINE
     if name == "search_sparse":
@@ -1041,6 +1404,7 @@ def initial_scenario_names(tier: str) -> tuple[str, ...]:
         "search_sparse",
         "search_dense",
         "replace",
+        "regex_intelligence",
         "save",
         "save_as",
         "resource_recovery",

@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from benchmarks.corpus import CorpusKind, CorpusSpec, generate_corpus
+from benchmarks.evaluate import evaluate_scenario
 from benchmarks.models import MetricSample, ResultState, ScenarioResult
 from benchmarks.runner import merge_scenario_results, run_child_commands
 from benchmarks.scenarios import (
@@ -13,6 +14,7 @@ from benchmarks.scenarios import (
     initial_scenario_names,
     run_scenario,
 )
+from uniti.resources.policy import load_performance_policy
 
 
 def test_child_failure_does_not_stop_later_scenario(tmp_path: Path):
@@ -126,6 +128,50 @@ def test_a18_search_and_replace_scenarios_are_registered_for_routine_runs():
     assert "save_as" in names
     assert corpus_kind_for_scenario("search_dense") is CorpusKind.SEARCH_DENSE
     assert corpus_kind_for_scenario("replace") is CorpusKind.SEARCH_DENSE
+
+
+def test_a19_regex_intelligence_scenario_is_not_a_design_target():
+    assert "regex_intelligence" in initial_scenario_names("quick")
+    assert "regex_intelligence" in initial_scenario_names("routine")
+    assert "regex_intelligence" not in initial_scenario_names("design_target")
+
+
+def test_regex_intelligence_child_writes_bounded_schema_result(tmp_path: Path):
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.MIXED_UNICODE, size_bytes=10 << 20),
+        tmp_path / "regex-intelligence-corpus",
+    )
+    manifest_path = tmp_path / "regex-intelligence-manifest.json"
+    result_path = tmp_path / "regex-intelligence-result.json"
+    manifest_path.write_text(json.dumps(manifest.as_dict()), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "benchmarks.runner",
+            "--child",
+            "regex_intelligence",
+            str(manifest_path),
+            str(result_path),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    result = ScenarioResult.from_json(result_path.read_text(encoding="utf-8"))
+    assert result.scenario == "regex_intelligence"
+    assert result.state is ResultState.PASS
+    assert result.facts["integrity_ok"] is True
+    assert result.facts["cleanup_ok"] is True
+    assert result.metrics["capture_report_ms"].values[0] >= 0
+    assert evaluate_scenario(
+        result,
+        load_performance_policy(),
+    ).state is ResultState.PASS
 
 
 def test_dense_search_and_replace_scenarios_preserve_integrity(tmp_path: Path):

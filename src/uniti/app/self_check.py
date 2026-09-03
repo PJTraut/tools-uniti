@@ -37,8 +37,11 @@ from uniti.core.text_format import (
     encoding_profiles,
 )
 from uniti.core.text_inspection import inspect_source
+from uniti.regex.analysis import AnalysisState, analyze_pattern
+from uniti.regex.captures import CaptureReportRequest, resolve_capture_report
 from uniti.regex.engine import compile_pattern
 from uniti.regex.replace import replace_all
+from uniti.regex.search import SearchOptions, search_document
 from uniti.resources import (
     ResourceManager,
     TaskKind,
@@ -387,6 +390,89 @@ class SelfCheckRunner:
         return "third-party regex search and replacement passed", {"replacements": replacements}
 
     @staticmethod
+    def _deep_regex_intelligence(root: Path) -> tuple[str, Mapping[str, object]]:
+        fixtures = (
+            r"(?P<item>a)(?P<item>b)",
+            r"(?|(a)|(b))(c)",
+            r"(?im-s:^a.+$)",
+            r"(?P<digit>\d)+",
+            r"(a)?(?(1)b|c)",
+        )
+        analyses = tuple(
+            analyze_pattern(pattern, generation)
+            for generation, pattern in enumerate(fixtures, start=1)
+        )
+        if any(
+            analysis.state is not AnalysisState.VALID
+            or not analysis.identities_reconciled
+            for analysis in analyses
+        ):
+            raise RuntimeError("advanced regex metadata did not reconcile")
+
+        path = root / "regex-intelligence.txt"
+        path.write_text("aa aa", encoding="utf-8")
+        with Document.open(path) as document:
+            original = document.read(0, document.total_chars())
+            capture_pattern = compile_pattern(r"(?P<item>a)+(?P<empty>)")
+            capture_records = tuple(
+                search_document(
+                    document,
+                    capture_pattern,
+                    options=SearchOptions(include_captures=False),
+                )
+            )
+            request = CaptureReportRequest(
+                pattern_generation=len(fixtures),
+                pattern_text=capture_pattern.pattern,
+                document_key=str(id(document)),
+                revision=document.revision,
+                store_id="deep-self-check",
+                requested_index=0,
+                match_count=len(capture_records),
+                matches=tuple(enumerate(capture_records[:2])),
+            )
+            with document.snapshot() as snapshot:
+                report = resolve_capture_report(snapshot, capture_pattern, request)
+            if (
+                report.payload_bytes > 1 << 20
+                or len(report.matches) != 2
+                or any(
+                    len(group.previews) > 5
+                    for match in report.matches
+                    for group in match.groups
+                )
+            ):
+                raise RuntimeError("capture report bounds failed")
+
+            zero_width = tuple(
+                search_document(
+                    document,
+                    compile_pattern(r"(?=a)|(?<=a)"),
+                    options=SearchOptions(include_captures=False),
+                )
+            )
+            replacement_count = replace_all(
+                document,
+                compile_pattern(r"(?=a)"),
+                "X",
+            )
+            document.undo()
+            undo_exact = document.read(0, document.total_chars()) == original
+        if [record.start for record in zero_width] != [0, 1, 2, 3, 4, 5]:
+            raise RuntimeError("zero-width search positions were not exact")
+        if replacement_count != 4 or not undo_exact:
+            raise RuntimeError("zero-width replacement undo was not exact")
+
+        return "regex intelligence, captures, zero-width, and undo passed", {
+            "regex_version": importlib.metadata.version("regex"),
+            "advanced_patterns": len(analyses),
+            "zero_width_matches": len(zero_width),
+            "report_payload_bytes": report.payload_bytes,
+            "replacement_count": replacement_count,
+            "undo_exact": undo_exact,
+        }
+
+    @staticmethod
     def _deep_save(root: Path) -> tuple[str, Mapping[str, object]]:
         source = root / "save-source.txt"
         output = root / "save-output.txt"
@@ -731,6 +817,7 @@ class SelfCheckRunner:
                     ("mmap", self._deep_mmap),
                     ("byte-preservation", self._deep_bytes),
                     ("regex-functional", self._deep_regex),
+                    ("regex-intelligence", self._deep_regex_intelligence),
                     ("streaming-save", self._deep_save),
                     ("text-integrity", self._deep_text_integrity),
                     ("large-file", self._deep_large_file),
