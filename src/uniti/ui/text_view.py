@@ -16,6 +16,7 @@ from PySide6.QtGui import (
     QPainter,
     QPalette,
     QRawFont,
+    QTextCharFormat,
     QTextLayout,
     QWheelEvent,
 )
@@ -281,7 +282,15 @@ class UNITITextView(QAbstractScrollArea):
                 max(2, self._line_height - 3),
             )
 
-    def _paint_line_text(self, painter: QPainter, text: str, x: float, y: float) -> None:
+    def _paint_line_text(
+        self,
+        painter: QPainter,
+        text: str,
+        x: float,
+        y: float,
+        *,
+        selection: tuple[int, int] | None = None,
+    ) -> None:
         layout = QTextLayout(text, self.font())
         layout.beginLayout()
         line = layout.createLine()
@@ -289,7 +298,20 @@ class UNITITextView(QAbstractScrollArea):
             line.setLineWidth(max(1.0, float(self._metrics.horizontalAdvance(text) + 8)))
             line.setPosition(QPointF(0.0, 0.0))
         layout.endLayout()
-        layout.draw(painter, QPointF(x, y))
+        formats: list[QTextLayout.FormatRange] = []
+        if selection is not None:
+            start, end = selection
+            if 0 <= start < end <= len(text):
+                selected_format = QTextCharFormat()
+                selected_format.setForeground(
+                    self.palette().color(QPalette.ColorRole.HighlightedText)
+                )
+                selected_range = QTextLayout.FormatRange()
+                selected_range.start = start
+                selected_range.length = end - start
+                selected_range.format = selected_format
+                formats.append(selected_range)
+        layout.draw(painter, QPointF(x, y), formats)
 
     def paintEvent(self, event) -> None:
         del event
@@ -406,6 +428,7 @@ class UNITITextView(QAbstractScrollArea):
                             match_color,
                         )
 
+            selected_range: tuple[int, int] | None = None
             if selection is not None:
                 sel_start, sel_end = selection
                 visible_start = max(sel_start, line_window_start)
@@ -422,12 +445,19 @@ class UNITITextView(QAbstractScrollArea):
                         self._line_height,
                         palette.color(QPalette.ColorRole.Highlight),
                     )
+                    selected_range = (a, b)
 
             self._paint_invalid_byte_annotations(
                 painter, annotated, line_window_start, text, text_x, y
             )
             painter.setPen(palette.color(QPalette.ColorRole.Text))
-            self._paint_line_text(painter, text, float(text_x), float(y))
+            self._paint_line_text(
+                painter,
+                text,
+                float(text_x),
+                float(y),
+                selection=selected_range,
+            )
 
             if line_number == cursor_line and self._preedit_text:
                 local_column = self.state.cursor - line_window_start

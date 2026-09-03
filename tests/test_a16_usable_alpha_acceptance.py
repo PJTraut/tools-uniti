@@ -98,7 +98,7 @@ def test_editor_find_replace_and_hotkey_state_survive_restart(tmp_path: Path):
     assert view.zoom_percent == 130
     assert view.soft_wrap is True
     assert second._find_replace.zoom_percent == 120
-    assert second._find_replace.report_location_combo.currentText() == "Right"
+    assert second._find_replace.report_location == "Right"
     assert second._command_registry.current("navigation.go_to_line") == (
         "Ctrl+Shift+L"
     )

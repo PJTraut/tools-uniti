@@ -61,6 +61,29 @@ def test_find_replace_view_state_round_trips(tmp_path: Path):
     assert store.load() == expected
 
 
+def test_legacy_bottom_report_setting_migrates_to_right(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        '{"schema":1,"find_replace_report_location":"Bottom"}',
+        encoding="utf-8",
+    )
+
+    assert SettingsStore(path).load().find_replace_report_location == "Right"
+
+
+def test_theme_mode_round_trips_and_invalid_values_fall_back_to_system(
+    tmp_path: Path,
+):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+
+    store.save(Settings(theme_mode="Dark"))
+    assert store.load().theme_mode == "Dark"
+
+    path.write_text('{"schema":1,"theme_mode":"Neon"}', encoding="utf-8")
+    assert store.load().theme_mode == "System"
+
+
 def test_shortcut_overrides_round_trip_and_invalid_entries_are_dropped(tmp_path: Path):
     path = tmp_path / "settings.json"
     store = SettingsStore(path)
@@ -113,13 +136,14 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
     assert json.loads(path.read_text(encoding="utf-8")) == {
         "editor_zoom_percent": 100,
         "find_replace_geometry": None,
-        "find_replace_report_location": "Bottom",
+        "find_replace_report_location": "Right",
         "find_replace_zoom_percent": 100,
         "last_directory": None,
         "performance_mode": "Automatic",
         "schema": 1,
         "shortcut_overrides": {},
         "soft_wrap": False,
+        "theme_mode": "System",
     }
 
 

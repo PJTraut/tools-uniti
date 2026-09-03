@@ -21,8 +21,9 @@ class Settings:
     performance_mode: str = "Automatic"
     editor_zoom_percent: int = 100
     soft_wrap: bool = False
+    theme_mode: str = "System"
     find_replace_zoom_percent: int = 100
-    find_replace_report_location: str = "Bottom"
+    find_replace_report_location: str = "Right"
     find_replace_geometry: tuple[int, int, int, int] | None = None
     shortcut_overrides: dict[str, str] = field(default_factory=dict)
 
@@ -58,6 +59,9 @@ def _settings_from_payload(payload: object) -> Settings:
     soft_wrap = payload.get("soft_wrap", False)
     if not isinstance(soft_wrap, bool):
         soft_wrap = False
+    theme_mode = payload.get("theme_mode", "System")
+    if theme_mode not in {"System", "Light", "Dark"}:
+        theme_mode = "System"
     find_replace_zoom_percent = payload.get("find_replace_zoom_percent", 100)
     if (
         not isinstance(find_replace_zoom_percent, int)
@@ -66,10 +70,12 @@ def _settings_from_payload(payload: object) -> Settings:
     ):
         find_replace_zoom_percent = 100
     find_replace_report_location = payload.get(
-        "find_replace_report_location", "Bottom"
+        "find_replace_report_location", "Right"
     )
-    if find_replace_report_location not in {"Hidden", "Bottom", "Right"}:
-        find_replace_report_location = "Bottom"
+    if find_replace_report_location == "Bottom":
+        find_replace_report_location = "Right"
+    elif find_replace_report_location not in {"Hidden", "Right"}:
+        find_replace_report_location = "Right"
     geometry = payload.get("find_replace_geometry")
     if (
         not isinstance(geometry, (list, tuple))
@@ -95,6 +101,7 @@ def _settings_from_payload(payload: object) -> Settings:
         performance_mode=performance_mode,
         editor_zoom_percent=editor_zoom_percent,
         soft_wrap=soft_wrap,
+        theme_mode=theme_mode,
         find_replace_zoom_percent=find_replace_zoom_percent,
         find_replace_report_location=find_replace_report_location,
         find_replace_geometry=find_replace_geometry,

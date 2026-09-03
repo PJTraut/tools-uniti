@@ -511,3 +511,120 @@ def test_reinterpret_uses_an_exact_profile_and_preserves_the_view(tmp_path: Path
     window.close_all_documents(force=True)
     window.close()
     app.processEvents()
+
+
+def test_saved_dark_theme_applies_to_the_application_and_child_windows(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import Settings, SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    original_palette = QPalette(app.palette())
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(Settings(theme_mode="Dark"))
+    window = None
+    try:
+        window = UNITIMainWindow(settings_store=store)
+        app.processEvents()
+
+        assert app.palette().color(QPalette.ColorRole.Window).name() == "#161b22"
+        assert app.palette().color(QPalette.ColorRole.Base).name() == "#0d1117"
+        assert window.palette().color(QPalette.ColorRole.Window).name() == "#161b22"
+        assert (
+            window._find_replace.palette().color(QPalette.ColorRole.Window).name()
+            == "#161b22"
+        )
+        assert window._theme_actions["Dark"].isChecked()
+    finally:
+        if window is not None:
+            window.close()
+        app.setPalette(original_palette)
+        app.processEvents()
+
+
+def test_theme_menu_switches_persists_and_restores_system_palette(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import Settings, SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    original_palette = QPalette(app.palette())
+    original_window = original_palette.color(QPalette.ColorRole.Window)
+    original_base = original_palette.color(QPalette.ColorRole.Base)
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(Settings(theme_mode="Dark"))
+    window = None
+    try:
+        window = UNITIMainWindow(settings_store=store)
+        window._find_replace.find_input.set_text("needle")
+
+        window._theme_actions["Light"].trigger()
+        app.processEvents()
+        assert app.palette().color(QPalette.ColorRole.Window).name() == "#f4f7fb"
+        assert app.palette().color(QPalette.ColorRole.Base).name() == "#ffffff"
+        assert (
+            window._find_replace.find_clear_button.palette()
+            .color(QPalette.ColorRole.ButtonText)
+            .name()
+            == "#111827"
+        )
+        assert store.load().theme_mode == "Light"
+
+        window._theme_actions["Dark"].trigger()
+        app.processEvents()
+        assert app.palette().color(QPalette.ColorRole.Highlight).name() == "#58a6ff"
+        assert store.load().theme_mode == "Dark"
+
+        window._theme_actions["System"].trigger()
+        app.processEvents()
+        assert app.palette().color(QPalette.ColorRole.Window) == original_window
+        assert app.palette().color(QPalette.ColorRole.Base) == original_base
+        assert store.load().theme_mode == "System"
+
+        window.set_theme("Dark")
+        assert window._theme_actions["Dark"].isChecked()
+        window.set_theme("System")
+    finally:
+        if window is not None:
+            window.close()
+        app.setPalette(original_palette)
+        app.processEvents()
+
+
+def test_system_theme_refreshes_when_the_platform_palette_changes():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor, QPalette
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.theme import apply_theme
+
+    app = QApplication.instance() or QApplication([])
+    original_palette = QPalette(app.palette())
+    try:
+        apply_theme(app, "System")
+        refreshed_palette = QPalette(app.palette())
+        refreshed_palette.setColor(QPalette.ColorRole.Window, QColor("#345678"))
+        refreshed_palette.setColor(QPalette.ColorRole.Base, QColor("#234567"))
+        app.setPalette(refreshed_palette)
+        app.processEvents()
+
+        apply_theme(app, "Dark")
+        apply_theme(app, "System")
+
+        assert app.palette().color(QPalette.ColorRole.Window).name() == "#345678"
+        assert app.palette().color(QPalette.ColorRole.Base).name() == "#234567"
+    finally:
+        app.setPalette(original_palette)
+        app.processEvents()

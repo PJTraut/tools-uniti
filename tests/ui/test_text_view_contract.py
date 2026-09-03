@@ -84,6 +84,65 @@ def test_text_view_paints_invalid_byte_annotations_distinctly():
     assert "_paint_invalid_byte_annotations" in source
 
 
+@pytest.mark.parametrize(
+    ("base", "text", "highlight", "highlighted_text"),
+    (
+        ("#ffffff", "#111827", "#2563eb", "#ffffff"),
+        ("#0d1117", "#f0f4f8", "#58a6ff", "#06121f"),
+    ),
+)
+def test_selected_text_uses_highlighted_text_palette_role(
+    tmp_path: Path,
+    base: str,
+    text: str,
+    highlight: str,
+    highlighted_text: str,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor, QPalette
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "selected.txt"
+    path.write_text("MMMM", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document, cursor=4, anchor=0))
+        palette = QPalette(view.palette())
+        palette.setColor(QPalette.ColorRole.Base, QColor(base))
+        palette.setColor(QPalette.ColorRole.Text, QColor(text))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(highlight))
+        palette.setColor(
+            QPalette.ColorRole.HighlightedText,
+            QColor(highlighted_text),
+        )
+        view.setPalette(palette)
+        view.resize(320, 100)
+        view.show()
+        app.processEvents()
+        view.viewport().repaint()
+        app.processEvents()
+
+        image = view.viewport().grab().toImage()
+        x1 = view._gutter_width
+        x2 = x1 + view._metrics.horizontalAdvance("MMMM")
+        selected_pixels = {
+            image.pixelColor(x, y).name()
+            for x in range(x1, x2)
+            for y in range(view._line_height)
+        }
+
+        assert QColor(highlighted_text).name() in selected_pixels
+        view.close()
+        view.deleteLater()
+        app.processEvents()
+
+
 def test_zero_width_marker_row_ownership_is_unambiguous():
     from uniti.ui.text_view import _zero_width_visible
 

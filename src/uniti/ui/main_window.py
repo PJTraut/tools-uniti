@@ -11,8 +11,9 @@ import sys
 import weakref
 
 from PySide6.QtCore import QEvent, Qt, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFileDialog,
     QInputDialog,
@@ -78,6 +79,7 @@ from uniti.ui.find_replace import FindReplaceWindow
 from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
+from uniti.ui.theme import THEME_MODES, apply_theme
 
 
 def _standard_shortcut(key: QKeySequence.StandardKey, fallback: str = "") -> str:
@@ -121,7 +123,7 @@ def _command_definitions() -> tuple[CommandDefinition, ...]:
         CommandDefinition("find.zoom_in", "Zoom In", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomIn)),
         CommandDefinition("find.zoom_out", "Zoom Out", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
         CommandDefinition("find.zoom_reset", "Reset Zoom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+0"),
-        CommandDefinition("find.report_cycle", "Cycle Report Position", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+Alt+R"),
+        CommandDefinition("find.report_cycle", "Toggle Match Report", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+Alt+R"),
     )
 
 
@@ -175,6 +177,9 @@ class UNITIMainWindow(QMainWindow):
         self._recovery_manager = recovery_manager
         self._settings_store = settings_store
         self._settings = settings_store.load() if settings_store is not None else Settings()
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            apply_theme(app, self._settings.theme_mode)
         self._command_registry = CommandRegistry(
             _command_definitions(),
             overrides=self._settings.shortcut_overrides,
@@ -347,6 +352,18 @@ class UNITIMainWindow(QMainWindow):
         )
         self._save_settings()
 
+    def set_theme(self, mode: str) -> None:
+        if mode not in THEME_MODES:
+            return
+        action = getattr(self, "_theme_actions", {}).get(mode)
+        if action is not None:
+            action.setChecked(True)
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            apply_theme(app, mode)
+        self._settings = dataclass_replace(self._settings, theme_mode=mode)
+        self._save_settings()
+
     def _on_command_binding_changed(self, command_id: str, shortcut: str) -> None:
         action = self._command_actions.get(command_id)
         if action is not None:
@@ -503,6 +520,22 @@ class UNITIMainWindow(QMainWindow):
             )
 
         view_menu = self.menuBar().addMenu("&View")
+        theme_menu = view_menu.addMenu("&Theme")
+        theme_group = QActionGroup(self)
+        theme_group.setExclusive(True)
+        self._theme_actions: dict[str, QAction] = {}
+        for mode in THEME_MODES:
+            action = QAction(mode, self)
+            action.setCheckable(True)
+            action.setChecked(mode == self._settings.theme_mode)
+            action.triggered.connect(
+                lambda _checked=False, mode=mode: self.set_theme(mode)
+            )
+            theme_group.addAction(action)
+            theme_menu.addAction(action)
+            self._theme_actions[mode] = action
+        self._theme_group = theme_group
+
         editor_view_menu = view_menu.addMenu("&Editor View")
         editor_view_menu.addAction(
             self._command_action("editor.zoom_in", self.zoom_in_editor)
@@ -546,7 +579,7 @@ class UNITIMainWindow(QMainWindow):
         find_view_menu.addAction(
             self._command_action(
                 "find.report_cycle",
-                self._find_replace.cycle_report_location,
+                self._find_replace.toggle_report,
             )
         )
 

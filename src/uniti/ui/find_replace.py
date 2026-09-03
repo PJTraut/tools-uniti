@@ -8,10 +8,9 @@ from dataclasses import dataclass
 import weakref
 
 from PySide6.QtCore import QEvent, QTimer, Qt, Signal
-from PySide6.QtGui import QFont, QWheelEvent
+from PySide6.QtGui import QFont, QPainter, QPalette, QPen, QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QApplication,
     QDialog,
     QFrame,
@@ -21,6 +20,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSplitter,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -74,6 +74,33 @@ class OperationSeal:
     revision: int
 
 
+class _CircularClearButton(QToolButton):
+    """Small palette-aware clear control that stays circular on native styles."""
+
+    def paintEvent(self, event) -> None:
+        del event
+        palette = self.palette()
+        group = (
+            QPalette.ColorGroup.Active
+            if self.isEnabled()
+            else QPalette.ColorGroup.Disabled
+        )
+        background = palette.color(group, QPalette.ColorRole.Button)
+        if self.isDown():
+            background = (
+                background.darker(110)
+                if background.lightnessF() > 0.5
+                else background.lighter(115)
+            )
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setBrush(background)
+        painter.setPen(QPen(palette.color(group, QPalette.ColorRole.Mid), 1.0))
+        painter.drawEllipse(self.rect().adjusted(1, 1, -1, -1))
+        painter.setPen(palette.color(group, QPalette.ColorRole.ButtonText))
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
+
+
 class FindReplaceWindow(QDialog):
     """Modeless Find/Replace utility; match records never become document state."""
 
@@ -94,6 +121,8 @@ class FindReplaceWindow(QDialog):
         super().__init__(parent)
         self.setModal(False)
         self.setWindowFlag(Qt.WindowType.Tool, True)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
         self.setSizeGripEnabled(True)
         self.setWindowTitle("Find / Replace")
         self.resize(720, 320)
@@ -164,12 +193,26 @@ class FindReplaceWindow(QDialog):
         self.capture_model = CaptureReportModel(self.capture_view)
         self.capture_view.setModel(self.capture_model)
         self.capture_view.setAccessibleName("Match Report")
-        self.search_mode_combo = QComboBox(self)
-        self.search_mode_combo.addItems(("Literal", "Regex"))
-        self.case_sensitive_checkbox = QCheckBox("Case Sensitive", self)
-        self.whole_word_checkbox = QCheckBox("Whole Word", self)
-        self.report_location_combo = QComboBox(self)
-        self.report_location_combo.addItems(("Hidden", "Bottom", "Right"))
+        self.regex_checkbox = QCheckBox("Regex", self)
+        self.case_sensitive_checkbox = QCheckBox("Case", self)
+        self.whole_word_checkbox = QCheckBox("Whole word", self)
+
+        self.find_clear_button = self._clear_button("Clear Find", self.find_input)
+        self.replace_clear_button = self._clear_button(
+            "Clear Replace", self.replace_input
+        )
+        self.find_clear_button.clicked.connect(self.find_input.clear)
+        self.replace_clear_button.clicked.connect(self.replace_input.clear)
+        self.find_input.textChanged.connect(
+            lambda: self.find_clear_button.setEnabled(bool(self.find_input.text()))
+        )
+        self.replace_input.textChanged.connect(
+            lambda: self.replace_clear_button.setEnabled(
+                bool(self.replace_input.text())
+            )
+        )
+        self.find_clear_button.setEnabled(False)
+        self.replace_clear_button.setEnabled(False)
 
         find_row = QHBoxLayout()
         find_row.addWidget(QLabel("F>"))
@@ -179,35 +222,43 @@ class FindReplaceWindow(QDialog):
         replace_row.addWidget(self.replace_input, 1)
 
         options_row = QHBoxLayout()
-        options_row.addWidget(QLabel("Mode:"))
-        options_row.addWidget(self.search_mode_combo)
+        options_row.addWidget(self.regex_checkbox)
         options_row.addWidget(self.case_sensitive_checkbox)
         options_row.addWidget(self.whole_word_checkbox)
         options_row.addStretch(1)
-        options_row.addWidget(QLabel("Report:"))
-        options_row.addWidget(self.report_location_combo)
-
-        self.batch_actions_widget = QWidget(self)
-        batch_actions = QHBoxLayout(self.batch_actions_widget)
-        batch_actions.setContentsMargins(0, 0, 0, 0)
-        batch_actions.setSpacing(4)
-        self.find_all_button = QPushButton("Find All", self.batch_actions_widget)
-        self.replace_all_button = QPushButton(
-            "Replace All", self.batch_actions_widget
+        self.report_toggle_button = QPushButton(self)
+        self.report_toggle_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
         )
-        batch_actions.addWidget(self.find_all_button)
-        batch_actions.addWidget(self.replace_all_button)
+        self.report_toggle_button.setFixedWidth(34)
+        options_row.addWidget(self.report_toggle_button)
 
-        self.match_actions_widget = QWidget(self)
-        match_actions = QHBoxLayout(self.match_actions_widget)
-        match_actions.setContentsMargins(0, 0, 0, 0)
-        match_actions.setSpacing(4)
-        self.previous_button = QPushButton("Previous", self.match_actions_widget)
-        self.next_button = QPushButton("Next", self.match_actions_widget)
-        self.replace_button = QPushButton("Replace", self.match_actions_widget)
-        match_actions.addWidget(self.previous_button)
-        match_actions.addWidget(self.next_button)
-        match_actions.addWidget(self.replace_button)
+        self.actions_widget = QWidget(self)
+        actions = QHBoxLayout(self.actions_widget)
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(4)
+        self.find_all_button = self._compact_button(
+            "F+", "Find All", self.actions_widget
+        )
+        self.replace_all_button = self._compact_button(
+            "R+", "Replace All", self.actions_widget
+        )
+        self.previous_button = self._compact_button(
+            "<<", "Previous Match", self.actions_widget
+        )
+        self.next_button = self._compact_button(
+            ">>", "Next Match", self.actions_widget
+        )
+        self.replace_button = self._compact_button(
+            "R", "Replace Current Match", self.actions_widget, width=34
+        )
+        actions.addWidget(self.find_all_button)
+        actions.addWidget(self.replace_all_button)
+        actions.addStretch(1)
+        actions.addWidget(self.previous_button)
+        actions.addWidget(self.next_button)
+        actions.addWidget(self.replace_button)
 
         self.cancel_button = QPushButton("Cancel", self)
         self.cancel_button.setEnabled(False)
@@ -233,8 +284,7 @@ class FindReplaceWindow(QDialog):
         bottom_controls_layout.setContentsMargins(0, 0, 0, 0)
         bottom_controls_layout.setSpacing(3)
         bottom_controls_layout.addLayout(options_row)
-        bottom_controls_layout.addWidget(self.batch_actions_widget)
-        bottom_controls_layout.addWidget(self.match_actions_widget)
+        bottom_controls_layout.addWidget(self.actions_widget)
         bottom_controls_layout.addLayout(footer)
         controls_layout.addWidget(self.bottom_controls_widget)
 
@@ -243,12 +293,12 @@ class FindReplaceWindow(QDialog):
         report_layout.setContentsMargins(4, 4, 4, 4)
         report_layout.addWidget(self.capture_view)
 
-        self.report_splitter = QSplitter(Qt.Orientation.Vertical, self)
+        self.report_splitter = QSplitter(Qt.Orientation.Horizontal, self)
         self.report_splitter.addWidget(controls_widget)
         self.report_splitter.addWidget(self.report_frame)
-        self.report_splitter.setChildrenCollapsible(True)
+        self.report_splitter.setChildrenCollapsible(False)
         self.report_splitter.setCollapsible(0, False)
-        self.report_splitter.setCollapsible(1, True)
+        self.report_splitter.setCollapsible(1, False)
         self.report_splitter.setStretchFactor(0, 1)
         self.report_splitter.setStretchFactor(1, 1)
         layout = QVBoxLayout(self)
@@ -265,14 +315,10 @@ class FindReplaceWindow(QDialog):
         self.replace_input.returnPressed.connect(self.replace_current)
         self.find_input.textChanged.connect(self._pattern_changed)
         self.replace_input.textChanged.connect(self._replacement_changed)
-        self.search_mode_combo.currentTextChanged.connect(
-            self._search_mode_changed
-        )
+        self.regex_checkbox.toggled.connect(self._search_mode_changed)
         self.case_sensitive_checkbox.toggled.connect(self._pattern_changed)
         self.whole_word_checkbox.toggled.connect(self._pattern_changed)
-        self.report_location_combo.currentTextChanged.connect(
-            self.set_report_location
-        )
+        self.report_toggle_button.clicked.connect(self.toggle_report)
 
         # Worker futures may finish before the next Qt timer tick.  Deliver
         # completion through a queued Qt signal so result application happens
@@ -289,10 +335,13 @@ class FindReplaceWindow(QDialog):
             Qt.ConnectionType.QueuedConnection,
         )
         self._analysis_timer.timeout.connect(self._submit_pattern_analysis)
-        self._search_mode_changed("Literal")
-        self.set_report_location("Bottom")
+        self._search_mode_changed(False)
+        self._report_open = True
+        self._report_width = 260
+        self.set_report_location("Right")
         for widget in self.findChildren(QWidget):
             widget.installEventFilter(self)
+        self._position_clear_buttons()
 
     @property
     def zoom_percent(self) -> int:
@@ -300,7 +349,41 @@ class FindReplaceWindow(QDialog):
 
     @property
     def report_location(self) -> str:
-        return self.report_location_combo.currentText()
+        return "Right" if self._report_open else "Hidden"
+
+    @staticmethod
+    def _compact_button(
+        label: str,
+        accessible_name: str,
+        parent: QWidget,
+        *,
+        width: int = 40,
+    ) -> QPushButton:
+        button = QPushButton(label, parent)
+        button.setAccessibleName(accessible_name)
+        button.setToolTip(accessible_name)
+        button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        button.setFixedWidth(width)
+        return button
+
+    @staticmethod
+    def _clear_button(accessible_name: str, parent: QWidget) -> QToolButton:
+        button = _CircularClearButton(parent)
+        button.setText("×")
+        button.setAccessibleName(accessible_name)
+        button.setToolTip(accessible_name)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setFixedSize(20, 20)
+        parent.setViewportMargins(0, 0, 26, 0)
+        return button
+
+    def _position_clear_buttons(self) -> None:
+        for field, button in (
+            (self.find_input, self.find_clear_button),
+            (self.replace_input, self.replace_clear_button),
+        ):
+            button.move(max(0, field.width() - button.width() - 4), 4)
+            button.raise_()
 
     def set_zoom_percent(self, percent: int) -> None:
         percent = max(50, min(300, int(percent)))
@@ -343,6 +426,11 @@ class FindReplaceWindow(QDialog):
         return True
 
     def eventFilter(self, watched, event) -> bool:
+        if watched in (self.find_input, self.replace_input) and event.type() in {
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+        }:
+            self._position_clear_buttons()
         if event.type() == QEvent.Type.Wheel and self._handle_zoom_wheel(event):
             return True
         return super().eventFilter(watched, event)
@@ -355,34 +443,48 @@ class FindReplaceWindow(QDialog):
     def set_report_location(self, location: str) -> None:
         if location not in {"Hidden", "Bottom", "Right"}:
             raise ValueError(f"unsupported report location: {location}")
-        if self.report_location_combo.currentText() != location:
-            blocked = self.report_location_combo.blockSignals(True)
-            self.report_location_combo.setCurrentText(location)
-            self.report_location_combo.blockSignals(blocked)
-        self.report_frame.setHidden(location == "Hidden")
-        if location == "Bottom":
-            self.report_splitter.setOrientation(Qt.Orientation.Vertical)
-            if self.report_splitter.sizes()[1] == 0:
-                self.report_splitter.setSizes((220, 100))
-        elif location == "Right":
-            self.report_splitter.setOrientation(Qt.Orientation.Horizontal)
-            if self.report_splitter.sizes()[1] == 0:
-                self.report_splitter.setSizes((460, 260))
-        self.reportLocationChanged.emit(location)
+        normalized = "Hidden" if location == "Hidden" else "Right"
+        previous = self.report_location
+        sizes = self.report_splitter.sizes()
+        if normalized == "Hidden":
+            if len(sizes) > 1 and sizes[1] > 0:
+                self._report_width = sizes[1]
+            self._report_open = False
+            self.report_frame.hide()
+        else:
+            self._report_open = True
+            self.report_frame.show()
+            if len(sizes) < 2 or sizes[1] == 0:
+                total = max(self.width(), 720)
+                report_width = min(self._report_width, max(120, total // 2))
+                self.report_splitter.setSizes((total - report_width, report_width))
+        self._update_report_toggle_button()
+        if normalized != previous:
+            self.reportLocationChanged.emit(normalized)
 
     def cycle_report_location(self) -> None:
-        locations = ("Hidden", "Bottom", "Right")
-        current = locations.index(self.report_location)
-        self.set_report_location(locations[(current + 1) % len(locations)])
+        self.toggle_report()
+
+    def toggle_report(self) -> None:
+        self.set_report_location("Hidden" if self._report_open else "Right")
+
+    def _update_report_toggle_button(self) -> None:
+        if self._report_open:
+            self.report_toggle_button.setText("║")
+            label = "Hide Match Report"
+        else:
+            self.report_toggle_button.setText(">")
+            label = "Show Match Report"
+        self.report_toggle_button.setAccessibleName(label)
+        self.report_toggle_button.setToolTip(label)
 
     @property
     def regex_mode(self) -> bool:
-        return self.search_mode_combo.currentText() == "Regex"
+        return self.regex_checkbox.isChecked()
 
-    def _search_mode_changed(self, mode: str) -> None:
-        regex_mode = mode == "Regex"
-        self.case_sensitive_checkbox.setVisible(not regex_mode)
-        self.whole_word_checkbox.setVisible(not regex_mode)
+    def _search_mode_changed(self, regex_mode: bool) -> None:
+        self.case_sensitive_checkbox.setEnabled(not regex_mode)
+        self.whole_word_checkbox.setEnabled(not regex_mode)
         self._pattern_changed()
 
     @property

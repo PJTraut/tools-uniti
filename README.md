@@ -30,8 +30,8 @@ The current development alpha includes:
 - third-party `regex` search with engine-reconciled group identities, inline-switch and replacement-reference highlighting, structured diagnostics, and deterministic zero-width results;
 - integrated application ResourceManager with cache pressure, active/inactive document priorities, and shared background scheduling;
 - custom PySide6 `QAbstractScrollArea` editor viewport — Qt never owns the document;
-- tabs, native File/Edit/Search menus, Cut/Copy/Paste, IME composition support, and operational status bar;
-- asynchronous regex-aware Find/Replace fields, compact match index, visible-only normal/zero-width overlays, and bounded model-backed current/next capture reports;
+- tabs, native menus, persisted System/Light/Dark application themes, Cut/Copy/Paste, IME composition support, and operational status bar;
+- topmost asynchronous regex-aware Find/Replace fields with per-field clear controls, compact actions, a right-docked Match Report, compact match index, visible-only normal/zero-width overlays, and bounded model-backed current/next capture reports;
 - separate **Reinterpret As** and **Convert on Save** controls;
 - source-aware inserted-EOL policy, EOL controls, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics.
 - explicit Python 3.12+ bootstrap into a UNITI-owned source or application-local virtual environment;

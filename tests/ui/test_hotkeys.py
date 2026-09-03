@@ -209,7 +209,7 @@ def test_disjoint_editor_and_find_shortcuts_dispatch_by_focus(tmp_path: Path):
     window.close()
 
 
-def test_report_cycle_hotkey_rotates_hidden_bottom_right(tmp_path: Path):
+def test_report_hotkey_toggles_hidden_and_right(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -234,6 +234,7 @@ def test_report_cycle_hotkey_rotates_hidden_bottom_right(tmp_path: Path):
 
     definition = window._command_registry.definition("find.report_cycle")
     assert definition.default_shortcut == "Ctrl+Alt+R"
+    assert definition.label == "Toggle Match Report"
     report_commands = [
         candidate.command_id
         for candidate in window._command_registry.definitions(
@@ -242,7 +243,7 @@ def test_report_cycle_hotkey_rotates_hidden_bottom_right(tmp_path: Path):
         if candidate.command_id.startswith("find.report_")
     ]
     assert report_commands == ["find.report_cycle"]
-    for expected in ("Bottom", "Right", "Hidden"):
+    for expected in ("Right", "Hidden"):
         QTest.keyClick(
             panel.find_input,
             Qt.Key.Key_R,

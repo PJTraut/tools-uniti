@@ -18,6 +18,10 @@ Date: 2026-09-03
 
 The `v0.001a15` tag remains immutable. a16 through a19 are implemented on `main` without new tags. No tag or push is part of this closure.
 
+## Post-a19 UI refinement
+
+The current local tree adds persisted application-wide System/Light/Dark palettes. Find/Replace is system-topmost, uses visible Regex/Case/Whole-word checkboxes, provides circular per-field clear controls and one compact `F+ | R+ … << | >> | R` action row, and keeps the Match Report exclusively on the right behind a single `║`/`>` visibility control. The existing `find.report_cycle` command ID is retained for shortcut compatibility but now toggles report visibility; legacy Bottom settings migrate to Right.
+
 ## Implemented a19 behavior
 
 - cross-thread task notifications are wake-ups over monotonically generated authoritative snapshots, so stale queued/no-progress delivery cannot replace newer task progress;

@@ -39,10 +39,10 @@ The a19 Regex Intelligence Alpha is implemented and verified. UNITI combines a18
 - asynchronous crash-recovery journals and validated replay;
 - authoritative `regex==2026.5.9`, immutable pattern/replacement analysis, engine-reconciled group identities, inline-switch and reference highlighting, structured diagnostics, and a 65,536-code-point interactive expression bound;
 - snapshot-based cancellable search, compact spillable revision-bound match storage, deterministic zero-width navigation/rendering/replacement, spillable replacement plans, safe apply admission, and one-transaction replacement;
-- mouse-resizable floating Find/Replace with explicit Literal/Regex selection, 150 ms off-thread latest-generation analysis, equal-height inputs above a compact bottom-anchored control stack, grouped batch/match actions, clear visible-only result highlighting, an unrestricted collapsible capture splitter, bounded asynchronous current/next capture-only reports, independent zoom/geometry/report state, report-position cycling, and separate 50-step field histories;
+- mouse-resizable system-topmost Find/Replace with Regex/Case/Whole-word checkboxes, per-field clear controls, 150 ms off-thread latest-generation analysis, equal-height inputs above one compact `F+ | R+ … << | >> | R` action row, clear visible-only result highlighting, a toggleable right-docked Match Report, bounded asynchronous current/next capture-only reports, independent zoom/geometry/report state, and separate 50-step field histories;
 - one-step undoable Replace All with no disk-rewrite history bypass;
 - a scoped shared command registry and persisted Hotkeys popup for window, editor, and Find/Replace commands;
-- a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with native shortcut display and no duplicate pre-Cot top-level command groupings;
+- a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with persisted application-wide System/Light/Dark themes, native shortcut display, and no duplicate pre-Cot top-level command groupings;
 - PySide6 tabs, custom virtual viewport, clipboard, IME, menus, compact saved/pending format plus zoom/wrap/resource/task status, inspections, diagnostics, and recovery surfaces;
 - progressive Open, background full EOL analysis, cancellable far navigation, Find All, Replace All planning, and verified Save/Save As without GUI-thread long work;
 - source-tab-only locking during output, cancellation cleanup, immutable revision/identity snapshots, and stale-result refusal;

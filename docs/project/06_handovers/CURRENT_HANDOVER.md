@@ -16,7 +16,7 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16/a17/a18/a19 tags: none
 
-a19 is implemented and verified on local `main`. `origin/main` is intentionally unchanged until a separate push is authorized; no tag has been created.
+a19 is implemented and verified on local `main`. A post-a19 UI refinement adds application-wide themes and the approved compact/topmost Find/Replace and right-docked report behavior. `origin/main` is intentionally unchanged until a separate push is authorized; no tag has been created.
 
 ## Canonical records
 

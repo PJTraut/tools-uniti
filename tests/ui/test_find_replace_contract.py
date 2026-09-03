@@ -56,7 +56,7 @@ def _close_panel(app, document, view, panel):
 
 
 def _run_regex_search(app, panel, pattern: str, *, expected: int):
-    panel.search_mode_combo.setCurrentText("Regex")
+    panel.regex_checkbox.setChecked(True)
     panel.find_input.set_text(pattern)
     _wait_until(app, lambda: panel.compile_current() is not None)
     panel.find_all()
@@ -284,7 +284,7 @@ def test_find_replace_offscreen_smoke_when_pyside6_available(tmp_path: Path):
     with Document.open(path, encoding="utf-8") as document:
         view = UNITITextView(EditorState(document))
         panel = FindReplacePanel(lambda: view)
-        panel.search_mode_combo.setCurrentText("Regex")
+        panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text(r"\d+")
         _wait_until(app, lambda: panel.compile_current() is not None)
         panel.find_all()
@@ -383,7 +383,7 @@ def test_regex_analysis_is_debounced_serialized_and_stale_safe(
     monkeypatch.setattr(find_replace, "analyze_pattern", observed)
     app, document, view, panel = _make_panel(tmp_path, "abc")
     try:
-        panel.search_mode_combo.setCurrentText("Regex")
+        panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text("slow")
         panel.find_input.set_text("(fast)")
         assert panel.status_label.text() == "checking pattern…"
@@ -407,7 +407,7 @@ def test_invalid_and_over_limit_patterns_expose_exact_nonmodal_states(
 
     app, document, view, panel = _make_panel(tmp_path, "abc")
     try:
-        panel.search_mode_combo.setCurrentText("Regex")
+        panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text("(")
         _wait_until(
             app,
@@ -433,7 +433,7 @@ def test_pattern_and_replacement_formats_share_group_color(tmp_path: Path):
 
     app, document, view, panel = _make_panel(tmp_path, "word-42")
     try:
-        panel.search_mode_combo.setCurrentText("Regex")
+        panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text(r"(?P<word>\w+)-(\d+)\1")
         panel.replace_input.set_text(r"\g<word>:\2")
         _wait_until(app, lambda: panel.compile_current() is not None)
@@ -467,7 +467,7 @@ def test_invalid_diagnostic_has_wave_underline_and_accessible_text(
 
     app, document, view, panel = _make_panel(tmp_path, "abc")
     try:
-        panel.search_mode_combo.setCurrentText("Regex")
+        panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text("(")
         _wait_until(
             app,
@@ -494,7 +494,7 @@ def test_palette_change_rebuilds_group_formats_with_accessible_contrast(
 
     app, document, view, panel = _make_panel(tmp_path, "a")
     try:
-        panel.search_mode_combo.setCurrentText("Regex")
+        panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text("(a)")
         _wait_until(app, lambda: panel.compile_current() is not None)
         before = panel.find_input.highlighter.group_palette[0]
@@ -524,7 +524,7 @@ def test_zero_width_navigation_wraps_by_result_index_without_selection(
 
     app, document, view, panel = _make_panel(tmp_path, "aa")
     try:
-        panel.search_mode_combo.setCurrentText("Regex")
+        panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text(r"(?=a)")
         _wait_until(app, lambda: panel.compile_current() is not None)
         panel.find_all()
@@ -555,7 +555,7 @@ def test_single_zero_width_result_wraps_to_itself(tmp_path: Path):
 
     app, document, view, panel = _make_panel(tmp_path, "aa")
     try:
-        panel.search_mode_combo.setCurrentText("Regex")
+        panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text(r"^")
         _wait_until(app, lambda: panel.compile_current() is not None)
         panel.find_all()
@@ -579,7 +579,7 @@ def test_single_zero_width_replace_inserts_once_and_invalidates_results(
 
     app, document, view, panel = _make_panel(tmp_path, "a")
     try:
-        panel.search_mode_combo.setCurrentText("Regex")
+        panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text(r"(?=a)")
         panel.replace_input.set_text("X")
         _wait_until(app, lambda: panel.compile_current() is not None)
@@ -699,9 +699,11 @@ def test_literal_and_regex_modes_have_separate_semantics():
     app = QApplication.instance() or QApplication([])
     panel = FindReplacePanel(lambda: None)
     panel.show()
-    assert panel.search_mode_combo.currentText() == "Literal"
+    assert panel.regex_checkbox.isChecked() is False
     assert panel.case_sensitive_checkbox.isVisible() is True
     assert panel.whole_word_checkbox.isVisible() is True
+    assert panel.case_sensitive_checkbox.isEnabled() is True
+    assert panel.whole_word_checkbox.isEnabled() is True
     panel.find_input.set_text("a.c")
     _wait_until(app, lambda: panel.compile_current() is not None)
     literal = panel.compile_current()
@@ -717,20 +719,29 @@ def test_literal_and_regex_modes_have_separate_semantics():
     whole_word = panel.compile_current()
     assert whole_word.search("xa.cy") is None
 
-    panel.search_mode_combo.setCurrentText("Regex")
+    panel.regex_checkbox.setChecked(True)
     panel.find_input.set_text("(?i)a.c")
     _wait_until(app, lambda: panel.compile_current() is not None)
     raw_regex = panel.compile_current()
     assert raw_regex.pattern == "(?i)a.c"
     assert raw_regex.fullmatch("ABC") is not None
-    assert panel.case_sensitive_checkbox.isVisible() is False
-    assert panel.whole_word_checkbox.isVisible() is False
+    assert panel.case_sensitive_checkbox.isVisible() is True
+    assert panel.whole_word_checkbox.isVisible() is True
+    assert panel.case_sensitive_checkbox.isEnabled() is False
+    assert panel.whole_word_checkbox.isEnabled() is False
+    assert panel.case_sensitive_checkbox.isChecked() is True
+    assert panel.whole_word_checkbox.isChecked() is True
+    panel.regex_checkbox.setChecked(False)
+    assert panel.case_sensitive_checkbox.isEnabled() is True
+    assert panel.whole_word_checkbox.isEnabled() is True
+    assert panel.case_sensitive_checkbox.isChecked() is True
+    assert panel.whole_word_checkbox.isChecked() is True
     panel.shutdown()
     panel.close()
     app.processEvents()
 
 
-def test_find_replace_window_and_capture_pane_are_resizable_and_collapsible():
+def test_find_replace_window_and_right_report_are_resizable_and_toggleable():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -741,19 +752,20 @@ def test_find_replace_window_and_capture_pane_are_resizable_and_collapsible():
     app = QApplication.instance() or QApplication([])
     panel = FindReplacePanel(lambda: None)
     panel.show()
-    panel.set_report_location("Bottom")
     panel.resize(860, 520)
-    panel.report_splitter.setSizes((220, 260))
+    panel.report_splitter.setSizes((500, 340))
     app.processEvents()
 
     assert panel.isSizeGripEnabled() is True
     assert (panel.width(), panel.height()) == (860, 520)
     assert panel.capture_view.maximumHeight() > 1_000_000
     assert panel.report_splitter.sizes()[1] > 82
-
-    panel.report_splitter.setSizes((480, 0))
-    app.processEvents()
-    assert panel.report_splitter.sizes()[1] == 0
+    panel.report_toggle_button.click()
+    assert panel.report_location == "Hidden"
+    assert panel.report_frame.isHidden() is True
+    panel.report_toggle_button.click()
+    assert panel.report_location == "Right"
+    assert panel.report_splitter.sizes()[1] > 82
     panel.shutdown()
     panel.close()
 
@@ -776,11 +788,8 @@ def test_find_replace_inputs_split_height_above_bottom_control_stack():
     controls = panel.report_splitter.widget(0)
     assert panel.find_input.height() > 100
     assert abs(panel.find_input.height() - panel.replace_input.height()) <= 2
-    assert panel.batch_actions_widget.height() <= (
-        panel.batch_actions_widget.sizeHint().height() + 2
-    )
-    assert panel.match_actions_widget.height() <= (
-        panel.match_actions_widget.sizeHint().height() + 2
+    assert panel.actions_widget.height() <= (
+        panel.actions_widget.sizeHint().height() + 2
     )
     cancel_bottom = panel.cancel_button.mapTo(
         controls,
@@ -792,7 +801,7 @@ def test_find_replace_inputs_split_height_above_bottom_control_stack():
     panel.close()
 
 
-def test_find_replace_actions_are_grouped_by_operation_scope():
+def test_find_replace_actions_are_compact_accessible_and_on_one_line():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -811,20 +820,25 @@ def test_find_replace_actions_are_grouped_by_operation_scope():
             if layout.itemAt(index).widget() is not None
         ]
 
-    assert button_labels(panel.batch_actions_widget) == [
-        "Find All",
-        "Replace All",
-    ]
-    assert button_labels(panel.match_actions_widget) == [
-        "Previous",
-        "Next",
-        "Replace",
-    ]
+    assert button_labels(panel.actions_widget) == ["F+", "R+", "<<", ">>", "R"]
+    expected_names = {
+        panel.find_all_button: "Find All",
+        panel.replace_all_button: "Replace All",
+        panel.previous_button: "Previous Match",
+        panel.next_button: "Next Match",
+        panel.replace_button: "Replace Current Match",
+    }
+    for button, name in expected_names.items():
+        assert button.accessibleName() == name
+        assert button.toolTip() == name
+        assert button.width() <= 48
     panel.shutdown()
     panel.close()
 
 
-def test_find_replace_report_locations_and_zoom_are_independent(tmp_path: Path):
+def test_find_replace_report_is_always_right_docked_and_zoom_is_independent(
+    tmp_path: Path,
+):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -850,16 +864,59 @@ def test_find_replace_report_locations_and_zoom_are_independent(tmp_path: Path):
         assert panel.find_input.font().pointSizeF() > original_font_size
         assert panel.find_input.minimumHeight() > original_minimum_height
         assert view.zoom_percent == editor_zoom
+        assert panel.report_location == "Right"
+        assert panel.report_toggle_button.text() == "║"
+        assert panel.report_splitter.orientation() == Qt.Orientation.Horizontal
         panel.set_report_location("Hidden")
         assert panel.report_frame.isVisible() is False
+        assert panel.report_toggle_button.text() == ">"
         panel.set_report_location("Bottom")
         assert panel.report_frame.isHidden() is False
-        assert panel.report_splitter.orientation() == Qt.Orientation.Vertical
-        panel.set_report_location("Right")
+        assert panel.report_location == "Right"
+        assert panel.report_toggle_button.text() == "║"
         assert panel.report_splitter.orientation() == Qt.Orientation.Horizontal
         panel.shutdown()
         panel.close()
         view.close()
+
+
+def test_find_replace_is_topmost_and_clear_buttons_clear_only_their_input():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    panel.resize(720, 320)
+    panel.show()
+    panel.find_input.set_text("needle")
+    panel.replace_input.set_text("replacement")
+    app.processEvents()
+
+    assert panel.windowFlags() & Qt.WindowType.WindowStaysOnTopHint
+    assert panel.testAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow)
+    assert panel.find_clear_button.accessibleName() == "Clear Find"
+    assert panel.replace_clear_button.accessibleName() == "Clear Replace"
+    for field, button in (
+        (panel.find_input, panel.find_clear_button),
+        (panel.replace_input, panel.replace_clear_button),
+    ):
+        assert button.width() == button.height()
+        assert button.x() >= field.width() - button.width() - 8
+        assert button.y() <= 8
+
+    panel.find_clear_button.click()
+    assert panel.find_input.text() == ""
+    assert panel.replace_input.text() == "replacement"
+    panel.replace_clear_button.click()
+    assert panel.replace_input.text() == ""
+    panel.shutdown()
+    panel.close()
+    app.processEvents()
 
 
 def test_primary_modifier_wheel_zooms_focused_find_replace_only(tmp_path: Path):
