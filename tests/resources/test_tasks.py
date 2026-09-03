@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import Future
 from threading import Event
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,6 +12,7 @@ from uniti.resources import MemorySnapshot, ResourceManager
 from uniti.resources.tasks import (
     LatestTaskSlot,
     TaskAdmissionError,
+    TaskCoordinator,
     TaskKind,
     TaskSpec,
     TaskState,
@@ -279,3 +282,121 @@ def test_latest_task_slot_discards_a_request_rejected_by_admission(
     assert discarded == [1]
     assert completed == []
     slot.close()
+
+
+def test_latest_task_slot_discards_active_request_cancelled_before_start(
+    resource_manager,
+):
+    blockers_started = [threading.Event(), threading.Event()]
+    release = threading.Event()
+    blockers = []
+    for started in blockers_started:
+        blockers.append(
+            resource_manager.tasks.submit(
+                TaskSpec.create(TaskKind.SEARCH, foreground=True),
+                lambda _context, started=started: (
+                    started.set(),
+                    release.wait(2),
+                ),
+            )
+        )
+    assert all(started.wait(1) for started in blockers_started)
+
+    discarded: list[str] = []
+    ran = threading.Event()
+    slot = LatestTaskSlot(resource_manager.tasks, lambda *_args: None)
+    spec = TaskSpec.create(TaskKind.CAPTURE_REPORT, foreground=False)
+    slot.request(
+        1,
+        spec,
+        lambda _context: ran.set(),
+        discard=lambda: discarded.append("queued snapshot closed"),
+    )
+    slot.cancel()
+    deadline = time.monotonic() + 1
+    while not discarded and time.monotonic() < deadline:
+        time.sleep(0.001)
+    while (
+        any(
+            task.spec.task_id == spec.task_id
+            for task in resource_manager.tasks.snapshot().tasks
+        )
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.001)
+    release.set()
+    for blocker in blockers:
+        blocker.future.result(timeout=2)
+
+    assert not ran.is_set()
+    assert discarded == ["queued snapshot closed"]
+    assert all(
+        task.spec.task_id != spec.task_id
+        for task in resource_manager.tasks.snapshot().tasks
+    )
+    slot.close()
+
+
+def test_cancelling_deferred_background_task_removes_it_from_coordinator(
+    resource_manager,
+):
+    ran = threading.Event()
+    resource_manager.pause_background(True)
+    spec = TaskSpec.create(TaskKind.INDEX, foreground=False)
+    handle = resource_manager.tasks.submit(
+        spec,
+        lambda _context: ran.set(),
+    )
+
+    handle.cancel()
+    resource_manager.pause_background(False)
+
+    assert handle.future.cancelled()
+    assert not ran.is_set()
+    assert all(
+        task.spec.task_id != spec.task_id
+        for task in resource_manager.tasks.snapshot().tasks
+    )
+
+
+def test_cancellation_after_future_starts_still_enters_coordinator_wrapper():
+    class GapPool:
+        def submit(self, _priority, fn, /, *args, token=None, **kwargs):
+            future = Future()
+            assert future.set_running_or_notify_cancel()
+            self.pending = (future, fn, args, token, kwargs)
+            return future
+
+        def finish(self) -> None:
+            future, fn, args, token, kwargs = self.pending
+            try:
+                if token is not None:
+                    token.raise_if_cancelled()
+                result = fn(*args, **kwargs)
+            except BaseException as exc:
+                future.set_exception(exc)
+            else:
+                future.set_result(result)
+
+    pool = GapPool()
+    coordinator = TaskCoordinator(
+        pool,
+        lambda: SimpleNamespace(
+            available_memory=16 << 30,
+            free_disk=8 << 30,
+        ),
+    )
+    invoked = threading.Event()
+    spec = TaskSpec.create(TaskKind.CAPTURE_REPORT, foreground=False)
+    handle = coordinator.submit(spec, lambda _context: invoked.set())
+
+    handle.cancel()
+    pool.finish()
+
+    with pytest.raises(RuntimeError, match="cancelled"):
+        handle.future.result()
+    assert handle.state is TaskState.CANCELLED
+    assert not invoked.is_set()
+    assert all(
+        task.spec.task_id != spec.task_id for task in coordinator.snapshot().tasks
+    )

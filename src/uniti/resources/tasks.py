@@ -322,7 +322,11 @@ class TaskCoordinator:
                 public_future: Future[T] = Future()
                 handle._set_future(public_future)
                 self._deferred[spec.task_id] = (handle, fn)
-        if not deferred:
+        if deferred:
+            public_future.add_done_callback(
+                lambda completed: self._remove_cancelled(handle, completed)
+            )
+        else:
             self._dispatch(handle, fn)
         self._notify()
         return handle
@@ -339,10 +343,12 @@ class TaskCoordinator:
             self._run,
             handle,
             fn,
-            token=handle.token,
         )
         if public_future is None:
             handle._set_future(worker_future)
+            worker_future.add_done_callback(
+                lambda completed: self._remove_cancelled(handle, completed)
+            )
             return
 
         def transfer(completed: Future[T]) -> None:
@@ -358,6 +364,21 @@ class TaskCoordinator:
                 public_future.set_result(completed.result())
 
         worker_future.add_done_callback(transfer)
+
+    def _remove_cancelled(
+        self,
+        handle: TaskHandle[object],
+        future: Future[object],
+    ) -> None:
+        """Forget a canceled future whose worker wrapper may never execute."""
+        if not future.cancelled():
+            return
+        with self._condition:
+            if self._handles.get(handle.spec.task_id) is not handle:
+                return
+            self._handles.pop(handle.spec.task_id, None)
+            self._deferred.pop(handle.spec.task_id, None)
+        self._notify()
 
     def _run(self, handle: TaskHandle[T], fn: Callable[[TaskContext], T]) -> T:
         try:
@@ -566,6 +587,8 @@ class LatestTaskSlot(Generic[T]):
         try:
             if started:
                 self._completed(request.generation, handle)
+            else:
+                request.discard()
         finally:
             if pending is not None:
                 self._submit(pending)

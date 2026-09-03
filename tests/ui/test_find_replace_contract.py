@@ -41,11 +41,50 @@ def _make_panel(tmp_path: Path, text: str):
 
 
 def _close_panel(app, document, view, panel):
+    from PySide6.QtCore import QCoreApplication, QEvent
+
     panel.shutdown()
+    if panel._owns_resources:
+        panel._resource_manager.workers.shutdown(wait=True, cancel_pending=True)
     panel.close()
     view.close()
+    panel.deleteLater()
+    view.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     document.close()
     app.processEvents()
+
+
+def _run_regex_search(app, panel, pattern: str, *, expected: int):
+    panel.search_mode_combo.setCurrentText("Regex")
+    panel.find_input.set_text(pattern)
+    _wait_until(app, lambda: panel.compile_current() is not None)
+    panel.find_all()
+    _wait_until(app, lambda: panel.result_count == expected and not panel.busy)
+
+
+class _ObservedSnapshot:
+    def __init__(self, inner) -> None:
+        self._inner = inner
+        self.closed = False
+
+    def read(self, start: int, end: int) -> str:
+        return self._inner.read(start, end)
+
+    def total_chars(self) -> int:
+        return self._inner.total_chars()
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        self._inner.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
 
 def _colors_at_token_starts(editor, analysis, *, group_number: int) -> set[str]:
@@ -101,7 +140,8 @@ def test_find_replace_panel_has_worker_cancellation_navigation_and_capture_ui():
         "MatchIndex",
         "MatchStore",
         "add_edit_listener",
-        "resolve_captures",
+        "resolve_capture_report",
+        "CaptureReportModel",
         "include_captures=False",
         "collect_replacements",
         "ReplacementPlan",
@@ -109,6 +149,107 @@ def test_find_replace_panel_has_worker_cancellation_navigation_and_capture_ui():
         ".snapshot()",
     ):
         assert required in source
+    assert "QListWidget" not in source
+    assert "resolve_captures" not in source
+
+
+def test_capture_report_model_formats_rows_and_accessible_text():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+
+    from uniti.regex.captures import (
+        CaptureGroupRow,
+        CaptureMatchReport,
+        CapturePreview,
+        CaptureReport,
+        CaptureReportRequest,
+    )
+    from uniti.regex.results import MatchRecord
+    from uniti.ui.capture_report import CaptureReportModel
+
+    request = CaptureReportRequest(
+        pattern_generation=7,
+        pattern_text="pattern",
+        document_key="doc",
+        revision=3,
+        store_id="store",
+        requested_index=0,
+        match_count=2,
+        matches=((0, MatchRecord(0, 3)), (1, MatchRecord(4, 7))),
+    )
+    report = CaptureReport(
+        request=request,
+        matches=(
+            CaptureMatchReport(
+                index=0,
+                total=2,
+                groups=(
+                    CaptureGroupRow(
+                        1,
+                        "letter",
+                        "value",
+                        3,
+                        (
+                            CapturePreview(0, 1, "a", False),
+                            CapturePreview(1, 2, "a", False),
+                            CapturePreview(2, 3, "a", False),
+                        ),
+                    ),
+                    CaptureGroupRow(
+                        2,
+                        "empty",
+                        "empty",
+                        1,
+                        (CapturePreview(3, 3, "", True),),
+                    ),
+                    CaptureGroupRow(3, "missing", "not_matched", 0, ()),
+                    CaptureGroupRow(
+                        4,
+                        "mixed",
+                        "value",
+                        2,
+                        (
+                            CapturePreview(0, 1, "a", False),
+                            CapturePreview(1, 1, "", True),
+                        ),
+                    ),
+                ),
+            ),
+            CaptureMatchReport(
+                index=1,
+                total=2,
+                groups=(),
+                unavailable_reason="capture details unavailable",
+            ),
+        ),
+        payload_bytes=1024,
+    )
+    model = CaptureReportModel()
+
+    model.set_loading()
+    assert model.rows() == ("loading captures…",)
+    assert model.current_index is None
+    model.set_report(report)
+
+    assert model.rows() == (
+        "Match 1 of 2",
+        "1 letter │ a | a | a (3 occurrences)",
+        "2 empty │ empty at 3",
+        "3 missing │ not matched",
+        "4 mixed │ a | empty at 1 (2 occurrences)",
+        "─────────────────",
+        "Match 2 of 2",
+        "capture details unavailable",
+    )
+    assert model.current_index == 0
+    index = model.index(1, 0)
+    assert model.data(index, Qt.ItemDataRole.DisplayRole) == model.rows()[1]
+    assert model.data(index, Qt.ItemDataRole.AccessibleTextRole) == model.rows()[1]
+    model.clear()
+    assert model.rows() == ()
+    assert model.current_index is None
 
 
 def test_text_view_paints_compact_match_index_intersections_only():
@@ -147,10 +288,7 @@ def test_find_replace_offscreen_smoke_when_pyside6_available(tmp_path: Path):
         panel.find_input.set_text(r"\d+")
         _wait_until(app, lambda: panel.compile_current() is not None)
         panel.find_all()
-        for _ in range(100):
-            app.processEvents()
-            if panel.result_count == 2:
-                break
+        _wait_until(app, lambda: panel.result_count == 2)
         assert panel.result_count == 2
         panel.shutdown()
         view.close()
@@ -610,7 +748,7 @@ def test_find_replace_window_and_capture_pane_are_resizable_and_collapsible():
 
     assert panel.isSizeGripEnabled() is True
     assert (panel.width(), panel.height()) == (860, 520)
-    assert panel.capture_list.maximumHeight() > 1_000_000
+    assert panel.capture_view.maximumHeight() > 1_000_000
     assert panel.report_splitter.sizes()[1] > 82
 
     panel.report_splitter.setSizes((480, 0))
@@ -766,39 +904,373 @@ def test_primary_modifier_wheel_zooms_focused_find_replace_only(tmp_path: Path):
         view.close()
 
 
-def test_capture_report_excludes_group_zero_and_separates_matches(tmp_path: Path):
+def test_navigation_publishes_loading_then_current_and_next_capture_report(
+    tmp_path: Path,
+    monkeypatch,
+):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
+    import uniti.ui.find_replace as find_replace
 
-    from uniti.app.editor_state import EditorState
-    from uniti.core.document import Document
-    from uniti.ui.find_replace import FindReplacePanel
-    from uniti.ui.text_view import UNITITextView
+    real = find_replace.resolve_capture_report
+    started = threading.Event()
+    release = threading.Event()
 
-    path = tmp_path / "captures.txt"
-    path.write_text("ab ab", encoding="utf-8")
-    app = QApplication.instance() or QApplication([])
-    with Document.open(path, encoding="utf-8") as document:
-        view = UNITITextView(EditorState(document))
-        panel = FindReplacePanel(lambda: view)
-        panel.search_mode_combo.setCurrentText("Regex")
-        panel.find_input.set_text("(a)(b)")
-        _wait_until(app, lambda: panel.compile_current() is not None)
-        panel.find_all()
-        for _ in range(100):
-            app.processEvents()
-            if panel.result_count == 2 and panel.capture_list.count() >= 5:
-                break
-        rows = [panel.capture_list.item(i).text() for i in range(panel.capture_list.count())]
-        assert rows[:2] == ["1 │ a", "2 │ b"]
-        assert rows[2].startswith("─")
-        assert rows[3:] == ["1 │ a", "2 │ b"]
-        assert all(not row.startswith("0") for row in rows)
+    def delayed(snapshot, compiled, request, **options):
+        started.set()
+        release.wait(5)
+        return real(snapshot, compiled, request, **options)
+
+    monkeypatch.setattr(find_replace, "resolve_capture_report", delayed)
+    app, document, view, panel = _make_panel(tmp_path, "aaa bbb")
+    try:
+        _run_regex_search(app, panel, r"(?P<letter>[a-z])+", expected=2)
+        _wait_until(app, started.is_set)
+        assert panel.capture_model.rows() == ("loading captures…",)
+        release.set()
+        _wait_until(
+            app,
+            lambda: panel.capture_model.rows()
+            and panel.capture_model.rows()[0] == "Match 1 of 2",
+        )
+        rows = panel.capture_model.rows()
+        assert "1 letter │ a | a | a (3 occurrences)" in rows
+        assert "Match 2 of 2" in rows
+        assert "1 letter │ b | b | b (3 occurrences)" in rows
+        assert all("group 0" not in row.lower() for row in rows)
+        assert panel.capture_view.accessibleName() == "Match Report"
+    finally:
+        release.set()
+        _close_panel(app, document, view, panel)
+
+
+def test_rapid_navigation_publishes_only_latest_capture_generation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import uniti.ui.find_replace as find_replace
+
+    real = find_replace.resolve_capture_report
+    started = threading.Event()
+    release = threading.Event()
+
+    def delayed(snapshot, compiled, request, **options):
+        if request.requested_index == 0:
+            started.set()
+            release.wait(5)
+        return real(snapshot, compiled, request, **options)
+
+    monkeypatch.setattr(find_replace, "resolve_capture_report", delayed)
+    app, document, view, panel = _make_panel(tmp_path, "a b c")
+    try:
+        _run_regex_search(app, panel, r"(?P<letter>\w)", expected=3)
+        _wait_until(app, started.is_set)
+        panel.next_match()
+        panel.next_match()
+        release.set()
+        _wait_until(app, lambda: panel.capture_model.current_index == 2)
+
+        assert panel.capture_model.rows()[0] == "Match 3 of 3"
+        assert panel._current_index == 2
+        assert panel.result_count == 3
+    finally:
+        release.set()
+        _close_panel(app, document, view, panel)
+
+
+def test_capture_failure_leaves_valid_match_navigation_intact(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import uniti.ui.find_replace as find_replace
+
+    def failed(*_args, **_kwargs):
+        raise RuntimeError("sensitive detail must not escape")
+
+    monkeypatch.setattr(find_replace, "resolve_capture_report", failed)
+    app, document, view, panel = _make_panel(tmp_path, "a b")
+    try:
+        _run_regex_search(app, panel, r"(\w)", expected=2)
+        _wait_until(
+            app,
+            lambda: "capture details unavailable" in panel.capture_model.rows(),
+        )
+
+        assert panel.result_count == 2
+        assert panel._current_index == 0
+        assert panel.next_button.isEnabled()
+        assert "sensitive" not in "\n".join(panel.capture_model.rows())
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_single_match_capture_report_is_not_duplicated(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "a")
+    try:
+        _run_regex_search(app, panel, r"(?P<letter>a)", expected=1)
+        _wait_until(app, lambda: panel.capture_model.current_index == 0)
+
+        rows = panel.capture_model.rows()
+        assert rows.count("Match 1 of 1") == 1
+        assert "─────────────────" not in rows
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_capture_admission_failure_closes_snapshot_and_keeps_navigation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from uniti.resources import MemorySnapshot
+
+    app, document, view, panel = _make_panel(tmp_path, "a a")
+    try:
+        _run_regex_search(app, panel, r"(a)", expected=2)
+        _wait_until(app, lambda: panel.capture_model.current_index == 0)
+        real_snapshot = document.snapshot
+        observed: list[_ObservedSnapshot] = []
+
+        def snapshot():
+            proxy = _ObservedSnapshot(real_snapshot())
+            observed.append(proxy)
+            return proxy
+
+        monkeypatch.setattr(document, "snapshot", snapshot)
+        panel._resource_manager.observe_memory(MemorySnapshot(16 << 30, 1 << 20))
+        panel.next_match()
+        _wait_until(
+            app,
+            lambda: panel.capture_model.current_index == 1
+            and "capture details unavailable" in panel.capture_model.rows(),
+        )
+
+        assert len(observed) == 1
+        assert observed[0].closed
+        assert panel.result_count == 2
+        assert panel._current_index == 1
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_snapshot_failure_cancels_obsolete_capture_work(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import uniti.ui.find_replace as find_replace
+
+    app, document, view, panel = _make_panel(tmp_path, "a a a")
+    release = threading.Event()
+    try:
+        _run_regex_search(app, panel, r"(a)", expected=3)
+        _wait_until(app, lambda: panel.capture_model.current_index == 0)
+        started = threading.Event()
+        real_resolve = find_replace.resolve_capture_report
+
+        def delayed(snapshot, compiled, request, **options):
+            started.set()
+            release.wait(5)
+            return real_resolve(snapshot, compiled, request, **options)
+
+        monkeypatch.setattr(find_replace, "resolve_capture_report", delayed)
+        panel.next_match()
+        _wait_until(app, started.is_set)
+        active_handle = panel._capture_slot._active_handle
+        assert active_handle is not None
+
+        def snapshot_failure():
+            raise OSError("snapshot unavailable")
+
+        monkeypatch.setattr(document, "snapshot", snapshot_failure)
+        panel.next_match()
+
+        assert active_handle.token.cancelled
+        assert panel.capture_model.current_index == 2
+        assert "capture details unavailable" in panel.capture_model.rows()
+    finally:
+        release.set()
+        _close_panel(app, document, view, panel)
+
+
+@pytest.mark.parametrize(
+    "invalidation",
+    ("edit", "pattern", "target", "reject", "replace", "shutdown"),
+)
+def test_capture_snapshot_closes_on_every_invalidation_boundary(
+    tmp_path: Path,
+    monkeypatch,
+    invalidation: str,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import uniti.ui.find_replace as find_replace
+
+    app, document, view, panel = _make_panel(tmp_path, "a a")
+    release = threading.Event()
+    try:
+        _run_regex_search(app, panel, r"(a)", expected=2)
+        _wait_until(app, lambda: panel.capture_model.current_index == 0)
+        if invalidation == "replace":
+            panel.replace_input.set_text("X")
+
+        real_snapshot = document.snapshot
+        observed: list[_ObservedSnapshot] = []
+
+        def snapshot():
+            if invalidation == "replace" and observed:
+                return real_snapshot()
+            proxy = _ObservedSnapshot(real_snapshot())
+            observed.append(proxy)
+            return proxy
+
+        started = threading.Event()
+        real_resolve = find_replace.resolve_capture_report
+
+        def delayed(snapshot, compiled, request, **options):
+            started.set()
+            release.wait(5)
+            return real_resolve(snapshot, compiled, request, **options)
+
+        monkeypatch.setattr(document, "snapshot", snapshot)
+        monkeypatch.setattr(find_replace, "resolve_capture_report", delayed)
+        panel.next_match()
+        _wait_until(app, started.is_set)
+
+        if invalidation == "edit":
+            document.insert(0, "x")
+        elif invalidation == "pattern":
+            panel.find_input.set_text("(b)")
+        elif invalidation == "target":
+            panel.document_changed()
+        elif invalidation == "reject":
+            panel.reject()
+        elif invalidation == "replace":
+            panel.replace_current()
+        else:
+            panel.shutdown()
+        release.set()
+        _wait_until(app, lambda: bool(observed) and all(item.closed for item in observed))
+        if invalidation == "replace":
+            _wait_until(app, lambda: not panel.busy)
+            assert document.read(0, document.total_chars()) == "a X"
+
+        assert panel.capture_model.rows() == ()
+    finally:
+        release.set()
+        _close_panel(app, document, view, panel)
+
+
+def test_replaced_pending_capture_snapshot_closes_before_active_work_finishes(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import uniti.ui.find_replace as find_replace
+
+    app, document, view, panel = _make_panel(tmp_path, "a a")
+    release = threading.Event()
+    try:
+        _run_regex_search(app, panel, r"(a)", expected=2)
+        _wait_until(app, lambda: panel.capture_model.current_index == 0)
+
+        real_snapshot = document.snapshot
+        observed: list[_ObservedSnapshot] = []
+
+        def snapshot():
+            proxy = _ObservedSnapshot(real_snapshot())
+            observed.append(proxy)
+            return proxy
+
+        started = threading.Event()
+        real_resolve = find_replace.resolve_capture_report
+
+        def delayed(snapshot, compiled, request, **options):
+            started.set()
+            release.wait(5)
+            return real_resolve(snapshot, compiled, request, **options)
+
+        monkeypatch.setattr(document, "snapshot", snapshot)
+        monkeypatch.setattr(find_replace, "resolve_capture_report", delayed)
+        panel.next_match()
+        _wait_until(app, started.is_set)
+        panel.next_match()
+        panel.next_match()
+
+        assert len(observed) == 3
+        assert sum(item.closed for item in observed) == 1
+        release.set()
+        _wait_until(app, lambda: all(item.closed for item in observed))
+        _wait_until(app, lambda: panel.capture_model.current_index == 1)
+    finally:
+        release.set()
+        _close_panel(app, document, view, panel)
+
+
+def test_shutdown_drops_late_capture_completion_after_dialog_is_deleted(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QCoreApplication, QEvent
+
+    import uniti.ui.find_replace as find_replace
+
+    app, document, view, panel = _make_panel(tmp_path, "a a")
+    release = threading.Event()
+    resources = panel._resource_manager
+    try:
+        _run_regex_search(app, panel, r"(a)", expected=2)
+        _wait_until(app, lambda: panel.capture_model.current_index == 0)
+        started = threading.Event()
+        real_resolve = find_replace.resolve_capture_report
+
+        def delayed(snapshot, compiled, request, **options):
+            started.set()
+            release.wait(5)
+            return real_resolve(snapshot, compiled, request, **options)
+
+        monkeypatch.setattr(find_replace, "resolve_capture_report", delayed)
+        panel.next_match()
+        _wait_until(app, started.is_set)
+        completion_called = threading.Event()
+        panel._capture_task_finished = lambda *_args: completion_called.set()
+
         panel.shutdown()
+        panel.deleteLater()
+        QCoreApplication.sendPostedEvents(panel, QEvent.Type.DeferredDelete)
+        release.set()
+        resources.workers.shutdown(wait=True, cancel_pending=True)
+
+        assert not completion_called.is_set()
+    finally:
+        release.set()
+        resources.workers.shutdown(wait=True, cancel_pending=True)
         view.close()
-        panel.close()
+        view.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        document.close()
+        app.processEvents()
 
 
 def test_find_replace_geometry_zoom_and_report_location_persist(tmp_path: Path):

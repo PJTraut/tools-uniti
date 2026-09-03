@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
+import weakref
 
 from PySide6.QtCore import QEvent, QTimer, Qt, Signal
 from PySide6.QtGui import QFont, QWheelEvent
@@ -16,7 +17,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QListWidget,
+    QListView,
     QPushButton,
     QSizePolicy,
     QSplitter,
@@ -32,6 +33,12 @@ from uniti.regex.analysis import (
     analyze_replacement,
     pending_pattern_analysis,
 )
+from uniti.regex.captures import (
+    CaptureMatchReport,
+    CaptureReport,
+    CaptureReportRequest,
+    resolve_capture_report,
+)
 from uniti.regex.match_store import MatchStore
 from uniti.regex.replace import (
     Replacement,
@@ -39,12 +46,11 @@ from uniti.regex.replace import (
     collect_replacements,
 )
 from uniti.regex.replacement_plan import ReplacementPlan
-from uniti.regex.results import MatchIndex, MatchRecord, advance_result_index
+from uniti.regex.results import MatchIndex, advance_result_index
 from uniti.regex.search import (
     RegexContextLimitError,
     RegexSearchTimeout,
     SearchOptions,
-    resolve_captures,
     search_document,
 )
 from uniti.resources import (
@@ -56,6 +62,7 @@ from uniti.resources import (
     TaskKind,
     TaskSpec,
 )
+from uniti.ui.capture_report import CaptureReportModel
 from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 
@@ -75,6 +82,7 @@ class FindReplaceWindow(QDialog):
     geometryChanged = Signal(tuple)
     _jobCompleted = Signal()
     _analysisCompleted = Signal(int, object)
+    _captureCompleted = Signal(int, object)
 
     def __init__(
         self,
@@ -90,6 +98,7 @@ class FindReplaceWindow(QDialog):
         self.setWindowTitle("Find / Replace")
         self.resize(720, 320)
         self._view_provider = view_provider
+        self._shutdown = False
         self._owns_resources = resource_manager is None
         self._resource_manager = resource_manager or ResourceManager(max_workers=1)
         self._future: Future | None = None
@@ -124,15 +133,37 @@ class FindReplaceWindow(QDialog):
         self._analysis_timer = QTimer(self)
         self._analysis_timer.setSingleShot(True)
         self._analysis_timer.setInterval(150)
+        owner_ref = weakref.ref(self)
+
+        def analysis_finished(generation, handle) -> None:
+            owner = owner_ref()
+            if owner is not None and not owner._shutdown:
+                owner._analysis_task_finished(generation, handle)
+
         self._analysis_slot: LatestTaskSlot[RegexAnalysis] = LatestTaskSlot(
             self._resource_manager.tasks,
-            self._analysis_task_finished,
+            analysis_finished,
+        )
+        self._capture_generation = 0
+        self._capture_request: CaptureReportRequest | None = None
+
+        def capture_finished(generation, handle) -> None:
+            owner = owner_ref()
+            if owner is not None and not owner._shutdown:
+                owner._capture_task_finished(generation, handle)
+
+        self._capture_slot: LatestTaskSlot[CaptureReport] = LatestTaskSlot(
+            self._resource_manager.tasks,
+            capture_finished,
         )
 
         self.find_input = RegexInput(self)
         self.replace_input = ReplacementInput(self)
         self.status_label = QLabel("0 matches", self)
-        self.capture_list = QListWidget(self)
+        self.capture_view = QListView(self)
+        self.capture_model = CaptureReportModel(self.capture_view)
+        self.capture_view.setModel(self.capture_model)
+        self.capture_view.setAccessibleName("Match Report")
         self.search_mode_combo = QComboBox(self)
         self.search_mode_combo.addItems(("Literal", "Regex"))
         self.case_sensitive_checkbox = QCheckBox("Case Sensitive", self)
@@ -210,7 +241,7 @@ class FindReplaceWindow(QDialog):
         self.report_frame = QFrame(self)
         report_layout = QVBoxLayout(self.report_frame)
         report_layout.setContentsMargins(4, 4, 4, 4)
-        report_layout.addWidget(self.capture_list)
+        report_layout.addWidget(self.capture_view)
 
         self.report_splitter = QSplitter(Qt.Orientation.Vertical, self)
         self.report_splitter.addWidget(controls_widget)
@@ -253,6 +284,10 @@ class FindReplaceWindow(QDialog):
             self._apply_pattern_analysis,
             Qt.ConnectionType.QueuedConnection,
         )
+        self._captureCompleted.connect(
+            self._apply_capture_report,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._analysis_timer.timeout.connect(self._submit_pattern_analysis)
         self._search_mode_changed("Literal")
         self.set_report_location("Bottom")
@@ -273,7 +308,7 @@ class FindReplaceWindow(QDialog):
             return
         scale = percent / self._zoom_percent
         self._zoom_percent = percent
-        for widget in (self.find_input, self.replace_input, self.capture_list):
+        for widget in (self.find_input, self.replace_input, self.capture_view):
             font = QFont(widget.font())
             point_size = font.pointSizeF()
             if point_size <= 0:
@@ -584,6 +619,7 @@ class FindReplaceWindow(QDialog):
         self.cancel_button.setEnabled(not idle)
 
     def _clear_results(self) -> None:
+        self._cancel_capture_report(clear=True)
         if self._result_listener_remove is not None:
             self._result_listener_remove()
             self._result_listener_remove = None
@@ -595,9 +631,15 @@ class FindReplaceWindow(QDialog):
         self._results_view = None
         self._result_listener_remove = None
         self._current_index = None
-        self.capture_list.clear()
         self._results_compiled = None
         self._update_actions()
+
+    def _cancel_capture_report(self, *, clear: bool) -> None:
+        self._capture_generation += 1
+        self._capture_request = None
+        self._capture_slot.cancel()
+        if clear:
+            self.capture_model.clear()
 
     def _operation_seal(self, view) -> OperationSeal:
         return OperationSeal(
@@ -736,6 +778,7 @@ class FindReplaceWindow(QDialog):
         if self._current_index is None:
             self.find_all()
             return
+        self._cancel_capture_report(clear=True)
         target_index = self._current_index
         seal = self._operation_seal(view)
         replacement_text = self._replacement_expression()
@@ -772,6 +815,7 @@ class FindReplaceWindow(QDialog):
             or not self._replacement_is_current()
         ):
             return
+        self._cancel_capture_report(clear=True)
         seal = self._operation_seal(view)
         revision = seal.revision
         replacement_text = self._replacement_expression()
@@ -875,7 +919,7 @@ class FindReplaceWindow(QDialog):
         if self._current_index is not None:
             self._navigate_to(self._current_index)
         else:
-            self.capture_list.clear()
+            self.capture_model.clear()
         self._update_actions()
 
     def _invalidate_results_for_edit(self, view) -> None:
@@ -987,52 +1031,152 @@ class FindReplaceWindow(QDialog):
         self.status_label.setText(
             f"match {index + 1:,}/{len(self._results):,}"
         )
-        self._show_capture_details(view, record)
+        self._request_capture_report(view, index)
+
+    def _request_capture_report(self, view, index: int) -> None:
+        if (
+            not isinstance(self._results, MatchStore)
+            or self._results_compiled is None
+            or not self._results_are_current(view)
+        ):
+            self._cancel_capture_report(clear=True)
+            return
+        count = len(self._results)
+        indices = (index,) if count == 1 else (index, (index + 1) % count)
+        request = CaptureReportRequest(
+            pattern_generation=self._pattern_generation,
+            pattern_text=self.find_input.text(),
+            document_key=str(id(view.document)),
+            revision=view.document.revision,
+            store_id=self._results.store_id,
+            requested_index=index,
+            match_count=count,
+            matches=tuple(
+                (match_index, self._results.records[match_index])
+                for match_index in indices
+            ),
+        )
+        self._capture_generation += 1
+        generation = self._capture_generation
+        self._capture_request = request
+        self.capture_model.set_loading()
+        try:
+            snapshot = view.document.snapshot()
+        except Exception:
+            self._capture_slot.cancel()
+            self.capture_model.set_report(self._capture_failure(request))
+            return
+        compiled = self._results_compiled
+        spec = TaskSpec.create(
+            TaskKind.CAPTURE_REPORT,
+            foreground=False,
+            document_key=request.document_key,
+            revision=request.revision,
+            estimated_memory_bytes=2 << 20,
+        )
+
+        def work(context: TaskContext) -> CaptureReport:
+            with snapshot:
+                return resolve_capture_report(
+                    snapshot,
+                    compiled,
+                    request,
+                    cancelled=lambda: context.token.cancelled,
+                )
+
+        panel_ref = weakref.ref(self)
+
+        def discard_snapshot() -> None:
+            snapshot.close()
+            panel = panel_ref()
+            if panel is not None and not panel._shutdown:
+                panel._captureCompleted.emit(generation, None)
+
+        self._capture_slot.request(
+            generation,
+            spec,
+            work,
+            discard=discard_snapshot,
+        )
+
+    def _capture_task_finished(
+        self,
+        generation: int,
+        handle: TaskHandle[CaptureReport],
+    ) -> None:
+        self._captureCompleted.emit(generation, handle)
 
     @staticmethod
-    def _display_text(text: str, limit: int = 80) -> str:
-        text = text.replace("\r", "\\r").replace("\n", "\\n")
-        return text if len(text) <= limit else text[: limit - 1] + "…"
+    def _capture_failure(request: CaptureReportRequest) -> CaptureReport:
+        reason = "capture details unavailable"
+        matches = tuple(
+            CaptureMatchReport(
+                index=index,
+                total=request.match_count,
+                groups=(),
+                unavailable_reason=reason,
+            )
+            for index, _record in request.matches
+        )
+        payload_bytes = (
+            64 * (2 + len(request.matches) + len(matches))
+            + len(request.pattern_text.encode("utf-8"))
+            + len(reason.encode("utf-8")) * len(matches)
+        )
+        return CaptureReport(request, matches, payload_bytes)
 
-    def _resolved_capture_record(self, view, record: MatchRecord) -> MatchRecord:
-        if record.captures or self._results_compiled is None:
-            return record
+    def _capture_request_is_current(self, request: CaptureReportRequest) -> bool:
+        view = self._current_view()
+        if (
+            request is not self._capture_request
+            or view is None
+            or view is not self._results_view
+            or not isinstance(self._results, MatchStore)
+            or self._current_index != request.requested_index
+            or len(self._results) != request.match_count
+            or self._results.store_id != request.store_id
+            or self._pattern_generation != request.pattern_generation
+            or self.find_input.text() != request.pattern_text
+            or str(id(view.document)) != request.document_key
+        ):
+            return False
         try:
-            return resolve_captures(
-                view.document,
-                self._results_compiled,
-                record,
-                timeout=0.15,
-            )
+            return view.document.revision == request.revision
         except Exception:
-            return record
+            return False
 
-    def _append_capture_record(self, view, record: MatchRecord) -> None:
-        record = self._resolved_capture_record(view, record)
-        for capture in record.captures:
-            label = str(capture.group)
-            if capture.name:
-                label += f" {capture.name}"
-            values = [
-                self._display_text(view.document.read(start, end))
-                for start, end in capture.spans[:5]
-            ]
-            suffix = " …" if len(capture.spans) > 5 else ""
-            self.capture_list.addItem(
-                f"{label} │ {' | '.join(values)}{suffix}"
-            )
-
-    def _show_capture_details(self, view, record: MatchRecord) -> None:
-        self.capture_list.clear()
-        self._append_capture_record(view, record)
-        if len(self._results) > 1 and self._current_index is not None:
-            next_index = (self._current_index + 1) % len(self._results)
-            next_record = self._results.records[next_index]
-            self.capture_list.addItem("─────────────────")
-            self._append_capture_record(view, next_record)
+    def _apply_capture_report(
+        self,
+        generation: int,
+        handle: TaskHandle[CaptureReport] | None,
+    ) -> None:
+        if generation != self._capture_generation:
+            return
+        request = self._capture_request
+        if request is None or not self._capture_request_is_current(request):
+            return
+        try:
+            if handle is None:
+                raise RuntimeError("capture report unavailable")
+            report = handle.future.result()
+            if handle.token.cancelled or not isinstance(report, CaptureReport):
+                raise RuntimeError("capture report unavailable")
+        except Exception:
+            report = self._capture_failure(request)
+        if (
+            generation == self._capture_generation
+            and report.request is request
+            and self._capture_request_is_current(request)
+        ):
+            self.capture_model.set_report(report)
 
     def reject(self) -> None:
+        self._cancel_capture_report(clear=True)
         self.hide()
+
+    def closeEvent(self, event) -> None:
+        self._cancel_capture_report(clear=True)
+        super().closeEvent(event)
 
     def _emit_geometry(self) -> None:
         geometry = self.geometry()
@@ -1049,8 +1193,13 @@ class FindReplaceWindow(QDialog):
         self._emit_geometry()
 
     def shutdown(self) -> None:
+        self._shutdown = True
         self._analysis_timer.stop()
         self._analysis_slot.close()
+        self._cancel_capture_report(clear=True)
+        self._capture_slot.close()
+        if self.capture_view.model() is self.capture_model:
+            self.capture_view.setModel(None)
         self.cancel_search()
         if self._job_edit_listener_remove is not None:
             self._job_edit_listener_remove()
