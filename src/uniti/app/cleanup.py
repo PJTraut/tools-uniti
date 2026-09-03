@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -12,6 +13,18 @@ from pathlib import Path
 
 from .atomic_json import atomic_write_json, utc_timestamp
 from .paths import AppPaths
+
+
+def is_durable_session_artifact_name(name: str) -> bool:
+    """Return whether *name* is reserved for bounded session-store cleanup."""
+
+    generation = r"[0-9]{20}-[0-9a-f]{32}"
+    return bool(
+        re.fullmatch(rf"{generation}\.json", name)
+        or re.fullmatch(r"[0-9a-f]{64}\.pack", name)
+        or re.fullmatch(r"\..+\.[A-Za-z0-9_-]+\.tmp", name)
+        or name.endswith(".invalid")
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,7 +130,11 @@ def cleanup_stale(
     inspected = 0
 
     groups = (
-        (paths.temp_dir, lambda item: item.name.startswith("uniti-temp-") and _old_enough(item, week_cutoff)),
+        (
+            paths.temp_dir,
+            lambda item: item.name.startswith("uniti-temp-")
+            and _old_enough(item, week_cutoff),
+        ),
         (paths.session_dir, lambda item: _session_removable(item, active, week_cutoff)),
         (
             paths.log_dir,

@@ -483,6 +483,8 @@ class SessionManifest:
             if len(values) > maximum:
                 raise ValueError(f"session exceeds {maximum} {field}")
         _require_tuple(self.packs, "session packs")
+        if len(self.packs) > MAX_DOCUMENTS + 1:
+            raise ValueError("session contains too many history pack references")
         if not isinstance(self.find_replace, FindReplaceManifestRecord):
             raise ValueError("session find/replace state is invalid")
         _validate_notices(self.notices)
@@ -501,6 +503,21 @@ class SessionSnapshot:
         _require_tuple(self.packs, "session snapshot packs")
         if any(not isinstance(item, HistoryPack) for item in self.packs):
             raise ValueError("session snapshot contains an invalid document history pack")
+        document_by_id = {
+            item.document_id: item for item in self.manifest.documents
+        }
+        pack_ids = [item.document_id for item in self.packs]
+        if len(set(pack_ids)) != len(pack_ids):
+            raise ValueError("session snapshot contains duplicate document history packs")
+        for pack in self.packs:
+            document = document_by_id.get(pack.document_id)
+            if document is None:
+                raise ValueError("session snapshot history references an unknown document")
+            if (
+                pack.canonical_path != document.canonical_path
+                or pack.closed_at != document.closed_at
+            ):
+                raise ValueError("session snapshot history does not match its document")
         if self.find_replace_pack is not None and not isinstance(
             self.find_replace_pack, FindReplaceHistoryPack
         ):
@@ -613,15 +630,24 @@ def _validate_manifest_structure(manifest: SessionManifest) -> None:
     if target is not None and target not in view_ids:
         raise ValueError("find/replace panel references an unknown view")
 
-    pack_keys: set[tuple[str, str, str]] = set()
+    pack_keys: set[tuple[str, str]] = set()
+    filenames: set[str] = set()
     for reference in manifest.packs:
-        key = (reference.kind, reference.owner_id, reference.generation)
+        key = (reference.kind, reference.owner_id)
         if key in pack_keys:
             raise ValueError("session contains a duplicate history pack reference")
         pack_keys.add(key)
+        if reference.filename in filenames:
+            raise ValueError("session contains a duplicate history pack filename")
+        filenames.add(reference.filename)
         if reference.kind == "document" and reference.owner_id not in document_ids:
             raise ValueError("history pack references an unknown document")
     find_reference = manifest.find_replace.history_pack
+    find_references = [item for item in manifest.packs if item.kind == "find_replace"]
+    if len(find_references) > 1:
+        raise ValueError("session contains multiple find/replace history references")
+    if find_reference is None and find_references:
+        raise ValueError("session has an unclaimed find/replace history reference")
     if find_reference is not None and find_reference not in manifest.packs:
         raise ValueError("find/replace history reference is absent from session packs")
 

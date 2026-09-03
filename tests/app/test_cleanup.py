@@ -82,3 +82,15 @@ def test_cleanup_honors_inspection_and_removal_limits(tmp_path: Path):
 
     assert report.inspected == 7
     assert len(report.removed) == 3
+
+
+def test_process_cleanup_never_touches_durable_session_state(tmp_path: Path):
+    paths = _paths(tmp_path)
+    durable = paths.durable_session_dir / "manifests" / "00000000000000000001.json"
+    durable.parent.mkdir(parents=True)
+    durable.write_text("{}", encoding="utf-8")
+    _make_old(durable, days=30)
+
+    cleanup_stale(paths)
+
+    assert durable.exists()

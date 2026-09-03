@@ -46,6 +46,64 @@ def sync_directory(directory: Path) -> None:
         os.close(descriptor)
 
 
+def sync_directory_strict(directory: Path) -> None:
+    """Sync a directory and expose every durability failure to the caller."""
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    descriptor = os.open(directory, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def atomic_write_bytes(
+    path: Path,
+    payload: bytes,
+    *,
+    mode: int = 0o600,
+    strict_directory_sync: bool = True,
+) -> None:
+    """Atomically replace one binary file after flushing its exact bytes."""
+
+    if not isinstance(payload, bytes):
+        raise TypeError("atomic byte payload must be bytes")
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor, name = tempfile.mkstemp(
+        dir=target.parent,
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(name)
+    try:
+        try:
+            os.fchmod(descriptor, mode)
+        except (AttributeError, OSError):
+            pass
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+        if strict_directory_sync:
+            sync_directory_strict(target.parent)
+        else:
+            sync_directory(target.parent)
+    except BaseException:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
