@@ -74,6 +74,14 @@ class OperationSeal:
     revision: int
 
 
+@dataclass(frozen=True, slots=True)
+class FindRequest:
+    compiled: object
+    seal: OperationSeal
+    direction: int
+    origin: int
+
+
 class _CircularClearButton(QToolButton):
     """Small palette-aware clear control that stays circular on native styles."""
 
@@ -712,8 +720,8 @@ class FindReplaceWindow(QDialog):
             and self._results_are_current(view)
         )
         self.find_all_button.setEnabled(idle and pattern_valid)
-        self.previous_button.setEnabled(idle and results_current)
-        self.next_button.setEnabled(idle and results_current)
+        self.previous_button.setEnabled(idle and pattern_valid)
+        self.next_button.setEnabled(idle and pattern_valid)
         self.replace_button.setEnabled(
             idle and results_current and replacement_valid
         )
@@ -829,11 +837,7 @@ class FindReplaceWindow(QDialog):
         self.cancel_search()
         self.status_label.setText("text changed — search again")
 
-    def find_all(self) -> None:
-        view = self._current_view()
-        compiled = self.compile_current()
-        if view is None or compiled is None:
-            return
+    def _start_find(self, view, compiled, *, direction: int, origin: int) -> None:
         seal = self._operation_seal(view)
         revision = seal.revision
         snapshot = view.document.snapshot()
@@ -864,8 +868,20 @@ class FindReplaceWindow(QDialog):
             view,
             work,
             task_kind=TaskKind.SEARCH,
-            context=(compiled, seal),
+            context=FindRequest(compiled, seal, direction, origin),
             rejected_cleanup=snapshot.close,
+        )
+
+    def find_all(self) -> None:
+        view = self._current_view()
+        compiled = self.compile_current()
+        if view is None or compiled is None:
+            return
+        self._start_find(
+            view,
+            compiled,
+            direction=1,
+            origin=view.state.cursor,
         )
 
     def replace_current(self) -> None:
@@ -997,27 +1013,28 @@ class FindReplaceWindow(QDialog):
 
     def _apply_find_results(self, view, store: MatchStore, context) -> None:
         if (
-            not isinstance(context, tuple)
-            or len(context) != 2
-            or not isinstance(context[1], OperationSeal)
-            or not self._seal_is_current(context[1], view)
+            not isinstance(context, FindRequest)
+            or not self._seal_is_current(context.seal, view)
             or view.document.revision != store.document_revision
         ):
             store.close()
             self._clear_results()
             self.status_label.setText("text changed — search again")
             return
-        compiled = context[0]
         self._clear_results()
         self._results = store
         self._results_view = view
-        self._results_compiled = compiled
+        self._results_compiled = context.compiled
         self._result_listener_remove = view.document.add_edit_listener(
             lambda _operation, view=view: self._invalidate_results_for_edit(view)
         )
         view.set_match_index(self._results)
         self.status_label.setText(f"{len(self._results):,} matches")
-        self._current_index = self._results.next_index(view.state.cursor)
+        self._current_index = (
+            self._results.previous_index(context.origin)
+            if context.direction < 0
+            else self._results.next_index(context.origin)
+        )
         if self._current_index is not None:
             self._navigate_to(self._current_index)
         else:
@@ -1094,27 +1111,62 @@ class FindReplaceWindow(QDialog):
         self.status_label.setText(f"{count:,} replaced")
         self._update_actions()
 
-    def next_match(self) -> None:
-        index = advance_result_index(
-            self._current_index,
-            len(self._results),
-            1,
+    @staticmethod
+    def _navigation_origin(view, direction: int) -> int:
+        selection = view.state.selection
+        if selection is None:
+            return view.state.cursor
+        return selection[1] if direction > 0 else selection[0]
+
+    def _current_result_is_selected(self, view) -> bool:
+        index = self._current_index
+        if index is None or index < 0 or index >= len(self._results):
+            return False
+        record = self._results.records[index]
+        if record.start == record.end:
+            return (
+                view.state.selection is None
+                and view.state.cursor == record.start
+                and view.state.anchor == record.start
+            )
+        return view.state.selection == record.span
+
+    def _navigation_index(self, view, direction: int) -> int | None:
+        if self._current_result_is_selected(view):
+            return advance_result_index(
+                self._current_index,
+                len(self._results),
+                direction,
+            )
+        origin = self._navigation_origin(view, direction)
+        if direction < 0:
+            return self._results.previous_index(origin)
+        return self._results.next_index(origin)
+
+    def _navigate_match(self, direction: int) -> None:
+        view = self._current_view()
+        compiled = self.compile_current()
+        if view is None or compiled is None:
+            return
+        if len(self._results) and self._results_are_current(view):
+            index = self._navigation_index(view, direction)
+            if index is not None:
+                self._navigate_to(index)
+            return
+        if len(self._results):
+            self._clear_results()
+        self._start_find(
+            view,
+            compiled,
+            direction=direction,
+            origin=self._navigation_origin(view, direction),
         )
-        if index is None:
-            self.find_all()
-        else:
-            self._navigate_to(index)
+
+    def next_match(self) -> None:
+        self._navigate_match(1)
 
     def previous_match(self) -> None:
-        index = advance_result_index(
-            self._current_index,
-            len(self._results),
-            -1,
-        )
-        if index is None:
-            self.find_all()
-        else:
-            self._navigate_to(index)
+        self._navigate_match(-1)
 
     def _navigate_to(self, index: int) -> None:
         view = self._current_view()

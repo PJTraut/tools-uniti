@@ -515,6 +515,80 @@ def test_palette_change_rebuilds_group_formats_with_accessible_contrast(
         _close_panel(app, document, view, panel)
 
 
+def test_navigation_buttons_are_ready_before_find_all(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "one two one")
+    try:
+        panel.find_input.set_text("one")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+
+        assert panel.result_count == 0
+        assert panel.previous_button.isEnabled()
+        assert panel.next_button.isEnabled()
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+@pytest.mark.parametrize(
+    ("method_name", "expected_selection"),
+    (
+        ("next_match", (18, 21)),
+        ("previous_match", (8, 11)),
+    ),
+)
+def test_navigation_before_find_all_starts_from_cursor(
+    tmp_path: Path,
+    method_name: str,
+    expected_selection: tuple[int, int],
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(
+        tmp_path,
+        "one two one three one",
+    )
+    try:
+        view.state.move_to(12)
+        view._state_changed()
+        panel.find_input.set_text("one")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+
+        getattr(panel, method_name)()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 3)
+
+        assert view.state.selection == expected_selection
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_navigation_uses_moved_cursor_when_results_are_current(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "one x one x one")
+    try:
+        panel.find_input.set_text("one")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 3)
+        assert view.state.selection == (0, 3)
+
+        view.state.move_to(10)
+        view._state_changed()
+        panel.next_match()
+
+        assert view.state.selection == (12, 15)
+        assert panel._current_index == 2
+    finally:
+        _close_panel(app, document, view, panel)
+
+
 def test_zero_width_navigation_wraps_by_result_index_without_selection(
     tmp_path: Path,
 ):
