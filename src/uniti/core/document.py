@@ -592,6 +592,42 @@ class Document:
         self._ensure_open()
         self._replace_internal(start, end, text, record=True, coalesce=coalesce)
 
+    def replay_transaction(self, transaction: EditTransaction) -> None:
+        """Apply one validated recovery transaction without coalescing it."""
+
+        self._ensure_open()
+        if not isinstance(transaction, EditTransaction) or not transaction.operations:
+            raise ValueError("recovery transaction is invalid")
+        for operation in transaction.operations:
+            if not isinstance(operation, EditOperation):
+                raise ValueError("recovery transaction operation is invalid")
+            end = operation.start + len(operation.deleted_text)
+            try:
+                current = self.read(operation.start, end)
+            except ValueError as exc:
+                raise ValueError("recovery edit range is outside document") from exc
+            if current != operation.deleted_text:
+                raise ValueError("recovery deleted text does not match document")
+            self._replace_internal(
+                operation.start,
+                end,
+                operation.inserted_text,
+                record=False,
+            )
+        self._history.record(transaction)
+        self._notify_history(HistoryEventKind.TRANSACTION, transaction)
+
+    def replay_save_point(self) -> None:
+        """Advance the in-memory save point during semantic recovery replay."""
+
+        self._ensure_open()
+        self._history.mark_saved()
+        self._saved_output_format = self._output_format
+        self._notify_history(
+            HistoryEventKind.SAVE_POINT,
+            metadata=self._history_metadata(),
+        )
+
     def break_history_coalescing(self) -> None:
         self._history.break_coalescing()
 
