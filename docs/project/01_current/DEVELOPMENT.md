@@ -1,7 +1,7 @@
 # UNITI Current Development Workflow
 
-Date: 2026-09-02
-Version: `v0.001a18` / `0.1a18`
+Date: 2026-09-03
+Version: `v0.001a19` / `0.1a19`
 
 ## Requirements and policy
 
@@ -104,7 +104,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m uniti --smoke
 git diff --check
 ```
 
-The host-aware a18 user-experience suite uses the packaged policy table in `src/uniti/resources/performance_policy.toml`:
+The host-aware a19 user-experience suite uses the packaged policy table in `src/uniti/resources/performance_policy.toml`:
 
 ```bash
 # 10 MiB, three isolated repetitions per daily-use scenario
@@ -112,14 +112,18 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/performance_suite.py --tier q
 
 # controlled 100 MiB freeze baseline
 QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/performance_suite.py \
-  --tier routine --mode baseline --output benchmarks/baselines/a18-routine.json
+  --tier routine --mode baseline \
+  --output benchmarks/baselines/v0.001a19-mac15-8-routine.json
 
 # sparse 1 GiB lazy-open/design probe
 QT_QPA_PLATFORM=offscreen .venv/bin/python scripts/performance_suite.py \
-  --tier design-target --mode baseline --output benchmarks/baselines/a18-design-target.json
+  --tier design-target --mode baseline \
+  --output benchmarks/baselines/v0.001a18-mac15-8-design-target.json
 
 # real macOS window-system UX run
-.venv/bin/python scripts/performance_suite.py --tier quick --native-gui
+.venv/bin/python scripts/performance_suite.py --tier quick --native-gui \
+  --mode real-world \
+  --output benchmarks/baselines/v0.001a19-mac15-8-native-quick.json
 ```
 
 Use `--scenario NAME` to isolate a workflow, `--compare BASELINE.json` only for a compatible host fingerprint, and `--temp-root PATH` only for an owned location with adequate capacity. `PASS`, `WARN`, `FAIL`, `INVALID`, and `NOT RUN` are distinct; never describe an ineligible or contended controlled run as passing.
@@ -133,7 +137,16 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
   tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-The a18 freeze gate adds `large-file` to deep self-check and retains all a17 byte-integrity coverage. Its selected evidence is stored under `benchmarks/baselines/`: controlled 100 MiB routine, sparse 1 GiB design target, and native Cocoa 10 MiB quick runs. All required scenarios passed on the recorded Apple M3 Max host. Before remote integration, confirm the working tree is clean and ensure the push is normal and fast-forward safe.
+The a19 freeze gate adds `regex-intelligence` to deep self-check and retains all a17 byte-integrity and a18 large-file coverage. Its selected evidence is stored under `benchmarks/baselines/`: controlled 100 MiB routine and native Cocoa 10 MiB quick runs, with the a18 sparse 1 GiB design target retained as inherited evidence. All twelve required a19 scenarios passed on the recorded Apple M3 Max host. Before remote integration, confirm the working tree is clean and ensure the push is normal and fast-forward safe.
+
+## Regex-intelligence change discipline
+
+- Keep `regex==2026.5.9` as the sole semantic authority; lexer output may describe spans but must be reconciled before claiming group identity.
+- Limit interactive pattern/replacement analysis to 65,536 code points and keep engine compilation off the GUI thread after the 150 ms quiet interval.
+- Publish analysis and capture results only after every expression, document, revision, result-store, and match-index seal remains current.
+- Resolve capture reports from immutable snapshots within the 65,536-character read, five-preview, 80-character-preview, and 1 MiB payload bounds.
+- Store and navigate zero-width matches by result index; apply each result exactly once and retain atomic one-step Replace All undo.
+- Close snapshots, match stores, replacement plans, documents, task records, and superseded pending requests in tests and measured scenarios.
 
 ## Large-file change discipline
 
@@ -166,6 +179,6 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a18` is implemented without a new tag; `v0.001a19` is the active planned milestone.
+Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a19` is implemented without a new tag; `v0.001a20` is the active planned milestone.
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.

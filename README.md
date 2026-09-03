@@ -27,19 +27,19 @@ The current development alpha includes:
 - streaming atomic Save / Save As;
 - external-file change protection before overwrite;
 - incremental crash-recovery journals and startup recovery discovery;
-- third-party `regex` search, named/repeated capture offsets, Find/Replace, Replace All, and streaming regex rewrite;
+- third-party `regex` search with engine-reconciled group identities, inline-switch and replacement-reference highlighting, structured diagnostics, and deterministic zero-width results;
 - integrated application ResourceManager with cache pressure, active/inactive document priorities, and shared background scheduling;
 - custom PySide6 `QAbstractScrollArea` editor viewport — Qt never owns the document;
 - tabs, native File/Edit/Search menus, Cut/Copy/Paste, IME composition support, and operational status bar;
-- regex-aware Find/Replace fields, compact match index, visible-only match overlays, capture inspector;
+- asynchronous regex-aware Find/Replace fields, compact match index, visible-only normal/zero-width overlays, and bounded model-backed current/next capture reports;
 - separate **Reinterpret As** and **Convert on Save** controls;
 - source-aware inserted-EOL policy, EOL controls, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics.
 - explicit Python 3.12+ bootstrap into a UNITI-owned source or application-local virtual environment;
 - ownership markers, exclusive bootstrap locks, dependency fingerprints, explicit repair, and validation-only normal startup;
 - atomic schema-1 setup/settings state, ordered BOOT→READY startup phases, bounded lifecycle logs, and narrow stale-artifact cleanup; and
-- fast/deep self-checks for runtime, dependencies, paths, schemas, resources, filesystem primitives, text fidelity, recovery, and offscreen Qt.
+- fast/deep self-checks for runtime, dependencies, paths, schemas, resources, filesystem primitives, regex intelligence, text fidelity, recovery, large-file behavior, and offscreen Qt.
 
-Explicitly deferred beyond this alpha: project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
+Explicitly deferred beyond this alpha: editor whitespace visualization and expanded keyboard-driven Unicode inspection, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
 
 ## Requirements
 
@@ -114,7 +114,7 @@ Fast validation:
 .venv/bin/uniti --self-check --json
 ```
 
-The deep check adds encoding/endianness, EOL, mmap/fallback, invalid-byte, regex replacement, streaming save/reopen, recovery replay, and offscreen Qt/view fixtures:
+The deep check adds encoding/endianness, EOL, mmap/fallback, invalid-byte, regex intelligence/replacement, streaming save/reopen, recovery replay, large-file, and offscreen Qt/view fixtures:
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/uniti --self-check --deep --json
@@ -142,7 +142,7 @@ A successful run returns JSON with `"ok": true`.
 
 ```bash
 .venv/bin/python -m pytest
-.venv/bin/python -m compileall -q src scripts tests
+.venv/bin/python -m compileall -q src scripts benchmarks tests
 ```
 
 Qt runtime tests run automatically when PySide6 is installed; otherwise those tests are explicitly skipped while all core/app contracts continue to run.
@@ -158,7 +158,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m uniti --self-check --deep --json
 .venv/bin/uniti
 ```
 
-Manual checks: open/save UTF-8, Windows-1252, UTF-16 LE/BE and UTF-32 LE/BE files; verify LF/CRLF/CR insertion and conversion; Cut/Copy/Paste; CJK IME composition; regex Find/Replace and capture groups; invalid-byte boxes/inspector; recovery after an intentional unclean exit; and horizontal navigation on a very long line.
+Manual checks: open/save UTF-8, Windows-1252, UTF-16 LE/BE and UTF-32 LE/BE files; verify LF/CRLF/CR insertion and conversion; Cut/Copy/Paste; CJK IME composition; regex group colors, paired references, diagnostics, zero-width markers, navigation, replacement, and capture-report readability; invalid-byte boxes/inspector; recovery after an intentional unclean exit; and horizontal navigation on a very long line.
 
 ## Architecture invariants
 

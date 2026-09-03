@@ -27,6 +27,17 @@ def _wait_for_idle(app, find_replace) -> None:
     pytest.fail("Find/Replace operation did not finish")
 
 
+def _wait_for_pattern(app, find_replace) -> None:
+    from PySide6.QtTest import QTest
+
+    for _ in range(400):
+        app.processEvents()
+        if find_replace.compile_current() is not None:
+            return
+        QTest.qWait(5)
+    pytest.fail("Find/Replace pattern analysis did not finish")
+
+
 def _text(view) -> str:
     return view.document.read(0, view.document.total_chars())
 
@@ -44,6 +55,7 @@ def test_replace_all_is_one_atomic_undo(tmp_path: Path):
     panel = window._find_replace
     panel.find_input.set_text("one")
     panel.replace_input.set_text("two")
+    _wait_for_pattern(app, panel)
     panel.replace_all()
     _wait_for_idle(app, panel)
 

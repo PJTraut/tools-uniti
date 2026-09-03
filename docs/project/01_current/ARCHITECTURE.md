@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
-Date: 2026-09-02
-Baseline: verified a18 implementation through `99e9597` plus the a18 freeze tree on `main`
+Date: 2026-09-03
+Baseline: verified a19 implementation through `06d644d` plus the a19 freeze tree on local `main`
 
 ## Lifecycle boundary
 
@@ -101,6 +101,8 @@ read-only host profile + one-second live samples
 
 Normal hosts use up to eight workers while reserving one logical core for the GUI. Busy and constrained states reduce worker/cache capacity; critical state clears disposable cache and admits only one worker. Recovery requires two healthier samples to prevent oscillation. `Pause Background Work` defers index, EOL, and prefetch tasks but never foreground Save, navigation, search, replacement, or recovery work.
 
+`TaskCoordinator` snapshots carry a monotonically increasing generation. Listener callbacks and Qt signals are wake-ups without state payloads; GUI consumers reread the authoritative latest snapshot and ignore an already-applied generation. Latest-request slots for regex analysis and capture resolution serialize work per Find/Replace window, retain only the newest pending generation, and dispose superseded request resources.
+
 Cache entries carry explicit intent—visible, nearby, search, index, recent, inactive, or stale—and are byte-accounted. Closing a document evicts only its disposable entries. User text, edit history, recovery state, and unsaved changes are never disposable cache.
 
 ## Text-format authority and inspection
@@ -150,11 +152,15 @@ These principles are derived from CotEditor's published [design philosophy](http
 
 An explicit `Literal | Regex` selector owns search semantics. Literal mode escapes the query and alone displays Case Sensitive and Whole Word options. Regex mode hides those controls and sends raw syntax and inline switches such as `(?i)` to the authoritative third-party engine. The Find and Replace input editors receive equal vertical stretch and divide all space remaining above the controls. Mode/report options, Find All/Replace All, Previous/Next/Replace, and Cancel/status form one compact stack anchored to the bottom of the controls frame. F/R zoom changes field fonts and their minimum readable height without restoring a fixed field height. Search remains cancellable and revision-bound.
 
-The capture report is the collapsible second child of an unrestricted `QSplitter`, so it can be resized to any useful Bottom or Right proportion or dragged closed. `Report: Hidden | Bottom | Right` remains the explicit selector. The scoped `Cycle Report Position` command rotates those locations with default portable binding `Ctrl+Alt+R`. Capture rendering remains groups `1..N` only, with delimiters between adjacent matches.
+Regex-mode authoring uses immutable Qt-free `RegexAnalysis` values. A cheap structural pass provides pending presentation immediately, and a 150 ms quiet interval submits engine compilation off the GUI thread. The pinned engine owns validity, group counts/names, duplicate-name and branch-reset semantics, and replacement expansion. UNITI reconciles lexical spans with those engine facts before assigning group/color identities; disagreement withholds all uncertain identity color rather than publishing a partial claim. Pattern and replacement fields share identities across opening/closing delimiters, names, and references, expose paired-span emphasis, and render structured warning/error spans plus accessible diagnostic text. Interactive expressions remain editable beyond 65,536 code points but cannot compile, search, or replace.
+
+The capture report is the collapsible second child of an unrestricted `QSplitter`, so it can be resized to any useful Bottom or Right proportion or dragged closed. `Report: Hidden | Bottom | Right` remains the explicit selector. The scoped `Cycle Report Position` command rotates those locations with default portable binding `Ctrl+Alt+R`. Capture rendering remains groups `1..N` only, with delimiters between current and next matches. It is backed by `CaptureReportModel`, not one widget per row. Resolution runs off-thread against an immutable snapshot, reads at most 65,536 characters per match, retains at most five previews of at most 80 characters per group, caps one payload at 1 MiB, and emits one explicit unavailable record instead of a misleading partial group list.
 
 Find All runs against an immutable document snapshot through the shared task coordinator and installs its complete revision-bound `MatchStore` on the active editor view. Match records use compact fixed-size pages and spill to an owned temporary file after their memory budget; visible lookup stays indexed without one Qt object per match. The virtual viewport queries only intersections with each visible text window and paints every visible result with a clear theme-derived highlight. Pattern changes, edits, replacement, and document changes cancel or clear stale results.
 
-Single Replace and Replace All return through the authoritative `Document`. Replace All builds a compact, spillable `ReplacementPlan` off the GUI thread, rejects stale or over-budget application, and rebuilds piece ranges in one monotonic pass. The admitted plan is one document transaction and one Undo operation. The UI does not use the core streaming-rewrite service for Replace All because a disk rewrite would bypass the history contract.
+Every analysis/search/report publication is sealed to the relevant expression generation and text; document-backed results additionally require the captured document identity/revision, result-store identity, and match index. Stale or canceled work closes its snapshots/stores/plans and never mutates visible state. Capture resolution probes one character beyond its bounded context only to distinguish an exact end from an artificial boundary; it does not measure the whole document on the bounded path.
+
+Single Replace and Replace All return through the authoritative `Document`. Engine-emitted zero-width matches are first-class stored results: navigation advances by stored result index, rendering uses explicit insertion markers, wrapping is result-index based, and each zero-width replacement applies exactly once. Replace All builds a compact, spillable `ReplacementPlan` off the GUI thread, rejects stale or over-budget application, and rebuilds piece ranges in one monotonic pass. The admitted plan is one document transaction and one Undo operation. The UI does not use the core streaming-rewrite service for Replace All because a disk rewrite would bypass the history contract.
 
 Editor zoom/wrap and Find/Replace zoom/geometry/report placement persist independently through `SettingsStore`.
 
@@ -202,7 +208,7 @@ Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, time
 
 ## Self-check and diagnostics
 
-`uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, offscreen Qt/view, `text-integrity`, and `large-file`. The large-file check verifies lazy access to a marker beyond 1 GiB, cache-free streaming intent, task cancellation, and artifact cleanup without embedding the 100 MiB benchmark suite.
+`uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, offscreen Qt/view, `regex-intelligence`, `text-integrity`, and `large-file`. The regex-intelligence check covers advanced engine metadata, bounded reports, zero-width search/replacement, and Undo; ordinary tests and measured scenarios separately cover structured diagnostics, cancellation, integrity, and cleanup. The large-file check verifies lazy access to a marker beyond 1 GiB, cache-free streaming intent, task cancellation, and artifact cleanup without embedding the 100 MiB benchmark suite.
 
 The application CLI's `--smoke` mode runs the core alpha probe and a self-closing real `UNITIMainWindow` on the selected Qt platform. `QT_QPA_PLATFORM=offscreen` provides the automated platform gate; an unmodified macOS environment exercises native Cocoa separately.
 
@@ -210,4 +216,4 @@ The completed startup snapshot is passed into `UNITIMainWindow`. Diagnostics com
 
 ## Planned-change boundary
 
-The complete a18 Large-File Alpha is implemented and verified current architecture. Its milestone, approved design, and execution record are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a19` Regex Intelligence Alpha is now the sole active milestone; a19 and queued a20+ behavior remain planned intent and are not current architecture. Extension-sensed file-type profiles and syntax highlighting remain parked outside the approved roadmap.
+The complete a19 Regex Intelligence Alpha is implemented and verified current architecture. Its milestone, approved design, and execution record are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a20` Recovery & Session Alpha is now the sole active milestone; a20 and queued a21+ behavior remain planned intent and are not current architecture. Editor whitespace visualization, expanded keyboard-driven Unicode inspection, extension-sensed file-type profiles, and syntax highlighting remain parked outside the approved roadmap.

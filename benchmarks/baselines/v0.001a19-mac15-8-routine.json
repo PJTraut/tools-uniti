@@ -1,0 +1,852 @@
+{
+  "evaluations": [
+    {
+      "messages": [],
+      "scenario": "open_first_paint",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "navigation",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "typing",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "scroll",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "giant_line",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "search_sparse",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "search_dense",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "replace",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "regex_intelligence",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "save",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "save_as",
+      "state": "PASS"
+    },
+    {
+      "messages": [],
+      "scenario": "resource_recovery",
+      "state": "PASS"
+    }
+  ],
+  "host": {
+    "architecture": "arm64",
+    "available_memory": 16018309120,
+    "corpus_schema": 1,
+    "cpu_model": "Apple M3 Max",
+    "display_refresh_hz": null,
+    "display_scale": null,
+    "filesystem_type": "/",
+    "free_disk": 301524533248,
+    "git_commit": "06d644d11ddc02d6f8167d56b9046798f74efed1",
+    "load_per_logical_core": 0.408294677734375,
+    "logical_cores": 16,
+    "physical_cores": 16,
+    "physical_memory": 51539607552,
+    "platform": "darwin",
+    "platform_release": "25.6.0",
+    "power_state": null,
+    "process_rss": 29966336,
+    "python_version": "3.12.4",
+    "qt_version": "6.11.2",
+    "schema": 1,
+    "sparse_files": true,
+    "temp_root": "/private/var/folders/lh/jxs8qjhx1k54ks8n0dwgnmgc0000gp/T",
+    "thermal_state": null,
+    "uniti_version": "0.1a18"
+  },
+  "mode": "baseline",
+  "scenarios": [
+    {
+      "facts": {
+        "integrity_ok": true,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "source_bytes": 104857600
+      },
+      "messages": [],
+      "metrics": {
+        "open_to_usable_ms": {
+          "values": [
+            16.178417019546032,
+            14.342374983243644,
+            13.164667063392699
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            3.796875,
+            4.71875,
+            4.53125
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            3.796875,
+            4.71875,
+            4.53125
+          ]
+        }
+      },
+      "scenario": "open_first_paint",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "integrity_ok": true,
+        "lazy_source_navigation": false,
+        "mapped_bytes": 104857600,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "target_line": 2949120,
+        "target_offset": 94371840
+      },
+      "messages": [],
+      "metrics": {
+        "gui_heartbeat_max_ms": {
+          "values": [
+            21.03079203516245,
+            23.14625005237758,
+            19.739042036235332
+          ]
+        },
+        "interaction_max_ms": {
+          "values": [
+            5.4992500226944685,
+            6.96108303964138,
+            5.34083298407495
+          ]
+        },
+        "navigation_completion_ms": {
+          "values": [
+            5095.877791987732,
+            5078.393958043307,
+            5093.20583299268
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            19.0625,
+            23.75,
+            20.875
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            19.0625,
+            23.75,
+            20.875
+          ]
+        }
+      },
+      "scenario": "navigation",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "integrity_ok": true,
+        "keystrokes": 20,
+        "one_atomic_typing_undo": true,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3
+      },
+      "messages": [],
+      "metrics": {
+        "interaction_max_ms": {
+          "values": [
+            16.655499930493534,
+            17.132958979345858,
+            16.843292047269642
+          ]
+        },
+        "interaction_p95_ms": {
+          "values": [
+            16.64991700090468,
+            16.814582981169224,
+            16.832291963510215
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            6.796875,
+            5.328125,
+            9.75
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            6.796875,
+            5.328125,
+            9.75
+          ]
+        }
+      },
+      "scenario": "typing",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "integrity_ok": true,
+        "integrity_read_bytes": 256,
+        "mapped_bytes": 589824,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "resident_wrapped_rows": 47,
+        "unwrapped_scrolled": true,
+        "wrapped_scrolled": true
+      },
+      "messages": [],
+      "metrics": {
+        "interaction_max_ms": {
+          "values": [
+            13.041542028076947,
+            14.460000093095005,
+            11.773584061302245
+          ]
+        },
+        "interaction_p95_ms": {
+          "values": [
+            12.838333030231297,
+            14.354375074617565,
+            11.717499932274222
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            7.1875,
+            6.734375,
+            6.5625
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            7.1875,
+            6.40625,
+            6.5625
+          ]
+        }
+      },
+      "scenario": "scroll",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "horizontal_scrolled": true,
+        "integrity_ok": true,
+        "integrity_read_bytes": 256,
+        "mapped_bytes": 104857600,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "resident_wrapped_rows": 47,
+        "wrapped_scrolled": true
+      },
+      "messages": [],
+      "metrics": {
+        "interaction_max_ms": {
+          "values": [
+            21.900583989918232,
+            23.093416006304324,
+            23.06849998421967
+          ]
+        },
+        "interaction_p95_ms": {
+          "values": [
+            15.5104590812698,
+            14.895707950927317,
+            10.295000043697655
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            4.6875,
+            2.484375,
+            2.734375
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "scenario": "giant_line",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "cancelled": true,
+        "integrity_ok": true,
+        "matches": 3,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "spilled": false
+      },
+      "messages": [],
+      "metrics": {
+        "first_progress_ms": {
+          "values": [
+            1.3368750223889947,
+            1.3762499438598752,
+            1.4322089264169335
+          ]
+        },
+        "gui_heartbeat_max_ms": {
+          "values": [
+            0.3019580617547035,
+            0.3172919386997819,
+            0.30924996826797724
+          ]
+        },
+        "gui_heartbeat_p95_ms": {
+          "values": [
+            0.046666013076901436,
+            0.045666005462408066,
+            0.0427919439971447
+          ]
+        },
+        "interaction_max_ms": {
+          "values": [
+            0.0778330722823739,
+            0.08387502748519182,
+            0.0990839907899499
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            1.125,
+            1.09375,
+            1.53125
+          ]
+        },
+        "progress_gap_ms": {
+          "values": [
+            1.621625036932528,
+            1.5852500218898058,
+            1.5737919602543116
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            1.125,
+            1.09375,
+            1.53125
+          ]
+        },
+        "search_completion_ms": {
+          "values": [
+            44.163583079352975,
+            48.39587502647191,
+            45.78345897607505
+          ]
+        }
+      },
+      "scenario": "search_sparse",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "cancelled": true,
+        "integrity_ok": true,
+        "matches": 409600,
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "spilled": true
+      },
+      "messages": [],
+      "metrics": {
+        "cancel_normal_ms": {
+          "values": [
+            1.306624966673553,
+            1.2967499205842614,
+            1.306332997046411
+          ]
+        },
+        "first_progress_ms": {
+          "values": [
+            10.244374978356063,
+            10.926375049166381,
+            10.657541919499636
+          ]
+        },
+        "gui_heartbeat_max_ms": {
+          "values": [
+            1.2439999263733625,
+            1.4147920301184058,
+            1.25495798420161
+          ]
+        },
+        "gui_heartbeat_p95_ms": {
+          "values": [
+            0.06887491326779127,
+            0.09454204700887203,
+            0.085500068962574
+          ]
+        },
+        "interaction_max_ms": {
+          "values": [
+            0.10170892346650362,
+            0.0883340835571289,
+            0.0926669454202056
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            5.609375,
+            7.03125,
+            5.859375
+          ]
+        },
+        "progress_gap_ms": {
+          "values": [
+            12.62979197781533,
+            16.565750003792346,
+            16.49312488734722
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            5.609375,
+            7.03125,
+            5.859375
+          ]
+        },
+        "search_completion_ms": {
+          "values": [
+            912.6256249146536,
+            969.9820840032771,
+            958.5149169433862
+          ]
+        }
+      },
+      "scenario": "search_dense",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "atomic_undo": true,
+        "integrity_ok": true,
+        "physical_memory_bytes": 51539607552,
+        "plan_spilled": true,
+        "planned_replacements": 409600,
+        "repetitions": 3,
+        "safe_refusal": true
+      },
+      "messages": [],
+      "metrics": {
+        "first_progress_ms": {
+          "values": [
+            11.903916951268911,
+            11.107957921922207,
+            11.238666018471122
+          ]
+        },
+        "gui_heartbeat_max_ms": {
+          "values": [
+            2.8343750163912773,
+            1.4663749607279897,
+            1.2587499804794788
+          ]
+        },
+        "gui_heartbeat_p95_ms": {
+          "values": [
+            0.08300004992634058,
+            0.07154105696827173,
+            0.07137504871934652
+          ]
+        },
+        "interaction_max_ms": {
+          "values": [
+            0.10595901403576136,
+            0.07574993651360273,
+            0.07645797450095415
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            5.6875,
+            6.328125,
+            5.546875
+          ]
+        },
+        "progress_gap_ms": {
+          "values": [
+            14.722375082783401,
+            15.952374902553856,
+            15.725875040516257
+          ]
+        },
+        "replace_completion_ms": {
+          "values": [
+            1146.7654169537127,
+            1124.2977919755504,
+            1121.8944159336388
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            5.6875,
+            6.328125,
+            5.546875
+          ]
+        }
+      },
+      "scenario": "replace",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "advanced_analysis_ok": true,
+        "cancelled": true,
+        "capture_report_bounded": true,
+        "capture_report_matches": 2,
+        "capture_report_payload_bytes": 672,
+        "cleanup_ok": true,
+        "document_closed": true,
+        "integrity_ok": true,
+        "physical_memory_bytes": 51539607552,
+        "plan_closed": true,
+        "repetitions": 3,
+        "search_capture_free": true,
+        "snapshots_closed": true,
+        "source_digest": "7eb2847f8793100f70085f94f6b715ba044660b56ae4b9dd6a936a00ffc297d8",
+        "store_closed": true,
+        "zero_width_matches": 4096,
+        "zero_width_plan_exact": true,
+        "zero_width_plan_replacements": 4096
+      },
+      "messages": [],
+      "metrics": {
+        "analysis_completion_ms": {
+          "values": [
+            3.552457899786532,
+            3.104749950580299,
+            3.4761250717565417
+          ]
+        },
+        "cancel_normal_ms": {
+          "values": [
+            1.3017080491408706,
+            1.3303329469636083,
+            1.2999589089304209
+          ]
+        },
+        "capture_report_ms": {
+          "values": [
+            49.553749966435134,
+            49.10508403554559,
+            47.70783300045878
+          ]
+        },
+        "first_progress_ms": {
+          "values": [
+            22.33337494544685,
+            21.961874910630286,
+            21.66162501089275
+          ]
+        },
+        "gui_heartbeat_max_ms": {
+          "values": [
+            6.179207935929298,
+            6.331499898806214,
+            6.649375078268349
+          ]
+        },
+        "gui_heartbeat_p95_ms": {
+          "values": [
+            5.522874998860061,
+            6.306041963398457,
+            6.334666977636516
+          ]
+        },
+        "interaction_max_ms": {
+          "values": [
+            0.20358292385935783,
+            0.17779192421585321,
+            0.19550009164959192
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            29.671875,
+            25.359375,
+            23.546875
+          ]
+        },
+        "progress_gap_ms": {
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            29.671875,
+            25.359375,
+            23.546875
+          ]
+        },
+        "zero_width_plan_ms": {
+          "values": [
+            21.446250029839575,
+            21.961874910630286,
+            20.965707954019308
+          ]
+        }
+      },
+      "scenario": "regex_intelligence",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "cancelled_target_preserved": true,
+        "integrity_ok": true,
+        "output_digest": "d4a2916afbad4fa06608f111d9c1f34bf47a63c2ba7aef0f25da9306e2cfe619",
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "source_identity_preserved": true
+      },
+      "messages": [],
+      "metrics": {
+        "cancel_normal_ms": {
+          "values": [
+            4.261624999344349,
+            4.1342920158058405,
+            4.301500041037798
+          ]
+        },
+        "first_progress_ms": {
+          "values": [
+            8.2034170627594,
+            13.408249942585826,
+            17.816082923673093
+          ]
+        },
+        "gui_heartbeat_max_ms": {
+          "values": [
+            11.693666921928525,
+            10.52841602358967,
+            10.113041964359581
+          ]
+        },
+        "gui_heartbeat_p95_ms": {
+          "values": [
+            2.8702080016955733,
+            3.5531249595806003,
+            2.4569169618189335
+          ]
+        },
+        "interaction_max_ms": {
+          "values": [
+            6.210249965079129,
+            7.947124890051782,
+            14.24083299934864
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            121.109375,
+            117.78125,
+            111.359375
+          ]
+        },
+        "progress_gap_ms": {
+          "values": [
+            15.792874968610704,
+            14.893959043547511,
+            14.32474993634969
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            29.203125,
+            21.5625,
+            15.125
+          ]
+        },
+        "save_completion_ms": {
+          "values": [
+            566.1418329691514,
+            533.6867499863729,
+            512.7893328899518
+          ]
+        }
+      },
+      "scenario": "save",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "cancelled_target_preserved": true,
+        "integrity_ok": true,
+        "output_digest": "d4a2916afbad4fa06608f111d9c1f34bf47a63c2ba7aef0f25da9306e2cfe619",
+        "physical_memory_bytes": 51539607552,
+        "repetitions": 3,
+        "source_identity_preserved": true
+      },
+      "messages": [],
+      "metrics": {
+        "cancel_normal_ms": {
+          "values": [
+            4.264999995939434,
+            4.141791025176644,
+            4.172874963842332
+          ]
+        },
+        "first_progress_ms": {
+          "values": [
+            19.40287498291582,
+            15.615458018146455,
+            17.05137500539422
+          ]
+        },
+        "gui_heartbeat_max_ms": {
+          "values": [
+            10.58970799203962,
+            9.543917025439441,
+            9.62170900311321
+          ]
+        },
+        "gui_heartbeat_p95_ms": {
+          "values": [
+            2.489499980583787,
+            3.6637920420616865,
+            3.533999901264906
+          ]
+        },
+        "interaction_max_ms": {
+          "values": [
+            12.56695797201246,
+            8.182000019587576,
+            11.600708006881177
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            118.9375,
+            113.984375,
+            116.46875
+          ]
+        },
+        "progress_gap_ms": {
+          "values": [
+            16.059207962825894,
+            13.823083019815385,
+            14.86966700758785
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            25.921875,
+            24.140625,
+            23.3125
+          ]
+        },
+        "save_completion_ms": {
+          "values": [
+            554.3044579681009,
+            537.8498750505969,
+            541.7771249776706
+          ]
+        }
+      },
+      "scenario": "save_as",
+      "schema": 1,
+      "state": "PASS"
+    },
+    {
+      "facts": {
+        "critical_cache_budget": 16777216,
+        "critical_worker_limit": 1,
+        "integrity_ok": true,
+        "normal_worker_limit": 8,
+        "physical_memory_bytes": 51539607552,
+        "recovered_cache_budget": 536870912,
+        "recovered_worker_limit": 8,
+        "repetitions": 3,
+        "source_bytes": 104857600
+      },
+      "messages": [],
+      "metrics": {
+        "interaction_max_ms": {
+          "values": [
+            0.06874999962747097,
+            0.0679579097777605,
+            0.11641590390354395
+          ]
+        },
+        "interaction_p95_ms": {
+          "values": [
+            0.012042000889778137,
+            0.012042000889778137,
+            0.013125012628734112
+          ]
+        },
+        "peak_rss_mib": {
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "retained_rss_mib": {
+          "values": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        }
+      },
+      "scenario": "resource_recovery",
+      "schema": 1,
+      "state": "PASS"
+    }
+  ],
+  "schema": 1,
+  "state": "PASS",
+  "tier": "routine"
+}

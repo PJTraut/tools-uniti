@@ -55,6 +55,11 @@ def test_a11_offscreen_open_find_edit_save_when_pyside6_available(tmp_path: Path
     panel = window._find_replace
     panel.search_mode_combo.setCurrentText("Regex")
     panel.find_input.setPlainText(r"abc\s+\d+")
+    analysis_deadline = time.monotonic() + 5.0
+    while panel.compile_current() is None and time.monotonic() < analysis_deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    assert panel.compile_current() is not None
     panel.find_all()
     deadline = time.monotonic() + 5.0
     while panel.busy and time.monotonic() < deadline:

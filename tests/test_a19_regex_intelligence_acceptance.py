@@ -1,8 +1,10 @@
 from dataclasses import FrozenInstanceError
 import importlib.metadata
 from pathlib import Path
+import tomllib
 
 import pytest
+import uniti
 
 from uniti.core.document import Document
 from uniti.regex.analysis import AnalysisState, analyze_pattern
@@ -10,6 +12,15 @@ from uniti.regex.captures import CaptureReportRequest, resolve_capture_report
 from uniti.regex.engine import compile_pattern
 from uniti.regex.replace import replace_all
 from uniti.regex.search import SearchOptions, search_document
+
+
+def test_a19_release_metadata_is_canonical():
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+
+    assert Path("VERSION").read_text(encoding="utf-8").strip() == "v0.001a19"
+    assert uniti.__version__ == "0.1a19"
+    assert uniti.__display_version__ == "v0.001a19"
+    assert project["project"]["version"] == "0.1a19"
 
 
 def test_a19_uses_only_the_pinned_engine_and_advanced_metadata():
