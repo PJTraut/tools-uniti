@@ -26,6 +26,9 @@ class TaskAdmissionError(RuntimeError):
 class TaskKind(StrEnum):
     SAVE = "save"
     RECOVERY = "recovery"
+    RECOVERY_COMPACTION = "recovery_compaction"
+    HASH = "hash"
+    SESSION = "session"
     NAVIGATION = "navigation"
     SEARCH = "search"
     REPLACE = "replace"
@@ -47,6 +50,9 @@ class TaskState(StrEnum):
 _PRIORITIES = {
     TaskKind.SAVE: WorkPriority.INTERACTIVE,
     TaskKind.RECOVERY: WorkPriority.VISIBLE,
+    TaskKind.RECOVERY_COMPACTION: WorkPriority.VISIBLE,
+    TaskKind.HASH: WorkPriority.VISIBLE,
+    TaskKind.SESSION: WorkPriority.PREFETCH,
     TaskKind.NAVIGATION: WorkPriority.INTERACTIVE,
     TaskKind.SEARCH: WorkPriority.SEARCH,
     TaskKind.REPLACE: WorkPriority.SEARCH,
@@ -56,7 +62,12 @@ _PRIORITIES = {
     TaskKind.REGEX_ANALYSIS: WorkPriority.INTERACTIVE,
     TaskKind.CAPTURE_REPORT: WorkPriority.VISIBLE,
 }
-_BACKGROUND_KINDS = {TaskKind.INDEX, TaskKind.EOL, TaskKind.PREFETCH}
+_BACKGROUND_KINDS = {
+    TaskKind.INDEX,
+    TaskKind.EOL,
+    TaskKind.PREFETCH,
+    TaskKind.SESSION,
+}
 
 
 @dataclass(frozen=True, slots=True)

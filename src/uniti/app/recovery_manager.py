@@ -1,196 +1,513 @@
-"""Crash-recovery lifecycle around core delta journals."""
+"""Observable crash-recovery lifecycle around semantic journals."""
 
 from __future__ import annotations
 
 import hashlib
+import os
+import shutil
 import threading
 import time
 import uuid
-from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from concurrent.futures import Future
+from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
+from typing import Protocol
 
+from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
-from uniti.core.history import EditOperation
+from uniti.core.file_identity import (
+    FileIdentity,
+    FileMatch,
+    SavedFileStamp,
+    verify_saved_file,
+)
+from uniti.core.history import (
+    EditOperation,
+    EditTransaction,
+    HistoryEvent,
+    HistorySnapshot,
+)
 from uniti.core.recovery import (
+    RecoveryCheckpoint,
+    RecoveryEvent,
+    RecoveryEventKind,
     RecoveryJournal,
+    RecoveryLoadResult,
+    RecoveryLoadStatus,
     RecoverySession,
-    load_recovery,
+    load_recovery_candidate,
     replay_recovery,
 )
+from uniti.resources import ResourceManager
+from uniti.resources.tasks import TaskKind, TaskSpec
+
+
+RECOVERY_COMPACT_BYTES = 64 << 20
+RECOVERY_FREE_SPACE_RESERVE = 512 << 20
+_HISTORY_COALESCE_KEY = "history_coalesce"
+
+
+class RecoveryHealth(StrEnum):
+    OK = "ok"
+    DEGRADED = "degraded"
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryDiagnostic:
+    document_id: str
+    health: RecoveryHealth
+    durable_revision: int
+    observed_revision: int
+    reason: str
 
 
 @dataclass(frozen=True, slots=True)
 class RecoveryCandidate:
     journal_path: Path
-    session: RecoverySession
+    session: RecoverySession | None
+    load_status: RecoveryLoadStatus = RecoveryLoadStatus.COMPLETE
+    source_match: FileMatch | None = None
+    supported_actions: tuple[str, ...] = ()
+    safe_error: str | None = None
+
+    @property
+    def evidence_path(self) -> Path:
+        return self.journal_path
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveredDocument:
+    document: Document
+    original: RecoveryCandidate
+    fresh_journal: Path
+
+
+class RecoveryIO(Protocol):
+    def append(
+        self,
+        journal: RecoveryJournal,
+        record: RecoveryEvent | RecoveryCheckpoint,
+    ) -> None: ...
+
+    def flush(self, journal: RecoveryJournal) -> None: ...
+
+    def fsync(self, journal: RecoveryJournal) -> None: ...
+
+    def size(self, path: Path) -> int: ...
+
+    def replace(self, source: Path, destination: Path) -> None: ...
+
+    def unlink(self, path: Path) -> None: ...
+
+    def free_bytes(self, path: Path) -> int: ...
+
+
+class FileRecoveryIO:
+    """Filesystem recovery backend used outside deterministic failure tests."""
+
+    def append(
+        self,
+        journal: RecoveryJournal,
+        record: RecoveryEvent | RecoveryCheckpoint,
+    ) -> None:
+        if isinstance(record, RecoveryCheckpoint):
+            journal.append_checkpoint(record, durable=False)
+        elif isinstance(record, RecoveryEvent):
+            journal.append_event(record, durable=False)
+        else:
+            raise TypeError("recovery record is invalid")
+
+    def flush(self, journal: RecoveryJournal) -> None:
+        journal.flush(durable=False)
+
+    def fsync(self, journal: RecoveryJournal) -> None:
+        journal.flush(durable=True)
+
+    def size(self, path: Path) -> int:
+        return path.stat().st_size
+
+    def replace(self, source: Path, destination: Path) -> None:
+        os.replace(source, destination)
+
+    def unlink(self, path: Path) -> None:
+        path.unlink()
+
+    def free_bytes(self, path: Path) -> int:
+        return shutil.disk_usage(path).free
+
+
+@dataclass(frozen=True, slots=True)
+class _CompactionRequest:
+    base_history: HistorySnapshot
+    events: tuple[RecoveryEvent, ...]
+    observed_revision: int
 
 
 @dataclass(slots=True)
 class _Binding:
     document: Document
-    journal: RecoveryJournal | None
-    journal_path: Path | None
-    remove_edit_listener: object
-    remove_save_listener: object
-    remove_metadata_listener: object
+    document_id: str
+    base_identity: FileIdentity
+    base_history: HistorySnapshot
+    source_encoding: str
+    output_encoding: str
+    output_eol: str | None
+    remove_history_listener: object = None
+    base_source: ByteSource | None = None
+    base_hash: str | None = None
+    journal: RecoveryJournal | None = None
+    journal_path: Path | None = None
     last_future: Future | None = None
     last_fsync: float = 0.0
+    sequence: int = 0
+    written_sequence: int = 0
+    durable_sequence: int = 0
+    written_revision: int = 0
+    durable_revision: int = 0
+    observed_revision: int = 0
+    events: list[RecoveryEvent] = field(default_factory=list)
+    health: RecoveryHealth = RecoveryHealth.OK
+    reason: str = ""
+    compaction_pending: bool = False
+    compaction_future: Future | None = None
 
 
 class RecoveryManager:
-    """Own recovery journals; disk I/O never runs in the edit-listener path."""
+    """Own recovery evidence while keeping all journal I/O off edit paths."""
 
-    def __init__(self, directory: str | Path, *, fsync_interval: float = 0.25) -> None:
+    def __init__(
+        self,
+        directory: str | Path,
+        *,
+        fsync_interval: float = 0.25,
+        backend: RecoveryIO | None = None,
+        resource_manager: ResourceManager | None = None,
+    ) -> None:
         if fsync_interval <= 0:
             raise ValueError("fsync_interval must be positive")
         self.directory = Path(directory)
-        self.directory.mkdir(parents=True, exist_ok=True)
+        self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        try:
+            self.directory.chmod(0o700)
+        except OSError:
+            pass
+        self._root = self.directory.resolve()
+        self._backend = backend or FileRecoveryIO()
+        self._owns_resources = resource_manager is None
+        self._resources = resource_manager or ResourceManager(max_workers=1)
         self._bindings: dict[int, _Binding] = {}
+        self._diagnostic_listeners: list[
+            Callable[[RecoveryDiagnostic], None]
+        ] = []
         self.last_error: Exception | None = None
         self._fsync_interval = float(fsync_interval)
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="uniti-recovery")
         self._lock = threading.RLock()
         self._shutdown = False
 
     def _new_journal_path(self, document: Document) -> Path:
-        digest = hashlib.sha256(str(document.path.absolute()).encode("utf-8")).hexdigest()[:12]
+        digest = hashlib.sha256(
+            str(document.path.absolute()).encode("utf-8")
+        ).hexdigest()[:12]
         suffix = uuid.uuid4().hex[:10]
         return self.directory / f"{digest}-{suffix}.uniti-recovery"
 
-    def _start_journal(
+    def _owned_path(self, path: Path, *, temporary: bool = False) -> Path:
+        candidate = Path(path)
+        allowed_suffix = (
+            candidate.name.endswith(".uniti-recovery.tmp")
+            if temporary
+            else candidate.name.endswith(".uniti-recovery")
+        )
+        if not allowed_suffix or candidate.parent.resolve() != self._root:
+            raise ValueError("recovery path is outside the owned recovery root")
+        if candidate.is_symlink():
+            raise ValueError("recovery path must not be a symlink")
+        return candidate
+
+    def _degrade(self, binding: _Binding, stage: str, error: Exception) -> None:
+        with self._lock:
+            binding.health = RecoveryHealth.DEGRADED
+            binding.reason = f"{stage} failed ({type(error).__name__})"
+            self.last_error = error
+        self._notify_diagnostic(binding)
+
+    def _mark_durable(self, binding: _Binding) -> None:
+        with self._lock:
+            binding.durable_sequence = binding.written_sequence
+            binding.durable_revision = binding.written_revision
+            if binding.durable_sequence >= binding.sequence:
+                binding.health = RecoveryHealth.OK
+                binding.reason = ""
+        self._notify_diagnostic(binding)
+
+    def _run_guarded(self, binding: _Binding, stage: str, fn):
+        try:
+            return fn()
+        except Exception as exc:
+            self._degrade(binding, stage, exc)
+            return None
+
+    def _submit_serial(
         self,
         binding: _Binding,
-        *,
-        seed_operations: tuple[EditOperation, ...] = (),
-    ) -> None:
-        if binding.journal is not None:
-            return
-        path = self._new_journal_path(binding.document)
-        journal = RecoveryJournal.create(
-            path,
-            binding.document.path,
-            source_encoding=binding.document.encoding_info.detected,
-            output_encoding=binding.document.output_encoding,
-            output_eol=binding.document.output_eol,
-        )
-        for operation in seed_operations:
-            journal.append(operation, durable=False)
-        if seed_operations:
-            journal.flush(durable=True)
-        binding.journal = journal
-        binding.journal_path = path
-        binding.last_fsync = time.monotonic()
-
-    def _run_task(self, fn, *args, **kwargs) -> None:
-        try:
-            fn(*args, **kwargs)
-        except Exception as exc:
-            self.last_error = exc
-
-    def _submit(self, binding: _Binding, fn, *args, **kwargs) -> Future:
+        kind: TaskKind,
+        stage: str,
+        fn,
+    ) -> Future:
         with self._lock:
             if self._shutdown:
                 raise RuntimeError("recovery manager is shut down")
-            future = self._executor.submit(self._run_task, fn, *args, **kwargs)
-            binding.last_future = future
-            return future
+            previous = binding.last_future
+            spec = TaskSpec.create(
+                kind,
+                foreground=False,
+                document_key=binding.document_id,
+                revision=binding.observed_revision,
+            )
+
+            def work(_context):
+                if previous is not None:
+                    try:
+                        previous.result()
+                    except Exception:
+                        pass
+                return self._run_guarded(binding, stage, fn)
+
+            try:
+                handle = self._resources.tasks.submit(spec, work)
+            except Exception as exc:
+                self._degrade(binding, stage, exc)
+                failed: Future = Future()
+                failed.set_result(None)
+                binding.last_future = failed
+                return failed
+            binding.last_future = handle.future
+            return handle.future
+
+    @staticmethod
+    def _hash_source(source: ByteSource) -> str:
+        digest = hashlib.sha256()
+        try:
+            for chunk in source.iter_chunks(chunk_size=1 << 20):
+                digest.update(chunk)
+            return digest.hexdigest()
+        finally:
+            source.close()
+
+    def _prepare_base_hash(self, binding: _Binding) -> None:
+        source = binding.base_source
+        if source is None:
+            if binding.base_hash is None:
+                raise ValueError("recovery base source is unavailable")
+            return
+        binding.base_hash = self._hash_source(source)
+        binding.base_source = None
+
+    def _start_journal(self, binding: _Binding) -> None:
+        if binding.journal is not None:
+            return
+        if binding.base_hash is None:
+            raise ValueError("recovery base hash is unavailable")
+        path = self._owned_path(self._new_journal_path(binding.document))
+        journal = RecoveryJournal.create_v3(
+            path,
+            binding.document.path,
+            base_identity=binding.base_identity,
+            base_hash=binding.base_hash,
+            source_encoding=binding.source_encoding,
+            output_encoding=binding.output_encoding,
+            output_eol=binding.output_eol,
+            base_history=binding.base_history,
+        )
+        binding.journal = journal
+        binding.journal_path = path
+        binding.last_fsync = time.monotonic()
 
     def _maybe_fsync(self, binding: _Binding) -> None:
         journal = binding.journal
         if journal is None:
             return
         now = time.monotonic()
-        if now - binding.last_fsync >= self._fsync_interval:
-            journal.flush(durable=True)
-            binding.last_fsync = now
+        if now - binding.last_fsync < self._fsync_interval:
+            return
+        self._backend.fsync(journal)
+        binding.last_fsync = now
+        self._mark_durable(binding)
 
-    def _write_edit(self, binding: _Binding, operation: EditOperation) -> None:
-        self._start_journal(binding)
-        assert binding.journal is not None
-        binding.journal.append(operation, durable=False)
-        self._maybe_fsync(binding)
-
-    def _write_metadata(
+    def _write_event(
         self,
         binding: _Binding,
-        output_encoding: str,
-        output_eol: str | None,
+        event: RecoveryEvent,
+        *,
+        allow_compaction: bool = True,
     ) -> None:
-        if binding.journal is None:
-            return
-        binding.journal.update_metadata(
-            output_encoding=output_encoding,
-            output_eol=output_eol,
-            durable=False,
-        )
+        self._start_journal(binding)
+        assert binding.journal is not None
+        if event.sequence != binding.written_sequence + 1:
+            raise OSError("recovery journal has an unwritten semantic gap")
+        self._backend.append(binding.journal, event)
+        binding.written_sequence = event.sequence
+        binding.written_revision = event.revision
+        self._backend.flush(binding.journal)
         self._maybe_fsync(binding)
+        if allow_compaction and self._needs_compaction(binding):
+            self._schedule_compaction(binding)
+
+    def _seed_journal(self, binding: _Binding) -> None:
+        self._start_journal(binding)
+        assert binding.journal is not None
+        if binding.events:
+            self._backend.append(
+                binding.journal,
+                RecoveryCheckpoint(binding.base_history, tuple(binding.events)),
+            )
+            last = binding.events[-1]
+            binding.written_sequence = last.sequence
+            binding.written_revision = last.revision
+        self._backend.flush(binding.journal)
+        self._backend.fsync(binding.journal)
+        binding.last_fsync = time.monotonic()
+        self._mark_durable(binding)
 
     def _flush_binding(self, binding: _Binding) -> None:
-        if binding.journal is not None:
-            binding.journal.flush(durable=True)
-            binding.last_fsync = time.monotonic()
+        journal = binding.journal
+        if journal is None:
+            return
+        self._backend.flush(journal)
+        self._backend.fsync(journal)
+        binding.last_fsync = time.monotonic()
+        self._mark_durable(binding)
+
+    def _needs_compaction(self, binding: _Binding) -> bool:
+        path = binding.journal_path
+        if path is None:
+            return False
+        return (
+            self._backend.size(path) >= RECOVERY_COMPACT_BYTES
+            or self._backend.free_bytes(self.directory)
+            < RECOVERY_FREE_SPACE_RESERVE
+        )
+
+    @staticmethod
+    def _recovery_event(sequence: int, event: HistoryEvent) -> RecoveryEvent:
+        kind = RecoveryEventKind(event.kind.value)
+        metadata = dict(event.metadata)
+        if kind is RecoveryEventKind.TRANSACTION and event.coalesce is not None:
+            metadata[_HISTORY_COALESCE_KEY] = event.coalesce
+        return RecoveryEvent(
+            sequence=sequence,
+            kind=kind,
+            transaction=(
+                event.transaction
+                if kind is RecoveryEventKind.TRANSACTION
+                else None
+            ),
+            cursor=event.cursor,
+            saved_cursor=event.saved_cursor,
+            revision=event.revision,
+            metadata=metadata,
+        )
+
+    def _observe_history(self, binding: _Binding, event: HistoryEvent) -> None:
+        with self._lock:
+            binding.sequence += 1
+            recovery_event = self._recovery_event(binding.sequence, event)
+            binding.events.append(recovery_event)
+            binding.observed_revision = event.revision
+        self._notify_diagnostic(binding)
+        try:
+            self._submit_serial(
+                binding,
+                TaskKind.RECOVERY,
+                "append",
+                lambda: self._write_event(binding, recovery_event),
+            )
+        except Exception as exc:
+            self._degrade(binding, "append", exc)
 
     def attach(
         self,
         document: Document,
         *,
         seed_operations: tuple[EditOperation, ...] = (),
+        seed_events: tuple[RecoveryEvent, ...] = (),
+        base_identity: FileIdentity | None = None,
+        base_hash: str | None = None,
+        base_history: HistorySnapshot | None = None,
+        force_journal: bool = False,
     ) -> None:
         key = id(document)
         if key in self._bindings:
             return
-
-        binding = _Binding(document, None, None, None, None, None)
-
-        def on_edit(operation: EditOperation) -> None:
-            try:
-                self._submit(binding, self._write_edit, binding, operation)
-            except Exception as exc:
-                self.last_error = exc
-
-        def on_save(_path: Path) -> None:
-            try:
-                self._submit(binding, self._clear_journal, binding).result()
-            except Exception as exc:
-                self.last_error = exc
-
-        def on_metadata(output_encoding: str, output_eol: str | None) -> None:
-            try:
-                self._submit(
-                    binding,
-                    self._write_metadata,
-                    binding,
-                    output_encoding,
-                    output_eol,
-                )
-            except Exception as exc:
-                self.last_error = exc
-
-        binding.remove_edit_listener = document.add_edit_listener(on_edit)
-        binding.remove_save_listener = document.add_save_listener(on_save)
-        binding.remove_metadata_listener = document.add_metadata_listener(on_metadata)
-        self._bindings[key] = binding
+        if seed_operations and seed_events:
+            raise ValueError("recovery seed must use one event representation")
         if seed_operations:
-            self._submit(
+            seed_events = tuple(
+                RecoveryEvent.transaction(
+                    index,
+                    EditTransaction((operation,)),
+                    cursor=index,
+                    saved_cursor=0,
+                    revision=index,
+                )
+                for index, operation in enumerate(seed_operations, start=1)
+            )
+        if seed_events:
+            for previous, current in zip(seed_events, seed_events[1:]):
+                if current.sequence != previous.sequence + 1:
+                    raise ValueError("recovery seed event sequence is not contiguous")
+
+        captured_history = base_history or document.export_history()
+        binding = _Binding(
+            document=document,
+            document_id=str(key),
+            base_identity=base_identity or document.disk_identity,
+            base_history=captured_history,
+            source_encoding=document.encoding_info.detected,
+            output_encoding=document.output_encoding,
+            output_eol=document.output_eol,
+            base_source=None if base_hash is not None else document.source.fork(),
+            base_hash=base_hash,
+            sequence=seed_events[-1].sequence if seed_events else 0,
+            written_revision=0,
+            durable_revision=0,
+            observed_revision=(
+                seed_events[-1].revision if seed_events else document.revision
+            ),
+            events=list(seed_events),
+        )
+        binding.remove_history_listener = document.add_history_listener(
+            lambda event, binding=binding: self._observe_history(binding, event)
+        )
+        self._bindings[key] = binding
+        self._notify_diagnostic(binding)
+        if binding.base_hash is None:
+            self._submit_serial(
                 binding,
-                self._start_journal,
+                TaskKind.HASH,
+                "hash",
+                lambda: self._prepare_base_hash(binding),
+            )
+        if seed_events or force_journal:
+            self._submit_serial(
                 binding,
-                seed_operations=seed_operations,
+                TaskKind.RECOVERY,
+                "seed",
+                lambda: self._seed_journal(binding),
             )
 
-    def _clear_journal(self, binding: _Binding) -> None:
-        path = binding.journal_path
-        if binding.journal is not None:
-            binding.journal.flush(durable=True)
-            binding.journal.close()
-        binding.journal = None
-        binding.journal_path = None
-        if path is not None:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+    def _wait_for_binding(self, binding: _Binding) -> None:
+        while True:
+            with self._lock:
+                future = binding.last_future
+            if future is None:
+                return
+            future.result()
+            with self._lock:
+                if future is binding.last_future:
+                    return
 
     def flush(self, document: Document | None = None) -> None:
         bindings = (
@@ -201,31 +518,298 @@ class RecoveryManager:
         for binding in bindings:
             if binding is None:
                 continue
-            future = self._submit(binding, self._flush_binding, binding)
-            future.result()
+            self._submit_serial(
+                binding,
+                TaskKind.RECOVERY,
+                "fsync",
+                lambda binding=binding: self._flush_binding(binding),
+            )
+            self._wait_for_binding(binding)
+
+    @staticmethod
+    def _diagnostic_snapshot(binding: _Binding) -> RecoveryDiagnostic:
+        return RecoveryDiagnostic(
+            binding.document_id,
+            binding.health,
+            binding.durable_revision,
+            binding.observed_revision,
+            binding.reason,
+        )
+
+    def _notify_diagnostic(self, binding: _Binding) -> None:
+        with self._lock:
+            diagnostic = self._diagnostic_snapshot(binding)
+            listeners = tuple(self._diagnostic_listeners)
+        for listener in listeners:
+            try:
+                listener(diagnostic)
+            except Exception:
+                # Observers must never compromise recovery durability.
+                continue
+
+    def add_diagnostic_listener(
+        self,
+        listener: Callable[[RecoveryDiagnostic], None],
+    ) -> Callable[[], None]:
+        if not callable(listener):
+            raise TypeError("diagnostic listener must be callable")
+        with self._lock:
+            self._diagnostic_listeners.append(listener)
+
+        def remove() -> None:
+            with self._lock:
+                try:
+                    self._diagnostic_listeners.remove(listener)
+                except ValueError:
+                    pass
+
+        return remove
+
+    def diagnostic(self, document: Document) -> RecoveryDiagnostic:
+        binding = self._bindings.get(id(document))
+        if binding is None:
+            raise ValueError("document is not attached to recovery")
+        with self._lock:
+            return self._diagnostic_snapshot(binding)
+
+    def diagnostics(self) -> tuple[RecoveryDiagnostic, ...]:
+        return tuple(
+            self.diagnostic(binding.document)
+            for binding in tuple(self._bindings.values())
+        )
+
+    def journal_path(self, document: Document) -> Path | None:
+        binding = self._bindings.get(id(document))
+        return None if binding is None else binding.journal_path
+
+    def _compaction_request(self, binding: _Binding) -> _CompactionRequest:
+        with self._lock:
+            return _CompactionRequest(
+                binding.base_history,
+                tuple(binding.events),
+                binding.observed_revision,
+            )
+
+    def _compact_binding(
+        self,
+        binding: _Binding,
+        request: _CompactionRequest,
+    ) -> None:
+        old_journal = binding.journal
+        old_path = binding.journal_path
+        if old_journal is None or old_path is None or binding.base_hash is None:
+            return
+        self._backend.flush(old_journal)
+        self._backend.fsync(old_journal)
+        self._mark_durable(binding)
+
+        published = self._owned_path(self._new_journal_path(binding.document))
+        temporary = self._owned_path(
+            published.with_name(published.name + ".tmp"),
+            temporary=True,
+        )
+        new_journal: RecoveryJournal | None = None
+        try:
+            new_journal = RecoveryJournal.create_v3(
+                temporary,
+                binding.document.path,
+                base_identity=binding.base_identity,
+                base_hash=binding.base_hash,
+                source_encoding=binding.source_encoding,
+                output_encoding=binding.output_encoding,
+                output_eol=binding.output_eol,
+                base_history=request.base_history,
+            )
+            self._backend.append(
+                new_journal,
+                RecoveryCheckpoint(request.base_history, request.events),
+            )
+            self._backend.flush(new_journal)
+            self._backend.fsync(new_journal)
+            loaded = load_recovery_candidate(temporary)
+            if (
+                loaded.status is not RecoveryLoadStatus.COMPLETE
+                or loaded.session is None
+                or loaded.durable_events != request.events
+            ):
+                raise ValueError("compacted recovery candidate did not validate")
+            self._backend.replace(temporary, published)
+            new_journal.path = published
+            binding.journal = new_journal
+            binding.journal_path = published
+            if request.events:
+                last = request.events[-1]
+                binding.written_sequence = last.sequence
+                binding.written_revision = last.revision
+                binding.durable_sequence = last.sequence
+                binding.durable_revision = last.revision
+            binding.last_fsync = time.monotonic()
+            if binding.durable_sequence >= binding.sequence:
+                binding.health = RecoveryHealth.OK
+                binding.reason = ""
+            self._notify_diagnostic(binding)
+            new_journal = None
+        finally:
+            if new_journal is not None:
+                new_journal.close()
+                try:
+                    self._backend.unlink(temporary)
+                except (FileNotFoundError, OSError):
+                    pass
+
+        old_journal.close()
+        try:
+            self._backend.unlink(self._owned_path(old_path))
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            self.last_error = exc
+
+    def _compaction_finished(self, binding: _Binding, future: Future) -> None:
+        with self._lock:
+            if binding.compaction_future is future:
+                binding.compaction_pending = False
+
+    def _schedule_compaction(self, binding: _Binding) -> Future:
+        with self._lock:
+            if binding.compaction_pending and binding.compaction_future is not None:
+                return binding.compaction_future
+            binding.compaction_pending = True
+            request = self._compaction_request(binding)
+            future = self._submit_serial(
+                binding,
+                TaskKind.RECOVERY_COMPACTION,
+                "compaction",
+                lambda: self._compact_binding(binding, request),
+            )
+            binding.compaction_future = future
+            future.add_done_callback(
+                lambda completed: self._compaction_finished(binding, completed)
+            )
+            return future
+
+    def compact(self, document: Document) -> Future:
+        binding = self._bindings.get(id(document))
+        if binding is None:
+            raise ValueError("document is not attached to recovery")
+        return self._schedule_compaction(binding)
+
+    def _terminal_event(self, binding: _Binding) -> RecoveryEvent:
+        snapshot = binding.document.export_history()
+        binding.sequence += 1
+        return RecoveryEvent.cursor(
+            binding.sequence,
+            RecoveryEventKind.TERMINAL,
+            cursor=snapshot.cursor,
+            saved_cursor=snapshot.saved_cursor,
+            revision=binding.document.revision,
+        )
+
+    def _finalize_clean(self, binding: _Binding, event: RecoveryEvent) -> None:
+        self._write_event(binding, event, allow_compaction=False)
+        self._flush_binding(binding)
+        if binding.durable_sequence < event.sequence:
+            raise OSError("terminal recovery record was not durable")
+        journal = binding.journal
+        path = binding.journal_path
+        if journal is not None:
+            journal.close()
+        if path is not None:
+            try:
+                self._backend.unlink(self._owned_path(path))
+            except FileNotFoundError:
+                pass
+        binding.journal = None
+        binding.journal_path = None
+
+    def _close_preserving(self, binding: _Binding) -> None:
+        try:
+            self._flush_binding(binding)
+        finally:
+            if binding.journal is not None:
+                binding.journal.close()
+                binding.journal = None
 
     def detach(self, document: Document, *, clean: bool) -> None:
-        binding = self._bindings.pop(id(document), None)
+        binding = self._bindings.get(id(document))
         if binding is None:
             return
-        remove_edit = binding.remove_edit_listener
-        remove_save = binding.remove_save_listener
-        remove_metadata = binding.remove_metadata_listener
-        if callable(remove_edit):
-            remove_edit()
-        if callable(remove_save):
-            remove_save()
-        if callable(remove_metadata):
-            remove_metadata()
-        if clean:
-            self._submit(binding, self._clear_journal, binding).result()
+        remove_history = binding.remove_history_listener
+        if callable(remove_history):
+            remove_history()
+        self._wait_for_binding(binding)
+        if clean and binding.journal is not None:
+            with self._lock:
+                terminal = self._terminal_event(binding)
+                binding.events.append(terminal)
+                binding.observed_revision = terminal.revision
+            self._submit_serial(
+                binding,
+                TaskKind.RECOVERY,
+                "terminal fsync",
+                lambda: self._finalize_clean(binding, terminal),
+            )
         else:
-            def durable_close(target: _Binding) -> None:
-                if target.journal is not None:
-                    target.journal.flush(durable=True)
-                    target.journal.close()
-                    target.journal = None
-            self._submit(binding, durable_close, binding).result()
+            self._submit_serial(
+                binding,
+                TaskKind.RECOVERY,
+                "fsync",
+                lambda: self._close_preserving(binding),
+            )
+        self._wait_for_binding(binding)
+        if binding.journal is not None:
+            binding.journal.close()
+            binding.journal = None
+        if binding.base_source is not None:
+            binding.base_source.close()
+            binding.base_source = None
+        self._bindings.pop(id(document), None)
+
+    @staticmethod
+    def _safe_error(result: RecoveryLoadResult, match: FileMatch | None) -> str | None:
+        if result.status is RecoveryLoadStatus.CORRUPT:
+            return "Recovery data is invalid or corrupt."
+        if result.status is RecoveryLoadStatus.UNSUPPORTED:
+            return "Recovery data was created by a newer UNITI version."
+        if result.status is RecoveryLoadStatus.TRUNCATED_TAIL:
+            return "Recovery data has an incomplete tail; its durable prefix is available."
+        if match is FileMatch.CHANGED:
+            return "The source file changed outside UNITI."
+        if match is FileMatch.MISSING:
+            return "The source file is missing."
+        return None
+
+    @staticmethod
+    def _actions(
+        result: RecoveryLoadResult,
+        match: FileMatch | None,
+    ) -> tuple[str, ...]:
+        if result.session is None:
+            return ("skip", "discard")
+        if match is FileMatch.MISSING:
+            return ("locate", "skip", "discard")
+        if match is FileMatch.CHANGED:
+            return ("open_disk", "skip", "discard")
+        return ("recover", "open_disk", "skip", "discard")
+
+    @staticmethod
+    def _source_match(session: RecoverySession | None) -> FileMatch | None:
+        if session is None:
+            return None
+        if session.base_hash is not None:
+            return verify_saved_file(
+                session.source_path,
+                SavedFileStamp(session.source_identity, session.base_hash),
+            )
+        try:
+            identity = FileIdentity.from_path(session.source_path)
+        except FileNotFoundError:
+            return FileMatch.MISSING
+        return (
+            FileMatch.EXACT_FAST
+            if identity == session.source_identity
+            else FileMatch.CHANGED
+        )
 
     def discover(self) -> tuple[RecoveryCandidate, ...]:
         if self._bindings:
@@ -233,45 +817,155 @@ class RecoveryManager:
         candidates: list[RecoveryCandidate] = []
         for path in sorted(self.directory.glob("*.uniti-recovery")):
             try:
-                session = load_recovery(path)
-            except (OSError, ValueError):
+                owned = self._owned_path(path)
+            except ValueError:
+                candidates.append(
+                    RecoveryCandidate(
+                        path,
+                        None,
+                        RecoveryLoadStatus.CORRUPT,
+                        supported_actions=("skip",),
+                        safe_error="Recovery evidence resolves outside UNITI storage.",
+                    )
+                )
                 continue
-            if session.clean or not session.operations:
+            result = load_recovery_candidate(owned)
+            if result.session is not None and result.session.clean:
                 try:
-                    path.unlink()
-                except OSError:
+                    self._backend.unlink(owned)
+                except (FileNotFoundError, OSError):
                     pass
                 continue
-            candidates.append(RecoveryCandidate(path, session))
+            try:
+                match = self._source_match(result.session)
+            except OSError:
+                match = FileMatch.CHANGED
+            candidates.append(
+                RecoveryCandidate(
+                    journal_path=owned,
+                    session=result.session,
+                    load_status=result.status,
+                    source_match=match,
+                    supported_actions=self._actions(result, match),
+                    safe_error=self._safe_error(result, match),
+                )
+            )
         return tuple(candidates)
 
     def discard(self, candidate: RecoveryCandidate) -> None:
+        path = self._owned_path(candidate.evidence_path)
         try:
-            candidate.journal_path.unlink()
+            self._backend.unlink(path)
         except FileNotFoundError:
             pass
 
-    def recover(self, candidate: RecoveryCandidate) -> Document:
+    @staticmethod
+    def _legacy_seed_events(
+        operations: tuple[EditOperation, ...],
+        *,
+        metadata: Mapping[str, object],
+    ) -> tuple[RecoveryEvent, ...]:
+        events = [
+            RecoveryEvent.transaction(
+                index,
+                EditTransaction((operation,)),
+                cursor=index,
+                saved_cursor=0,
+                revision=index,
+            )
+            for index, operation in enumerate(operations, start=1)
+        ]
+        if metadata:
+            sequence = len(events) + 1
+            events.append(
+                RecoveryEvent(
+                    sequence,
+                    RecoveryEventKind.METADATA,
+                    None,
+                    len(operations),
+                    0,
+                    len(operations),
+                    metadata,
+                )
+            )
+        return tuple(events)
+
+    def prepare_recovery(self, candidate: RecoveryCandidate) -> RecoveredDocument:
         session = candidate.session
-        document = Document.open(session.source_path, encoding=session.source_encoding)
+        if session is None or session.clean:
+            raise ValueError("recovery candidate has no recoverable session")
+        document = Document.open(
+            session.source_path,
+            encoding=session.source_encoding,
+        )
+        attached = False
         try:
             replay_recovery(document, session)
-            document.set_output_encoding(session.output_encoding)
-            document.set_output_eol(session.output_eol)
-            self.attach(document, seed_operations=session.operations)
+            if session.format_version in (1, 2):
+                document.set_output_encoding(session.output_encoding)
+                document.set_output_eol(session.output_eol)
+                seed_events = self._legacy_seed_events(
+                    session.operations,
+                    metadata={
+                        "output_encoding": session.output_encoding,
+                        "output_eol": session.output_eol,
+                    },
+                )
+                base_history = HistorySnapshot.empty()
+                base_hash = None
+            else:
+                seed_events = session.events
+                base_history = session.base_history
+                base_hash = session.base_hash
+            self.attach(
+                document,
+                seed_events=seed_events,
+                base_identity=session.source_identity,
+                base_hash=base_hash,
+                base_history=base_history,
+                force_journal=True,
+            )
+            attached = True
             self.flush(document)
+            path = self.journal_path(document)
+            diagnostic = self.diagnostic(document)
+            if path is None or diagnostic.health is not RecoveryHealth.OK:
+                raise OSError("fresh recovery journal is not durable")
+            return RecoveredDocument(document, candidate, path)
         except Exception:
+            if attached:
+                self.detach(document, clean=False)
             document.close()
             raise
-        self.discard(candidate)
-        return document
+
+    def commit_recovery(self, recovered: RecoveredDocument) -> None:
+        if not isinstance(recovered, RecoveredDocument):
+            raise TypeError("recovered must be a RecoveredDocument")
+        self.flush(recovered.document)
+        diagnostic = self.diagnostic(recovered.document)
+        if (
+            diagnostic.health is not RecoveryHealth.OK
+            or diagnostic.durable_revision < diagnostic.observed_revision
+        ):
+            raise OSError("fresh recovery state is not durable")
+        current = self.journal_path(recovered.document)
+        if current is None or not current.exists():
+            raise OSError("fresh recovery evidence is unavailable")
+        if recovered.original.evidence_path != current:
+            self.discard(recovered.original)
+
+    def recover(self, candidate: RecoveryCandidate) -> Document:
+        recovered = self.prepare_recovery(candidate)
+        self.commit_recovery(recovered)
+        return recovered.document
 
     def shutdown(self) -> None:
         if self._shutdown:
             return
         try:
-            if self._bindings:
-                self.flush()
+            for binding in tuple(self._bindings.values()):
+                self.detach(binding.document, clean=False)
         finally:
             self._shutdown = True
-            self._executor.shutdown(wait=True, cancel_futures=False)
+            if self._owns_resources:
+                self._resources.shutdown(wait=True)

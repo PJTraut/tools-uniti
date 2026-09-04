@@ -592,8 +592,13 @@ class Document:
         self._ensure_open()
         self._replace_internal(start, end, text, record=True, coalesce=coalesce)
 
-    def replay_transaction(self, transaction: EditTransaction) -> None:
-        """Apply one validated recovery transaction without coalescing it."""
+    def replay_transaction(
+        self,
+        transaction: EditTransaction,
+        *,
+        coalesce: str | None = None,
+    ) -> None:
+        """Apply one validated recovery transaction with its history boundary."""
 
         self._ensure_open()
         if not isinstance(transaction, EditTransaction) or not transaction.operations:
@@ -614,8 +619,12 @@ class Document:
                 operation.inserted_text,
                 record=False,
             )
-        self._history.record(transaction)
-        self._notify_history(HistoryEventKind.TRANSACTION, transaction)
+        self._history.record(transaction, coalesce=coalesce)
+        self._notify_history(
+            HistoryEventKind.TRANSACTION,
+            transaction,
+            coalesce=coalesce,
+        )
 
     def replay_save_point(self) -> None:
         """Advance the in-memory save point during semantic recovery replay."""

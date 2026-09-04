@@ -185,6 +185,28 @@ def test_regex_task_kinds_have_visible_priorities_and_ignore_index_pause(
     analysis.future.result(timeout=1)
 
 
+def test_recovery_compaction_precedes_convenience_session_work():
+    compaction = TaskSpec.create(
+        TaskKind.RECOVERY_COMPACTION,
+        foreground=False,
+    )
+    session = TaskSpec.create(TaskKind.SESSION, foreground=False)
+    hashing = TaskSpec.create(TaskKind.HASH, foreground=False)
+
+    assert compaction.priority < session.priority
+    assert hashing.priority < session.priority
+
+
+def test_only_convenience_session_work_pauses_with_background_tasks(
+    resource_manager,
+):
+    resource_manager.pause_background(True)
+
+    assert resource_manager.tasks.kind_is_paused(TaskKind.SESSION)
+    assert not resource_manager.tasks.kind_is_paused(TaskKind.HASH)
+    assert not resource_manager.tasks.kind_is_paused(TaskKind.RECOVERY_COMPACTION)
+
+
 def test_latest_task_slot_runs_one_call_and_only_the_newest_pending(
     resource_manager,
 ):

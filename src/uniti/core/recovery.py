@@ -1168,7 +1168,15 @@ def replay_recovery(document: "Document", session: RecoverySession) -> None:
         try:
             if event.kind is RecoveryEventKind.TRANSACTION:
                 assert event.transaction is not None
-                document.replay_transaction(event.transaction)
+                coalesce = event.metadata.get("history_coalesce")
+                if coalesce is not None and not isinstance(coalesce, str):
+                    raise RecoveryReplayError(
+                        "recovery history coalescing value is invalid"
+                    )
+                document.replay_transaction(
+                    event.transaction,
+                    coalesce=coalesce,
+                )
             elif event.kind is RecoveryEventKind.UNDO:
                 document.undo()
             elif event.kind is RecoveryEventKind.REDO:

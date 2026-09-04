@@ -1,10 +1,75 @@
+import os
 from pathlib import Path
 
 import pytest
 
-from uniti.app.recovery_manager import RecoveryManager
+from uniti.app.recovery_manager import (
+    FileRecoveryIO,
+    RecoveryHealth,
+    RecoveryManager,
+)
 from uniti.core.document import Document
-from uniti.core.recovery import RecoverySourceMismatchError
+from uniti.core.recovery import (
+    RecoveryEventKind,
+    RecoveryLoadStatus,
+    RecoverySourceMismatchError,
+    replay_recovery,
+)
+from uniti.resources import MemorySnapshot, ResourceManager
+from uniti.resources.tasks import TaskKind
+
+
+class InjectedRecoveryIO:
+    def __init__(
+        self,
+        *,
+        free_bytes: int = 8 << 30,
+        forced_size: int | None = None,
+    ) -> None:
+        self._real = FileRecoveryIO()
+        self.available_bytes = free_bytes
+        self.forced_size = forced_size
+        self.fail_append = False
+        self.fail_flush = False
+        self.fail_fsync = False
+        self.fail_replace = False
+        self.calls: list[tuple[str, Path | None, Path | None]] = []
+
+    def append(self, journal, record) -> None:
+        self.calls.append(("append", journal.path, None))
+        if self.fail_append:
+            raise OSError("injected append failure")
+        self._real.append(journal, record)
+
+    def flush(self, journal) -> None:
+        self.calls.append(("flush", journal.path, None))
+        if self.fail_flush:
+            raise OSError("injected flush failure")
+        self._real.flush(journal)
+
+    def fsync(self, journal) -> None:
+        self.calls.append(("fsync", journal.path, None))
+        if self.fail_fsync:
+            raise OSError("injected fsync failure")
+        self._real.fsync(journal)
+
+    def size(self, path: Path) -> int:
+        if self.forced_size is not None:
+            return self.forced_size
+        return self._real.size(path)
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self.calls.append(("replace", source, destination))
+        if self.fail_replace:
+            raise OSError("injected replace failure")
+        self._real.replace(source, destination)
+
+    def unlink(self, path: Path) -> None:
+        self.calls.append(("unlink", path, None))
+        self._real.unlink(path)
+
+    def free_bytes(self, path: Path) -> int:
+        return self.available_bytes
 
 
 def test_recovery_manager_is_lazy_and_tracks_undo_redo(tmp_path: Path):
@@ -18,20 +83,61 @@ def test_recovery_manager_is_lazy_and_tracks_undo_redo(tmp_path: Path):
     document.insert(3, "X")
     candidates = manager.discover()
     assert len(candidates) == 1
-    assert len(candidates[0].session.operations) == 1
+    assert candidates[0].session is not None
+    assert candidates[0].session.operations == ()
+    assert [event.kind for event in candidates[0].session.events] == [
+        RecoveryEventKind.TRANSACTION
+    ]
 
     document.undo()
     candidates = manager.discover()
-    assert len(candidates[0].session.operations) == 2
+    assert candidates[0].session is not None
+    assert [event.kind for event in candidates[0].session.events] == [
+        RecoveryEventKind.TRANSACTION,
+        RecoveryEventKind.UNDO,
+    ]
     document.redo()
-    assert len(manager.discover()[0].session.operations) == 3
+    session = manager.discover()[0].session
+    assert session is not None
+    assert [event.kind for event in session.events] == [
+        RecoveryEventKind.TRANSACTION,
+        RecoveryEventKind.UNDO,
+        RecoveryEventKind.REDO,
+    ]
 
     manager.detach(document, clean=True)
     document.close()
     assert manager.discover() == ()
 
 
-def test_recovery_manager_save_clears_journal_and_new_edit_restarts_it(tmp_path: Path):
+def test_recovery_manager_preserves_coalesced_typing_history(tmp_path: Path):
+    source = tmp_path / "coalesced.txt"
+    source.write_text("abc", encoding="utf-8")
+    recovery_dir = tmp_path / "recovery"
+    first = RecoveryManager(recovery_dir)
+    document = Document.open(source)
+    first.attach(document)
+    document.insert(3, "X", coalesce="typing")
+    document.insert(4, "Y", coalesce="typing")
+    expected_history = document.export_history()
+    first.detach(document, clean=False)
+    document.close()
+    first.shutdown()
+
+    second = RecoveryManager(recovery_dir)
+    recovered = second.recover(second.discover()[0])
+    try:
+        assert recovered.read(0, recovered.total_chars()) == "abcXY"
+        assert recovered.export_history() == expected_history
+    finally:
+        second.detach(recovered, clean=True)
+        recovered.close()
+        second.shutdown()
+
+
+def test_recovery_manager_save_retains_journal_until_session_publication(
+    tmp_path: Path,
+):
     source = tmp_path / "saved.txt"
     source.write_text("abc", encoding="utf-8")
     manager = RecoveryManager(tmp_path / "recovery")
@@ -40,11 +146,20 @@ def test_recovery_manager_save_clears_journal_and_new_edit_restarts_it(tmp_path:
         document.insert(3, "X")
         assert len(manager.discover()) == 1
         document.save()
-        assert manager.discover() == ()
+        candidate = manager.discover()[0]
+        assert candidate.session is not None
+        assert [event.kind for event in candidate.session.events] == [
+            RecoveryEventKind.TRANSACTION,
+            RecoveryEventKind.SAVE_POINT,
+        ]
         document.insert(4, "Y")
-        candidates = manager.discover()
-        assert len(candidates) == 1
-        assert len(candidates[0].session.operations) == 1
+        candidate = manager.discover()[0]
+        assert candidate.session is not None
+        assert [event.kind for event in candidate.session.events] == [
+            RecoveryEventKind.TRANSACTION,
+            RecoveryEventKind.SAVE_POINT,
+            RecoveryEventKind.TRANSACTION,
+        ]
         manager.detach(document, clean=True)
 
 
@@ -142,17 +257,16 @@ def test_recovery_persists_output_eol_changes_after_journal_start(tmp_path: Path
 
 def test_recovery_journal_io_does_not_block_edit_listener(tmp_path: Path, monkeypatch):
     import time
-    from uniti.core.recovery import RecoveryJournal
 
     source = tmp_path / "async.txt"
     source.write_text("abc", encoding="utf-8")
-    original_append = RecoveryJournal.append
+    original_append = FileRecoveryIO.append
 
-    def slow_append(self, operation, *, durable=True):
+    def slow_append(self, journal, record):
         time.sleep(0.15)
-        return original_append(self, operation, durable=durable)
+        return original_append(self, journal, record)
 
-    monkeypatch.setattr(RecoveryJournal, "append", slow_append)
+    monkeypatch.setattr(FileRecoveryIO, "append", slow_append)
     manager = RecoveryManager(tmp_path / "recovery")
     document = Document.open(source)
     try:
@@ -163,6 +277,352 @@ def test_recovery_journal_io_does_not_block_edit_listener(tmp_path: Path, monkey
         assert elapsed < 0.08
         manager.flush(document)
         assert len(manager.discover()) == 1
+    finally:
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_failed_fsync_retains_last_durable_revision_and_warns(tmp_path: Path):
+    backend = InjectedRecoveryIO()
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "source.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        document.insert(3, "X")
+        manager.flush(document)
+        durable = manager.diagnostic(document).durable_revision
+
+        backend.fail_fsync = True
+        document.insert(4, "Y")
+        manager.flush(document)
+
+        diagnostic = manager.diagnostic(document)
+        assert diagnostic.health is RecoveryHealth.DEGRADED
+        assert diagnostic.durable_revision == durable
+        assert diagnostic.observed_revision == document.revision
+        assert "fsync" in diagnostic.reason.lower()
+    finally:
+        backend.fail_fsync = False
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_successful_flush_clears_recovery_degradation(tmp_path: Path):
+    backend = InjectedRecoveryIO()
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "healing.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        document.insert(3, "X")
+        backend.fail_fsync = True
+        manager.flush(document)
+        assert manager.diagnostic(document).health is RecoveryHealth.DEGRADED
+
+        backend.fail_fsync = False
+        manager.flush(document)
+
+        diagnostic = manager.diagnostic(document)
+        assert diagnostic.health is RecoveryHealth.OK
+        assert diagnostic.durable_revision == document.revision
+        assert diagnostic.reason == ""
+    finally:
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_successful_retry_after_flush_failure_covers_appended_revision(
+    tmp_path: Path,
+):
+    backend = InjectedRecoveryIO()
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "flush-retry.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        backend.fail_flush = True
+        document.insert(3, "X")
+        manager.flush(document)
+        assert manager.diagnostic(document).health is RecoveryHealth.DEGRADED
+
+        backend.fail_flush = False
+        manager.flush(document)
+
+        diagnostic = manager.diagnostic(document)
+        assert diagnostic.health is RecoveryHealth.OK
+        assert diagnostic.durable_revision == document.revision
+    finally:
+        backend.fail_flush = False
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_recovery_diagnostics_are_observable_until_listener_removal(
+    tmp_path: Path,
+):
+    backend = InjectedRecoveryIO()
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "observable.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    observed = []
+    remove_listener = manager.add_diagnostic_listener(observed.append)
+    try:
+        manager.attach(document)
+        backend.fail_fsync = True
+        document.insert(3, "X")
+        manager.flush(document)
+        assert any(item.health is RecoveryHealth.DEGRADED for item in observed)
+
+        backend.fail_fsync = False
+        manager.flush(document)
+        assert observed[-1] == manager.diagnostic(document)
+        assert observed[-1].health is RecoveryHealth.OK
+
+        count = len(observed)
+        remove_listener()
+        document.insert(4, "Y")
+        manager.flush(document)
+        assert len(observed) == count
+    finally:
+        backend.fail_fsync = False
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_discovery_preserves_and_reports_invalid_evidence(tmp_path: Path):
+    recovery_dir = tmp_path / "recovery"
+    recovery_dir.mkdir()
+    corrupt = recovery_dir / "corrupt.uniti-recovery"
+    corrupt.write_bytes(b"not JSON\n")
+
+    manager = RecoveryManager(recovery_dir)
+    try:
+        candidates = manager.discover()
+
+        assert len(candidates) == 1
+        assert candidates[0].evidence_path == corrupt
+        assert candidates[0].load_status is RecoveryLoadStatus.CORRUPT
+        assert candidates[0].session is None
+        assert candidates[0].supported_actions == ("skip", "discard")
+        assert corrupt.exists()
+    finally:
+        manager.shutdown()
+
+
+def test_compaction_publishes_valid_candidate_before_retiring_old(
+    tmp_path: Path,
+):
+    backend = InjectedRecoveryIO(forced_size=64 << 20)
+    resources = ResourceManager(
+        max_workers=2,
+        initial_snapshot=MemorySnapshot(16 << 30, 8 << 30),
+    )
+    seen_kinds: list[TaskKind] = []
+    resources.tasks.add_listener(
+        lambda: seen_kinds.extend(
+            task.spec.kind for task in resources.tasks.snapshot().tasks
+        )
+    )
+    recovery_dir = tmp_path / "recovery"
+    manager = RecoveryManager(
+        recovery_dir,
+        backend=backend,
+        resource_manager=resources,
+    )
+    source = tmp_path / "compact.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        document.insert(3, "X")
+        document.undo()
+        document.redo()
+        manager.flush(document)
+        original = manager.journal_path(document)
+        assert original is not None
+
+        manager.compact(document).result(timeout=5)
+        manager.flush(document)
+        replacement = manager.journal_path(document)
+
+        assert TaskKind.RECOVERY_COMPACTION in seen_kinds
+        assert replacement is not None and replacement != original
+        assert replacement.exists()
+        assert not original.exists()
+        replace_index = next(
+            index for index, call in enumerate(backend.calls) if call[0] == "replace"
+        )
+        unlink_index = next(
+            index
+            for index, call in enumerate(backend.calls)
+            if call[0] == "unlink" and call[1] == original
+        )
+        assert replace_index < unlink_index
+
+        candidate = next(
+            item for item in manager.discover() if item.evidence_path == replacement
+        )
+        assert candidate.session is not None
+        assert [event.kind for event in candidate.session.events] == [
+            RecoveryEventKind.TRANSACTION,
+            RecoveryEventKind.UNDO,
+            RecoveryEventKind.REDO,
+        ]
+        expected_history = document.export_history()
+        with Document.open(source) as restored:
+            replay_recovery(restored, candidate.session)
+            assert restored.read(0, restored.total_chars()) == "abcX"
+            assert restored.export_history() == expected_history
+    finally:
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+        resources.shutdown()
+
+
+def test_failed_append_can_be_healed_by_checkpoint_compaction(tmp_path: Path):
+    backend = InjectedRecoveryIO()
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "append-failure.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        manager.flush(document)
+        backend.fail_append = True
+        document.insert(3, "X")
+        manager.flush(document)
+
+        diagnostic = manager.diagnostic(document)
+        assert diagnostic.health is RecoveryHealth.DEGRADED
+        assert diagnostic.durable_revision == 0
+        assert diagnostic.observed_revision == 1
+
+        backend.fail_append = False
+        manager.compact(document).result(timeout=5)
+        manager.flush(document)
+
+        diagnostic = manager.diagnostic(document)
+        assert diagnostic.health is RecoveryHealth.OK
+        assert diagnostic.durable_revision == 1
+        candidate = manager.discover()[0]
+        assert candidate.session is not None
+        assert [event.kind for event in candidate.session.events] == [
+            RecoveryEventKind.TRANSACTION
+        ]
+    finally:
+        backend.fail_append = False
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_failed_compaction_publish_retains_original_candidate(tmp_path: Path):
+    backend = InjectedRecoveryIO()
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "publish-failure.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        document.insert(3, "X")
+        manager.flush(document)
+        original = manager.journal_path(document)
+        assert original is not None
+        backend.fail_replace = True
+
+        manager.compact(document).result(timeout=5)
+
+        assert original.exists()
+        assert manager.journal_path(document) == original
+        diagnostic = manager.diagnostic(document)
+        assert diagnostic.health is RecoveryHealth.DEGRADED
+        assert "compaction" in diagnostic.reason
+    finally:
+        backend.fail_replace = False
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_low_space_reading_requests_compaction_without_disk_mutation(
+    tmp_path: Path,
+):
+    backend = InjectedRecoveryIO(free_bytes=(512 << 20) - 1)
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "low-space.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    before = set(tmp_path.iterdir())
+    try:
+        manager.attach(document)
+        document.insert(3, "X")
+        manager.flush(document)
+
+        assert any(call[0] == "replace" for call in backend.calls)
+        assert not any(path.name.upper() == "LOWDISK" for path in tmp_path.rglob("*"))
+        assert before <= set(tmp_path.iterdir())
+    finally:
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_prepare_recovery_keeps_original_until_explicit_commit(tmp_path: Path):
+    source = tmp_path / "two-phase.txt"
+    source.write_text("abc", encoding="utf-8")
+    recovery_dir = tmp_path / "recovery"
+    first = RecoveryManager(recovery_dir)
+    document = Document.open(source)
+    first.attach(document)
+    document.insert(3, "X")
+    first.detach(document, clean=False)
+    document.close()
+    first.shutdown()
+
+    second = RecoveryManager(recovery_dir)
+    candidate = second.discover()[0]
+    recovered = second.prepare_recovery(candidate)
+    try:
+        assert recovered.document.read(0, recovered.document.total_chars()) == "abcX"
+        assert recovered.original.evidence_path.exists()
+        assert recovered.fresh_journal.exists()
+
+        second.commit_recovery(recovered)
+
+        assert not recovered.original.evidence_path.exists()
+        assert recovered.fresh_journal.exists()
+    finally:
+        second.detach(recovered.document, clean=True)
+        recovered.document.close()
+        second.shutdown()
+
+
+def test_recovery_files_and_directory_are_user_only(tmp_path: Path):
+    recovery_dir = tmp_path / "private-recovery"
+    manager = RecoveryManager(recovery_dir)
+    source = tmp_path / "private.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        document.insert(3, "X")
+        manager.flush(document)
+        path = manager.journal_path(document)
+        assert path is not None
+        if os.name != "nt":
+            assert recovery_dir.stat().st_mode & 0o077 == 0
+            assert path.stat().st_mode & 0o077 == 0
     finally:
         manager.detach(document, clean=True)
         document.close()
