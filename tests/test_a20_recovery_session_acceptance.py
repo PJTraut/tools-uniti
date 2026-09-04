@@ -42,6 +42,7 @@ _A20_TEST_FILES = (
     Path("tests/ui/test_find_replace_contract.py"),
     Path("tests/ui/test_main_window_contract.py"),
     Path("tests/ui/test_panes.py"),
+    Path("tests/test_a21_cross_platform_acceptance.py"),
 )
 _FORBIDDEN_CAPACITY_CALLS = {
     "posix_fallocate",
