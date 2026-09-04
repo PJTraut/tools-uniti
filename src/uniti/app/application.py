@@ -16,6 +16,7 @@ from typing import Mapping
 import uniti
 
 from .paths import AppPaths
+from .platform_policy import UnsupportedPlatformError
 from .startup import (
     ExitCode,
     StartupCompletion,
@@ -559,7 +560,21 @@ def run_desktop(
 ) -> int:
     from .setup_state import SetupStateStore, UnsupportedSetupSchema
 
-    selected_paths = paths or AppPaths.current()
+    try:
+        selected_paths = paths or AppPaths.current()
+    except UnsupportedPlatformError as error:
+        failure = StartupFailure(
+            StartupPhase.APPLICATION_PATHS,
+            ExitCode.STATE,
+            str(error),
+            error,
+        )
+        print(
+            f"UNITI startup failed in {failure.phase.name}: {failure.safe_message}\n"
+            "Repair with: python scripts/bootstrap.py --repair",
+            file=sys.stderr,
+        )
+        return int(failure.exit_code)
     selected_marker = marker_path or (Path(sys.prefix) / ".uniti-runtime.json")
     context = StartupContext.create(selected_paths, session_id=uuid.uuid4().hex)
     coordinator = StartupCoordinator(
@@ -614,7 +629,11 @@ def main(argv: list[str] | None = None) -> int:
     if request.self_check:
         from .self_check import render_human, render_json
 
-        report = run_self_check(request)
+        try:
+            report = run_self_check(request)
+        except UnsupportedPlatformError as error:
+            print(f"UNITI cannot run: {error}", file=sys.stderr)
+            return int(ExitCode.STATE)
         output = render_json(report) if request.json_output else render_human(report)
         print(output, end="")
         return int(report.exit_code)

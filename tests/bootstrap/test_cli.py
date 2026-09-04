@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from uniti.app.paths import AppPaths
+from uniti.app.platform_policy import UnsupportedPlatformError
 from uniti.bootstrap import cli
 from uniti.bootstrap.model import (
     BootstrapMode,
@@ -55,6 +56,24 @@ def test_json_requires_self_check():
         cli.parse_args(["--json"])
 
     assert caught.value.code == 2
+
+
+def test_unsupported_bootstrap_platform_returns_runtime_exit_without_traceback(
+    monkeypatch,
+    capsys,
+):
+    def unsupported(cls):
+        raise UnsupportedPlatformError("freebsd14")
+
+    monkeypatch.setattr(AppPaths, "current", classmethod(unsupported))
+
+    assert cli.main(["--no-launch"]) == 10
+
+    error = capsys.readouterr().err
+    assert error.strip() == (
+        "UNITI bootstrap failed: Unsupported UNITI platform: freebsd14"
+    )
+    assert "Traceback" not in error
 
 
 def test_parse_args_forwards_application_options_in_original_order():

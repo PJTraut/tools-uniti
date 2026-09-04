@@ -9,6 +9,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from .platform_policy import (
+    PlatformFamily,
+    absolute_environment_root,
+    classify_platform,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class AppPaths:
@@ -16,6 +22,43 @@ class AppPaths:
     data_dir: Path
     state_dir: Path
     cache_dir: Path
+    platform_family: PlatformFamily | None = None
+
+    def __post_init__(self) -> None:
+        roots = tuple(
+            Path(value)
+            for value in (
+                self.config_dir,
+                self.data_dir,
+                self.state_dir,
+                self.cache_dir,
+            )
+        )
+        if not all(path.is_absolute() and "\0" not in str(path) for path in roots):
+            raise ValueError("application roots must be absolute")
+        if self.platform_family is not None and not isinstance(
+            self.platform_family, PlatformFamily
+        ):
+            raise TypeError("platform family must be a PlatformFamily")
+        for name, value in zip(
+            ("config_dir", "data_dir", "state_dir", "cache_dir"),
+            roots,
+            strict=True,
+        ):
+            object.__setattr__(self, name, value)
+
+    @property
+    def family(self) -> PlatformFamily:
+        return self.platform_family or classify_platform(sys.platform)
+
+    @property
+    def owned_roots(self) -> tuple[Path, Path, Path, Path]:
+        return (
+            self.config_dir,
+            self.data_dir,
+            self.state_dir,
+            self.cache_dir,
+        )
 
     @property
     def recovery_dir(self) -> Path:
@@ -72,33 +115,60 @@ class AppPaths:
         home: Path,
         environ: Mapping[str, str],
     ) -> "AppPaths":
-        if platform_name == "darwin":
-            base = home / "Library" / "Application Support" / "UNITI"
+        selected_home = Path(home)
+        if not selected_home.is_absolute() or "\0" in str(selected_home):
+            raise ValueError("home directory must be absolute")
+        family = classify_platform(platform_name)
+        if family is PlatformFamily.MACOS:
+            base = selected_home / "Library" / "Application Support" / "UNITI"
             return cls(
                 config_dir=base,
                 data_dir=base,
                 state_dir=base / "State",
-                cache_dir=home / "Library" / "Caches" / "UNITI",
+                cache_dir=selected_home / "Library" / "Caches" / "UNITI",
+                platform_family=family,
             )
-        if platform_name.startswith("win"):
-            local = Path(environ.get("LOCALAPPDATA", home / "AppData" / "Local"))
+        if family is PlatformFamily.WINDOWS:
+            local = absolute_environment_root(
+                environ,
+                "LOCALAPPDATA",
+                selected_home / "AppData" / "Local",
+            )
             base = local / "UNITI"
             return cls(
                 config_dir=base,
                 data_dir=base,
                 state_dir=base / "State",
                 cache_dir=base / "Cache",
+                platform_family=family,
             )
 
-        config_root = Path(environ.get("XDG_CONFIG_HOME", home / ".config"))
-        data_root = Path(environ.get("XDG_DATA_HOME", home / ".local" / "share"))
-        state_root = Path(environ.get("XDG_STATE_HOME", home / ".local" / "state"))
-        cache_root = Path(environ.get("XDG_CACHE_HOME", home / ".cache"))
+        config_root = absolute_environment_root(
+            environ,
+            "XDG_CONFIG_HOME",
+            selected_home / ".config",
+        )
+        data_root = absolute_environment_root(
+            environ,
+            "XDG_DATA_HOME",
+            selected_home / ".local" / "share",
+        )
+        state_root = absolute_environment_root(
+            environ,
+            "XDG_STATE_HOME",
+            selected_home / ".local" / "state",
+        )
+        cache_root = absolute_environment_root(
+            environ,
+            "XDG_CACHE_HOME",
+            selected_home / ".cache",
+        )
         return cls(
             config_dir=config_root / "uniti",
             data_dir=data_root / "uniti",
             state_dir=state_root / "uniti",
             cache_dir=cache_root / "uniti",
+            platform_family=family,
         )
 
     @classmethod

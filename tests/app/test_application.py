@@ -5,6 +5,7 @@ import pytest
 import uniti
 
 from uniti.app import application
+from uniti.app.platform_policy import UnsupportedPlatformError
 from uniti.app.paths import AppPaths
 from uniti.app.self_check import CheckResult, SelfCheckReport
 from uniti.app.startup import (
@@ -81,6 +82,39 @@ def test_normal_startup_without_owned_marker_returns_actionable_environment_code
 
     assert code == ExitCode.ENVIRONMENT
     assert "scripts/bootstrap.py --repair" in capsys.readouterr().err
+
+
+def test_unsupported_desktop_platform_fails_at_application_paths_without_traceback(
+    monkeypatch,
+    capsys,
+):
+    def unsupported(cls):
+        raise UnsupportedPlatformError("freebsd14")
+
+    monkeypatch.setattr(AppPaths, "current", classmethod(unsupported))
+
+    assert application.run_desktop(application.ApplicationRequest()) == ExitCode.STATE
+
+    error = capsys.readouterr().err
+    assert "APPLICATION_PATHS" in error
+    assert "Unsupported UNITI platform: freebsd14" in error
+    assert "Traceback" not in error
+
+
+def test_unsupported_self_check_platform_returns_state_exit_without_traceback(
+    monkeypatch,
+    capsys,
+):
+    def unsupported(cls):
+        raise UnsupportedPlatformError("freebsd14")
+
+    monkeypatch.setattr(AppPaths, "current", classmethod(unsupported))
+
+    assert application.main(["uniti", "--self-check"]) == ExitCode.STATE
+
+    error = capsys.readouterr().err
+    assert error.strip() == "UNITI cannot run: Unsupported UNITI platform: freebsd14"
+    assert "Traceback" not in error
 
 
 def test_normal_dependency_validation_rejects_installed_metadata_mismatch(monkeypatch):

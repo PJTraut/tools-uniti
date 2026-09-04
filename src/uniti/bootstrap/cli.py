@@ -12,6 +12,7 @@ from pathlib import Path
 import uniti
 from uniti.app.atomic_json import utc_timestamp
 from uniti.app.paths import AppPaths
+from uniti.app.platform_policy import UnsupportedPlatformError
 from uniti.app.setup_state import SetupStateStore
 
 from .dependencies import DependencyManager
@@ -58,10 +59,14 @@ def parse_args(argv: Sequence[str]) -> BootstrapRequest:
     if namespace.json_output and not self_check:
         parser.error("--json requires --self-check")
     root = source_root().resolve()
+    try:
+        app_paths = AppPaths.current()
+    except UnsupportedPlatformError as error:
+        raise BootstrapError(str(error), 10) from error
     return BootstrapRequest(
         mode=BootstrapMode.LOCAL if namespace.local else BootstrapMode.SOURCE,
         source_root=root,
-        app_paths=AppPaths.current(),
+        app_paths=app_paths,
         dev=bool(namespace.dev),
         repair=bool(namespace.repair),
         no_launch=bool(namespace.no_launch),
