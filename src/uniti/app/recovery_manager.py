@@ -43,6 +43,8 @@ from uniti.core.recovery import (
 from uniti.resources import ResourceManager
 from uniti.resources.tasks import TaskKind, TaskSpec
 
+from .platform_policy import normalize_native_path
+
 
 RECOVERY_COMPACT_BYTES = 64 << 20
 RECOVERY_FREE_SPACE_RESERVE = 512 << 20
@@ -220,8 +222,9 @@ class RecoveryManager:
         self._shutdown = False
 
     def _new_journal_path(self, document: Document) -> Path:
+        source_path = normalize_native_path(document.path).path
         digest = hashlib.sha256(
-            str(document.path.absolute()).encode("utf-8")
+            str(source_path).encode("utf-8")
         ).hexdigest()[:12]
         suffix = uuid.uuid4().hex[:10]
         return self.directory / f"{digest}-{suffix}.uniti-recovery"

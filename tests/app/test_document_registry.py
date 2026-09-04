@@ -153,3 +153,30 @@ def test_replacing_document_authority_preserves_view_bindings(tmp_path: Path):
     with pytest.raises(ValueError, match="closed"):
         original.read(0, 1)
     registry.close_all()
+
+
+def test_replacing_document_authority_accepts_a_hard_link_to_the_same_file(
+    tmp_path: Path,
+):
+    original = _open_document(tmp_path)
+    alias = tmp_path / "same-file-alias.txt"
+    try:
+        alias.hardlink_to(original.path)
+    except OSError as error:
+        original.close()
+        pytest.skip(f"hard links are unavailable: {error}")
+    replacement = Document.open(alias)
+    registry = DocumentRegistry(clock=lambda: NOW)
+    replacement_owned = False
+    try:
+        entry = registry.adopt(original)
+
+        assert registry.replace_document(entry.document_id, replacement) is original
+        replacement_owned = True
+        assert entry.document is replacement
+        assert entry.canonical_path == alias.resolve()
+        assert registry.find_path(original.path) is entry
+    finally:
+        registry.close_all()
+        if not replacement_owned:
+            replacement.close()

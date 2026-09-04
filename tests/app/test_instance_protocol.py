@@ -85,6 +85,13 @@ def test_encode_request_normalizes_relative_paths_once_and_preserves_order(
     assert decoded.activate is True
 
 
+def test_encode_request_rejects_a_relative_explicit_working_directory():
+    request = InstanceRequest(INSTANCE_PROTOCOL_VERSION, True, ("document.txt",))
+
+    with pytest.raises(InstanceProtocolError, match="working directory is invalid"):
+        encode_request(request, cwd=Path("relative"))
+
+
 def test_request_decoder_rejects_absolute_but_unnormalized_paths(tmp_path: Path):
     unnormalized = str(tmp_path / "folder" / ".." / "document.txt")
     frame = encode_frame(

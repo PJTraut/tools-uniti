@@ -130,6 +130,40 @@ def test_dirty_open_target_blocks_before_any_write_or_confirmation(
     assert window.panes.active_leaf.tabs.count() == 2
 
 
+def test_hard_link_to_current_document_uses_the_in_place_save_path(
+    window,
+    tmp_path: Path,
+    monkeypatch,
+):
+    from PySide6.QtWidgets import QMessageBox
+
+    source = _open(window, tmp_path / "source.txt", "source\n")
+    alias = tmp_path / "source-alias.txt"
+    try:
+        alias.hardlink_to(source.document.path)
+    except OSError as error:
+        pytest.skip(f"hard links are unavailable: {error}")
+    source.state.move_document_end()
+    source.state.insert_text("edited")
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("the current file alias must not prompt for replacement")
+        ),
+    )
+
+    result = window.save_current_as(alias, source.document.output_format)
+
+    assert result == source.document.path
+    assert source.document.modified is False
+    assert source.document.path.read_text(encoding="utf-8") == "source\nedited"
+    # Atomic replacement gives the canonical source a new inode; a pre-save
+    # hard-link alias intentionally remains attached to the old saved bytes.
+    assert alias.read_text(encoding="utf-8") == "source\n"
+    assert window.panes.active_leaf.tabs.count() == 1
+
+
 def test_existing_closed_target_requires_one_normal_overwrite_confirmation(
     window, tmp_path: Path, monkeypatch
 ):

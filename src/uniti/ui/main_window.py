@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from concurrent.futures import Future
 from dataclasses import dataclass, replace as dataclass_replace
-import os
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING
@@ -35,6 +34,7 @@ from uniti.app.commands import (
     PANE_COMMAND_DEFINITIONS,
 )
 from uniti.app.editor_state import EditorState
+from uniti.app.platform_policy import native_paths_equal, normalize_native_path
 from uniti.app.recovery_manager import RecoveryManager
 from uniti.app.settings import Settings, SettingsStore
 from uniti.core.byte_source import ByteSource
@@ -1740,17 +1740,6 @@ class UNITIMainWindow(QMainWindow):
             return
         QMessageBox.critical(self, "Save Failed", str(exc))
 
-    @staticmethod
-    def _same_resolved_path(left: str | Path, right: str | Path) -> bool:
-        left_path = Path(left).expanduser()
-        right_path = Path(right).expanduser()
-        if left_path.resolve(strict=False) == right_path.resolve(strict=False):
-            return True
-        try:
-            return os.path.samefile(left_path, right_path)
-        except OSError:
-            return False
-
     def _view_for_path(
         self,
         path: str | Path,
@@ -1766,7 +1755,7 @@ class UNITIMainWindow(QMainWindow):
             for candidate in getattr(window, "views", ()):
                 if candidate is excluding:
                     continue
-                if self._same_resolved_path(candidate.document.path, path):
+                if native_paths_equal(candidate.document.path, path):
                     return candidate
         return None
 
@@ -1927,8 +1916,8 @@ class UNITIMainWindow(QMainWindow):
             destination = selection.destination.expanduser()
             selected = selection.output_format
 
-        destination = destination.resolve(strict=False)
-        if self._same_resolved_path(destination, view.document.path):
+        destination = normalize_native_path(destination).path
+        if native_paths_equal(destination, view.document.path):
             if not self._confirm_encoding_change(
                 view.document.path,
                 view.document.saved_output_format.encoding,
@@ -2195,8 +2184,8 @@ class UNITIMainWindow(QMainWindow):
             destination = selection.destination.expanduser()
             selected = selection.output_format
 
-        destination = destination.resolve(strict=False)
-        if self._same_resolved_path(destination, view.document.path):
+        destination = normalize_native_path(destination).path
+        if native_paths_equal(destination, view.document.path):
             if not self._confirm_encoding_change(
                 view.document.path,
                 view.document.saved_output_format.encoding,

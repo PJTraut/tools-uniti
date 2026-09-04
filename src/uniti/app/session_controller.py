@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from uniti.resources.tasks import TaskKind, TaskSpec
 
 from .document_registry import DocumentEntry
+from .platform_policy import native_paths_equal, normalize_native_path
 
 if TYPE_CHECKING:
     from .session import SessionSnapshot
@@ -377,6 +378,10 @@ class SessionController:
                 and (
                     pack.generation != result.seal.history_generation
                     or pack.saved_stamp.sha256 != result.seal.expected_hash
+                    or not native_paths_equal(
+                        pack.canonical_path,
+                        result.pack.canonical_path,
+                    )
                 )
             )
         ):
@@ -396,6 +401,10 @@ class SessionController:
         )
         if (
             document_record is None
+            or not native_paths_equal(
+                document_record.canonical_path,
+                pack.canonical_path,
+            )
             or document_record.view_ids != result.seal.requested_view_ids
         ):
             if result.document is not None:
@@ -468,7 +477,7 @@ class SessionController:
         )
         if (
             record is None
-            or record.canonical_path != result.canonical_path
+            or not native_paths_equal(record.canonical_path, result.canonical_path)
             or record.view_ids != result.requested_view_ids
         ):
             result.document.close()
@@ -808,6 +817,7 @@ class SessionController:
         elif action is RecoveryAction.LOCATE_MATCH:
             if located_path is None:
                 raise ValueError("a matching source path is required")
+            located_path = normalize_native_path(located_path).path
             pack = self._packs.get(document_id)
             if pack is None and self._pack_loader is not None:
                 pack = self._pack_loader(document_id)
@@ -833,7 +843,37 @@ class SessionController:
                 )
 
             handle = self._service.resources.tasks.submit(spec, relocate)
-            restored = self.apply_restore_result(handle.future.result())
+            relocated_result = handle.future.result()
+            previous_manifest = self._manifest
+            previous_pack = self._packs.get(document_id)
+            self._packs[document_id] = relocated_result.pack
+            self._manifest = replace(
+                manifest,
+                documents=tuple(
+                    replace(
+                        item,
+                        canonical_path=relocated_result.pack.canonical_path,
+                    )
+                    if item.document_id == document_id
+                    else item
+                    for item in manifest.documents
+                ),
+            )
+            try:
+                restored = self.apply_restore_result(relocated_result)
+            except Exception:
+                self._manifest = previous_manifest
+                if previous_pack is None:
+                    self._packs.pop(document_id, None)
+                else:
+                    self._packs[document_id] = previous_pack
+                raise
+            if restored is None:
+                self._manifest = previous_manifest
+                if previous_pack is None:
+                    self._packs.pop(document_id, None)
+                else:
+                    self._packs[document_id] = previous_pack
         else:
             raise ValueError("session problem action is unsupported")
         if restored is None:

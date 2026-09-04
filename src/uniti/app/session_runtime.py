@@ -17,6 +17,7 @@ from uniti.core.file_identity import (
 )
 from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
 
+from .platform_policy import normalize_native_path
 from .session import (
     SESSION_SCHEMA,
     DocumentRecord,
@@ -362,17 +363,19 @@ def restore_document_pack(
 ) -> RestoreDocumentResult:
     """Verify exact source bytes, then open and import one saved history pack."""
 
+    normalized_path = normalize_native_path(pack.canonical_path).path
+    selected_pack = replace(pack, canonical_path=str(normalized_path))
     seal = RestoreSeal(
         pack.document_id,
         pack.saved_stamp.sha256,
         pack.generation,
         requested_view_ids,
     )
-    match = verify_saved_file(Path(pack.canonical_path), pack.saved_stamp)
+    match = verify_saved_file(normalized_path, pack.saved_stamp)
     if match not in {FileMatch.EXACT_FAST, FileMatch.EXACT_HASH}:
-        return RestoreDocumentResult(seal, match, pack, None)
+        return RestoreDocumentResult(seal, match, selected_pack, None)
     document = Document.open(
-        pack.canonical_path,
+        normalized_path,
         profile=encoding_profile(pack.source_profile_key),
         resource_manager=resource_manager,
     )
@@ -392,7 +395,7 @@ def restore_document_pack(
     except Exception:
         document.close()
         raise
-    return RestoreDocumentResult(seal, match, pack, document)
+    return RestoreDocumentResult(seal, match, selected_pack, document)
 
 
 def restore_fresh_document(
@@ -404,14 +407,15 @@ def restore_fresh_document(
 ) -> FreshDocumentResult:
     """Open a saved document whose convenience history was not admitted."""
 
-    document = Document.open(canonical_path, resource_manager=resource_manager)
+    normalized_path = normalize_native_path(canonical_path).path
+    document = Document.open(normalized_path, resource_manager=resource_manager)
     try:
-        stamp = stamp_saved_file(Path(canonical_path), document.disk_identity)
+        stamp = stamp_saved_file(normalized_path, document.disk_identity)
         if stamp is None:
             raise OSError("saved file changed while opening")
         return FreshDocumentResult(
             document_id,
-            canonical_path,
+            str(normalized_path),
             requested_view_ids,
             document,
             stamp,

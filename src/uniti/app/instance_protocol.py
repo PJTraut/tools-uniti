@@ -7,6 +7,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from .platform_policy import normalize_native_path
+
 
 INSTANCE_PROTOCOL_VERSION = 1
 MAX_MESSAGE_BYTES = 256 << 10
@@ -172,32 +174,26 @@ def _exact_fields(
         raise InstanceProtocolError(f"{label} has missing or unknown fields")
 
 
-def _normalize_path(path: str, cwd: Path) -> str:
-    _path(path, require_absolute=False)
-    selected = Path(path)
-    if not selected.is_absolute():
-        selected = cwd / selected
-    try:
-        normalized = selected.resolve(strict=False)
-    except (OSError, RuntimeError) as exc:
-        raise InstanceProtocolError("instance path cannot be normalized") from exc
-    result = str(normalized)
-    try:
-        _path(result, require_absolute=True)
-    except (TypeError, ValueError) as exc:
-        raise InstanceProtocolError("normalized instance path is invalid") from exc
-    return result
-
-
 def encode_request(request: InstanceRequest, *, cwd: Path | None = None) -> bytes:
     if not isinstance(request, InstanceRequest):
         raise TypeError("request must be an InstanceRequest")
-    base = Path.cwd() if cwd is None else Path(cwd)
     try:
-        base = base.resolve(strict=False)
-    except (OSError, RuntimeError) as exc:
+        base = (
+            normalize_native_path(Path.cwd()).path
+            if cwd is None
+            else normalize_native_path(".", cwd=cwd).path
+        )
+    except (TypeError, ValueError) as exc:
         raise InstanceProtocolError("instance working directory is invalid") from exc
-    normalized = tuple(_normalize_path(path, base) for path in request.files)
+    try:
+        normalized = tuple(
+            str(normalize_native_path(path, cwd=base).path)
+            for path in request.files
+        )
+        for path in normalized:
+            _path(path, require_absolute=True)
+    except (TypeError, ValueError) as exc:
+        raise InstanceProtocolError("instance path cannot be normalized") from exc
     return encode_frame(
         {
             "version": request.version,
@@ -225,7 +221,7 @@ def decode_request(frame: bytes) -> InstanceRequest:
         )
         for path in request.files:
             _path(path, require_absolute=True)
-            if _normalize_path(path, Path.cwd()) != path:
+            if str(normalize_native_path(path).path) != path:
                 raise ValueError("instance path is not normalized")
     except (TypeError, ValueError) as exc:
         raise InstanceProtocolError("instance request is invalid") from exc

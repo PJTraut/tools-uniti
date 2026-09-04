@@ -111,6 +111,28 @@ def test_recovery_manager_is_lazy_and_tracks_undo_redo(tmp_path: Path):
     assert manager.discover() == ()
 
 
+def test_recovery_journal_hash_uses_the_normalized_source_path(tmp_path: Path):
+    source = tmp_path / "source.txt"
+    alias = tmp_path / "source-alias.txt"
+    source.write_text("same bytes", encoding="utf-8")
+    try:
+        alias.symlink_to(source)
+    except OSError as error:
+        pytest.skip(f"symbolic links are unavailable: {error}")
+    manager = RecoveryManager(tmp_path / "recovery")
+    original = Document.open(source)
+    linked = Document.open(alias)
+    try:
+        original_prefix = manager._new_journal_path(original).name.split("-", 1)[0]
+        linked_prefix = manager._new_journal_path(linked).name.split("-", 1)[0]
+
+        assert original_prefix == linked_prefix
+    finally:
+        original.close()
+        linked.close()
+        manager.shutdown()
+
+
 def test_recovery_manager_preserves_coalesced_typing_history(tmp_path: Path):
     source = tmp_path / "coalesced.txt"
     source.write_text("abc", encoding="utf-8")

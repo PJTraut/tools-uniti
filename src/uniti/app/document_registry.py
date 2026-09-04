@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -11,6 +10,8 @@ from pathlib import Path
 
 from uniti.core.document import Document
 from uniti.core.file_identity import SavedFileStamp
+
+from .platform_policy import native_paths_equal, normalize_native_path
 
 
 CLOSED_HISTORY_RETENTION = timedelta(days=7)
@@ -49,15 +50,6 @@ def _datetime(value: datetime, label: str) -> datetime:
     return value
 
 
-def _same_file(first: Path, second: Path) -> bool:
-    if first == second:
-        return True
-    try:
-        return os.path.samefile(first, second)
-    except (FileNotFoundError, OSError):
-        return False
-
-
 class DocumentRegistry:
     """Keep one live ``Document`` authority for each source identity."""
 
@@ -91,9 +83,9 @@ class DocumentRegistry:
         return tuple(self._entries.values())
 
     def find_path(self, path: Path) -> DocumentEntry | None:
-        candidate = Path(path).resolve(strict=False)
+        candidate = normalize_native_path(path).path
         for entry in self._entries.values():
-            if _same_file(entry.canonical_path, candidate):
+            if native_paths_equal(entry.canonical_path, candidate):
                 return entry
         return None
 
@@ -117,7 +109,7 @@ class DocumentRegistry:
                 raise DuplicateDocumentError("document already has a different saved stamp")
             return entry
 
-        canonical_path = Path(document.path).resolve(strict=False)
+        canonical_path = normalize_native_path(document.path).path
         existing = self.find_path(canonical_path)
         if existing is not None:
             raise DuplicateDocumentError(
@@ -228,8 +220,8 @@ class DocumentRegistry:
         entry = self.get(document_id)
         if id(replacement) in self._documents:
             raise DuplicateDocumentError("replacement document is already owned")
-        canonical_path = Path(replacement.path).resolve(strict=False)
-        if canonical_path != entry.canonical_path:
+        canonical_path = normalize_native_path(replacement.path).path
+        if not native_paths_equal(canonical_path, entry.canonical_path):
             raise DuplicateDocumentError("replacement path does not match the authority")
         original = entry.document
         self._documents.pop(id(original), None)

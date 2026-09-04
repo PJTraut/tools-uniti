@@ -204,6 +204,78 @@ def _wait_until(qapp, predicate, *, timeout: float = 3.0) -> None:
     assert predicate()
 
 
+def test_fresh_session_restore_normalizes_the_stored_canonical_path(tmp_path: Path):
+    from uniti.app.session_runtime import restore_fresh_document
+
+    source = tmp_path / "saved document Ω.txt"
+    source.write_text("saved bytes", encoding="utf-8")
+    (tmp_path / "unused").mkdir()
+    raw_path = str(tmp_path / "unused" / ".." / source.name)
+    resources = ResourceManager(max_workers=1)
+    result = None
+    try:
+        result = restore_fresh_document(
+            "document-one",
+            raw_path,
+            ("view-one",),
+            resource_manager=resources,
+        )
+
+        assert result.canonical_path == str(source.resolve())
+        assert result.document.path == source.resolve()
+    finally:
+        if result is not None:
+            result.document.close()
+        resources.shutdown()
+
+
+def test_fresh_session_controller_accepts_a_normalized_record_identity(
+    qapp,
+    tmp_path: Path,
+):
+    store, loaded, paths = _published_session(tmp_path, document_count=1)
+    assert loaded.manifest is not None
+    (tmp_path / "unused").mkdir()
+    raw_path = str(tmp_path / "unused" / ".." / paths[0].name)
+    record = replace(loaded.manifest.documents[0], canonical_path=raw_path)
+    manifest = replace(loaded.manifest, documents=(record,), packs=())
+    service = _restoring_service(tmp_path, store)
+    service.restore_shell(manifest, packs=())
+
+    restored = service.restore_active()
+
+    assert restored is not None
+    assert restored.canonical_path == paths[0].resolve()
+    assert restored.document.path == paths[0].resolve()
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
+def test_history_pack_restore_normalizes_its_canonical_path(tmp_path: Path):
+    from uniti.app.session_runtime import restore_document_pack
+
+    _store, loaded, paths = _published_session(tmp_path, document_count=1)
+    (tmp_path / "unused").mkdir()
+    raw_path = str(tmp_path / "unused" / ".." / paths[0].name)
+    pack = replace(loaded.packs[0], canonical_path=raw_path)
+    resources = ResourceManager(max_workers=1)
+    result = None
+    try:
+        result = restore_document_pack(
+            pack,
+            ("view-0",),
+            resource_manager=resources,
+        )
+
+        assert result.pack.canonical_path == str(paths[0].resolve())
+        assert result.document is not None
+        assert result.document.path == paths[0].resolve()
+    finally:
+        if result is not None and result.document is not None:
+            result.document.close()
+        resources.shutdown()
+
+
 def test_capture_session_collects_complete_immutable_runtime_state_without_io(
     qapp,
     tmp_path: Path,
@@ -712,6 +784,42 @@ def test_restore_completion_is_rejected_when_history_generation_changed(
         original_pack,
         generation="newer-history",
     )
+
+    assert service._session_controller.apply_restore_result(result) is None
+    assert service.documents.count == 0
+    with pytest.raises(ValueError, match="closed"):
+        result.document.read(0, 1)
+
+    service.request_quit(lambda _entry: None)
+
+
+def test_restore_completion_is_rejected_when_canonical_source_changed(
+    qapp,
+    tmp_path: Path,
+):
+    from uniti.app.session_runtime import restore_document_pack
+
+    store, loaded, paths = _published_session(tmp_path, document_count=1)
+    assert loaded.manifest is not None
+    impostor = tmp_path / "same-bytes-different-file.txt"
+    impostor.write_bytes(paths[0].read_bytes())
+    forged_pack = replace(
+        loaded.packs[0],
+        canonical_path=str(impostor),
+        saved_stamp=_saved_stamp(impostor),
+    )
+    service = _restoring_service(tmp_path, store)
+    service.restore_shell(
+        loaded.manifest,
+        packs=loaded.packs,
+        find_replace_pack=loaded.find_replace_pack,
+    )
+    result = restore_document_pack(
+        forged_pack,
+        ("view-0",),
+        resource_manager=service.resources,
+    )
+    assert result.document is not None
 
     assert service._session_controller.apply_restore_result(result) is None
     assert service.documents.count == 0
