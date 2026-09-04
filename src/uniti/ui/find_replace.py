@@ -25,6 +25,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from uniti.app.session import (
+    FindReplaceRecord,
+    bound_find_replace_histories,
+)
 from uniti.regex.analysis import (
     AnalysisState,
     ExpressionRole,
@@ -135,6 +139,7 @@ class FindReplaceWindow(QDialog):
         self.setWindowTitle("Find / Replace")
         self.resize(720, 320)
         self._view_provider = view_provider
+        self._restoring_state = False
         self._shutdown = False
         self._owns_resources = resource_manager is None
         self._resource_manager = resource_manager or ResourceManager(max_workers=1)
@@ -520,6 +525,77 @@ class FindReplaceWindow(QDialog):
         if self.busy:
             self.cancel_search()
         self._clear_results()
+
+    def set_view_provider(self, provider: Callable[[], object | None]) -> None:
+        if not callable(provider):
+            raise TypeError("view provider must be callable")
+        self._view_provider = provider
+        self._update_actions()
+
+    def target_changed(self) -> None:
+        if self.busy:
+            self.cancel_search()
+        self._clear_results()
+        self._refresh_analysis_status()
+
+    def export_state(self, last_target_view_id: str | None) -> FindReplaceRecord:
+        find, replace = bound_find_replace_histories(
+            self.find_input.export_history(),
+            self.replace_input.export_history(),
+        )
+        geometry = self.geometry()
+        return FindReplaceRecord(
+            find=find,
+            replace=replace,
+            regex=self.regex_checkbox.isChecked(),
+            case_sensitive=self.case_sensitive_checkbox.isChecked(),
+            whole_word=self.whole_word_checkbox.isChecked(),
+            visible=self.isVisible(),
+            geometry=(
+                geometry.x(),
+                geometry.y(),
+                geometry.width(),
+                geometry.height(),
+            ),
+            zoom_percent=self.zoom_percent,
+            report_visible=self._report_open,
+            last_target_view_id=last_target_view_id,
+        )
+
+    def restore_state(self, record: FindReplaceRecord) -> None:
+        if not isinstance(record, FindReplaceRecord):
+            raise TypeError("record must be a FindReplaceRecord")
+        self.target_changed()
+        widgets = (
+            self,
+            self.find_input,
+            self.replace_input,
+            self.regex_checkbox,
+            self.case_sensitive_checkbox,
+            self.whole_word_checkbox,
+        )
+        blocked = tuple(widget.blockSignals(True) for widget in widgets)
+        self._restoring_state = True
+        try:
+            if record.geometry is not None:
+                self.setGeometry(*record.geometry)
+            self.set_zoom_percent(record.zoom_percent)
+            self.set_report_location("Right" if record.report_visible else "Hidden")
+            self.find_input.restore_history(record.find)
+            self.replace_input.restore_history(record.replace)
+            self.regex_checkbox.setChecked(record.regex)
+            self.case_sensitive_checkbox.setChecked(record.case_sensitive)
+            self.whole_word_checkbox.setChecked(record.whole_word)
+            self.case_sensitive_checkbox.setEnabled(not record.regex)
+            self.whole_word_checkbox.setEnabled(not record.regex)
+            self.find_clear_button.setEnabled(bool(record.find.current.text))
+            self.replace_clear_button.setEnabled(bool(record.replace.current.text))
+            self.show() if record.visible else self.hide()
+        finally:
+            self._restoring_state = False
+            for widget, was_blocked in zip(widgets, blocked):
+                widget.blockSignals(was_blocked)
+        self._pattern_changed()
 
     def undo_focused_input(self) -> bool:
         field = self.focused_input()

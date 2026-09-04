@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .atomic_json import atomic_write_json, preserve_invalid
 
-SETTINGS_SCHEMA = 1
+SETTINGS_SCHEMA = 2
 
 
 class UnsupportedSettingsSchema(ValueError):
@@ -142,7 +142,7 @@ class SettingsStore:
             self.save(settings)
             return SettingsPreparation(True, preserved, settings)
         schema = payload.get("schema", 0)
-        migrated = schema == 0
+        migrated = schema < SETTINGS_SCHEMA
         if migrated:
             self.save(settings)
         return SettingsPreparation(migrated, None, settings)

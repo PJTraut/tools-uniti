@@ -58,3 +58,41 @@ def test_find_and_replace_input_histories_are_independent():
     assert find.text() == "fin"
     find.close()
     replace.close()
+
+
+def test_input_history_round_trip_preserves_undo_redo_and_selection():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QTextCursor
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.bounded_text_edit import BoundedSingleLineTextEdit
+
+    app = QApplication.instance() or QApplication([])
+    field = BoundedSingleLineTextEdit()
+    field.show()
+    field.setFocus()
+    QTest.keyClicks(field, "alpha")
+    QTest.keyClicks(field, " beta")
+    assert field.undo_input()
+    cursor = field.textCursor()
+    cursor.setPosition(2)
+    cursor.setPosition(5, QTextCursor.MoveMode.KeepAnchor)
+    field.setTextCursor(cursor)
+
+    exported = field.export_history()
+    restored = BoundedSingleLineTextEdit()
+    restored.restore_history(exported)
+
+    assert restored.export_history() == exported
+    assert restored.textCursor().position() == 5
+    assert restored.textCursor().anchor() == 2
+    assert restored.can_undo_input is True
+    assert restored.can_redo_input is True
+    assert restored.redo_input() is True
+    assert restored.text() == "alpha beta"
+    field.close()
+    restored.close()
+    app.processEvents()

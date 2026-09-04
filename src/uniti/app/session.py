@@ -196,6 +196,88 @@ class FindReplaceRecord:
         _validate_find_replace_options(self)
 
 
+def _input_history_with_states(
+    history: InputHistoryRecord,
+    undo: list[InputStateRecord],
+    redo: list[InputStateRecord],
+    *,
+    dropped_count: int,
+    dropped_bytes: int,
+) -> InputHistoryRecord:
+    undo_value = tuple(undo)
+    redo_value = tuple(redo)
+    notices = history.notices
+    if dropped_count:
+        notices += (
+            PersistenceNotice(
+                "find_replace",
+                "field_history_byte_limit",
+                dropped_count,
+                dropped_bytes,
+            ),
+        )
+    return InputHistoryRecord(
+        history.current,
+        undo_value,
+        redo_value,
+        estimate_input_history_bytes(
+            history.current,
+            undo_value,
+            redo_value,
+        ),
+        notices,
+    )
+
+
+def bound_find_replace_histories(
+    find: InputHistoryRecord,
+    replace: InputHistoryRecord,
+    *,
+    max_bytes: int = MAX_FIND_REPLACE_DECODED_BYTES,
+) -> tuple[InputHistoryRecord, InputHistoryRecord]:
+    """Prune convenience field history while preserving current values."""
+
+    if not isinstance(find, InputHistoryRecord) or not isinstance(
+        replace, InputHistoryRecord
+    ):
+        raise TypeError("find and replace must be InputHistoryRecord values")
+    if type(max_bytes) is not int or max_bytes <= 0:
+        raise ValueError("max_bytes must be a positive integer")
+    histories = (find, replace)
+    undo = [list(item.undo) for item in histories]
+    redo = [list(item.redo) for item in histories]
+    dropped_count = [0, 0]
+    dropped_bytes = [0, 0]
+    total = find.decoded_bytes + replace.decoded_bytes
+    for stacks in (undo, redo):
+        while total > max_bytes and any(stacks):
+            for index, stack in enumerate(stacks):
+                if total <= max_bytes:
+                    break
+                if not stack:
+                    continue
+                state = stack.pop(0)
+                size = 24 + len(state.text.encode("utf-8"))
+                total -= size
+                dropped_count[index] += 1
+                dropped_bytes[index] += size
+    if total > max_bytes:
+        raise ValueError(
+            "current Find/Replace values exceed the persistence byte limit"
+        )
+    bounded = tuple(
+        _input_history_with_states(
+            history,
+            undo[index],
+            redo[index],
+            dropped_count=dropped_count[index],
+            dropped_bytes=dropped_bytes[index],
+        )
+        for index, history in enumerate(histories)
+    )
+    return bounded[0], bounded[1]
+
+
 @dataclass(frozen=True, slots=True)
 class FindReplaceManifestRecord:
     find_current: InputStateRecord

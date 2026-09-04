@@ -8,6 +8,14 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeyEvent, QTextCursor
 from PySide6.QtWidgets import QTextEdit
 
+from uniti.app.session import (
+    MAX_INPUT_HISTORY_STATES,
+    InputHistoryRecord,
+    InputStateRecord,
+    PersistenceNotice,
+    estimate_input_history_bytes,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class InputSnapshot:
@@ -26,6 +34,7 @@ class BoundedSingleLineTextEdit(QTextEdit):
         self._max_undo_steps = max_undo_steps
         self._undo_snapshots: list[InputSnapshot] = []
         self._redo_snapshots: list[InputSnapshot] = []
+        self._history_notices: tuple[PersistenceNotice, ...] = ()
         self._restoring_snapshot = False
         self.setAcceptRichText(False)
         self.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
@@ -89,7 +98,58 @@ class BoundedSingleLineTextEdit(QTextEdit):
     def clear_input_history(self) -> None:
         self._undo_snapshots.clear()
         self._redo_snapshots.clear()
+        self._history_notices = ()
         self._current_snapshot = self._snapshot()
+
+    @staticmethod
+    def _state_record(snapshot: InputSnapshot) -> InputStateRecord:
+        return InputStateRecord(
+            snapshot.text,
+            snapshot.position,
+            snapshot.anchor,
+        )
+
+    @staticmethod
+    def _input_snapshot(record: InputStateRecord) -> InputSnapshot:
+        return InputSnapshot(record.text, record.position, record.anchor)
+
+    def export_history(self, max_steps: int = 50) -> InputHistoryRecord:
+        if type(max_steps) is not int or max_steps <= 0:
+            raise ValueError("max_steps must be a positive integer")
+        limit = min(max_steps, MAX_INPUT_HISTORY_STATES)
+        undo = list(self._undo_snapshots)
+        redo = list(self._redo_snapshots)
+        while len(undo) + len(redo) > limit:
+            if undo:
+                del undo[0]
+            else:
+                del redo[0]
+        current = self._state_record(self._snapshot())
+        undo_records = tuple(self._state_record(item) for item in undo)
+        redo_records = tuple(self._state_record(item) for item in redo)
+        return InputHistoryRecord(
+            current=current,
+            undo=undo_records,
+            redo=redo_records,
+            decoded_bytes=estimate_input_history_bytes(
+                current,
+                undo_records,
+                redo_records,
+            ),
+            notices=self._history_notices,
+        )
+
+    def restore_history(self, record: InputHistoryRecord) -> None:
+        if not isinstance(record, InputHistoryRecord):
+            raise TypeError("record must be an InputHistoryRecord")
+        if len(record.undo) + len(record.redo) > self._max_undo_steps:
+            raise ValueError("input history exceeds this field's Undo limit")
+        undo = [self._input_snapshot(item) for item in record.undo]
+        redo = [self._input_snapshot(item) for item in record.redo]
+        self._apply_snapshot(self._input_snapshot(record.current))
+        self._undo_snapshots = undo
+        self._redo_snapshots = redo
+        self._history_notices = record.notices
 
     def text(self) -> str:
         return self.toPlainText()

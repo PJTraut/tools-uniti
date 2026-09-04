@@ -68,7 +68,9 @@ def test_replace_all_is_one_atomic_undo(tmp_path: Path):
     window.close()
 
 
-def test_editor_find_replace_and_hotkey_state_survive_restart(tmp_path: Path):
+def test_editor_and_hotkey_settings_survive_while_panel_uses_defaults(
+    tmp_path: Path,
+):
     from PySide6.QtWidgets import QApplication, QLabel
 
     from uniti.app.settings import SettingsStore
@@ -86,7 +88,7 @@ def test_editor_find_replace_and_hotkey_state_survive_restart(tmp_path: Path):
     first.zoom_in_editor()
     first.set_editor_wrap(True)
     first._find_replace.set_zoom_percent(120)
-    first._find_replace.set_report_location("Right")
+    first._find_replace.set_report_location("Hidden")
     first._command_registry.assign("navigation.go_to_line", "Ctrl+Shift+L")
     first.close_all_documents(force=True)
     first.close()
@@ -97,7 +99,7 @@ def test_editor_find_replace_and_hotkey_state_survive_restart(tmp_path: Path):
 
     assert view.zoom_percent == 130
     assert view.soft_wrap is True
-    assert second._find_replace.zoom_percent == 120
+    assert second._find_replace.zoom_percent == 100
     assert second._find_replace.report_location == "Right"
     assert second._command_registry.current("navigation.go_to_line") == (
         "Ctrl+Shift+L"

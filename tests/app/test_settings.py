@@ -27,7 +27,7 @@ def test_settings_store_round_trips_and_replaces_atomically(tmp_path: Path):
     store.save(settings)
     assert store.load() == settings
     payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["schema"] == 1
+    assert payload["schema"] == 2
     assert payload["last_directory"] == str(tmp_path / "docs")
     assert payload["editor_zoom_percent"] == 130
     assert payload["soft_wrap"] is True
@@ -109,7 +109,7 @@ def test_settings_store_invalid_json_falls_back_to_defaults(tmp_path: Path):
     assert SettingsStore(path).load() == Settings()
 
 
-def test_prepare_migrates_legacy_settings_to_schema_one(tmp_path: Path):
+def test_prepare_migrates_legacy_settings_to_schema_two(tmp_path: Path):
     path = tmp_path / "settings.json"
     path.write_text(
         '{"last_directory":"/tmp","performance_mode":"Automatic"}',
@@ -121,7 +121,36 @@ def test_prepare_migrates_legacy_settings_to_schema_one(tmp_path: Path):
     assert result.migrated is True
     assert result.preserved_path is None
     assert result.settings.last_directory == "/tmp"
-    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == 1
+    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == 2
+
+
+def test_prepare_migrates_schema_one_panel_values_as_schema_two_defaults(
+    tmp_path: Path,
+):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "find_replace_zoom_percent": 140,
+                "find_replace_report_location": "Hidden",
+                "find_replace_geometry": [20, 30, 700, 360],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = SettingsStore(path).prepare()
+
+    assert result.migrated is True
+    assert result.settings.find_replace_zoom_percent == 140
+    assert result.settings.find_replace_report_location == "Hidden"
+    assert result.settings.find_replace_geometry == (20, 30, 700, 360)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["schema"] == 2
+    assert payload["find_replace_zoom_percent"] == 140
+    assert payload["find_replace_report_location"] == "Hidden"
+    assert payload["find_replace_geometry"] == [20, 30, 700, 360]
 
 
 def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
@@ -140,7 +169,7 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
         "find_replace_zoom_percent": 100,
         "last_directory": None,
         "performance_mode": "Automatic",
-        "schema": 1,
+        "schema": 2,
         "shortcut_overrides": {},
         "soft_wrap": False,
         "theme_mode": "System",

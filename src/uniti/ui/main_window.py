@@ -227,13 +227,6 @@ class UNITIMainWindow(QMainWindow):
         )
         if self._settings.find_replace_geometry is not None:
             self._find_replace.setGeometry(*self._settings.find_replace_geometry)
-        self._find_replace.zoomChanged.connect(self._on_find_replace_zoom_changed)
-        self._find_replace.reportLocationChanged.connect(
-            self._on_find_replace_report_location_changed
-        )
-        self._find_replace.geometryChanged.connect(
-            self._on_find_replace_geometry_changed
-        )
         self.setCentralWidget(central)
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
@@ -327,30 +320,6 @@ class UNITIMainWindow(QMainWindow):
                 self._settings_store.save(self._settings)
             except OSError:
                 pass
-
-    def _on_find_replace_zoom_changed(self, percent: int) -> None:
-        self._settings = dataclass_replace(
-            self._settings,
-            find_replace_zoom_percent=percent,
-        )
-        self._save_settings()
-
-    def _on_find_replace_report_location_changed(self, location: str) -> None:
-        self._settings = dataclass_replace(
-            self._settings,
-            find_replace_report_location=location,
-        )
-        self._save_settings()
-
-    def _on_find_replace_geometry_changed(
-        self,
-        geometry: tuple[int, int, int, int],
-    ) -> None:
-        self._settings = dataclass_replace(
-            self._settings,
-            find_replace_geometry=geometry,
-        )
-        self._save_settings()
 
     def set_theme(self, mode: str) -> None:
         if mode not in THEME_MODES:

@@ -295,6 +295,131 @@ def test_find_replace_offscreen_smoke_when_pyside6_available(tmp_path: Path):
         panel.close()
 
 
+def test_find_replace_state_round_trip_preserves_complete_panel_state(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QTextCursor
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.resources import ResourceManager, TaskKind
+    from uniti.ui.find_replace import FindReplacePanel
+    from uniti.ui.text_view import UNITITextView
+
+    app = QApplication.instance() or QApplication([])
+    path = tmp_path / "round-trip.txt"
+    path.write_text("alpha alpha", encoding="utf-8")
+    document = Document.open(path)
+    view = UNITITextView(EditorState(document))
+    resources = ResourceManager(max_workers=2)
+    seen_kinds: list[TaskKind] = []
+    def observe_tasks() -> None:
+        seen_kinds.extend(
+            task.spec.kind for task in resources.tasks.snapshot().tasks
+        )
+
+    resources.tasks.add_listener(observe_tasks)
+    panel = FindReplacePanel(lambda: view, resource_manager=resources)
+    restored = FindReplacePanel(lambda: view, resource_manager=resources)
+    try:
+        panel.show()
+        panel.setGeometry(23, 31, 760, 410)
+        panel.find_input.setFocus()
+        QTest.keyClicks(panel.find_input, "alpha+")
+        assert panel.find_input.undo_input()
+        find_cursor = panel.find_input.textCursor()
+        find_cursor.setPosition(1)
+        find_cursor.setPosition(4, QTextCursor.MoveMode.KeepAnchor)
+        panel.find_input.setTextCursor(find_cursor)
+        panel.replace_input.setFocus()
+        QTest.keyClicks(panel.replace_input, r"beta\\1")
+        assert panel.replace_input.undo_input()
+        panel.regex_checkbox.setChecked(True)
+        panel.case_sensitive_checkbox.setChecked(True)
+        panel.whole_word_checkbox.setChecked(True)
+        panel.set_zoom_percent(140)
+        panel.set_report_location("Hidden")
+        app.processEvents()
+        expected = panel.export_state("view-target")
+        revision = document.revision
+
+        restored.restore_state(expected)
+        assert restored._analysis_timer.isActive()
+        _wait_until(app, lambda: restored.compile_current() is not None)
+
+        assert restored.export_state("view-target") == expected
+        assert restored.result_count == 0
+        assert document.revision == revision
+        assert restored._analysis_timer.interval() == 150
+        assert TaskKind.REGEX_ANALYSIS in seen_kinds
+        assert TaskKind.SEARCH not in seen_kinds
+        assert TaskKind.REPLACE not in seen_kinds
+    finally:
+        resources.tasks.remove_listener(observe_tasks)
+        for item in (panel, restored):
+            item.shutdown()
+            item.close()
+        resources.shutdown()
+        view.close()
+        document.close()
+        app.processEvents()
+
+
+def test_find_replace_export_prunes_oldest_field_history_with_notice():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.session import (
+        MAX_FIND_REPLACE_DECODED_BYTES,
+        InputHistoryRecord,
+        InputStateRecord,
+        estimate_input_history_bytes,
+    )
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    current = InputStateRecord("needle", 6, 6)
+    undo = tuple(
+        InputStateRecord(str(index) + ("x" * 99_999), 0, 0)
+        for index in range(45)
+    )
+    history = InputHistoryRecord(
+        current,
+        undo,
+        (),
+        estimate_input_history_bytes(current, undo, ()),
+    )
+    try:
+        panel.find_input.restore_history(history)
+
+        exported = panel.export_state(None)
+
+        assert exported.find.current == current
+        assert len(exported.find.undo) < len(undo)
+        assert (
+            exported.find.decoded_bytes + exported.replace.decoded_bytes
+            <= MAX_FIND_REPLACE_DECODED_BYTES
+        )
+        assert any(
+            notice.reason == "field_history_byte_limit"
+            and notice.dropped_count > 0
+            and notice.dropped_bytes > 0
+            for notice in exported.find.notices
+        )
+    finally:
+        panel.shutdown()
+        panel.close()
+        app.processEvents()
+
+
 def test_find_all_renders_every_visible_match_with_clear_contrast(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
@@ -529,6 +654,50 @@ def test_navigation_buttons_are_ready_before_find_all(tmp_path: Path):
         assert panel.previous_button.isEnabled()
         assert panel.next_button.isEnabled()
     finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_target_change_clears_document_results_but_retains_panel_state(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    app, document, view, panel = _make_panel(tmp_path, "one two one")
+    second_path = tmp_path / "second.txt"
+    second_path.write_text("second", encoding="utf-8")
+    second_document = Document.open(second_path)
+    second_view = UNITITextView(EditorState(second_document))
+    try:
+        panel.find_input.set_text("one")
+        panel.replace_input.set_text("replacement")
+        panel.case_sensitive_checkbox.setChecked(True)
+        panel.set_zoom_percent(130)
+        panel.set_report_location("Hidden")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 2)
+        before = panel.export_state("view-one")
+
+        panel.set_view_provider(lambda: second_view)
+        assert panel.result_count == 2
+
+        panel.target_changed()
+
+        assert panel.result_count == 0
+        assert panel.export_state("view-two") == replace(
+            before,
+            last_target_view_id="view-two",
+        )
+    finally:
+        second_view.close()
+        second_document.close()
         _close_panel(app, document, view, panel)
 
 
@@ -1404,7 +1573,9 @@ def test_shutdown_drops_late_capture_completion_after_dialog_is_deleted(
         app.processEvents()
 
 
-def test_find_replace_geometry_zoom_and_report_location_persist(tmp_path: Path):
+def test_find_replace_settings_are_startup_defaults_not_runtime_state(
+    tmp_path: Path,
+):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -1414,13 +1585,12 @@ def test_find_replace_geometry_zoom_and_report_location_persist(tmp_path: Path):
     from uniti.ui.main_window import UNITIMainWindow
 
     store = SettingsStore(tmp_path / "settings.json")
-    store.save(
-        Settings(
-            find_replace_zoom_percent=140,
-            find_replace_report_location="Right",
-            find_replace_geometry=(20, 30, 640, 280),
-        )
+    defaults = Settings(
+        find_replace_zoom_percent=140,
+        find_replace_report_location="Right",
+        find_replace_geometry=(20, 30, 640, 280),
     )
+    store.save(defaults)
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow(settings_store=store)
     find_window = window._find_replace
@@ -1439,16 +1609,12 @@ def test_find_replace_geometry_zoom_and_report_location_persist(tmp_path: Path):
     app.processEvents()
     find_window.move(60, 70)
     find_window.resize(700, 330)
+    find_window.set_zoom_percent(170)
+    find_window.set_report_location("Hidden")
     app.processEvents()
-    saved = store.load()
     actual = find_window.geometry()
-    assert saved.find_replace_geometry == (
-        actual.x(),
-        actual.y(),
-        actual.width(),
-        actual.height(),
-    )
-    assert saved.find_replace_geometry[2:] == (700, 330)
+    assert (actual.width(), actual.height()) == (700, 330)
+    assert store.load() == defaults
     find_window.shutdown()
     find_window.close()
     window.close()
