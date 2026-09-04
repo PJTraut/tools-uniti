@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import time
+import uuid
+import weakref
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
@@ -22,7 +24,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QAbstractScrollArea, QApplication
 
-from uniti.app.editor_state import EditorState
+from uniti.app.editor_state import EditorState, EditorStateSnapshot
+from uniti.app.session import ViewRecord
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
 from uniti.ui.wrap_index import WrappedRowIndex
@@ -48,10 +51,25 @@ class UNITITextView(QAbstractScrollArea):
     zoomChanged = Signal(int)
     wrapChanged = Signal(bool)
     navigationRequested = Signal(str, bool)
+    viewFocused = Signal(str)
+    _documentRevisionChanged = Signal()
 
-    def __init__(self, state: EditorState, parent=None) -> None:
+    def __init__(
+        self,
+        state: EditorState,
+        parent=None,
+        *,
+        view_id: str | None = None,
+    ) -> None:
         super().__init__(parent)
+        if not isinstance(state, EditorState):
+            raise TypeError("state must be an EditorState")
+        if view_id is not None and (not isinstance(view_id, str) or not view_id):
+            raise ValueError("view ID must be a nonempty string")
         self.state = state
+        self.view_id = uuid.uuid4().hex if view_id is None else view_id
+        self._disposed = False
+        self._document_refresh_queued = False
         self._base_font = self._fixed_pitch_font()
         self._base_point_size = self._base_font.pointSizeF()
         if self._base_point_size <= 0:
@@ -80,6 +98,20 @@ class UNITITextView(QAbstractScrollArea):
         self.setMouseTracking(True)
         self.verticalScrollBar().valueChanged.connect(self._on_scroll_changed)
         self.horizontalScrollBar().valueChanged.connect(self.viewport().update)
+        self._documentRevisionChanged.connect(
+            self.refresh_document_revision,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        view_ref = weakref.ref(self)
+
+        def document_changed(_event) -> None:
+            view = view_ref()
+            if view is not None:
+                view._queue_document_revision_refresh()
+
+        self._remove_document_listener = self.document.add_history_listener(
+            document_changed
+        )
         self._refresh_scrollbars(advance_index=False)
 
     @staticmethod
@@ -181,6 +213,115 @@ class UNITITextView(QAbstractScrollArea):
     @property
     def document(self):
         return self.state.document
+
+    def export_state(self, document_id: str) -> ViewRecord:
+        editor = self.state.export_state()
+        vertical = self.verticalScrollBar().value()
+        return ViewRecord(
+            self.view_id,
+            document_id,
+            editor.cursor,
+            editor.anchor,
+            editor.preferred_column,
+            vertical,
+            self.horizontalScrollBar().value(),
+            vertical if self._soft_wrap else 0,
+            self._soft_wrap,
+            self._zoom_percent,
+        )
+
+    def _restore_vertical_scroll(self, requested: int) -> None:
+        scrollbar = self.verticalScrollBar()
+        if self._soft_wrap:
+            complete = self._wrapped_row_index().complete
+        else:
+            complete = self.document.document_line_index.complete
+        if not complete and requested > scrollbar.maximum():
+            upper_bound = self.document.total_chars()
+            scrollbar.setMaximum(min(requested, upper_bound))
+        scrollbar.setValue(requested)
+
+    def _restore_horizontal_scroll(self, requested: int) -> None:
+        scrollbar = self.horizontalScrollBar()
+        if self._soft_wrap:
+            scrollbar.setValue(0)
+            return
+        theoretical_width = self.document.total_chars() * self._cell_width
+        upper_bound = max(0, theoretical_width - scrollbar.pageStep())
+        selected = min(requested, upper_bound)
+        if selected > scrollbar.maximum():
+            scrollbar.setMaximum(selected)
+        scrollbar.setValue(selected)
+
+    def restore_state(self, record: ViewRecord) -> None:
+        if not isinstance(record, ViewRecord):
+            raise TypeError("record must be a ViewRecord")
+        if record.view_id != self.view_id:
+            raise ValueError("view record ID does not match this view")
+        self.set_zoom_percent(record.zoom_percent)
+        self.set_soft_wrap(record.soft_wrap)
+        self.state.restore_state(
+            EditorStateSnapshot(
+                record.cursor,
+                record.anchor,
+                record.preferred_column,
+            )
+        )
+        self._refresh_scrollbars(advance_index=False)
+        self._restore_horizontal_scroll(record.horizontal_scroll)
+        vertical = (
+            record.wrap_viewport_row
+            if record.soft_wrap
+            else record.vertical_scroll
+        )
+        self._restore_vertical_scroll(vertical)
+        line = self.document.line_for_char(self.state.cursor)
+        column = self.state.cursor - self.document.line_start(line)
+        self.cursorPositionChanged.emit(line, column)
+        self.stateChanged.emit()
+        self.viewport().update()
+
+    def _queue_document_revision_refresh(self) -> None:
+        if self._disposed or self._document_refresh_queued:
+            return
+        self._document_refresh_queued = True
+        self._documentRevisionChanged.emit()
+
+    def refresh_document_revision(self) -> None:
+        self._document_refresh_queued = False
+        if self._disposed:
+            return
+        total = self.document.total_chars()
+        self.state.cursor = max(0, min(total, self.state.cursor))
+        self.state.anchor = max(0, min(total, self.state.anchor))
+        self._wrap_index = None
+        self._wrap_signature = None
+        self._match_index = MatchIndex(())
+        self._refresh_scrollbars(advance_index=False)
+        line = self.document.line_for_char(self.state.cursor)
+        column = self.state.cursor - self.document.line_start(line)
+        self.cursorPositionChanged.emit(line, column)
+        self.stateChanged.emit()
+        self.viewport().update()
+
+    def dispose(self) -> None:
+        if self._disposed:
+            return
+        self._disposed = True
+        self._document_refresh_queued = False
+        remove = self._remove_document_listener
+        self._remove_document_listener = None
+        if remove is not None:
+            remove()
+
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        if not self._disposed:
+            self.viewFocused.emit(self.view_id)
+
+    def closeEvent(self, event) -> None:
+        self.dispose()
+        super().closeEvent(event)
 
     def set_progressive_navigation(self, enabled: bool) -> None:
         self._progressive_navigation = bool(enabled)

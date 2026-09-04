@@ -5,7 +5,7 @@ from .document_registry import (
     DocumentRegistry,
     DuplicateDocumentError,
 )
-from .editor_state import EditorState
+from .editor_state import EditorState, EditorStateSnapshot
 from .service import QuitChoice, QuitDecision, QuitPlan, UNITIService
 from .window_manager import WindowManager
 
@@ -14,6 +14,7 @@ __all__ = [
     "DocumentRegistry",
     "DuplicateDocumentError",
     "EditorState",
+    "EditorStateSnapshot",
     "QuitChoice",
     "QuitDecision",
     "QuitPlan",

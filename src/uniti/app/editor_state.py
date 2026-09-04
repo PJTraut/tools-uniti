@@ -7,12 +7,43 @@ from dataclasses import dataclass
 from uniti.core.document import Document
 
 
+@dataclass(frozen=True, slots=True)
+class EditorStateSnapshot:
+    cursor: int
+    anchor: int
+    preferred_column: int | None
+
+    def __post_init__(self) -> None:
+        if type(self.cursor) is not int or type(self.anchor) is not int:
+            raise TypeError("cursor and anchor must be integers")
+        if self.preferred_column is not None and (
+            type(self.preferred_column) is not int or self.preferred_column < 0
+        ):
+            raise ValueError("preferred column must be a non-negative integer or None")
+
+
 @dataclass(slots=True)
 class EditorState:
     document: Document
     cursor: int = 0
     anchor: int = 0
     _preferred_column: int | None = None
+
+    def export_state(self) -> EditorStateSnapshot:
+        return EditorStateSnapshot(
+            self.cursor,
+            self.anchor,
+            self._preferred_column,
+        )
+
+    def restore_state(self, snapshot: EditorStateSnapshot) -> None:
+        if not isinstance(snapshot, EditorStateSnapshot):
+            raise TypeError("snapshot must be an EditorStateSnapshot")
+        total = self.document.total_chars()
+        self.cursor = max(0, min(total, snapshot.cursor))
+        self.anchor = max(0, min(total, snapshot.anchor))
+        self._preferred_column = snapshot.preferred_column
+        self.document.break_history_coalescing()
 
     @property
     def selection(self) -> tuple[int, int] | None:

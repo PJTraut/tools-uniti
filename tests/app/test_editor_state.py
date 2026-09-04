@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from uniti.app.editor_state import EditorState
+import pytest
+
+from uniti.app.editor_state import EditorState, EditorStateSnapshot
 from uniti.core.document import Document
 
 
@@ -288,3 +290,44 @@ def test_repeated_forward_delete_is_one_undo_step(tmp_path: Path):
         state.undo()
 
         assert document.read(0, document.total_chars()) == "abcd"
+
+
+def test_editor_state_snapshot_exports_the_vertical_preferred_column(
+    tmp_path: Path,
+):
+    with _open(tmp_path, "abcd\nx\nwxyz") as document:
+        state = EditorState(document)
+        state.move_to(3)
+        state.move_down()
+
+        assert state.export_state() == EditorStateSnapshot(6, 6, 3)
+
+
+def test_editor_state_restore_clamps_positions_to_the_exact_document(
+    tmp_path: Path,
+):
+    with _open(tmp_path, "abc") as document:
+        state = EditorState(document)
+
+        state.restore_state(EditorStateSnapshot(20, 2, 7))
+
+        assert state.cursor == 3
+        assert state.anchor == 2
+        assert state.export_state().preferred_column == 7
+
+
+def test_editor_state_snapshot_rejects_a_negative_preferred_column():
+    with pytest.raises(ValueError, match="preferred column"):
+        EditorStateSnapshot(0, 0, -1)
+
+
+def test_editor_state_restore_breaks_typing_coalescing(tmp_path: Path):
+    with _open(tmp_path, "") as document:
+        state = EditorState(document)
+        state.insert_text("a")
+
+        state.restore_state(state.export_state())
+        state.insert_text("b")
+        state.undo()
+
+        assert document.read(0, document.total_chars()) == "a"

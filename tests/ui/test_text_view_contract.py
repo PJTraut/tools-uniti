@@ -463,3 +463,192 @@ def test_soft_wrap_progressively_indexes_visual_rows_without_changing_text(tmp_p
         view.set_soft_wrap(False)
         assert view.soft_wrap is False
         view.close()
+
+
+def test_view_state_round_trips_selection_scroll_wrap_row_and_zoom(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState, EditorStateSnapshot
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "view-state.txt"
+    path.write_text(("0123456789" * 30 + "\n") * 80, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        original = UNITITextView(EditorState(document), view_id="view-a")
+        original.resize(220, 90)
+        original.show()
+        app.processEvents()
+        original.state.restore_state(EditorStateSnapshot(35, 5, 12))
+        original.set_zoom_percent(130)
+        original.horizontalScrollBar().setValue(48)
+        original.verticalScrollBar().setValue(7)
+        nonwrapped = original.export_state("doc-a")
+
+        restored = UNITITextView(EditorState(document), view_id="view-a")
+        restored.resize(220, 90)
+        restored.show()
+        app.processEvents()
+        restored.restore_state(nonwrapped)
+
+        assert restored.export_state("doc-a") == nonwrapped
+
+        original.set_soft_wrap(True)
+        original._wrapped_row_index().ensure_row(20)
+        original._refresh_scrollbars(advance_index=False)
+        original.verticalScrollBar().setValue(9)
+        wrapped = original.export_state("doc-a")
+        restored.restore_state(wrapped)
+
+        assert restored.soft_wrap is True
+        assert restored.verticalScrollBar().value() == 9
+        assert restored.export_state("doc-a").wrap_viewport_row == 9
+        original.dispose()
+        restored.dispose()
+        original.close()
+        restored.close()
+
+
+def test_view_restore_clamps_state_invalidated_by_a_shorter_document(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.app.session import ViewRecord
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "short-view-state.txt"
+    path.write_text("abc", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document), view_id="view-a")
+        view.resize(220, 90)
+        view.show()
+        app.processEvents()
+        record = ViewRecord(
+            "view-a",
+            "doc-a",
+            100,
+            90,
+            8,
+            50,
+            40,
+            30,
+            False,
+            120,
+        )
+
+        view.restore_state(record)
+
+        assert view.state.cursor == 3
+        assert view.state.anchor == 3
+        assert view.verticalScrollBar().value() == 0
+        assert view.horizontalScrollBar().value() == 0
+        view.dispose()
+        view.close()
+
+
+def test_two_views_share_text_history_but_keep_independent_positions(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.regex.results import MatchIndex, MatchRecord
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "shared-view.txt"
+    path.write_text("alpha\nbeta\n" + ("line\n" * 40), encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        left = UNITITextView(EditorState(document), view_id="left")
+        right = UNITITextView(EditorState(document), view_id="right")
+        for view in (left, right):
+            view.resize(240, 70)
+            view.show()
+        app.processEvents()
+        left.state.move_to(2)
+        right.state.move_to(8)
+        right.verticalScrollBar().setValue(1)
+        right.set_match_index(MatchIndex((MatchRecord(0, 5),)))
+        sibling_refreshes: list[bool] = []
+        right.stateChanged.connect(lambda: sibling_refreshes.append(True))
+
+        left.state.insert_text("X")
+        left._state_changed()
+        app.processEvents()
+
+        assert document.read(0, 12) == "alXpha\nbeta\n"
+        assert right.state.cursor == 8
+        assert right.verticalScrollBar().value() == 1
+        assert len(right._match_index) == 0
+        assert sibling_refreshes
+        assert document.can_undo is True
+        left.dispose()
+        right.dispose()
+        left.close()
+        right.close()
+
+
+def test_disposed_view_ignores_late_document_revision_callbacks(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.regex.results import MatchIndex, MatchRecord
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "disposed-view.txt"
+    path.write_text("abc", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document), view_id="view-a")
+        view.set_match_index(MatchIndex((MatchRecord(0, 1),)))
+        view.dispose()
+
+        document.insert(0, "X")
+        app.processEvents()
+
+        assert len(view._match_index) == 1
+        view.close()
+
+
+def test_view_focus_publishes_its_stable_identifier(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QFocusEvent
+    from PySide6.QtTest import QSignalSpy
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "focused-view.txt"
+    path.write_text("abc", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document), view_id="stable-view")
+        focused = QSignalSpy(view.viewFocused)
+
+        view.focusInEvent(QFocusEvent(QEvent.Type.FocusIn))
+
+        assert focused.count() == 1
+        assert focused.at(0) == ["stable-view"]
+        view.dispose()
+        view.close()
+        app.processEvents()
