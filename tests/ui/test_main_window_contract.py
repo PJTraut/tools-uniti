@@ -59,15 +59,13 @@ def test_main_window_offscreen_open_edit_save_when_pyside6_available(tmp_path: P
     window.close()
 
 
-def test_main_window_wires_recovery_manager_and_startup_recovery_flow():
-    source = MAIN.read_text()
-    assert "RecoveryManager" in source
-    assert "recover_startup_sessions" in source
-    assert "recovery_manager.attach" in source
-    assert "recovery_manager.detach" in source
-    application = APPLICATION.read_text()
-    assert "RecoveryManager" in application
-    assert "recover_startup_sessions" in application
+def test_startup_recovery_is_not_owned_by_each_editor_window():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    assert not hasattr(UNITIMainWindow, "recover_startup_sessions")
 
 
 def test_application_uses_app_paths_and_settings_store():

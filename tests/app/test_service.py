@@ -1,15 +1,23 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from uniti.app.recovery_manager import RecoveryCandidate
+from uniti.app.session import SessionProblem
 from uniti.app.service import QuitChoice, QuitDecision, UNITIService
+from uniti.core.file_identity import FileIdentity, FileMatch
+from uniti.core.history import HistorySnapshot
+from uniti.core.recovery import RecoveryLoadStatus, RecoverySession
 from uniti.core.document import Document
 from uniti.resources import ResourceManager
+from uniti.ui.recovery_center import RecoveryAction, RecoveryDecision, RecoveryEntryKind
 
 
 class RecordingSessionStore:
@@ -616,6 +624,325 @@ def test_new_window_restores_a_bounded_shell_and_quit_action_routes_to_service(
         app.processEvents()
         monkeypatch.undo()
         _stop_desktop_service(app, service)
+
+
+def _startup_candidate(
+    evidence_path: Path,
+    source_path: Path,
+    *,
+    status: RecoveryLoadStatus = RecoveryLoadStatus.COMPLETE,
+    match: FileMatch | None = FileMatch.EXACT_HASH,
+    base_hash: str | None = None,
+) -> RecoveryCandidate:
+    session = SimpleNamespace(source_path=source_path, base_hash=base_hash)
+    return RecoveryCandidate(
+        evidence_path,
+        session,
+        load_status=status,
+        source_match=match,
+        safe_error=None,
+    )
+
+
+class StartupRecoveryManager(RecordingRecoveryManager):
+    def __init__(self, events: list[object] | None = None) -> None:
+        super().__init__(events)
+        self.fail_paths: set[Path] = set()
+        self.prepared: list[RecoveryCandidate] = []
+        self.committed: list[object] = []
+        self.discarded: list[RecoveryCandidate] = []
+
+    def prepare_recovery(self, candidate: RecoveryCandidate):
+        self.events.append(("prepare", candidate.evidence_path.name))
+        self.prepared.append(candidate)
+        if candidate.evidence_path in self.fail_paths:
+            raise OSError("private recovery failure details")
+        document = Document.open(candidate.session.source_path)
+        return SimpleNamespace(
+            document=document,
+            original=candidate,
+            fresh_journal=candidate.evidence_path.with_suffix(".fresh"),
+        )
+
+    def commit_recovery(self, recovered: object) -> None:
+        self.events.append(("commit", recovered.original.evidence_path.name))
+        self.committed.append(recovered)
+
+    def discard(self, candidate: RecoveryCandidate) -> None:
+        self.events.append(("discard-recovery", candidate.evidence_path.name))
+        self.discarded.append(candidate)
+
+
+class StartupTarget:
+    def __init__(self, events: list[object] | None = None) -> None:
+        self.events = events if events is not None else []
+        self.opened: list[Document] = []
+
+    def open_existing_document(self, document: Document):
+        self.events.append(("open-recovered", document.path.name))
+        self.opened.append(document)
+        return object()
+
+    def open_path(self, path: Path):
+        self.events.append(("open-disk", Path(path).name))
+        return object()
+
+
+def test_recovery_entries_merge_candidates_and_session_problems_stably(tmp_path: Path):
+    first_source = tmp_path / "b.txt"
+    second_source = tmp_path / "a.txt"
+    candidates = (
+        _startup_candidate(tmp_path / "z.uniti-recovery", first_source),
+        _startup_candidate(
+            tmp_path / "a.uniti-recovery",
+            second_source,
+            status=RecoveryLoadStatus.TRUNCATED_TAIL,
+        ),
+    )
+    problems = (
+        SessionProblem(
+            "unsupported_manifest",
+            tmp_path / "future.json",
+            "Session schema is newer or unsupported.",
+        ),
+    )
+    service = _service(capture=None)
+
+    entries = service.recovery_entries(candidates, problems)
+
+    assert tuple(entry.path for entry in entries) == (
+        second_source,
+        first_source,
+        tmp_path / "future.json",
+    )
+    assert tuple(entry.kind for entry in entries) == (
+        RecoveryEntryKind.TRUNCATED,
+        RecoveryEntryKind.RECOVERABLE,
+        RecoveryEntryKind.UNSUPPORTED,
+    )
+
+
+def test_skip_preserves_corrupt_and_unsupported_evidence(tmp_path: Path):
+    recovery_evidence = tmp_path / "broken.uniti-recovery"
+    session_evidence = tmp_path / "future.invalid"
+    recovery_evidence.write_bytes(b"broken recovery")
+    session_evidence.write_bytes(b"future session")
+    candidate = RecoveryCandidate(
+        recovery_evidence,
+        None,
+        load_status=RecoveryLoadStatus.CORRUPT,
+        safe_error="Recovery data is invalid or corrupt.",
+    )
+    problem = SessionProblem(
+        "unsupported_manifest",
+        session_evidence,
+        "Session schema is newer or unsupported.",
+    )
+    recovery = StartupRecoveryManager()
+    sessions = RecordingSessionStore()
+    service = _service(recovery=recovery, sessions=sessions, capture=None)
+    entries = service.recovery_entries((candidate,), (problem,))
+    decisions = tuple(
+        RecoveryDecision(entry.entry_id, RecoveryAction.SKIP) for entry in entries
+    )
+
+    assert service.apply_recovery_decisions(
+        decisions,
+        recovery_candidates=(candidate,),
+        session_problems=(problem,),
+        target=StartupTarget(),
+    ) == 0
+
+    assert recovery_evidence.read_bytes() == b"broken recovery"
+    assert session_evidence.read_bytes() == b"future session"
+    assert recovery.discarded == []
+    assert sessions.discarded == []
+
+
+def test_skip_without_an_editor_target_does_not_create_a_window(tmp_path: Path):
+    evidence = tmp_path / "broken.uniti-recovery"
+    candidate = RecoveryCandidate(
+        evidence,
+        None,
+        load_status=RecoveryLoadStatus.CORRUPT,
+        safe_error="Recovery data is invalid or corrupt.",
+    )
+    service = _service(capture=None)
+    entry = service.recovery_entries((candidate,), ())[0]
+
+    assert service.apply_recovery_decisions(
+        (RecoveryDecision(entry.entry_id, RecoveryAction.SKIP),),
+        recovery_candidates=(candidate,),
+    ) == 0
+
+    assert service.window_count == 0
+
+
+def test_one_failed_recovery_does_not_block_another_candidate(tmp_path: Path):
+    first_source = tmp_path / "first.txt"
+    second_source = tmp_path / "second.txt"
+    first_source.write_text("first", encoding="utf-8")
+    second_source.write_text("second", encoding="utf-8")
+    first = _startup_candidate(tmp_path / "first.uniti-recovery", first_source)
+    second = _startup_candidate(tmp_path / "second.uniti-recovery", second_source)
+    recovery = StartupRecoveryManager()
+    recovery.fail_paths.add(first.evidence_path)
+    service = _service(recovery=recovery, capture=None)
+    target = StartupTarget()
+    entries = service.recovery_entries((first, second), ())
+    decisions = tuple(
+        RecoveryDecision(entry.entry_id, RecoveryAction.RECOVER)
+        for entry in entries
+    )
+
+    assert service.apply_recovery_decisions(
+        decisions,
+        recovery_candidates=(first, second),
+        target=target,
+    ) == 1
+
+    assert [document.path for document in target.opened] == [second_source]
+    assert len(service.last_recovery_errors) == 1
+    assert "private recovery failure details" not in service.last_recovery_errors[0]
+    for document in target.opened:
+        document.close()
+
+
+def test_recovery_publishes_new_session_before_retiring_old_candidate(tmp_path: Path):
+    events: list[object] = []
+    source = tmp_path / "document.txt"
+    source.write_text("body", encoding="utf-8")
+    candidate = _startup_candidate(tmp_path / "document.uniti-recovery", source)
+    recovery = StartupRecoveryManager(events)
+    sessions = RecordingSessionStore(events)
+
+    def capture(clean: bool):
+        events.append(("capture-recovery", clean))
+        return ("recovered-snapshot", clean)
+
+    service = _service(recovery=recovery, sessions=sessions, capture=capture)
+    target = StartupTarget(events)
+    entry = service.recovery_entries((candidate,), ())[0]
+
+    assert service.apply_recovery_decisions(
+        (RecoveryDecision(entry.entry_id, RecoveryAction.RECOVER),),
+        recovery_candidates=(candidate,),
+        target=target,
+    ) == 1
+
+    assert events == [
+        ("prepare", "document.uniti-recovery"),
+        ("open-recovered", "document.txt"),
+        ("capture-recovery", False),
+        ("publish", ("recovered-snapshot", False)),
+        ("commit", "document.uniti-recovery"),
+    ]
+    target.opened[0].close()
+
+
+def test_locate_matching_file_hashes_exact_bytes_before_recovery(tmp_path: Path):
+    missing = tmp_path / "missing.txt"
+    located = tmp_path / "located.txt"
+    located.write_bytes(b"exact bytes")
+    expected_hash = hashlib.sha256(b"different bytes").hexdigest()
+    candidate = _startup_candidate(
+        tmp_path / "missing.uniti-recovery",
+        missing,
+        match=FileMatch.MISSING,
+        base_hash=expected_hash,
+    )
+    recovery = StartupRecoveryManager()
+    service = _service(recovery=recovery, capture=None)
+    entry = service.recovery_entries((candidate,), ())[0]
+
+    assert service.apply_recovery_decisions(
+        (
+            RecoveryDecision(
+                entry.entry_id,
+                RecoveryAction.LOCATE_MATCH,
+                located_path=located,
+            ),
+        ),
+        recovery_candidates=(candidate,),
+        target=StartupTarget(),
+    ) == 0
+
+    assert recovery.prepared == []
+    assert located.read_bytes() == b"exact bytes"
+    assert candidate.evidence_path not in recovery.discarded
+    assert service.last_recovery_errors == (
+        f"Could not recover {missing}; its saved evidence was preserved.",
+    )
+
+
+def test_locate_exact_hash_retargets_recovery_without_removing_evidence(tmp_path: Path):
+    missing = tmp_path / "missing.txt"
+    located = tmp_path / "located.txt"
+    located.write_bytes(b"exact bytes")
+    expected_hash = hashlib.sha256(b"exact bytes").hexdigest()
+    session = RecoverySession(
+        source_path=missing,
+        source_identity=FileIdentity(11, 1),
+        source_encoding="utf-8",
+        output_encoding="utf-8",
+        output_eol=None,
+        operations=(),
+        clean=False,
+        format_version=3,
+        base_hash=expected_hash,
+        base_history=HistorySnapshot.empty(),
+    )
+    candidate = RecoveryCandidate(
+        tmp_path / "missing.uniti-recovery",
+        session,
+        source_match=FileMatch.MISSING,
+    )
+    recovery = StartupRecoveryManager()
+    service = _service(recovery=recovery, capture=None)
+    target = StartupTarget()
+    entry = service.recovery_entries((candidate,), ())[0]
+
+    assert service.apply_recovery_decisions(
+        (
+            RecoveryDecision(
+                entry.entry_id,
+                RecoveryAction.LOCATE_MATCH,
+                located_path=located,
+            ),
+        ),
+        recovery_candidates=(candidate,),
+        target=target,
+    ) == 1
+
+    assert recovery.prepared[0].session.source_path == located
+    assert recovery.prepared[0].source_match is FileMatch.EXACT_HASH
+    assert recovery.discarded == []
+    assert target.opened[0].read(0, target.opened[0].total_chars()) == "exact bytes"
+    target.opened[0].close()
+
+
+def test_open_disk_keeps_changed_recovery_evidence_for_later(tmp_path: Path):
+    source = tmp_path / "changed.txt"
+    source.write_text("current disk", encoding="utf-8")
+    candidate = _startup_candidate(
+        tmp_path / "changed.uniti-recovery",
+        source,
+        match=FileMatch.CHANGED,
+    )
+    recovery = StartupRecoveryManager()
+    service = _service(recovery=recovery, capture=None)
+    target = StartupTarget()
+    entry = service.recovery_entries((candidate,), ())[0]
+
+    assert service.apply_recovery_decisions(
+        (RecoveryDecision(entry.entry_id, RecoveryAction.OPEN_DISK),),
+        recovery_candidates=(candidate,),
+        target=target,
+    ) == 1
+
+    assert target.events == [("open-disk", "changed.txt")]
+    assert recovery.discarded == []
+    assert source.read_text(encoding="utf-8") == "current disk"
 
 
 def test_reload_replaces_shared_document_authority_in_every_view(tmp_path: Path):

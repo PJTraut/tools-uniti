@@ -313,6 +313,33 @@ def test_local_backend_publishes_and_loads_complete_generation(
     assert loaded.packs[0].document_id == "doc-1"
 
 
+def test_discard_evidence_removes_only_selected_owned_session_artifact(
+    tmp_path: Path,
+):
+    root = tmp_path / "session"
+    store = SessionStore(root)
+    selected = store.invalid_dir / "future.json.20260904.invalid"
+    retained = store.invalid_dir / "other.json.20260904.invalid"
+    selected.write_bytes(b"selected")
+    retained.write_bytes(b"retained")
+
+    store.discard_evidence(selected)
+
+    assert selected.exists() is False
+    assert retained.read_bytes() == b"retained"
+
+
+def test_discard_evidence_rejects_paths_outside_session_storage(tmp_path: Path):
+    store = SessionStore(tmp_path / "session")
+    outside = tmp_path / "outside.invalid"
+    outside.write_bytes(b"not UNITI-owned")
+
+    with pytest.raises(ValueError, match="outside owned session storage"):
+        store.discard_evidence(outside)
+
+    assert outside.read_bytes() == b"not UNITI-owned"
+
+
 def test_low_space_is_injected_and_writes_no_nonessential_history():
     root = Path("/owned/session")
     backend = FakeBackend(root)

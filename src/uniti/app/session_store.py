@@ -911,6 +911,38 @@ class SessionStore:
         )
         self.publish(snapshot)
 
+    def discard_evidence(self, path: Path) -> None:
+        """Delete one explicitly selected, recognized session-store artifact."""
+
+        selected = Path(path)
+        if selected.is_symlink():
+            raise ValueError("session evidence must not be a symlink")
+        root = self.root.resolve(strict=False)
+        resolved = selected.resolve(strict=False)
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("session evidence is outside owned session storage") from exc
+        allowed_parents = {
+            self.root.resolve(strict=False),
+            self.manifests_dir.resolve(strict=False),
+            self.packs_dir.resolve(strict=False),
+            self.pointers_dir.resolve(strict=False),
+            self.invalid_dir.resolve(strict=False),
+        }
+        if resolved.parent not in allowed_parents:
+            raise ValueError("session evidence is outside owned session storage")
+        if resolved == self.current_path.resolve(strict=False):
+            recognized = True
+        else:
+            recognized = is_durable_session_artifact_name(resolved.name)
+        if not recognized:
+            raise ValueError("session evidence name is not UNITI-owned")
+        try:
+            self.backend.unlink(resolved)
+        except FileNotFoundError:
+            pass
+
     def cleanup(
         self,
         *,

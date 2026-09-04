@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, replace
 from enum import StrEnum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from uniti.resources.tasks import TaskHandle, TaskKind, TaskSpec
@@ -58,6 +60,13 @@ class QuitPlan:
 class _PublicationRequest:
     generation: int
     snapshot: object
+
+
+@dataclass(frozen=True, slots=True)
+class _RecoveryBinding:
+    entry: object
+    source: str
+    payload: object
 
 
 class _PublicationQueue:
@@ -190,6 +199,7 @@ class UNITIService:
         self._find_replace: FindReplaceWindow | None = None
         self._publication_queue: _PublicationQueue | None = None
         self._publication_generation = 0
+        self._last_recovery_errors: tuple[str, ...] = ()
         self._running = True
         try:
             from PySide6.QtWidgets import QApplication
@@ -257,6 +267,330 @@ class UNITIService:
     def last_publication_error(self) -> Exception | None:
         queue = self._publication_queue
         return None if queue is None else queue.last_error
+
+    @property
+    def last_recovery_errors(self) -> tuple[str, ...]:
+        return self._last_recovery_errors
+
+    @staticmethod
+    def _candidate_entry_kind(candidate: object):
+        from uniti.core.file_identity import FileMatch
+        from uniti.core.recovery import RecoveryLoadStatus
+        from uniti.ui.recovery_center import RecoveryEntryKind
+
+        status = getattr(candidate, "load_status", None)
+        match = getattr(candidate, "source_match", None)
+        if status is RecoveryLoadStatus.CORRUPT:
+            return RecoveryEntryKind.CORRUPT
+        if status is RecoveryLoadStatus.UNSUPPORTED:
+            return RecoveryEntryKind.UNSUPPORTED
+        if match is FileMatch.CHANGED:
+            return RecoveryEntryKind.CHANGED
+        if match is FileMatch.MISSING:
+            return RecoveryEntryKind.MISSING
+        if status is RecoveryLoadStatus.TRUNCATED_TAIL:
+            return RecoveryEntryKind.TRUNCATED
+        return RecoveryEntryKind.RECOVERABLE
+
+    @staticmethod
+    def _problem_entry_kind(problem: object):
+        from uniti.ui.recovery_center import RecoveryEntryKind
+
+        kind = getattr(problem, "kind", "")
+        if kind == "session_ready":
+            return RecoveryEntryKind.SESSION_READY
+        if kind in {"changed_source", "source_changed"}:
+            return RecoveryEntryKind.CHANGED
+        if kind in {"missing_source", "source_missing"}:
+            return RecoveryEntryKind.MISSING
+        if kind in {"truncated", "history_truncated"}:
+            return RecoveryEntryKind.TRUNCATED
+        if kind in {"degraded", "recovery_degraded"}:
+            return RecoveryEntryKind.DEGRADED
+        if "unsupported" in kind:
+            return RecoveryEntryKind.UNSUPPORTED
+        return RecoveryEntryKind.CORRUPT
+
+    def _recovery_bindings(
+        self,
+        recovery_candidates: tuple[object, ...],
+        session_problems: tuple[object, ...],
+    ) -> tuple[_RecoveryBinding, ...]:
+        from uniti.app.recovery_manager import RecoveryCandidate
+        from uniti.app.session import SessionProblem
+        from uniti.ui.recovery_center import MAX_RECOVERY_ENTRIES, RecoveryEntry
+
+        if not isinstance(recovery_candidates, tuple) or any(
+            not isinstance(item, RecoveryCandidate) for item in recovery_candidates
+        ):
+            raise TypeError("recovery candidates must be a tuple of RecoveryCandidate")
+        if not isinstance(session_problems, tuple) or any(
+            not isinstance(item, SessionProblem) for item in session_problems
+        ):
+            raise TypeError("session problems must be a tuple of SessionProblem")
+        if len(recovery_candidates) + len(session_problems) > MAX_RECOVERY_ENTRIES:
+            raise ValueError("too many recovery entries")
+
+        ordered: list[tuple[str, object]] = [
+            ("recovery", candidate)
+            for candidate in sorted(
+                recovery_candidates,
+                key=lambda item: str(item.evidence_path),
+            )
+        ]
+        ordered.extend(
+            ("session", problem)
+            for problem in sorted(
+                session_problems,
+                key=lambda item: str(item.evidence_path),
+            )
+        )
+        bindings: list[_RecoveryBinding] = []
+        for index, (source, payload) in enumerate(ordered):
+            evidence_path = Path(getattr(payload, "evidence_path"))
+            digest = hashlib.sha256(
+                f"{source}\0{evidence_path}".encode("utf-8")
+            ).hexdigest()[:20]
+            entry_id = f"{source}-{index:04d}-{digest}"
+            if source == "recovery":
+                session = getattr(payload, "session", None)
+                path = (
+                    Path(getattr(session, "source_path"))
+                    if session is not None
+                    else evidence_path
+                )
+                entry_kind = self._candidate_entry_kind(payload)
+                message = getattr(payload, "safe_error", None) or (
+                    "UNITI found compatible recovery state for this document."
+                )
+            else:
+                path = evidence_path
+                entry_kind = self._problem_entry_kind(payload)
+                message = getattr(payload, "safe_message")
+            entry = RecoveryEntry.create(
+                entry_id=entry_id,
+                kind=entry_kind,
+                path=path,
+                message=message,
+                evidence_path=evidence_path,
+            )
+            bindings.append(_RecoveryBinding(entry, source, payload))
+        return tuple(bindings)
+
+    def recovery_entries(
+        self,
+        recovery_candidates: tuple[object, ...] = (),
+        session_problems: tuple[object, ...] = (),
+    ) -> tuple[object, ...]:
+        """Return a stable, bounded presentation of startup evidence."""
+
+        return tuple(
+            binding.entry
+            for binding in self._recovery_bindings(
+                recovery_candidates,
+                session_problems,
+            )
+        )
+
+    def _recovery_target(self, target: object | None) -> object:
+        selected = target or self.most_recent_window
+        return self.new_window() if selected is None else selected
+
+    def _publish_recovered_state(self, recovered: object) -> None:
+        if self._session_capture is None:
+            return
+        snapshot = self.capture_session(clean_shutdown=False)
+        self.sessions.publish(snapshot)
+        self.recovery.commit_recovery(recovered)
+
+    def _recover_candidate(self, candidate: object, target: object) -> None:
+        recovered = self.recovery.prepare_recovery(candidate)
+        document = recovered.document
+        opener = getattr(target, "open_existing_document", None)
+        if not callable(opener):
+            try:
+                self.recovery.detach(document, clean=False)
+            finally:
+                document.close()
+            raise TypeError("recovery target cannot open a recovered document")
+        try:
+            opener(document)
+        except Exception:
+            try:
+                self.recovery.detach(document, clean=False)
+            finally:
+                document.close()
+            raise
+        self._publish_recovered_state(recovered)
+
+    def _apply_candidate_action(
+        self,
+        candidate: object,
+        decision: object,
+        target: object,
+    ) -> bool:
+        from uniti.core.file_identity import FileIdentity, FileMatch, sha256_file
+        from uniti.ui.recovery_center import RecoveryAction
+
+        action = decision.action
+        if action is RecoveryAction.SKIP:
+            return False
+        if action is RecoveryAction.DISCARD:
+            self.recovery.discard(candidate)
+            return False
+        session = getattr(candidate, "session", None)
+        if session is None:
+            raise ValueError("recovery candidate has no usable session")
+        if action is RecoveryAction.OPEN_DISK:
+            opener = getattr(target, "open_path", None)
+            if not callable(opener):
+                raise TypeError("recovery target cannot open a disk file")
+            opener(Path(session.source_path))
+            return True
+        selected = candidate
+        if action is RecoveryAction.LOCATE_MATCH:
+            expected_hash = getattr(session, "base_hash", None)
+            if not isinstance(expected_hash, str):
+                raise ValueError("recovery evidence has no exact saved-file hash")
+            located_path = Path(decision.located_path)
+            if sha256_file(located_path) != expected_hash:
+                raise ValueError("located file does not match recovery evidence")
+            if not is_dataclass(session):
+                raise TypeError("recovery session cannot be relocated")
+            relocated_session = replace(
+                session,
+                source_path=located_path,
+                source_identity=FileIdentity.from_path(located_path),
+            )
+            selected = replace(
+                candidate,
+                session=relocated_session,
+                source_match=FileMatch.EXACT_HASH,
+            )
+        if action in {RecoveryAction.RECOVER, RecoveryAction.LOCATE_MATCH}:
+            self._recover_candidate(selected, target)
+            return True
+        raise ValueError("recovery action is unsupported for a journal")
+
+    def _apply_session_problem_action(
+        self,
+        problem: object,
+        decision: object,
+        target: object,
+    ) -> bool:
+        from uniti.ui.recovery_center import RecoveryAction
+
+        action = decision.action
+        if action is RecoveryAction.SKIP:
+            return False
+        if action is RecoveryAction.DISCARD:
+            document_id = getattr(problem, "document_id", None)
+            if document_id is not None:
+                self.sessions.discard(document_id)
+            else:
+                discard_evidence = getattr(self.sessions, "discard_evidence", None)
+                if not callable(discard_evidence):
+                    raise TypeError("session store cannot discard selected evidence")
+                discard_evidence(problem.evidence_path)
+            return False
+        handler = getattr(self.sessions, "resolve_problem", None)
+        if not callable(handler):
+            raise TypeError("session problem cannot be resolved by this store")
+        handler(problem, action=action, located_path=decision.located_path, target=target)
+        return True
+
+    def apply_recovery_decisions(
+        self,
+        decisions: tuple[object, ...],
+        *,
+        recovery_candidates: tuple[object, ...] = (),
+        session_problems: tuple[object, ...] = (),
+        target: object | None = None,
+    ) -> int:
+        """Apply each safe startup decision independently and preserve failures."""
+
+        from uniti.ui.recovery_center import RecoveryAction, RecoveryDecision
+
+        if not isinstance(decisions, tuple) or any(
+            not isinstance(item, RecoveryDecision) for item in decisions
+        ):
+            raise TypeError("recovery decisions must be a tuple of RecoveryDecision")
+        bindings = self._recovery_bindings(recovery_candidates, session_problems)
+        by_id = {binding.entry.entry_id: binding for binding in bindings}
+        if len({decision.entry_id for decision in decisions}) != len(decisions):
+            raise ValueError("recovery decisions contain duplicate entry IDs")
+        for decision in decisions:
+            binding = by_id.get(decision.entry_id)
+            if binding is None:
+                raise ValueError("recovery decision references an unknown entry")
+            if decision.action not in binding.entry.actions:
+                raise ValueError("recovery decision is unsafe for its entry")
+
+        selected_target = target
+        completed = 0
+        errors: list[str] = []
+        for decision in decisions:
+            binding = by_id[decision.entry_id]
+            try:
+                if decision.action in {
+                    RecoveryAction.RECOVER,
+                    RecoveryAction.OPEN_DISK,
+                    RecoveryAction.LOCATE_MATCH,
+                } and selected_target is None:
+                    selected_target = self._recovery_target(None)
+                if binding.source == "recovery":
+                    opened = self._apply_candidate_action(
+                        binding.payload,
+                        decision,
+                        selected_target,
+                    )
+                else:
+                    opened = self._apply_session_problem_action(
+                        binding.payload,
+                        decision,
+                        selected_target,
+                    )
+            except Exception:
+                errors.append(
+                    f"Could not recover {binding.entry.path}; "
+                    "its saved evidence was preserved."
+                )
+                continue
+            completed += int(opened)
+        self._last_recovery_errors = tuple(errors)
+        return completed
+
+    def run_recovery_center(
+        self,
+        parent: object,
+        *,
+        recovery_candidates: tuple[object, ...] = (),
+        session_problems: tuple[object, ...] = (),
+    ) -> int:
+        """Present one startup dialog and apply its independent decisions."""
+
+        from PySide6.QtWidgets import QMessageBox
+
+        from uniti.ui.recovery_center import RecoveryCenterDialog
+
+        entries = self.recovery_entries(recovery_candidates, session_problems)
+        if not entries:
+            self._last_recovery_errors = ()
+            return 0
+        dialog = RecoveryCenterDialog(entries, parent)
+        dialog.exec()
+        recovered = self.apply_recovery_decisions(
+            dialog.decisions(),
+            recovery_candidates=recovery_candidates,
+            session_problems=session_problems,
+            target=parent,
+        )
+        if self._last_recovery_errors:
+            visible = "\n".join(self._last_recovery_errors[:10])
+            if len(self._last_recovery_errors) > 10:
+                visible += "\nAdditional items were preserved for later."
+            QMessageBox.warning(parent, "Recovery Incomplete", visible)
+        return recovered
 
     def _ensure_running(self) -> None:
         if not self._running:

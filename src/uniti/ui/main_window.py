@@ -1024,38 +1024,6 @@ class UNITIMainWindow(QMainWindow):
         self._remember_directory(path)
         return view
 
-    def recover_startup_sessions(self) -> int:
-        if self._recovery_manager is None:
-            return 0
-        recovered = 0
-        for candidate in self._recovery_manager.discover():
-            choice = QMessageBox.question(
-                self,
-                "Recover UNITI Document",
-                f"Recover unsaved changes to {candidate.session.source_path}?",
-                QMessageBox.StandardButton.Yes
-                | QMessageBox.StandardButton.No
-                | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Yes,
-            )
-            if choice == QMessageBox.StandardButton.Cancel:
-                break
-            if choice == QMessageBox.StandardButton.No:
-                self._recovery_manager.discard(candidate)
-                continue
-            try:
-                document = self._recovery_manager.recover(candidate)
-                self._add_document(document, attach_recovery=False)
-            except Exception as exc:
-                QMessageBox.warning(
-                    self,
-                    "Recovery Failed",
-                    f"Could not recover {candidate.session.source_path}:\n\n{exc}",
-                )
-                continue
-            recovered += 1
-        return recovered
-
     def _tab_label(self, view: UNITITextView) -> str:
         marker = "*" if view.document.modified else ""
         return f"{view.document.path.name}{marker}"

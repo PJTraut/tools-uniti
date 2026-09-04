@@ -313,15 +313,21 @@ def _startup_callbacks(
         from uniti.app.service import UNITIService
         from uniti.app.session_store import SessionStore
 
+        session_store = SessionStore(context.paths.durable_session_dir)
+        loaded_session = session_store.load_latest()
         service = UNITIService(
             resource_manager=context.data["resource_manager"],
             settings_store=context.data["settings_store"],
-            session_store=SessionStore(context.paths.durable_session_dir),
+            session_store=session_store,
             recovery_manager=context.data["recovery_manager"],
         )
         window = service.new_window()
         window.set_startup_snapshot(context.snapshot())
-        window.recover_startup_sessions()
+        service.run_recovery_center(
+            window,
+            recovery_candidates=context.recovery_candidates,
+            session_problems=loaded_session.problems,
+        )
         for path in request.files:
             try:
                 window.open_path(path)
