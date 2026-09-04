@@ -7,12 +7,19 @@ import hashlib
 import os
 import tempfile
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO, Callable, Iterable, Iterator, Literal
 
 from .byte_source import ByteSource
 from .decoder import iter_decoded_spans
+from .durability import (
+    DurabilityAdapter,
+    DurabilityError,
+    DurabilityLevel,
+    DurabilityResult,
+    NativeDurabilityAdapter,
+)
 from .eol import analyze_eol
 from .file_identity import ExternalFileChangedError, FileIdentity
 from .pieces import EditSegment, PieceTable, SourceSegment
@@ -70,24 +77,6 @@ def _apply_target_metadata(path: Path, metadata: _TargetMetadata) -> None:
                 continue
 
 
-def _fsync_parent(path: Path) -> None:
-    if os.name != "posix":
-        return
-    flags = os.O_RDONLY
-    if hasattr(os, "O_DIRECTORY"):
-        flags |= os.O_DIRECTORY
-    try:
-        fd = os.open(path.parent, flags)
-    except OSError:
-        return
-    try:
-        os.fsync(fd)
-    except OSError:
-        pass
-    finally:
-        os.close(fd)
-
-
 @dataclass(frozen=True, slots=True)
 class SaveOptions:
     encoding: str | None = None
@@ -107,12 +96,23 @@ class StagedSave:
     metadata: _TargetMetadata
     target_identity: FileIdentity | None
     preserves_source_bytes: bool
+    _adapter: DurabilityAdapter = field(repr=False, compare=False)
     _verified: bool = False
     _verified_identity: FileIdentity | None = None
+    _commit_durability: DurabilityResult | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     @property
     def verified(self) -> bool:
         return self._verified
+
+    @property
+    def commit_durability(self) -> DurabilityResult | None:
+        return self._commit_durability
 
 
 class SaveVerificationError(RuntimeError):
@@ -126,6 +126,26 @@ class SaveCancelled(RuntimeError):
 def _check_cancelled(cancelled: Callable[[], bool] | None) -> None:
     if cancelled is not None and cancelled():
         raise SaveCancelled("document save cancelled")
+
+
+def _durability_error(
+    operation: str,
+    stage: str,
+    error: OSError,
+    *,
+    file_synced: bool,
+) -> DurabilityError:
+    return DurabilityError(
+        DurabilityResult(
+            operation,
+            DurabilityLevel.UNSAFE,
+            file_synced,
+            False,
+            False,
+            f"{stage}:{type(error).__name__}",
+        ),
+        error,
+    )
 
 
 def _report(
@@ -403,6 +423,7 @@ def stage_document(
     chunk_chars: int = 65_536,
     progress: SaveProgress | None = None,
     cancelled: Callable[[], bool] | None = None,
+    adapter: DurabilityAdapter | None = None,
 ) -> StagedSave:
     """Write and fsync a sibling temporary without replacing destination."""
 
@@ -417,6 +438,7 @@ def stage_document(
         cancelled=cancelled,
     )
     target = Path(destination)
+    selected_adapter = adapter if adapter is not None else NativeDurabilityAdapter()
     metadata = _capture_target_metadata(target)
     try:
         target_identity = FileIdentity.from_path(target)
@@ -460,8 +482,17 @@ def stage_document(
                     cancelled=cancelled,
                 )
             _check_cancelled(cancelled)
+            _apply_target_metadata(temp_path, metadata)
             handle.flush()
-            os.fsync(handle.fileno())
+            try:
+                selected_adapter.sync_file(handle.fileno())
+            except OSError as error:
+                raise _durability_error(
+                    "document_save",
+                    "file_sync",
+                    error,
+                    file_synced=False,
+                ) from error
             byte_length = writer.byte_length
             digest = writer.digest
         return StagedSave(
@@ -473,6 +504,7 @@ def stage_document(
             metadata=metadata,
             target_identity=target_identity,
             preserves_source_bytes=preserve_bytes,
+            _adapter=selected_adapter,
         )
     except Exception:
         if fd is not None:
@@ -690,7 +722,11 @@ def verify_staged_document(
     object.__setattr__(staged, "_verified", True)
 
 
-def commit_staged_document(staged: StagedSave) -> Path:
+def commit_staged_document(
+    staged: StagedSave,
+    *,
+    adapter: DurabilityAdapter | None = None,
+) -> Path:
     """Atomically replace the destination after successful verification."""
 
     if not staged._verified or staged._verified_identity is None:
@@ -711,9 +747,33 @@ def commit_staged_document(staged: StagedSave) -> Path:
             staged.target_identity,
             target_identity,
         )
-    _apply_target_metadata(staged.temporary, staged.metadata)
-    os.replace(staged.temporary, staged.destination)
-    _fsync_parent(staged.destination)
+    selected_adapter = staged._adapter if adapter is None else adapter
+    try:
+        selected_adapter.replace(staged.temporary, staged.destination)
+    except OSError as error:
+        raise _durability_error(
+            "document_save",
+            "replace",
+            error,
+            file_synced=True,
+        ) from error
+    try:
+        directory_synced = selected_adapter.sync_directory(
+            staged.destination.parent
+        ) is True
+        reason = None if directory_synced else "directory_sync_unavailable"
+    except OSError as error:
+        directory_synced = False
+        reason = f"directory_sync:{type(error).__name__}"
+    result = DurabilityResult(
+        "document_save",
+        DurabilityLevel.FULL if directory_synced else DurabilityLevel.FILE_SYNCED,
+        True,
+        True,
+        directory_synced,
+        reason,
+    )
+    object.__setattr__(staged, "_commit_durability", result)
     return staged.destination
 
 
@@ -735,6 +795,7 @@ def save_document(
     destination: str | os.PathLike[str],
     options: SaveOptions | None = None,
     before_commit: Callable[[], None] | None = None,
+    adapter: DurabilityAdapter | None = None,
 ) -> Path:
     """Stage, verify, and atomically replace one exact document output."""
 
@@ -751,6 +812,7 @@ def save_document(
         output_format=output_format,
         chunk_bytes=opts.chunk_bytes,
         chunk_chars=opts.chunk_chars,
+        adapter=adapter,
     )
     try:
         verify_staged_document(
@@ -774,10 +836,12 @@ def atomic_write_text_chunks(
     encoding: str,
     eol: EOLName | None = None,
     bom: bytes | None = None,
+    adapter: DurabilityAdapter | None = None,
 ) -> Path:
     """Strictly encode text chunks through the UNITI atomic-save discipline."""
 
     target = Path(destination)
+    selected_adapter = adapter if adapter is not None else NativeDurabilityAdapter()
     metadata = _capture_target_metadata(target)
     fd: int | None = None
     temp_path: Path | None = None
@@ -808,11 +872,30 @@ def atomic_write_text_chunks(
             tail = _strict_encode(encoder, "", encoding, final=True)
             if tail:
                 handle.write(tail)
+            _apply_target_metadata(temp_path, metadata)
             handle.flush()
-            os.fsync(handle.fileno())
-        _apply_target_metadata(temp_path, metadata)
-        os.replace(temp_path, target)
-        _fsync_parent(target)
+            try:
+                selected_adapter.sync_file(handle.fileno())
+            except OSError as error:
+                raise _durability_error(
+                    "atomic_text_write",
+                    "file_sync",
+                    error,
+                    file_synced=False,
+                ) from error
+        try:
+            selected_adapter.replace(temp_path, target)
+        except OSError as error:
+            raise _durability_error(
+                "atomic_text_write",
+                "replace",
+                error,
+                file_synced=True,
+            ) from error
+        try:
+            selected_adapter.sync_directory(target.parent)
+        except OSError:
+            pass
         temp_path = None
         return target
     except Exception:

@@ -10,6 +10,14 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from uniti.core.durability import (
+    DurabilityAdapter,
+    DurabilityError,
+    DurabilityLevel,
+    DurabilityResult,
+    NativeDurabilityAdapter,
+)
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -30,46 +38,42 @@ def _filename_timestamp(value: datetime | None = None) -> str:
 
 
 def sync_directory(directory: Path) -> None:
-    flags = os.O_RDONLY
-    if hasattr(os, "O_DIRECTORY"):
-        flags |= os.O_DIRECTORY
-    try:
-        descriptor = os.open(directory, flags)
-    except OSError:
-        return
-    try:
-        try:
-            os.fsync(descriptor)
-        except OSError:
-            pass
-    finally:
-        os.close(descriptor)
+    NativeDurabilityAdapter().sync_directory(Path(directory))
 
 
 def sync_directory_strict(directory: Path) -> None:
     """Sync a directory and expose every durability failure to the caller."""
 
-    flags = os.O_RDONLY
-    if hasattr(os, "O_DIRECTORY"):
-        flags |= os.O_DIRECTORY
-    descriptor = os.open(directory, flags)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    if not NativeDurabilityAdapter().sync_directory(Path(directory)):
+        raise OSError("directory sync is unavailable")
 
 
-def atomic_write_bytes(
+def _unsafe_result(
+    operation: str,
+    stage: str,
+    error: OSError,
+    *,
+    file_synced: bool,
+) -> DurabilityError:
+    result = DurabilityResult(
+        operation,
+        DurabilityLevel.UNSAFE,
+        file_synced,
+        False,
+        False,
+        f"{stage}:{type(error).__name__}",
+    )
+    return DurabilityError(result, error)
+
+
+def _atomic_write_bytes(
     path: Path,
     payload: bytes,
     *,
-    mode: int = 0o600,
-    strict_directory_sync: bool = True,
-) -> None:
-    """Atomically replace one binary file after flushing its exact bytes."""
-
-    if not isinstance(payload, bytes):
-        raise TypeError("atomic byte payload must be bytes")
+    mode: int,
+    adapter: DurabilityAdapter,
+    operation: str,
+) -> DurabilityResult:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     descriptor, name = tempfile.mkstemp(
@@ -78,25 +82,59 @@ def atomic_write_bytes(
         suffix=".tmp",
     )
     temporary = Path(name)
+    open_descriptor: int | None = descriptor
     try:
         try:
             os.fchmod(descriptor, mode)
         except (AttributeError, OSError):
             pass
-        with os.fdopen(descriptor, "wb") as handle:
+        handle = os.fdopen(descriptor, "wb")
+        open_descriptor = None
+        with handle:
             handle.write(payload)
             handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, target)
-        if strict_directory_sync:
-            sync_directory_strict(target.parent)
-        else:
-            sync_directory(target.parent)
-    except BaseException:
+            try:
+                adapter.sync_file(handle.fileno())
+            except OSError as error:
+                raise _unsafe_result(
+                    operation,
+                    "file_sync",
+                    error,
+                    file_synced=False,
+                ) from error
         try:
-            os.close(descriptor)
-        except OSError:
-            pass
+            adapter.replace(temporary, target)
+        except OSError as error:
+            raise _unsafe_result(
+                operation,
+                "replace",
+                error,
+                file_synced=True,
+            ) from error
+        try:
+            directory_synced = adapter.sync_directory(target.parent) is True
+            reason = None if directory_synced else "directory_sync_unavailable"
+        except OSError as error:
+            directory_synced = False
+            reason = f"directory_sync:{type(error).__name__}"
+        return DurabilityResult(
+            operation,
+            (
+                DurabilityLevel.FULL
+                if directory_synced
+                else DurabilityLevel.FILE_SYNCED
+            ),
+            True,
+            True,
+            directory_synced,
+            reason,
+        )
+    except BaseException:
+        if open_descriptor is not None:
+            try:
+                os.close(open_descriptor)
+            except OSError:
+                pass
         try:
             temporary.unlink()
         except OSError:
@@ -104,33 +142,51 @@ def atomic_write_bytes(
         raise
 
 
-def atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        newline="\n",
-        dir=target.parent,
-        prefix=f".{target.name}.",
-        suffix=".tmp",
-        delete=False,
+def atomic_write_bytes(
+    path: Path,
+    payload: bytes,
+    *,
+    mode: int = 0o600,
+    strict_directory_sync: bool = True,
+    adapter: DurabilityAdapter | None = None,
+) -> DurabilityResult:
+    """Atomically replace one binary file after flushing its exact bytes."""
+
+    if not isinstance(payload, bytes):
+        raise TypeError("atomic byte payload must be bytes")
+    if type(strict_directory_sync) is not bool:
+        raise TypeError("strict_directory_sync must be bool")
+    return _atomic_write_bytes(
+        Path(path),
+        payload,
+        mode=mode,
+        adapter=adapter if adapter is not None else NativeDurabilityAdapter(),
+        operation="atomic_write_bytes",
     )
-    temporary = Path(handle.name)
-    try:
-        with handle:
-            json.dump(dict(payload), handle, ensure_ascii=False, indent=2, sort_keys=True)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, target)
-        sync_directory(target.parent)
-    except BaseException:
-        try:
-            temporary.unlink()
-        except OSError:
-            pass
-        raise
+
+
+def atomic_write_json(
+    path: Path,
+    payload: Mapping[str, object],
+    *,
+    adapter: DurabilityAdapter | None = None,
+) -> DurabilityResult:
+    encoded = (
+        json.dumps(
+            dict(payload),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    ).encode("utf-8")
+    return _atomic_write_bytes(
+        Path(path),
+        encoded,
+        mode=0o600,
+        adapter=adapter if adapter is not None else NativeDurabilityAdapter(),
+        operation="atomic_write_json",
+    )
 
 
 def preserve_invalid(path: Path, *, now: datetime | None = None) -> Path:

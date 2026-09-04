@@ -1,11 +1,33 @@
+import os
 from pathlib import Path
 
 import pytest
 
 from uniti.core.byte_source import ByteSource
+from uniti.core.durability import DurabilityLevel
 from uniti.core.offsets import OffsetMapper
 from uniti.core.pieces import EditStore, PieceTable
-from uniti.core.save import SaveOptions, UnrepresentableCharacterError, save_document
+from uniti.core.save import (
+    SaveOptions,
+    UnrepresentableCharacterError,
+    commit_staged_document,
+    discard_staged_document,
+    save_document,
+    stage_document,
+    verify_staged_document,
+)
+from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
+
+
+class ReducedSaveAdapter:
+    def sync_file(self, _descriptor: int) -> None:
+        return None
+
+    def replace(self, source: Path, destination: Path) -> None:
+        os.replace(source, destination)
+
+    def sync_directory(self, _directory: Path) -> bool:
+        return False
 
 
 def table_for(path: Path, data: bytes, encoding: str):
@@ -160,3 +182,35 @@ def test_atomic_save_preserves_supported_xattrs(tmp_path: Path):
     finally:
         source.close()
     assert os.getxattr(source_path, name) == b"kept"
+
+
+def test_verified_staged_save_exposes_file_synced_commit_durability(tmp_path: Path):
+    source, table = table_for(tmp_path / "source.txt", b"abc", "utf-8")
+    target = tmp_path / "target.txt"
+    adapter = ReducedSaveAdapter()
+    staged = None
+    try:
+        table.insert(3, "X")
+        staged = stage_document(
+            source,
+            table,
+            source_profile=encoding_profile("utf-8"),
+            destination=target,
+            output_format=OutputFormat(
+                encoding_profile("utf-8"),
+                EOLPolicy.PRESERVE,
+            ),
+            adapter=adapter,
+        )
+        assert staged.commit_durability is None
+        verify_staged_document(staged, table.iter_text())
+
+        assert commit_staged_document(staged) == target
+
+        assert staged.commit_durability is not None
+        assert staged.commit_durability.level is DurabilityLevel.FILE_SYNCED
+        assert target.read_bytes() == b"abcX"
+    finally:
+        if staged is not None:
+            discard_staged_document(staged)
+        source.close()

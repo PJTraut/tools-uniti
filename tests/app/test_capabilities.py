@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from uniti.app.capabilities import (
@@ -7,6 +8,17 @@ from uniti.app.capabilities import (
 )
 from uniti.app.paths import AppPaths
 from uniti.resources import MemorySnapshot
+
+
+class ReducedProbeAdapter:
+    def sync_file(self, _descriptor: int) -> None:
+        return None
+
+    def replace(self, source: Path, destination: Path) -> None:
+        os.replace(source, destination)
+
+    def sync_directory(self, _directory: Path) -> bool:
+        return False
 
 
 def _paths(tmp_path: Path) -> AppPaths:
@@ -34,6 +46,20 @@ def test_filesystem_probe_is_bounded_to_temp_and_cleans_fixtures(tmp_path: Path)
         CapabilityStatus.AVAILABLE,
         CapabilityStatus.UNAVAILABLE,
     }
+    assert list(paths.temp_dir.iterdir()) == []
+
+
+def test_filesystem_probe_reports_directory_sync_and_aggregate_durability(
+    tmp_path: Path,
+):
+    paths = _paths(tmp_path)
+    paths.ensure()
+
+    results = probe_filesystem(paths, adapter=ReducedProbeAdapter())
+
+    assert results["directory_sync"].status is CapabilityStatus.UNAVAILABLE
+    assert results["durability"].status is CapabilityStatus.AVAILABLE
+    assert results["durability"].details["level"] == "file_synced"
     assert list(paths.temp_dir.iterdir()) == []
 
 

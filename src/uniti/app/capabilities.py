@@ -14,6 +14,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Mapping
 
+from uniti.core.durability import (
+    DurabilityAdapter,
+    DurabilityLevel,
+    DurabilityResult,
+    NativeDurabilityAdapter,
+)
 from uniti.resources import probe_memory
 
 from .paths import AppPaths
@@ -45,6 +51,12 @@ def _available(reason: str, **details: object) -> CapabilityResult:
 
 def _unavailable(reason: str, **details: object) -> CapabilityResult:
     return CapabilityResult(CapabilityStatus.UNAVAILABLE, reason, details)
+
+
+def _durability_details(result: DurabilityResult) -> dict[str, object]:
+    details = result.as_dict()
+    details["durability_reason"] = details.pop("reason")
+    return details
 
 
 def _file_handle_result() -> CapabilityResult:
@@ -131,36 +143,126 @@ def probe_runtime(
     }
 
 
-def probe_filesystem(paths: AppPaths) -> dict[str, CapabilityResult]:
+def probe_filesystem(
+    paths: AppPaths,
+    *,
+    adapter: DurabilityAdapter | None = None,
+) -> dict[str, CapabilityResult]:
     paths.temp_dir.mkdir(parents=True, exist_ok=True)
+    selected_adapter = adapter if adapter is not None else NativeDurabilityAdapter()
+    probe_payload = b"UNITI capability probe"
     stem = f"uniti-capability-{uuid.uuid4().hex}"
     first = paths.temp_dir / f"{stem}.first"
     second = paths.temp_dir / f"{stem}.second"
     results: dict[str, CapabilityResult] = {}
+    file_synced = False
+    replaced = False
+    directory_synced = False
+    failure_reason: str | None = None
     try:
         try:
             with first.open("wb") as handle:
-                handle.write(b"UNITI capability probe")
+                handle.write(probe_payload)
                 handle.flush()
             results["write"] = _available("temporary write succeeded")
-        except OSError:
+        except OSError as error:
             results["write"] = _unavailable("temporary write failed")
+            failure_reason = f"write:{type(error).__name__}"
+            try:
+                directory_available = (
+                    selected_adapter.sync_directory(paths.temp_dir) is True
+                )
+            except OSError:
+                directory_available = False
+            results["directory_sync"] = (
+                _available("directory sync succeeded")
+                if directory_available
+                else _unavailable("directory sync is unavailable")
+            )
+            results["durability"] = _unavailable(
+                "safe atomic publication is unavailable",
+                **_durability_details(
+                    DurabilityResult(
+                        "filesystem_probe",
+                        DurabilityLevel.UNSAFE,
+                        False,
+                        False,
+                        False,
+                        failure_reason,
+                    )
+                ),
+            )
             return results
 
         try:
             with first.open("r+b") as handle:
                 handle.flush()
-                os.fsync(handle.fileno())
+                selected_adapter.sync_file(handle.fileno())
+            file_synced = True
             results["fsync"] = _available("file fsync succeeded")
-        except OSError:
+        except OSError as error:
             results["fsync"] = _unavailable("file fsync is unavailable")
+            failure_reason = f"file_sync:{type(error).__name__}"
 
         try:
-            second.write_bytes(b"replacement")
-            os.replace(second, first)
+            with second.open("wb") as handle:
+                handle.write(probe_payload)
+                handle.flush()
+                selected_adapter.sync_file(handle.fileno())
+            selected_adapter.replace(second, first)
+            replaced = True
             results["atomic_replace"] = _available("atomic replace succeeded")
-        except OSError:
+        except OSError as error:
             results["atomic_replace"] = _unavailable("atomic replace failed")
+            if failure_reason is None:
+                failure_reason = f"replace:{type(error).__name__}"
+
+        try:
+            directory_synced = selected_adapter.sync_directory(paths.temp_dir) is True
+        except OSError as error:
+            directory_synced = False
+            if failure_reason is None:
+                failure_reason = f"directory_sync:{type(error).__name__}"
+        results["directory_sync"] = (
+            _available("directory sync succeeded")
+            if directory_synced
+            else _unavailable("directory sync is unavailable")
+        )
+
+        if file_synced and replaced:
+            level = (
+                DurabilityLevel.FULL
+                if directory_synced
+                else DurabilityLevel.FILE_SYNCED
+            )
+            reason = (
+                None
+                if directory_synced
+                else failure_reason or "directory_sync_unavailable"
+            )
+        else:
+            level = DurabilityLevel.UNSAFE
+            directory_synced = False
+            reason = failure_reason or "atomic_publication_unavailable"
+        durability = DurabilityResult(
+            "filesystem_probe",
+            level,
+            file_synced,
+            replaced,
+            directory_synced,
+            reason,
+        )
+        results["durability"] = (
+            _available(
+                "safe atomic publication is available",
+                **_durability_details(durability),
+            )
+            if level is not DurabilityLevel.UNSAFE
+            else _unavailable(
+                "safe atomic publication is unavailable",
+                **_durability_details(durability),
+            )
+        )
 
         try:
             with first.open("r+b") as handle:

@@ -1,10 +1,35 @@
+import os
 from pathlib import Path
 
 import pytest
 
 from uniti.core.document import Document
+from uniti.core.durability import DurabilityError, DurabilityLevel
 from uniti.core.history import EditOperation, HistoryEventKind
 from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
+
+
+class InjectedDocumentDurabilityAdapter:
+    def __init__(
+        self,
+        *,
+        fail_file_sync: bool = False,
+        fail_replace: bool = False,
+    ) -> None:
+        self.fail_file_sync = fail_file_sync
+        self.fail_replace = fail_replace
+
+    def sync_file(self, _descriptor: int) -> None:
+        if self.fail_file_sync:
+            raise OSError("injected file-sync failure")
+
+    def replace(self, source: Path, destination: Path) -> None:
+        if self.fail_replace:
+            raise OSError("injected replace failure")
+        os.replace(source, destination)
+
+    def sync_directory(self, _directory: Path) -> bool:
+        return False
 
 
 def test_document_records_exact_bom_profile(tmp_path: Path):
@@ -544,6 +569,106 @@ def test_successful_save_refreshes_identity_baseline(tmp_path: Path):
         path.write_text("someone-else", encoding="utf-8")
         with pytest.raises(ExternalFileChangedError):
             doc.save()
+
+
+def test_document_save_returns_path_and_exposes_reduced_durability(
+    tmp_path: Path,
+    monkeypatch,
+):
+    import uniti.core.save as save_module
+
+    path = tmp_path / "durability.txt"
+    path.write_text("abc", encoding="utf-8")
+    adapter = InjectedDocumentDurabilityAdapter()
+    monkeypatch.setattr(save_module, "NativeDurabilityAdapter", lambda: adapter)
+    with Document.open(path) as document:
+        assert document.last_save_durability is None
+        document.insert(3, "X")
+
+        result = document.save()
+
+        assert result == path
+        assert document.last_save_durability is not None
+        assert document.last_save_durability.level is DurabilityLevel.FILE_SYNCED
+        assert document.modified is False
+    assert path.read_text(encoding="utf-8") == "abcX"
+
+
+def test_document_replace_failure_preserves_all_precommit_state(
+    tmp_path: Path,
+    monkeypatch,
+):
+    import uniti.core.save as save_module
+
+    path = tmp_path / "unsafe-save.txt"
+    path.write_text("abc", encoding="utf-8")
+    adapter = InjectedDocumentDurabilityAdapter(fail_replace=True)
+    monkeypatch.setattr(save_module, "NativeDurabilityAdapter", lambda: adapter)
+    with Document.open(path) as document:
+        document.insert(3, "X")
+        before = (
+            document.path,
+            document.disk_identity,
+            document.revision,
+            document.export_history(),
+            document.modified,
+            document.read(0, document.total_chars()),
+        )
+
+        with pytest.raises(DurabilityError) as caught:
+            document.save()
+
+        assert caught.value.result.level is DurabilityLevel.UNSAFE
+        assert document.last_save_durability is None
+        assert (
+            document.path,
+            document.disk_identity,
+            document.revision,
+            document.export_history(),
+            document.modified,
+            document.read(0, document.total_chars()),
+        ) == before
+    assert path.read_text(encoding="utf-8") == "abc"
+    assert not list(tmp_path.glob(".unsafe-save.txt.*.uniti-tmp"))
+
+
+def test_document_file_sync_failure_preserves_all_precommit_state(
+    tmp_path: Path,
+    monkeypatch,
+):
+    import uniti.core.save as save_module
+
+    path = tmp_path / "unsafe-file-sync.txt"
+    path.write_text("abc", encoding="utf-8")
+    adapter = InjectedDocumentDurabilityAdapter(fail_file_sync=True)
+    monkeypatch.setattr(save_module, "NativeDurabilityAdapter", lambda: adapter)
+    with Document.open(path) as document:
+        document.insert(3, "X")
+        before = (
+            document.path,
+            document.disk_identity,
+            document.revision,
+            document.export_history(),
+            document.modified,
+            document.read(0, document.total_chars()),
+        )
+
+        with pytest.raises(DurabilityError) as caught:
+            document.save()
+
+        assert caught.value.result.level is DurabilityLevel.UNSAFE
+        assert caught.value.result.file_synced is False
+        assert document.last_save_durability is None
+        assert (
+            document.path,
+            document.disk_identity,
+            document.revision,
+            document.export_history(),
+            document.modified,
+            document.read(0, document.total_chars()),
+        ) == before
+    assert path.read_text(encoding="utf-8") == "abc"
+    assert not list(tmp_path.glob(".unsafe-file-sync.txt.*.uniti-tmp"))
 
 
 @pytest.mark.parametrize(

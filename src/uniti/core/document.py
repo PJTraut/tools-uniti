@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from uniti.resources.manager import ResourceManager
 
 from .byte_source import ByteSource
+from .durability import DurabilityResult
 from .encoding import EncodingInfo, detect_encoding, matching_bom
 from .eol import EOLReport, analyze_eol
 from .document_lines import DocumentLineIndex
@@ -117,6 +118,7 @@ class Document:
         self._history_listeners: list[Callable[[HistoryEvent], None]] = []
         self._resource_manager = resource_manager
         self._cache_owner = cache_owner
+        self._last_save_durability: DurabilityResult | None = None
         self._closed = False
 
     @classmethod
@@ -212,6 +214,10 @@ class Document:
     @property
     def disk_identity(self) -> FileIdentity:
         return self._disk_identity
+
+    @property
+    def last_save_durability(self) -> DurabilityResult | None:
+        return self._last_save_durability
 
     @property
     def encoding_info(self) -> EncodingInfo:
@@ -981,6 +987,10 @@ class Document:
         self._validate_prepared_save(prepared, in_place=True)
         selected = prepared.request.output_format
         result = commit_staged_document(prepared.staged)
+        durability = prepared.staged.commit_durability
+        if durability is None:
+            raise RuntimeError("committed document save has no durability result")
+        self._last_save_durability = durability
         self._reload_verified_save(selected)
         if selected.eol is not EOLPolicy.PRESERVE:
             self._history = EditHistory()
