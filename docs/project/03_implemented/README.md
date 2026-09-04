@@ -13,7 +13,13 @@ Directory placement means the work is implemented. Completion is established by 
 
 Historical plans may contain unchecked task boxes because they are retained as originally authored execution records. Those stale checklist marks do not move implemented work back into the outstanding plan queue.
 
-An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. a16's startup/bootstrap foundation was retained here before the parent gate closed; the complete a16 through a19 product milestones are now implemented.
+An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. a16's startup/bootstrap foundation was retained here before the parent gate closed; the complete a16 through a20 product milestones are now implemented.
+
+## v0.001a20 records
+
+- [Recovery & Session Alpha milestone](milestones/2026-09-04-uniti-v0.001a20-recovery-session-alpha.md)
+- [Recovery & Session Alpha implementation plan](milestones/2026-09-04-uniti-v0.001a20-recovery-session-implementation.md)
+- [Recovery & Session Alpha design](designs/2026-09-04-uniti-v0.001a20-recovery-session-design.md)
 
 ## v0.001a19 records
 

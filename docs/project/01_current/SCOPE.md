@@ -1,13 +1,13 @@
 # UNITI Current Scope
 
-Date: 2026-09-03
-Version: `v0.001a19` / `0.1a19`
+Date: 2026-09-04
+Version: `v0.001a20` / `0.1a20`
 
 ## Product boundary
 
 UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
 
-The a19 Regex Intelligence Alpha is implemented and verified. UNITI combines a18's bounded large-file behavior and a17's exact text-integrity rules with engine-validated regex authoring, deterministic zero-width behavior, and bounded asynchronous capture reports. a20 Recovery & Session Alpha is the active planned milestone.
+The a20 Recovery & Session Alpha is implemented and verified. UNITI combines the inherited text-integrity, bounded large-file, and regex-intelligence rules with one process-lifetime service, bounded session/history persistence, semantic crash recovery, and multi-window shared-document continuity. a21 Cross-Platform Alpha is the active planned milestone.
 
 ## Included lifecycle capabilities
 
@@ -18,7 +18,9 @@ The a19 Regex Intelligence Alpha is implemented and verified. UNITI combines a18
 - pre-Qt application CLI, version output, fast/deep self-check including `regex-intelligence`, `text-integrity`, and `large-file`, combined `--smoke`, human/JSON reporting, and lifecycle exit codes;
 - ordered BOOT→READY startup coordination with per-phase atomic state and bounded JSONL logs;
 - schema-1 setup/settings persistence, legacy settings migration, malformed-file preservation, and future-schema refusal;
-- platform application paths, runtime/filesystem/resource/Qt capability reporting, narrow stale cleanup, and per-process session records;
+- platform application paths, runtime/filesystem/resource/Qt capability reporting, narrow stale cleanup, durable generation sessions, and recovery journals;
+- one user-scoped service/instance lease with bounded local activation/file forwarding, zero-window lifetime, and explicit service-wide Quit;
+- startup recovery discovery and active-first lazy restoration of admitted windows, panes, views, saved histories, and the global Find/Replace state;
 - completed startup/setup diagnostics passed into the UI without re-probing; and
 - root macOS and Windows launchers that enter the same bootstrap/application path.
 
@@ -29,21 +31,21 @@ The a19 Regex Intelligence Alpha is implemented and verified. UNITI combines a18
 - bounded confidence/evidence inspection, serious exact-profile confirmation, explicit reinterpretation versus convert-on-save, and annotated malformed-byte preservation;
 - separate CR, LF, CRLF, mixed-EOL analysis/reporting, source-aware insertion, modeless mixed-EOL choices, and explicit output conversion;
 - compact progressive byte/character and line indexes with bounded detail caches and no whole-file opening decode;
-- hybrid source/edit piece table, selections, atomic transactions, and a 50-transaction document Undo/Redo history;
+- hybrid source/edit piece table, selections, atomic transactions, and a document Undo/Redo history persisted to the first of 50 transactions or 32 MiB decoded;
 - coalesced typing/backspace/delete plus Unicode-aware word, page, document, line, and Shift-extended navigation;
 - Cut, Copy, Paste, Select All, Go to Line, and protected Reload/Revert;
 - word, visual-line, and logical-line-through-break selection by double, triple, and quadruple click;
 - fixed-pitch Western/Latin and Cyrillic rendering, independent editor zoom, primary-modifier wheel zoom, bounded giant-line windows, and progressive display-only soft wrap with sparse checkpoints and bounded row blocks;
 - staged, flushed, verified, and atomic Save/Save As with exact BOM/byte-order/EOL/logical-text checks, external-file identity, and supported metadata protection;
 - application-owned Save As filename/encoding/EOL selection, exact encoding-change warnings, normal/double overwrite confirmation, dirty-open-target blocking, copy/export source-state preservation, and duplicate-tab avoidance;
-- asynchronous crash-recovery journals and validated replay;
+- semantic recovery-journal v3 transactions, Undo/Redo, save points, metadata, checkpoints, prefix-safe discovery, v1/v2 compatibility, and validated replay without changing the original file;
 - authoritative `regex==2026.5.9`, immutable pattern/replacement analysis, engine-reconciled group identities, inline-switch and reference highlighting, structured diagnostics, and a 65,536-code-point interactive expression bound;
 - snapshot-based cancellable search, compact spillable revision-bound match storage, deterministic zero-width navigation/rendering/replacement, spillable replacement plans, safe apply admission, and one-transaction replacement;
-- mouse-resizable system-topmost Find/Replace with Regex/Case/Whole-word checkboxes, per-field clear controls, 150 ms off-thread latest-generation analysis, equal-height inputs above one compact `F+ | R+ … << | >> | R` action row, clear visible-only result highlighting, a toggleable right-docked Match Report, bounded asynchronous current/next capture-only reports, independent zoom/geometry/report state, and separate 50-step field histories;
+- one service-owned mouse-resizable system-topmost Find/Replace panel with Regex/Case/Whole-word checkboxes, per-field clear controls, persisted field state and Undo/Redo, 150 ms off-thread latest-generation analysis, equal-height inputs above one compact `F+ | R+ … << | >> | R` action row, cursor-relative Previous/Next that do not require Find All, clear visible-only result highlighting, a toggleable right-docked Match Report, bounded asynchronous current/next capture-only reports, and independent zoom/geometry/report state;
 - one-step undoable Replace All with no disk-rewrite history bypass;
 - a scoped shared command registry and persisted Hotkeys popup for window, editor, and Find/Replace commands;
 - a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with persisted application-wide System/Light/Dark themes, native shortcut display, and no duplicate pre-Cot top-level command groupings;
-- PySide6 tabs, custom virtual viewport, clipboard, IME, menus, compact saved/pending format plus zoom/wrap/resource/task status, inspections, diagnostics, and recovery surfaces;
+- PySide6 multi-window shells, binary horizontal/vertical split panes, detachable tabs, independent synchronized views of one authoritative document, custom virtual viewport, clipboard, IME, menus, compact status, inspections, diagnostics, and one Recovery Center;
 - progressive Open, background full EOL analysis, cancellable far navigation, Find All, Replace All planning, and verified Save/Save As without GUI-thread long work;
 - source-tab-only locking during output, cancellation cleanup, immutable revision/identity snapshots, and stale-result refusal;
 - read-only CPU generation/core/RAM/disk/load profiling, live Normal/Busy/Constrained/Critical resource state, adaptive worker/cache limits, coalesced nonmodal pressure indication, and a user-controlled background-work pause that does not pause Save; and
@@ -83,10 +85,18 @@ The a19 Regex Intelligence Alpha is implemented and verified. UNITI combines a18
 30. Regex analysis and capture reports publish only for the current expression generation, document identity/revision, result-store identity, and requested match index.
 31. A capture report reads at most 65,536 characters per match, retains at most five 80-character previews per group, and caps its payload at 1 MiB.
 32. Each engine-emitted zero-width result is stored, navigated, rendered, and replaced exactly once.
+33. Exactly one service owns documents, settings, sessions, recovery, windows, and one global Find/Replace panel for one application-data identity.
+34. Closing the final editor window does not terminate the service; explicit Quit resolves Save/Discard/Cancel once per unique modified document before shutdown.
+35. Every view owns its cursor, selection, scroll, wrap viewport, and zoom while every view of one source shares one authoritative document and history.
+36. Durable session publication writes/syncs bounded packs before the manifest and the manifest before the current pointer; the previous complete generation remains available through successful replacement.
+37. Saved history is SHA-256-authorized, retained for seven days subject to a 256 MiB aggregate cap, and never permits an automatic overwrite after an external change.
+38. Find and Replace histories retain at most 50 states each and together at most 4 MiB decoded; their current values are preserved when older states are pruned.
+39. Recovery journals are not disposable history: 64 MiB journals compact publish-before-retire, and the 512 MiB free-space reserve suppresses convenience-history writes before recovery evidence.
+40. Low-space tests inject capacity and write failures; they never consume real filesystem space to manufacture LOWDISK.
 
 ## Approved future scope
 
-`v0.001a20` is active and `v0.001a21`–`v0.001a23` remain queued. All are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a21` is active and `v0.001a22`–`v0.001a23` remain queued. All are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 

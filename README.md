@@ -26,18 +26,20 @@ The current development alpha includes:
 - insert/delete/replace, selections, undo/redo, and transaction history;
 - streaming atomic Save / Save As;
 - external-file change protection before overwrite;
-- incremental crash-recovery journals and startup recovery discovery;
+- one user-scoped UNITI service that remains alive with zero windows, forwards secondary launches, and owns multiple windows, detachable tabs, horizontal/vertical splits, and shared-document views;
+- generation-published startup sessions with active-first lazy restore, SHA-256 external-change choices, seven-day saved-document continuity, and bounded per-document Undo/Redo restoration;
+- semantic crash-recovery journals that preserve transactions, Undo/Redo, save points, and evidence until an explicit recovery choice;
 - third-party `regex` search with engine-reconciled group identities, inline-switch and replacement-reference highlighting, structured diagnostics, and deterministic zero-width results;
 - integrated application ResourceManager with cache pressure, active/inactive document priorities, and shared background scheduling;
 - custom PySide6 `QAbstractScrollArea` editor viewport — Qt never owns the document;
 - tabs, native menus, persisted System/Light/Dark application themes, Cut/Copy/Paste, IME composition support, and operational status bar;
-- topmost asynchronous regex-aware Find/Replace fields with per-field clear controls, compact actions, a right-docked Match Report, compact match index, visible-only normal/zero-width overlays, and bounded model-backed current/next capture reports;
+- one service-owned topmost asynchronous regex-aware Find/Replace panel with persisted field state and Undo/Redo, per-field clear controls, compact actions, cursor-relative Previous/Next independent of Find All, a right-docked Match Report, visible-only normal/zero-width overlays, and bounded model-backed current/next capture reports;
 - separate **Reinterpret As** and **Convert on Save** controls;
 - source-aware inserted-EOL policy, EOL controls, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics.
 - explicit Python 3.12+ bootstrap into a UNITI-owned source or application-local virtual environment;
 - ownership markers, exclusive bootstrap locks, dependency fingerprints, explicit repair, and validation-only normal startup;
 - atomic schema-1 setup/settings state, ordered BOOT→READY startup phases, bounded lifecycle logs, and narrow stale-artifact cleanup; and
-- fast/deep self-checks for runtime, dependencies, paths, schemas, resources, filesystem primitives, regex intelligence, text fidelity, recovery, large-file behavior, and offscreen Qt.
+- fast/deep self-checks for runtime, dependencies, paths, schemas, resources, filesystem primitives, regex intelligence, text fidelity, recovery/session continuity, large-file behavior, and offscreen Qt.
 
 Explicitly deferred beyond this alpha: editor whitespace visualization and expanded keyboard-driven Unicode inspection, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
 

@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
-Date: 2026-09-03
-Baseline: verified a19 implementation through `06d644d` plus the a19 freeze tree on local `main`
+Date: 2026-09-04
+Baseline: verified a20 implementation through `f829d01` plus the A20 freeze tree on local `main`
 
 ## Lifecycle boundary
 
@@ -17,10 +17,11 @@ host Python 3.12+
 
 ordinary application startup
 application CLI parsed before Qt
-    -> StartupCoordinator phases 01-12
+    -> StartupCoordinator phases 01-13
     -> validated owned runtime and installed dependencies
-    -> paths / schemas / settings / resources / cleanup / recovery
-    -> lazy Qt capabilities and UNITIMainWindow
+    -> paths / Qt capabilities / single-instance arbitration
+    -> schemas / settings / resources / cleanup / recovery / session
+    -> UNITIService and zero or more UNITIMainWindow shells
 ```
 
 Only explicit bootstrap may create or repair a runtime and invoke `<managed-python> -m pip`. Ordinary `uniti` startup does not invoke pip, install packages, access the network, or mutate dependencies.
@@ -43,14 +44,15 @@ BOOT
   -> 02 ENVIRONMENT_VALIDATION
   -> 03 DEPENDENCY_VALIDATION
   -> 04 APPLICATION_PATHS
-  -> 05 SCHEMA_MIGRATIONS
-  -> 06 SETTINGS_LOAD
-  -> 07 RESOURCE_CALIBRATION
-  -> 08 STALE_STATE_CLEANUP
-  -> 09 RECOVERY_DISCOVERY
-  -> 10 GUI_CAPABILITIES
-  -> 11 SESSION_RESTORE
-  -> 12 READY
+  -> 05 GUI_CAPABILITIES
+  -> 06 INSTANCE_ARBITRATION
+  -> 07 SCHEMA_MIGRATIONS
+  -> 08 SETTINGS_LOAD
+  -> 09 RESOURCE_CALIBRATION
+  -> 10 STALE_STATE_CLEANUP
+  -> 11 RECOVERY_DISCOVERY
+  -> 12 SESSION_RESTORE
+  -> 13 READY
 ```
 
 The coordinator owns ordering, phase timing, atomic state updates, safe failure translation, bounded JSONL logging, and reverse-order cleanup. Application callbacks construct services and import PySide6 only in GUI phases. Exit codes separate usage, runtime, ownership, dependencies, state/schema, functional, and Qt/platform failures.
@@ -59,9 +61,23 @@ The coordinator owns ordering, phase timing, atomic state updates, safe failure 
 
 ## Paths, capabilities, and cleanup
 
-`AppPaths` distinguishes config, data, state, and cache roots and derives the local runtime, setup state, logs, temp artifacts, sessions, recovery journals, and settings paths. Bounded probes report runtime, memory, CPU, disk, file handles, ownership, write/fsync/atomic replace, mmap, xattrs, Qt, fonts, clipboard, input method, screens, and DPI.
+`AppPaths` distinguishes config, data, state, and cache roots and derives the local runtime, setup state, logs, temporary artifacts, cache-based process sessions, durable sessions, recovery journals, instance lease/endpoint identity, and settings paths. Bounded probes report runtime, memory, CPU, disk, file handles, ownership, write/fsync/atomic replace, mmap, xattrs, Qt, fonts, clipboard, input method, screens, and DPI.
 
 Cleanup has authority only inside UNITI temp, session, and rotated-log roots. It recognizes known prefixes or schema records, preserves live/active sessions, applies seven-day temp/session and thirty-day log thresholds, inspects at most 200 entries, and removes at most 100. Recovery journals and search spill files are outside this authority.
+
+## Process, window, and durable-session authority
+
+One process-lifetime `UNITIService` owns settings, the `ResourceManager`, `SessionStore`, `RecoveryManager`, one `DocumentRegistry`, one `WindowManager`, and one global Find/Replace panel. `QLockFile` and a bounded, versioned `QLocalServer` protocol permit exactly one writer for one user/application-data identity. A secondary launch forwards activation and up to 128 normalized file requests to the primary, receives bounded per-path outcomes, and exits; an unreachable live owner is an error, never permission to create a second writer.
+
+`QApplication.setQuitOnLastWindowClosed(False)` makes windows service clients rather than process owners. The service may own zero or more `UNITIMainWindow` shells. Each shell contains a binary horizontal/vertical splitter tree whose leaves own tab groups; tabs can move or detach into another service-owned window. Each source path resolves through the registry to one authoritative `Document`, while each view retains an independent cursor, anchor, preferred column, scroll positions, wrap viewport, and zoom.
+
+Ordinary window close affects its views but does not terminate the service. Explicit Quit first gathers every unique modified document, offers Save/Discard/Cancel once per document, and aborts without partial shutdown on Cancel. After all choices succeed, the service publishes the final durable session, completes the corresponding recovery transition, closes owned components, releases the local endpoint/lease, and exits.
+
+`AppPaths.durable_session_dir` holds immutable content-addressed history packs, bounded generation manifests, and an atomically replaced current pointer; it is distinct from cache process-session records and `AppPaths.recovery_dir`. Publication writes and syncs packs before their manifest, then the manifest before the pointer. The immediately previous complete generation remains available until a later complete publication succeeds. Disk serialization, compression, hashing, fsync, replay, compaction, scan, and cleanup run through background tasks, never the GUI thread.
+
+The manifest is limited to 1 MiB decoded, 32 windows, 128 pane leaves, 256 views, and 128 documents. One document pack is limited to 32 MiB encoded and decoded. Saved history keeps the newest 50 logical transactions or 32 MiB decoded per document, whichever boundary arrives first. Find and Replace retain at most 50 history states each within one shared 4 MiB decoded pack. The physical saved-session/history union is capped at 256 MiB and prunes oldest closed history, then inactive-open history, then active-document transactions while retaining current state. Compatible closed-document history expires after seven days.
+
+Every saved history association includes SHA-256 over the exact saved bytes. File metadata is only a fast path. A mismatch offers Open Disk, Skip, or Discard; a missing path offers Locate Matching File, Skip, or Discard, and a located file must hash-match before history import. Restoration constructs bounded window/pane placeholders first, restores the active approved document first, and schedules other sealed history work lazily. No identity decision overwrites a source file.
 
 ## Document ownership model
 
@@ -80,7 +96,7 @@ QApplication / UNITIMainWindow
 
 `src/uniti/core` and `src/uniti/regex` remain Qt-free. Qt owns presentation and input only; it never becomes the document store.
 
-`EditHistory` retains at most 50 immutable document transactions. When the oldest transaction is evicted, its state is folded into the retained baseline so modified/save-point semantics remain correct. Typing, backspace, and delete may coalesce while contiguous; cursor movement, selection changes, save, Undo/Redo, and explicit operations break coalescing. `Document.replace_many` applies all non-overlapping original-coordinate replacements as one transaction.
+`EditHistory` retains at most 50 immutable document transactions in-process and exports the newest compatible history within the 32 MiB decoded persistence bound. When the oldest transaction is evicted, its state is folded into the retained baseline so modified/save-point semantics remain correct. Typing, backspace, and delete may coalesce while contiguous; cursor movement, selection changes, save, Undo/Redo, and explicit operations break coalescing. `Document.replace_many` applies all non-overlapping original-coordinate replacements as one transaction.
 
 `Document.snapshot()` captures one immutable revision and a forked source handle for background work. Index, navigation, EOL, search, replacement-plan, and save results publish only while their document revision and destination identity remain current. A stale result is discarded; it never replaces newer text or format state.
 
@@ -148,7 +164,7 @@ These principles are derived from CotEditor's published [design philosophy](http
 
 ## Floating Find/Replace
 
-`FindReplaceWindow` is a modeless, mouse-resizable, system-topmost Qt tool window over the active `UNITITextView`. On macOS it remains visible when UNITI is inactive. A native size grip supplements edge resizing. The document remains editable while the window is visible. Its Find and Replace inputs use explicit immutable snapshot histories capped independently at 50 steps; focus routing sends Undo/Redo and clipboard commands to the active field before falling back to the document. Each input has an overlaid circular `×` control that clears only that input.
+`FindReplaceWindow` is the one service-owned modeless, mouse-resizable, system-topmost Qt tool window over the most recently focused live `UNITITextView`, regardless of which UNITI window contains that view. On macOS it remains visible when UNITI is inactive. A native size grip supplements edge resizing. The document remains editable while the panel is visible. Its Find and Replace inputs use explicit immutable snapshot histories capped independently at 50 states and jointly at 4 MiB persisted; focus routing sends Undo/Redo and clipboard commands to the active field before falling back to the document. Current text, cursor/selection, Undo/Redo, options, geometry, visibility, zoom, report visibility, and the surviving target view are restored without automatically executing Find All or Replace. Each input has an overlaid circular `×` control that clears only that input.
 
 The `Regex`, `Case`, and `Whole word` checkboxes own search semantics. With Regex clear, the query is escaped and Case/Whole word apply. With Regex checked, Case and Whole word remain visible but disabled with their state preserved, while raw syntax and inline switches such as `(?i)` go to the authoritative third-party engine. The Find and Replace input editors receive equal vertical stretch and divide all space remaining above the controls. The single action row is `F+ | R+ … << | >> | R`, with full tooltips and accessible names; Cancel/status remains below it. F/R zoom changes field fonts and their minimum readable height without restoring a fixed field height. Search remains cancellable and revision-bound.
 
@@ -156,7 +172,7 @@ Regex-mode authoring uses immutable Qt-free `RegexAnalysis` values. A cheap stru
 
 The capture report is the resizable right child of a horizontal `QSplitter`. One compact control displays `║` while the report is open and `>` while closed. The scoped `Toggle Match Report` command retains command ID `find.report_cycle` and default portable binding `Ctrl+Alt+R`; legacy Bottom settings normalize to open/right. Capture rendering remains groups `1..N` only, with delimiters between current and next matches. It is backed by `CaptureReportModel`, not one widget per row. Resolution runs off-thread against an immutable snapshot, reads at most 65,536 characters per match, retains at most five previews of at most 80 characters per group, caps one payload at 1 MiB, and emits one explicit unavailable record instead of a misleading partial group list.
 
-Find All runs against an immutable document snapshot through the shared task coordinator and installs its complete revision-bound `MatchStore` on the active editor view. Match records use compact fixed-size pages and spill to an owned temporary file after their memory budget; visible lookup stays indexed without one Qt object per match. The virtual viewport queries only intersections with each visible text window and paints every visible result with a clear theme-derived highlight. Pattern changes, edits, replacement, and document changes cancel or clear stale results.
+Find Previous and Find Next are always available when the expression is valid: they search directly before or after the active cursor and wrap without requiring Find All. Find All separately runs against an immutable document snapshot through the shared task coordinator and installs its complete revision-bound `MatchStore` on the active editor view. Match records use compact fixed-size pages and spill to an owned temporary file after their memory budget; visible lookup stays indexed without one Qt object per match. The virtual viewport queries only intersections with each visible text window and paints every visible result with a clear theme-derived highlight. Pattern changes, edits, replacement, and document changes cancel or clear stale results.
 
 Every analysis/search/report publication is sealed to the relevant expression generation and text; document-backed results additionally require the captured document identity/revision, result-store identity, and match index. Stale or canceled work closes its snapshots/stores/plans and never mutates visible state. Capture resolution probes one character beyond its bounded context only to distinguish an exact end from an artificial boundary; it does not measure the whole document on the bounded path.
 
@@ -204,16 +220,16 @@ The pre-Cot top-level Navigation, Search, F/R View, Encoding, and EOL groupings 
 
 Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, timeout-aware, revision-bound, compactly stored, and delivered to Qt through queued signals. Core streaming replacement remains available for future bounded large-file work but is not a UI Replace All path. Save uses the verified transaction above and remains streaming, atomic, metadata-aware where supported, and protected against external file replacement.
 
-`RecoveryManager` serializes journal durability independently from disposable background work. Resource pressure may reduce derived background work but never weakens recovery durability or save verification.
+`RecoveryManager` serializes semantic v3 transactions, Undo, Redo, save-point, metadata, checkpoint, and terminal events independently from disposable background work while retaining v1/v2 readers. It validates checksummed length-bounded prefixes, preserves corrupt/truncated evidence for the Recovery Center, and begins a fresh durable binding before retiring a recovered candidate. Journals compact publish-before-retire at 64 MiB. Below the injected 512 MiB free-space reserve, nonessential saved-history writes are suppressed before recovery evidence; write/fsync failure remains visibly degraded until a successful durable flush. Resource pressure may reduce derived background work but never weakens recovery durability or save verification.
 
 ## Self-check and diagnostics
 
-`uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, offscreen Qt/view, `regex-intelligence`, `text-integrity`, and `large-file`. The regex-intelligence check covers advanced engine metadata, bounded reports, zero-width search/replacement, and Undo; ordinary tests and measured scenarios separately cover structured diagnostics, cancellation, integrity, and cleanup. The large-file check verifies lazy access to a marker beyond 1 GiB, cache-free streaming intent, task cancellation, and artifact cleanup without embedding the 100 MiB benchmark suite.
+`uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, offscreen Qt/view, `regex-intelligence`, `text-integrity`, `large-file`, and `recovery-session`. The recovery/session probe publishes and reloads a bounded session, validates exact hashes, proves external-change discovery preserves disk bytes, and replays semantic transaction/Undo/Redo state. Ordinary tests and measured scenarios cover failure injection, corruption, cancellation, integrity, and cleanup.
 
-The application CLI's `--smoke` mode runs the core alpha probe and a self-closing real `UNITIMainWindow` on the selected Qt platform. `QT_QPA_PLATFORM=offscreen` provides the automated platform gate; an unmodified macOS environment exercises native Cocoa separately.
+The application CLI's `--smoke` mode runs the core alpha probe plus a real service/session workflow: field Undo/Redo, zero-window lifetime, activation/new-window reuse, clean Quit, fresh-service restore, and restored document/Find-Replace histories. `QT_QPA_PLATFORM=offscreen` provides the automated platform gate; an unmodified macOS environment exercises native Cocoa separately.
 
 The completed startup snapshot is passed into `UNITIMainWindow`. Diagnostics combine it with the authoritative resource manager's CPU generation/core profile, current load/memory/RSS/disk state, cache budget/use, active worker limit, queue, background pause state, and active task progress.
 
 ## Planned-change boundary
 
-The complete a19 Regex Intelligence Alpha is implemented and verified current architecture. Its milestone, approved design, and execution record are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a20` Recovery & Session Alpha is now the sole active milestone; a20 and queued a21+ behavior remain planned intent and are not current architecture. Editor whitespace visualization, expanded keyboard-driven Unicode inspection, extension-sensed file-type profiles, and syntax highlighting remain parked outside the approved roadmap.
+The complete a20 Recovery & Session Alpha is implemented and verified current architecture. Its milestone, design, and execution record are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a21` Cross-Platform Alpha is now the sole active milestone; a21 and later behavior remain planned intent and are not current architecture. Editor whitespace visualization, expanded keyboard-driven Unicode inspection, extension-sensed file-type profiles, and syntax highlighting remain parked outside the approved roadmap.
