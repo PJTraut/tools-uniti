@@ -177,6 +177,25 @@ def capture_service_session(
             views.append(view.export_state(entry.document_id))
 
     retained_view_ids = frozenset(view.view_id for view in views)
+    document_view_order: dict[str, int] = {}
+    for position, view in enumerate(views):
+        document_view_order.setdefault(view.document_id, position)
+    retained_entries = tuple(
+        entry
+        for entry in getattr(service, "documents").entries
+        if entry.document_id not in excluded_document_ids
+    )
+    retained_entries = tuple(
+        sorted(
+            retained_entries,
+            key=lambda entry: (
+                0,
+                document_view_order[entry.document_id],
+            )
+            if entry.document_id in document_view_order
+            else (1, entry.document_id),
+        )
+    )
     window_records = tuple(
         (window_id, window.export_window_record())
         for window_id, window in window_items
@@ -193,9 +212,7 @@ def capture_service_session(
     packs = []
     retained_generations = history_generations or {}
     notices: list[PersistenceNotice] = []
-    for entry in getattr(service, "documents").entries:
-        if entry.document_id in excluded_document_ids:
-            continue
+    for entry in retained_entries:
         documents.append(
             DocumentRecord(
                 entry.document_id,

@@ -468,6 +468,51 @@ def test_open_hashes_saved_bytes_off_gui_thread_before_history_publication(
     qapp.processEvents()
 
 
+def test_capture_orders_documents_by_stable_view_order_not_restore_completion(
+    qapp,
+    tmp_path: Path,
+):
+    from uniti.core.document import Document
+
+    first_path = tmp_path / "first-visual.txt"
+    second_path = tmp_path / "second-visual.txt"
+    first_path.write_text("first", encoding="utf-8")
+    second_path.write_text("second", encoding="utf-8")
+    first_document = Document.open(first_path)
+    second_document = Document.open(second_path)
+    service = UNITIService(
+        resource_manager=ResourceManager(max_workers=2),
+        settings_store=SettingsStore(tmp_path / "ordering-settings.json"),
+        session_store=_SessionSink(),
+        recovery_manager=_RecoverySink(),
+    )
+    second_entry = service.documents.adopt(
+        second_document,
+        saved_stamp=_saved_stamp(second_path),
+    )
+    first_entry = service.documents.adopt(
+        first_document,
+        saved_stamp=_saved_stamp(first_path),
+    )
+    window = service.new_window()
+    first_view = window.open_existing_document(first_document)
+    second_view = window.open_existing_document(second_document)
+    assert window.view_ids == (first_view.view_id, second_view.view_id)
+
+    snapshot = service.capture_session(clean_shutdown=False)
+
+    assert tuple(item.document_id for item in snapshot.manifest.documents) == (
+        first_entry.document_id,
+        second_entry.document_id,
+    )
+    assert tuple(item.document_id for item in snapshot.packs) == (
+        first_entry.document_id,
+        second_entry.document_id,
+    )
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
 def test_saved_recovery_base_is_rebased_only_after_session_publication(
     qapp,
     tmp_path: Path,
