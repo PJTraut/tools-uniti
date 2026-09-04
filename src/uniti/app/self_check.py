@@ -681,6 +681,199 @@ class SelfCheckRunner:
         return "recovery journal creation and replay passed", {"candidates": 1}
 
     @staticmethod
+    def _deep_recovery_session(root: Path) -> tuple[str, Mapping[str, object]]:
+        """Exercise hash-gated saved history and semantic crash recovery."""
+
+        from datetime import UTC, datetime
+
+        from uniti.core.file_identity import (
+            FileIdentity,
+            FileMatch,
+            SavedFileStamp,
+            sha256_file,
+        )
+
+        from .session import (
+            SESSION_SCHEMA,
+            DocumentRecord,
+            FindReplaceManifestRecord,
+            HistoryPack,
+            InputStateRecord,
+            SessionManifest,
+            SessionSnapshot,
+        )
+        from .session_runtime import restore_document_pack
+        from .session_store import SessionStore
+
+        timestamp = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        session_source = root / "saved-session-source.txt"
+        session_source.write_text("abc", encoding="utf-8")
+        with Document.open(session_source) as document:
+            document.insert(document.total_chars(), "X")
+            document.save()
+            history = document.export_history()
+            stamp = SavedFileStamp(
+                FileIdentity.from_path(session_source),
+                sha256_file(session_source),
+            )
+            source_profile = document.source_profile.key
+            selected_profile = document.output_format.encoding.key
+            selected_eol = (
+                None
+                if document.output_format.eol is EOLPolicy.PRESERVE
+                else document.output_format.eol.value
+            )
+            saved_profile = document.saved_output_format.encoding.key
+            saved_eol = (
+                None
+                if document.saved_output_format.eol is EOLPolicy.PRESERVE
+                else document.saved_output_format.eol.value
+            )
+
+        document_id = "deep-session-document"
+        pack = HistoryPack(
+            document_id=document_id,
+            generation="deep-session-history",
+            canonical_path=str(session_source),
+            saved_stamp=stamp,
+            source_profile_key=source_profile,
+            selected_output_profile_key=selected_profile,
+            selected_output_eol=selected_eol,
+            saved_output_profile_key=saved_profile,
+            saved_output_eol=saved_eol,
+            history=history,
+            last_active_at=timestamp,
+            closed_at=timestamp,
+        )
+        empty_input = InputStateRecord("", 0, 0)
+        manifest = SessionManifest(
+            schema=SESSION_SCHEMA,
+            generation="deep-session-generation",
+            service_id="deep-session-service",
+            build_identity=uniti.__display_version__,
+            created_at=timestamp,
+            updated_at=timestamp,
+            clean_shutdown=True,
+            active_window_id=None,
+            active_view_id=None,
+            windows=(),
+            views=(),
+            documents=(
+                DocumentRecord(
+                    document_id,
+                    str(session_source),
+                    (),
+                    timestamp,
+                    timestamp,
+                ),
+            ),
+            find_replace=FindReplaceManifestRecord(
+                empty_input,
+                empty_input,
+                False,
+                False,
+                False,
+                False,
+                None,
+                100,
+                False,
+                None,
+                None,
+            ),
+            packs=(),
+        )
+        store = SessionStore(root / "saved-sessions")
+        store.publish(SessionSnapshot(manifest, (pack,), None))
+        loaded = store.load_latest()
+        if loaded.manifest is None or len(loaded.packs) != 1:
+            raise RuntimeError("saved session history was not published")
+
+        resources = ResourceManager(max_workers=1)
+        restored_result = restore_document_pack(
+            loaded.packs[0],
+            (),
+            resource_manager=resources,
+        )
+        restored = restored_result.document
+        try:
+            if restored is None or restored_result.match not in {
+                FileMatch.EXACT_FAST,
+                FileMatch.EXACT_HASH,
+            }:
+                raise RuntimeError("saved session history hash did not match")
+            session_transactions = len(restored.export_history().transactions)
+        finally:
+            if restored is not None:
+                restored.close()
+            resources.shutdown()
+
+        changed_bytes = b"changed outside UNITI"
+        session_source.write_bytes(changed_bytes)
+        before_discovery = session_source.read_bytes()
+        external_problems = store.discover_restore_problems(loaded.manifest)
+        after_discovery = session_source.read_bytes()
+        external_change_detected = any(
+            problem.kind == "changed_source" for problem in external_problems
+        )
+
+        recovery_source = root / "semantic-recovery-source.txt"
+        recovery_source.write_text("base", encoding="utf-8")
+        recovery_root = root / "semantic-recovery"
+        first = RecoveryManager(recovery_root)
+        recovery_document = Document.open(recovery_source)
+        first.attach(recovery_document)
+        recovery_document.insert(recovery_document.total_chars(), "X")
+        recovery_document.undo()
+        recovery_document.redo()
+        first.detach(recovery_document, clean=False)
+        recovery_document.close()
+        first.shutdown()
+
+        second = RecoveryManager(recovery_root)
+        recovered = None
+        try:
+            candidates = second.discover()
+            if len(candidates) != 1:
+                raise RuntimeError("semantic recovery candidate missing")
+            recovered = second.recover(candidates[0])
+            recovery_transactions = len(recovered.export_history().transactions)
+            recovery_undo_available = recovered.can_undo
+            expected = recovered.read(0, recovered.total_chars())
+            recovered.undo()
+            recovered.redo()
+            recovery_redo_exact = (
+                recovered.read(0, recovered.total_chars()) == expected
+            )
+            second.detach(recovered, clean=True)
+        finally:
+            if recovered is not None:
+                recovered.close()
+            second.shutdown()
+
+        if not all(
+            (
+                session_transactions == 1,
+                external_change_detected,
+                before_discovery == after_discovery == changed_bytes,
+                recovery_transactions == 1,
+                recovery_undo_available,
+                recovery_redo_exact,
+            )
+        ):
+            raise RuntimeError("recovery/session history invariant failed")
+        return "saved session and crash recovery histories passed", {
+            "session_documents": len(loaded.manifest.documents),
+            "session_transactions": session_transactions,
+            "session_hash_exact": True,
+            "recovery_candidates": len(candidates),
+            "recovery_transactions": recovery_transactions,
+            "recovery_undo_available": recovery_undo_available,
+            "recovery_redo_exact": recovery_redo_exact,
+            "external_change_detected": external_change_detected,
+            "external_source_preserved": before_discovery == after_discovery,
+        }
+
+    @staticmethod
     def _deep_large_file(root: Path) -> tuple[str, Mapping[str, object]]:
         sparse_path = root / "large-file-sparse.txt"
         streaming_path = root / "large-file-streaming.txt"
@@ -822,6 +1015,7 @@ class SelfCheckRunner:
                     ("text-integrity", self._deep_text_integrity),
                     ("large-file", self._deep_large_file),
                     ("recovery", self._deep_recovery),
+                    ("recovery-session", self._deep_recovery_session),
                     ("qt-offscreen", self._deep_qt),
                 )
                 for name, check in deep_checks:

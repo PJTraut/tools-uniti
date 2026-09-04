@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from uniti.app.recovery_manager import RecoveryManager
@@ -131,23 +132,52 @@ def run_alpha_smoke(base_dir: str | Path | None = None) -> dict[str, object]:
 
 
 def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
-    """Open a real main window on the selected Qt platform and self-close."""
+    """Exercise process-lifetime service state through a complete restart."""
 
     directory = Path(base_dir)
     directory.mkdir(parents=True, exist_ok=True)
     source = directory / "gui-smoke.txt"
     source.write_text("UNITI smoke Привет\r\n", encoding="utf-8")
 
-    from PySide6.QtCore import QTimer
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtWidgets import QApplication
 
-    from uniti.ui.main_window import UNITIMainWindow
+    from uniti.app.service import QuitChoice, UNITIService
+    from uniti.app.session_store import SessionStore
+    from uniti.app.settings import SettingsStore
+    from uniti.resources import ResourceManager
 
     app = QApplication.instance() or QApplication(["uniti-smoke"])
-    app.setQuitOnLastWindowClosed(True)
-    window = UNITIMainWindow()
+    app.setQuitOnLastWindowClosed(False)
+    store = SessionStore(directory / "sessions")
+    first_service = None
+    second_service = None
+
+    def wait_until(predicate, *, timeout: float = 5.0) -> None:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            app.processEvents()
+            if predicate():
+                return
+            time.sleep(0.005)
+        app.processEvents()
+        if not predicate():
+            raise TimeoutError("GUI smoke state did not settle")
+
     try:
+        first_resources = ResourceManager(max_workers=2)
+        first_service = UNITIService(
+            resource_manager=first_resources,
+            settings_store=SettingsStore(directory / "first-settings.json"),
+            session_store=store,
+            recovery_manager=RecoveryManager(
+                directory / "first-recovery",
+                resource_manager=first_resources,
+            ),
+            service_id="smoke-first-service",
+            build_identity="smoke-build",
+        )
+        window = first_service.new_window()
         view = window.open_path(source)
         if view is None:
             raise RuntimeError("GUI smoke document open was cancelled")
@@ -156,36 +186,146 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         window_shown = window.isVisible()
         document_profile = view.document.source_profile.key
         qt_platform = QGuiApplication.platformName()
-        QTimer.singleShot(250, window.close)
-        exit_code = int(app.exec())
+        entry = first_service.documents.entry_for_view(view.view_id)
+        if entry is None:
+            raise RuntimeError("GUI smoke document was not registered")
+        view.document.insert(view.document.total_chars(), "saved")
+        view.document.save()
+        wait_until(lambda: entry.saved_stamp is not None)
+        saved_text = view.document.read(0, view.document.total_chars())
+
+        panel = first_service.find_replace
+        panel.find_input.setPlainText("needle")
+        panel.find_input.setPlainText("needle-next")
+        panel.find_input.undo_input()
+        panel.replace_input.setPlainText("replacement")
+        panel.replace_input.setPlainText("replacement-next")
+        panel.replace_input.undo_input()
+        panel.regex_checkbox.setChecked(True)
+        panel.show()
+        app.processEvents()
+
+        original_document = view.document
+        window.close()
+        wait_until(lambda: first_service.window_count == 0)
         closed = not window.isVisible()
+        service_remained_running = first_service.is_running
+
+        activation = first_service.new_window()
+        activation_view = activation.open_existing_document(original_document)
+        activation.show()
+        app.processEvents()
+        activation_created_window = first_service.window_count == 1
+        one_document_authority = (
+            first_service.documents.count == 1
+            and activation_view.document is original_document
+        )
+        first_quit = first_service.request_quit(
+            lambda _entry: QuitChoice.DISCARD
+        )
+        app.processEvents()
+
+        loaded = store.load_latest()
+        if loaded.manifest is None:
+            raise RuntimeError("GUI smoke session was not published")
+        second_resources = ResourceManager(max_workers=2)
+        second_service = UNITIService(
+            resource_manager=second_resources,
+            settings_store=SettingsStore(directory / "second-settings.json"),
+            session_store=store,
+            recovery_manager=RecoveryManager(
+                directory / "second-recovery",
+                resource_manager=second_resources,
+            ),
+            service_id="smoke-second-service",
+            build_identity="smoke-build",
+        )
+        second_service.restore_shell(
+            loaded.manifest,
+            packs=loaded.packs,
+            find_replace_pack=loaded.find_replace_pack,
+        )
+        second_service.restore_active()
+        second_service.schedule_lazy_restore()
+        wait_until(lambda: second_service.documents.count == 1)
+        restored_entry = second_service.documents.entries[0]
+        restored_panel = second_service.find_replace
+        session_restored = (
+            second_service.window_count == 1
+            and second_service.active_view is not None
+            and restored_entry.document.read(
+                0, restored_entry.document.total_chars()
+            )
+            == saved_text
+        )
+        history_restored = restored_entry.document.can_undo
+        find_replace_restored = (
+            restored_panel.find_input.text() == "needle"
+            and restored_panel.find_input.can_undo_input
+            and restored_panel.find_input.can_redo_input
+            and restored_panel.replace_input.text() == "replacement"
+            and restored_panel.replace_input.can_undo_input
+            and restored_panel.replace_input.can_redo_input
+            and restored_panel.regex_checkbox.isChecked()
+        )
+        second_quit = second_service.request_quit(
+            lambda _entry: QuitChoice.DISCARD
+        )
+        app.processEvents()
+        explicit_quit = (
+            first_quit
+            and second_quit
+            and not first_service.is_running
+            and not second_service.is_running
+        )
         return {
             "ok": (
-                exit_code == 0
-                and window_shown
+                window_shown
                 and closed
                 and document_profile == "utf-8"
+                and service_remained_running
+                and activation_created_window
+                and one_document_authority
+                and session_restored
+                and history_restored
+                and find_replace_restored
+                and explicit_quit
             ),
             "window_shown": window_shown,
             "window_closed": closed,
             "document_profile": document_profile,
             "qt_platform": qt_platform,
             "platform": sys.platform,
-            "exit_code": exit_code,
+            "exit_code": 0,
+            "service_remained_running": service_remained_running,
+            "activation_created_window": activation_created_window,
+            "one_document_authority": one_document_authority,
+            "session_restored": session_restored,
+            "history_restored": history_restored,
+            "find_replace_restored": find_replace_restored,
+            "explicit_quit": explicit_quit,
         }
     except Exception as error:
-        window.close_all_documents(force=True)
-        window.close()
+        for service in (second_service, first_service):
+            if service is not None and service.is_running:
+                service.request_quit(lambda _entry: QuitChoice.DISCARD)
         app.processEvents()
         return {
             "ok": False,
             "window_shown": False,
-            "window_closed": not window.isVisible(),
+            "window_closed": True,
             "document_profile": None,
             "qt_platform": QGuiApplication.platformName(),
             "platform": sys.platform,
             "exit_code": 1,
             "error": type(error).__name__,
+            "service_remained_running": False,
+            "activation_created_window": False,
+            "one_document_authority": False,
+            "session_restored": False,
+            "history_restored": False,
+            "find_replace_restored": False,
+            "explicit_quit": False,
         }
 
 

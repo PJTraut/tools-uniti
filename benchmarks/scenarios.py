@@ -5,6 +5,8 @@ from __future__ import annotations
 import gc
 import hashlib
 import os
+import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -1354,6 +1356,258 @@ def _save_as(manifest: CorpusManifest) -> ScenarioResult:
     return _save_output(manifest, in_place=False)
 
 
+def _session_restore(manifest: CorpusManifest) -> ScenarioResult:
+    """Measure bounded shell, active-first, lazy, and cancellation behavior."""
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.service import QuitChoice, UNITIService
+    from uniti.app.session_store import LocalStorageBackend, SessionStore
+    from uniti.app.settings import SettingsStore
+    from uniti.resources import TaskKind, TaskSpec
+
+    class ScenarioRecovery:
+        def attach(self, _document, **_kwargs) -> None:
+            return None
+
+        def detach(self, _document, *, clean: bool) -> None:
+            return None
+
+        def shutdown(self) -> None:
+            return None
+
+    class ThreadRecordingBackend(LocalStorageBackend):
+        def __init__(self, root: Path) -> None:
+            super().__init__(root)
+            self.storage_threads: set[int] = set()
+
+        def write_synced(self, path: Path, data: bytes) -> None:
+            self.storage_threads.add(threading.get_ident())
+            super().write_synced(path, data)
+
+        def read_bytes(self, path: Path) -> bytes:
+            self.storage_threads.add(threading.get_ident())
+            return super().read_bytes(path)
+
+    app = QApplication.instance() or QApplication([])
+    app.setQuitOnLastWindowClosed(False)
+    gui_thread = threading.get_ident()
+    heartbeats: list[float] = []
+    creator = None
+    restored = None
+    creator_resources = None
+    restored_resources = None
+    cleanup_ok = False
+    with tempfile.TemporaryDirectory(
+        prefix="uniti-session-restore-",
+        dir=manifest.path.parent,
+    ) as raw_work:
+        work = Path(raw_work)
+        lazy_path = work / "lazy-document.txt"
+        lazy_path.write_text("lazy session history", encoding="utf-8")
+        session_root = work / "sessions"
+        backend = ThreadRecordingBackend(session_root)
+        store = SessionStore(session_root, backend=backend)
+        worker_threads: set[int] = set()
+        restored_histories: dict[str, object] = {}
+
+        def wait_until(predicate, *, timeout: float = 30.0) -> None:
+            deadline = time.perf_counter() + timeout
+            while time.perf_counter() < deadline:
+                started = time.perf_counter()
+                app.processEvents()
+                heartbeats.append((time.perf_counter() - started) * 1000.0)
+                if predicate():
+                    return
+                time.sleep(0.001)
+            app.processEvents()
+            if not predicate():
+                raise TimeoutError("session restore benchmark did not settle")
+
+        try:
+            creator_resources = ResourceManager()
+            creator = UNITIService(
+                resource_manager=creator_resources,
+                settings_store=SettingsStore(work / "creator-settings.json"),
+                session_store=store,
+                recovery_manager=ScenarioRecovery(),
+                service_id="performance-creator",
+                build_identity="performance-session-restore",
+            )
+            creator_window = creator.new_window()
+            active_view = creator_window.open_path(manifest.path)
+            lazy_view = creator_window.open_path(lazy_path)
+            if active_view is None or lazy_view is None:
+                raise RuntimeError("session performance sources did not open")
+            lazy_view.document.insert(lazy_view.document.total_chars(), " saved")
+            lazy_view.document.save()
+            creator.set_active_view(creator_window.window_id, active_view.view_id)
+            wait_until(
+                lambda: all(
+                    entry.saved_stamp is not None
+                    for entry in creator.documents.entries
+                )
+            )
+            creator._publish_snapshot_durably(
+                creator.capture_session(clean_shutdown=True)
+            )
+            creator.request_quit(lambda _entry: QuitChoice.DISCARD)
+            app.processEvents()
+            creator = None
+            creator_resources = None
+            gc.collect()
+            start_current = current_process_rss_bytes()
+            start_peak = peak_process_rss_bytes()
+            heartbeats.clear()
+
+            restored_resources = ResourceManager()
+            load_started = time.perf_counter()
+
+            def load_manifest(_context):
+                worker_threads.add(threading.get_ident())
+                return store.load_manifest()
+
+            load_handle = restored_resources.tasks.submit(
+                TaskSpec.create(TaskKind.SESSION, foreground=False),
+                load_manifest,
+            )
+            loaded, load_timing = _wait_for_task(
+                app,
+                load_handle,
+                load_started,
+            )
+            if loaded.manifest is None:
+                raise RuntimeError("session performance manifest was not published")
+            shell_started = time.perf_counter()
+            restored = UNITIService(
+                resource_manager=restored_resources,
+                settings_store=SettingsStore(work / "restored-settings.json"),
+                session_store=store,
+                recovery_manager=ScenarioRecovery(),
+                service_id="performance-restored",
+                build_identity="performance-session-restore",
+            )
+
+            def load_pack(document_id: str):
+                worker_threads.add(threading.get_ident())
+                pack = store.load_document_pack(loaded.manifest, document_id)
+                restored_histories[document_id] = pack.history
+                return pack
+
+            restored.restore_shell(
+                loaded.manifest,
+                find_replace_pack=loaded.find_replace_pack,
+                pack_loader=load_pack,
+            )
+            app.processEvents()
+            shell_ms = (time.perf_counter() - shell_started) * 1000.0
+            shell_usable = (
+                restored.window_count == 1
+                and restored.documents.count == 0
+                and restored.active_view is None
+            )
+            active_started = time.perf_counter()
+            restored.restore_active()
+            active_completion_ms = (
+                time.perf_counter() - active_started
+            ) * 1000.0
+            active_entry = restored.documents.find_path(manifest.path)
+            active_history_restored = (
+                active_entry is not None
+                and active_entry.saved_stamp is not None
+                and restored.active_view is not None
+                and active_entry.document.export_history()
+                == restored_histories.get(active_entry.document_id)
+            )
+
+            lazy_handles = restored.schedule_lazy_restore()
+            wait_until(lambda: restored.documents.count == 2)
+            lazy_entry = restored.documents.find_path(lazy_path)
+            lazy_history_restored = (
+                len(lazy_handles) == 1
+                and lazy_entry is not None
+                and lazy_entry.document.can_undo
+                and lazy_entry.document.export_history()
+                == restored_histories.get(lazy_entry.document_id)
+            )
+
+            def cancellable_session(context):
+                worker_threads.add(threading.get_ident())
+                context.report("Preparing session cancellation", 1, 2)
+                while not context.token.wait(0.002):
+                    pass
+                context.check_cancelled()
+
+            cancel_handle = restored_resources.tasks.submit(
+                TaskSpec.create(TaskKind.SESSION, foreground=False),
+                cancellable_session,
+            )
+            cancel_ms, cancelled = _measure_cancellation(app, cancel_handle)
+            storage_threads = backend.storage_threads | worker_threads
+            all_storage_work_off_gui = bool(storage_threads) and all(
+                thread_id != gui_thread for thread_id in storage_threads
+            )
+            restored.request_quit(lambda _entry: QuitChoice.DISCARD)
+            app.processEvents()
+            restored = None
+            restored_resources = None
+            creator_window = None
+            active_view = None
+            lazy_view = None
+            active_entry = None
+            lazy_entry = None
+            loaded = None
+            cleanup_ok = True
+        finally:
+            for service in (restored, creator):
+                if service is not None and service.is_running:
+                    service.request_quit(lambda _entry: QuitChoice.DISCARD)
+            for resources in (restored_resources, creator_resources):
+                if resources is not None:
+                    resources.shutdown(wait=True)
+            app.processEvents()
+
+    cleanup_ok = cleanup_ok and not work.exists()
+    peak_mib, retained_mib = _rss_facts(start_current, start_peak)
+    completion_ms = load_timing["completion_ms"] + shell_ms + active_completion_ms
+    integrity_ok = (
+        shell_usable
+        and active_history_restored
+        and lazy_history_restored
+        and cancelled
+        and all_storage_work_off_gui
+        and cleanup_ok
+    )
+    return ScenarioResult.success(
+        scenario="session_restore",
+        metrics={
+            "open_to_usable_ms": MetricSample(
+                (load_timing["completion_ms"] + shell_ms,)
+            ),
+            "interaction_max_ms": MetricSample((shell_ms,)),
+            "gui_heartbeat_p95_ms": MetricSample((_p95(heartbeats),)),
+            "gui_heartbeat_max_ms": MetricSample((max(heartbeats or [0.0]),)),
+            "cancel_normal_ms": MetricSample((cancel_ms,)),
+            "session_restore_completion_ms": MetricSample((completion_ms,)),
+            "peak_rss_mib": MetricSample((peak_mib,)),
+            "retained_rss_mib": MetricSample((retained_mib,)),
+        },
+        facts={
+            "physical_memory_bytes": probe_memory().physical,
+            "source_bytes": manifest.spec.size_bytes,
+            "shell_usable": shell_usable,
+            "active_history_restored": active_history_restored,
+            "lazy_history_restored": lazy_history_restored,
+            "cancelled": cancelled,
+            "storage_worker_threads": len(storage_threads),
+            "all_storage_work_off_gui": all_storage_work_off_gui,
+            "cleanup_ok": cleanup_ok,
+            "integrity_ok": integrity_ok,
+        },
+    )
+
+
 _SCENARIOS = {
     "open_first_paint": _open_first_paint,
     "navigation": _navigation,
@@ -1367,6 +1621,7 @@ _SCENARIOS = {
     "save": _save,
     "save_as": _save_as,
     "resource_recovery": _resource_recovery,
+    "session_restore": _session_restore,
 }
 
 
@@ -1408,4 +1663,5 @@ def initial_scenario_names(tier: str) -> tuple[str, ...]:
         "save",
         "save_as",
         "resource_recovery",
+        "session_restore",
     )

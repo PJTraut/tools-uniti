@@ -31,7 +31,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--compare", type=Path)
-    parser.add_argument("--scenario", action="append", dest="scenarios")
+    parser.add_argument(
+        "--scenario",
+        action="append",
+        dest="scenarios",
+        help=(
+            "run only the named scenario; repeat for multiple scenarios "
+            "(for example, session_restore)"
+        ),
+    )
     parser.add_argument("--native-gui", action="store_true")
     parser.add_argument("--temp-root", type=Path)
     return parser

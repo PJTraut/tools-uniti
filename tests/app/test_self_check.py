@@ -89,6 +89,7 @@ def test_deep_check_exercises_complete_core_matrix(tmp_path: Path, monkeypatch):
         "large-file",
         "regex-intelligence",
         "recovery",
+        "recovery-session",
         "qt-offscreen",
     } <= names
     assert [result.name for result in report.results if result.status is CheckStatus.FAIL] == []
@@ -114,6 +115,34 @@ def test_regex_intelligence_probe_reports_only_safe_bounded_facts(
     assert details["report_payload_bytes"] <= 1 << 20
     assert details["replacement_count"] == 4
     assert details["undo_exact"] is True
+
+
+def test_recovery_session_probe_reports_only_safe_bounded_facts(tmp_path: Path):
+    summary, details = SelfCheckRunner._deep_recovery_session(tmp_path)
+
+    assert summary == "saved session and crash recovery histories passed"
+    assert set(details) == {
+        "session_documents",
+        "session_transactions",
+        "session_hash_exact",
+        "recovery_candidates",
+        "recovery_transactions",
+        "recovery_undo_available",
+        "recovery_redo_exact",
+        "external_change_detected",
+        "external_source_preserved",
+    }
+    assert details == {
+        "session_documents": 1,
+        "session_transactions": 1,
+        "session_hash_exact": True,
+        "recovery_candidates": 1,
+        "recovery_transactions": 1,
+        "recovery_undo_available": True,
+        "recovery_redo_exact": True,
+        "external_change_detected": True,
+        "external_source_preserved": True,
+    }
 
 
 def test_report_uses_most_specific_failure_code():

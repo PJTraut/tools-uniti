@@ -26,6 +26,13 @@ def test_quick_and_routine_register_regex_intelligence():
     )
 
 
+def test_quick_and_routine_register_session_restore():
+    assert "session_restore" in initial_scenario_names("quick")
+    assert "session_restore" in initial_scenario_names("routine")
+    assert "session_restore" not in initial_scenario_names("design_target")
+    assert corpus_kind_for_scenario("session_restore") is CorpusKind.ORDINARY_LINES
+
+
 def test_editor_interaction_scenarios_preserve_text_and_stay_bounded(tmp_path: Path):
     ordinary = generate_corpus(
         CorpusSpec(CorpusKind.ORDINARY_LINES, size_bytes=1 << 20),
@@ -112,3 +119,33 @@ def test_sparse_design_navigation_stays_lazy(tmp_path: Path):
     assert result.facts["integrity_ok"] is True
     assert result.facts["lazy_source_navigation"] is True
     assert result.facts["mapped_bytes"] < 1 << 20
+
+
+def test_session_restore_scenario_is_active_first_lazy_cancellable_and_off_thread(
+    tmp_path: Path,
+):
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.ORDINARY_LINES, size_bytes=1 << 20),
+        tmp_path / "session-restore",
+    )
+
+    result = run_scenario("session_restore", manifest)
+
+    assert result.state is ResultState.PASS
+    assert result.facts["integrity_ok"] is True
+    assert result.facts["shell_usable"] is True
+    assert result.facts["active_history_restored"] is True
+    assert result.facts["lazy_history_restored"] is True
+    assert result.facts["cancelled"] is True
+    assert result.facts["all_storage_work_off_gui"] is True
+    assert result.facts["cleanup_ok"] is True
+    for metric in (
+        "open_to_usable_ms",
+        "interaction_max_ms",
+        "gui_heartbeat_p95_ms",
+        "gui_heartbeat_max_ms",
+        "cancel_normal_ms",
+        "peak_rss_mib",
+        "retained_rss_mib",
+    ):
+        assert result.metrics[metric].values[0] >= 0
