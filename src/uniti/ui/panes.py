@@ -259,6 +259,7 @@ class EditorPaneTree(QWidget):
     """A binary tree of tab leaves that only moves existing view widgets."""
 
     activeViewChanged = Signal(object)
+    viewSelected = Signal(str)
     viewCloseRequested = Signal(str)
     viewDetachRequested = Signal(str, QPoint)
 
@@ -367,6 +368,20 @@ class EditorPaneTree(QWidget):
             raise KeyError(view_id)
         self._activate_view(view_id)
 
+    def remove_shell_view(self, view_id: str) -> None:
+        """Remove one unresolved session placeholder without document effects."""
+
+        leaf = self.leaf_for_view(view_id)
+        if leaf is None:
+            raise KeyError(view_id)
+        widget = leaf.widget(leaf.index_of(view_id))
+        if not isinstance(widget, _ShellView):
+            raise ValueError("only a session shell placeholder can be removed")
+        leaf.take_view(view_id)
+        widget.deleteLater()
+        if leaf.count() == 0 and self.leaf_count > 1:
+            self.close_leaf(leaf.pane_id)
+
     def _leaf(self, pane_id: str) -> PaneLeaf:
         for leaf in self._leaves():
             if leaf.pane_id == pane_id:
@@ -422,6 +437,9 @@ class EditorPaneTree(QWidget):
 
     def _on_leaf_active(self, leaf: PaneLeaf, view: QWidget | None) -> None:
         self._active_leaf = leaf
+        selected = leaf.selected_view_id
+        if selected is not None:
+            self.viewSelected.emit(selected)
         self.activeViewChanged.emit(view)
 
     def split_view(

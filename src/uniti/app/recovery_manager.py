@@ -145,6 +145,19 @@ class _CompactionRequest:
     observed_revision: int
 
 
+@dataclass(frozen=True, slots=True)
+class _SavedBaseRequest:
+    saved_stamp: SavedFileStamp
+    base_history: HistorySnapshot
+    save_sequence: int
+    save_revision: int
+    events: tuple[RecoveryEvent, ...]
+    observed_sequence: int
+    source_encoding: str
+    output_encoding: str
+    output_eol: str | None
+
+
 @dataclass(slots=True)
 class _Binding:
     document: Document
@@ -693,6 +706,169 @@ class RecoveryManager:
         if binding is None:
             raise ValueError("document is not attached to recovery")
         return self._schedule_compaction(binding)
+
+    def _replace_saved_base(
+        self,
+        binding: _Binding,
+        request: _SavedBaseRequest,
+    ) -> bool:
+        if verify_saved_file(
+            binding.document.path,
+            request.saved_stamp,
+        ) not in {FileMatch.EXACT_FAST, FileMatch.EXACT_HASH}:
+            raise OSError("saved recovery base changed before publication")
+        old_journal = binding.journal
+        old_path = binding.journal_path
+        if old_journal is not None:
+            self._backend.flush(old_journal)
+            self._backend.fsync(old_journal)
+
+        published: Path | None = None
+        temporary: Path | None = None
+        new_journal: RecoveryJournal | None = None
+        try:
+            if request.events:
+                published = self._owned_path(
+                    self._new_journal_path(binding.document)
+                )
+                temporary = self._owned_path(
+                    published.with_name(published.name + ".tmp"),
+                    temporary=True,
+                )
+                new_journal = RecoveryJournal.create_v3(
+                    temporary,
+                    binding.document.path,
+                    base_identity=request.saved_stamp.identity,
+                    base_hash=request.saved_stamp.sha256,
+                    source_encoding=request.source_encoding,
+                    output_encoding=request.output_encoding,
+                    output_eol=request.output_eol,
+                    base_history=request.base_history,
+                )
+                self._backend.append(
+                    new_journal,
+                    RecoveryCheckpoint(request.base_history, request.events),
+                )
+                self._backend.flush(new_journal)
+                self._backend.fsync(new_journal)
+                loaded = load_recovery_candidate(temporary)
+                if (
+                    loaded.status is not RecoveryLoadStatus.COMPLETE
+                    or loaded.session is None
+                    or loaded.session.base_hash != request.saved_stamp.sha256
+                    or loaded.durable_events != request.events
+                ):
+                    raise ValueError("saved recovery base did not validate")
+                self._backend.replace(temporary, published)
+                new_journal.path = published
+
+            with self._lock:
+                tail = tuple(
+                    event
+                    for event in binding.events
+                    if event.sequence > request.observed_sequence
+                )
+                binding.base_identity = request.saved_stamp.identity
+                binding.base_hash = request.saved_stamp.sha256
+                binding.base_history = request.base_history
+                binding.source_encoding = request.source_encoding
+                binding.output_encoding = request.output_encoding
+                binding.output_eol = request.output_eol
+                binding.events = list(request.events + tail)
+                binding.journal = new_journal
+                binding.journal_path = published
+                durable = (
+                    request.events[-1].sequence
+                    if request.events
+                    else request.save_sequence
+                )
+                durable_revision = (
+                    request.events[-1].revision
+                    if request.events
+                    else request.save_revision
+                )
+                binding.written_sequence = durable
+                binding.durable_sequence = durable
+                binding.written_revision = durable_revision
+                binding.durable_revision = durable_revision
+                binding.last_fsync = time.monotonic()
+                if binding.durable_sequence >= binding.sequence:
+                    binding.health = RecoveryHealth.OK
+                    binding.reason = ""
+                if binding.base_source is not None:
+                    binding.base_source.close()
+                    binding.base_source = None
+            self._notify_diagnostic(binding)
+            new_journal = None
+        finally:
+            if new_journal is not None:
+                new_journal.close()
+                if temporary is not None:
+                    try:
+                        self._backend.unlink(temporary)
+                    except (FileNotFoundError, OSError):
+                        pass
+
+        if old_journal is not None:
+            old_journal.close()
+        if old_path is not None and old_path != published:
+            try:
+                self._backend.unlink(self._owned_path(old_path))
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                self.last_error = exc
+        return True
+
+    def rebase_after_save(
+        self,
+        document: Document,
+        *,
+        saved_stamp: SavedFileStamp,
+        base_history: HistorySnapshot,
+        save_revision: int,
+    ) -> Future:
+        """Publish a verified saved recovery base before retiring older evidence."""
+
+        if not isinstance(saved_stamp, SavedFileStamp):
+            raise TypeError("saved stamp must be a SavedFileStamp")
+        if not isinstance(base_history, HistorySnapshot):
+            raise TypeError("saved base history must be a HistorySnapshot")
+        if type(save_revision) is not int or save_revision < 0:
+            raise ValueError("save revision must be a non-negative integer")
+        binding = self._bindings.get(id(document))
+        if binding is None:
+            raise ValueError("document is not attached to recovery")
+        with self._lock:
+            indexed = tuple(enumerate(binding.events))
+            save_index, save_event = next(
+                (
+                    (index, event)
+                    for index, event in reversed(indexed)
+                    if event.kind is RecoveryEventKind.SAVE_POINT
+                    and event.revision == save_revision
+                ),
+                (None, None),
+            )
+            if save_index is None or save_event is None:
+                raise ValueError("matching recovery save point is unavailable")
+            request = _SavedBaseRequest(
+                saved_stamp,
+                base_history,
+                save_event.sequence,
+                save_revision,
+                tuple(binding.events[save_index + 1 :]),
+                binding.sequence,
+                document.encoding_info.detected,
+                document.output_encoding,
+                document.output_eol,
+            )
+        return self._submit_serial(
+            binding,
+            TaskKind.RECOVERY_COMPACTION,
+            "saved base",
+            lambda: self._replace_saved_base(binding, request),
+        )
 
     def _terminal_event(self, binding: _Binding) -> RecoveryEvent:
         snapshot = binding.document.export_history()

@@ -286,6 +286,53 @@ def test_successful_quit_saves_then_publishes_before_retiring_and_closing(
     assert service.is_running is False
 
 
+def test_final_session_publication_runs_off_the_calling_thread():
+    caller_thread = threading.get_ident()
+
+    class ThreadRecordingStore(RecordingSessionStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.publisher_threads: list[int] = []
+
+        def publish(self, snapshot: object) -> object:
+            self.publisher_threads.append(threading.get_ident())
+            return super().publish(snapshot)
+
+    sessions = ThreadRecordingStore()
+    service = _service(
+        resources=ResourceManager(max_workers=1),
+        sessions=sessions,
+    )
+
+    assert service.request_quit(lambda _item: QuitChoice.DISCARD) is True
+    assert len(sessions.publisher_threads) == 1
+    assert sessions.publisher_threads[0] != caller_thread
+
+
+def test_quit_releases_primary_instance_lease_before_application_exit():
+    events: list[object] = []
+
+    class Instance:
+        def close(self):
+            events.append("instance-close")
+
+    service = UNITIService(
+        resource_manager=RecordingResources(events),
+        settings_store=object(),
+        session_store=RecordingSessionStore(events),
+        recovery_manager=RecordingRecoveryManager(events),
+        session_capture=lambda clean: ("snapshot", clean),
+        instance_service=Instance(),
+    )
+
+    assert service.request_quit(lambda _item: QuitChoice.DISCARD) is True
+    assert events[-3:] == [
+        "recovery-shutdown",
+        ("resources-shutdown", True),
+        "instance-close",
+    ]
+
+
 def test_last_window_can_close_while_service_remains_running():
     service = _service()
     window = FakeWindow()
@@ -361,6 +408,41 @@ def test_publication_scheduler_keeps_active_and_only_latest_pending_snapshot():
         time.sleep(0.01)
 
     assert sessions.publications == ["first", "latest"]
+    assert service.request_quit(lambda _item: QuitChoice.DISCARD) is True
+
+
+def test_low_space_publication_warning_remains_until_later_durable_success():
+    from uniti.app.session import PersistenceNotice
+
+    class Storage(RecordingSessionStore):
+        def publish(self, snapshot):
+            super().publish(snapshot)
+            truncations = (
+                (PersistenceNotice("session", "low_space_history_suppressed"),)
+                if len(self.publications) == 1
+                else ()
+            )
+            return type("Result", (), {"truncations": truncations})()
+
+    resources = ResourceManager(max_workers=1)
+    sessions = Storage()
+    service = _service(
+        resources=resources,
+        sessions=sessions,
+        capture=lambda clean: ("snapshot", clean),
+    )
+
+    service.schedule_publication()
+    deadline = time.monotonic() + 5
+    while not service.recovery_degraded and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert service.recovery_degraded is True
+
+    service.schedule_publication()
+    deadline = time.monotonic() + 5
+    while service.recovery_degraded and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert service.recovery_degraded is False
     assert service.request_quit(lambda _item: QuitChoice.DISCARD) is True
 
 
@@ -787,7 +869,7 @@ def test_one_failed_recovery_does_not_block_another_candidate(tmp_path: Path):
     second = _startup_candidate(tmp_path / "second.uniti-recovery", second_source)
     recovery = StartupRecoveryManager()
     recovery.fail_paths.add(first.evidence_path)
-    service = _service(recovery=recovery, capture=None)
+    service = _service(recovery=recovery)
     target = StartupTarget()
     entries = service.recovery_entries((first, second), ())
     decisions = tuple(
@@ -816,11 +898,12 @@ def test_recovery_publishes_new_session_before_retiring_old_candidate(tmp_path: 
     recovery = StartupRecoveryManager(events)
     sessions = RecordingSessionStore(events)
 
-    def capture(clean: bool):
-        events.append(("capture-recovery", clean))
-        return ("recovered-snapshot", clean)
+    def capture(clean_shutdown: bool):
+        events.append(("capture-recovery", clean_shutdown))
+        return ("recovered-snapshot", clean_shutdown)
 
-    service = _service(recovery=recovery, sessions=sessions, capture=capture)
+    service = _service(recovery=recovery, sessions=sessions, capture=None)
+    service.capture_session = capture
     target = StartupTarget(events)
     entry = service.recovery_entries((candidate,), ())[0]
 
@@ -852,7 +935,7 @@ def test_locate_matching_file_hashes_exact_bytes_before_recovery(tmp_path: Path)
         base_hash=expected_hash,
     )
     recovery = StartupRecoveryManager()
-    service = _service(recovery=recovery, capture=None)
+    service = _service(recovery=recovery)
     entry = service.recovery_entries((candidate,), ())[0]
 
     assert service.apply_recovery_decisions(
@@ -898,7 +981,7 @@ def test_locate_exact_hash_retargets_recovery_without_removing_evidence(tmp_path
         source_match=FileMatch.MISSING,
     )
     recovery = StartupRecoveryManager()
-    service = _service(recovery=recovery, capture=None)
+    service = _service(recovery=recovery)
     target = StartupTarget()
     entry = service.recovery_entries((candidate,), ())[0]
 

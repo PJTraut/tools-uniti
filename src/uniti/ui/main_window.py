@@ -232,6 +232,8 @@ class UNITIMainWindow(QMainWindow):
         self._panes = EditorPaneTree(self)
         self._tabs = self._panes.active_leaf.tabs
         self._panes.activeViewChanged.connect(self._on_pane_active)
+        if service is not None:
+            self._panes.viewSelected.connect(self._on_pane_view_selected)
         self._panes.viewCloseRequested.connect(self._close_view_id)
         if service is not None:
             self._panes.viewDetachRequested.connect(
@@ -270,6 +272,7 @@ class UNITIMainWindow(QMainWindow):
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
         self._resource_notice_active = False
+        self._recovery_notice_active = False
         self._resource_notice_count = 0
         self._last_task_snapshot_generation = -1
         self._status.update_resources(self._resources.status)
@@ -298,6 +301,7 @@ class UNITIMainWindow(QMainWindow):
             service.register_window(self.window_id, self)
 
     def _observe_resource_pressure(self) -> None:
+        self._apply_recovery_status()
         future = self._resource_probe_future
         if future is None:
             self._resource_probe_future = self._resources.workers.submit(
@@ -311,9 +315,27 @@ class UNITIMainWindow(QMainWindow):
         try:
             self._resources.observe_resources(future.result())
             self._apply_resource_status(self._resources.status)
+            self._apply_recovery_status()
         except Exception:
             # Memory telemetry must never interfere with editing.
             return
+
+    def _apply_recovery_status(self) -> None:
+        degraded = bool(
+            self._service is not None
+            and getattr(self._service, "recovery_degraded", False)
+        )
+        message = (
+            "Recovery degraded: saved edit history was reduced to protect free space."
+        )
+        if degraded:
+            self._recovery_notice_active = True
+            if self.statusBar().currentMessage() != message:
+                self.statusBar().showMessage(message)
+        elif self._recovery_notice_active:
+            self._recovery_notice_active = False
+            if self.statusBar().currentMessage() == message:
+                self.statusBar().clearMessage()
 
     def _apply_resource_status(self, status) -> None:
         self._status.update_resources(status)
@@ -447,7 +469,7 @@ class UNITIMainWindow(QMainWindow):
 
     @property
     def view_ids(self) -> tuple[str, ...]:
-        return tuple(view.view_id for view in self.views)
+        return self._panes.view_ids
 
     @property
     def active_view_id(self) -> str | None:
@@ -474,6 +496,10 @@ class UNITIMainWindow(QMainWindow):
         self._on_current_changed(self._tabs.currentIndex())
         if self._service is not None:
             self._service.set_active_view(self.window_id, self.active_view_id)
+
+    def _on_pane_view_selected(self, view_id: str) -> None:
+        if self._service is not None and self.view_for_id(view_id) is None:
+            self._service.promote_restore(view_id)
 
     def _action(self, text: str, shortcut, handler) -> QAction:
         action = QAction(text, self)
@@ -850,6 +876,51 @@ class UNITIMainWindow(QMainWindow):
         elif record.window_state == "minimized":
             self.showMinimized()
 
+    def restore_document_view(self, document: Document, record) -> UNITITextView:
+        """Replace one shell placeholder with its sealed live text view."""
+
+        from uniti.app.session import ViewRecord
+
+        if not isinstance(record, ViewRecord):
+            raise TypeError("record must be a ViewRecord")
+        if record.view_id not in self._panes.view_ids:
+            raise ValueError("restored view has no matching placeholder")
+        return self._add_document(
+            document,
+            attach_recovery=False,
+            view_id=record.view_id,
+            restore_record=record,
+            select=False,
+        )
+
+    def discard_session_placeholder(self, view_id: str) -> None:
+        """Remove one unresolved view after explicit evidence discard."""
+
+        if self.view_for_id(view_id) is not None:
+            raise ValueError("cannot discard a restored live view as a placeholder")
+        self._panes.remove_shell_view(view_id)
+
+    def export_window_record(self):
+        """Return this window's immutable geometry and pane-tree state."""
+
+        from uniti.app.session import WindowRecord
+
+        geometry = self.geometry()
+        if self.isFullScreen():
+            state = "fullscreen"
+        elif self.isMaximized():
+            state = "maximized"
+        elif self.isMinimized():
+            state = "minimized"
+        else:
+            state = "normal"
+        return WindowRecord(
+            self.window_id,
+            (geometry.x(), geometry.y(), geometry.width(), geometry.height()),
+            state,
+            self._panes.export_state(),
+        )
+
     def open_dialog(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
             self,
@@ -919,6 +990,9 @@ class UNITIMainWindow(QMainWindow):
         initial_eol_report: EOLReport | None = None,
         initial_eol_complete: bool = True,
         pane_id: str | None = None,
+        view_id: str | None = None,
+        restore_record=None,
+        select: bool = True,
     ) -> UNITITextView:
         entry = None
         adopted = False
@@ -931,14 +1005,16 @@ class UNITIMainWindow(QMainWindow):
                 raise ValueError("document path already has another authority")
             if adopted and attach_recovery and self._recovery_manager is not None:
                 self._recovery_manager.attach(document)
+            if adopted:
+                self._service.track_document(entry)
         elif attach_recovery and self._recovery_manager is not None:
             self._recovery_manager.attach(document)
         state = EditorState(document)
-        view = UNITITextView(state)
+        view = UNITITextView(state, view_id=view_id)
         view.set_zoom_percent(self._settings.editor_zoom_percent)
         view.set_soft_wrap(self._settings.soft_wrap)
         self._connect_view(view)
-        leaf = self._panes.add_view(view, pane_id=pane_id)
+        leaf = self._panes.add_view(view, pane_id=pane_id, select=select)
         self._tabs = leaf.tabs
         if entry is not None:
             self._service.documents.bind_view(entry.document_id, view.view_id)
@@ -952,7 +1028,10 @@ class UNITIMainWindow(QMainWindow):
             self._schedule_eol_analysis(view)
         elif initial_eol_report.kind == "MIXED":
             self._show_mixed_eol_report(view, initial_eol_report)
-        view.setFocus()
+        if restore_record is not None:
+            view.restore_state(restore_record)
+        if select:
+            view.setFocus()
         return view
 
     def open_existing_document(self, document: Document) -> UNITITextView:
@@ -1504,6 +1583,7 @@ class UNITIMainWindow(QMainWindow):
                 entry.document_id,
                 replacement,
             )
+            self._service.track_document(entry)
             if initial_eol_report is not None:
                 replacement.set_source_eol_report(initial_eol_report)
             for owner, candidate in affected:
@@ -2407,10 +2487,11 @@ class UNITIMainWindow(QMainWindow):
             self._detach_global_panel_bindings()
             if self.window_id in dict(self._service.windows.items):
                 self._service.unregister_window(self.window_id)
-                try:
-                    self._service.schedule_publication(clean_shutdown=False)
-                except RuntimeError:
-                    pass
+                if not self._service.is_quitting:
+                    try:
+                        self._service.schedule_publication(clean_shutdown=False)
+                    except RuntimeError:
+                        pass
             event.accept()
             return
         if self.close_all_documents(force=False):

@@ -9,6 +9,7 @@ from uniti.app.recovery_manager import (
     RecoveryManager,
 )
 from uniti.core.document import Document
+from uniti.core.file_identity import FileIdentity, SavedFileStamp, sha256_file
 from uniti.core.recovery import (
     RecoveryEventKind,
     RecoveryLoadStatus,
@@ -488,6 +489,105 @@ def test_compaction_publishes_valid_candidate_before_retiring_old(
         document.close()
         manager.shutdown()
         resources.shutdown()
+
+
+def test_saved_base_replacement_is_durable_before_old_candidate_is_retired(
+    tmp_path: Path,
+):
+    backend = InjectedRecoveryIO()
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "saved-base.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        document.insert(3, "X")
+        manager.flush(document)
+        original = manager.journal_path(document)
+        assert original is not None
+
+        document.save()
+        saved_history = document.export_history()
+        saved_revision = document.revision
+        saved_stamp = SavedFileStamp(
+            FileIdentity.from_path(source),
+            sha256_file(source),
+        )
+        document.insert(document.total_chars(), "Y")
+        manager.rebase_after_save(
+            document,
+            saved_stamp=saved_stamp,
+            base_history=saved_history,
+            save_revision=saved_revision,
+        ).result(timeout=5)
+        manager.flush(document)
+
+        replacement = manager.journal_path(document)
+        assert replacement is not None and replacement != original
+        assert replacement.exists()
+        assert original.exists() is False
+        replace_index = next(
+            index for index, call in enumerate(backend.calls) if call[0] == "replace"
+        )
+        unlink_index = next(
+            index
+            for index, call in enumerate(backend.calls)
+            if call[0] == "unlink" and call[1] == original
+        )
+        assert replace_index < unlink_index
+
+        candidate = manager.discover()[0]
+        assert candidate.session is not None
+        with Document.open(source) as restored:
+            replay_recovery(restored, candidate.session)
+            assert restored.read(0, restored.total_chars()) == "abcXY"
+            assert restored.can_undo is True
+    finally:
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_failed_saved_base_publication_preserves_previous_recovery_candidate(
+    tmp_path: Path,
+):
+    backend = InjectedRecoveryIO()
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "saved-base-failure.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        document.insert(3, "X")
+        manager.flush(document)
+        original = manager.journal_path(document)
+        assert original is not None
+        document.save()
+        saved_history = document.export_history()
+        saved_revision = document.revision
+        saved_stamp = SavedFileStamp(
+            FileIdentity.from_path(source),
+            sha256_file(source),
+        )
+        document.insert(document.total_chars(), "Y")
+        backend.fail_replace = True
+
+        result = manager.rebase_after_save(
+            document,
+            saved_stamp=saved_stamp,
+            base_history=saved_history,
+            save_revision=saved_revision,
+        ).result(timeout=5)
+
+        assert result is None
+        assert original.exists()
+        assert manager.journal_path(document) == original
+        assert manager.diagnostic(document).health is RecoveryHealth.DEGRADED
+    finally:
+        backend.fail_replace = False
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
 
 
 def test_failed_append_can_be_healed_by_checkpoint_compaction(tmp_path: Path):

@@ -39,6 +39,7 @@ class FakeBackend:
         self.files: dict[Path, bytes] = {}
         self.directories = {root}
         self.operations: list[tuple[str, str]] = []
+        self.reads: list[Path] = []
         self.free_bytes_value = 1 << 40
         self.fail_after: int | None = None
         self._mutation_count = 0
@@ -56,6 +57,7 @@ class FakeBackend:
 
     def reset_recording(self, *, fail_after: int | None = None) -> None:
         self.operations.clear()
+        self.reads.clear()
         self._mutation_count = 0
         self.fail_after = fail_after
 
@@ -100,6 +102,7 @@ class FakeBackend:
         return tuple(path / name for name in sorted(names))
 
     def read_bytes(self, path: Path) -> bytes:
+        self.reads.append(path)
         try:
             return self.files[path]
         except KeyError as exc:
@@ -242,6 +245,26 @@ def test_publish_syncs_packs_then_manifest_then_pointer():
     assert loaded.packs[0].document_id == "doc-1"
 
 
+def test_manifest_only_load_defers_history_pack_read_and_decode():
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    result = store.publish(_snapshot(_pack()))
+    backend.reset_recording()
+
+    loaded = store.load_manifest()
+
+    assert loaded.manifest is not None
+    assert loaded.manifest.generation == result.generation
+    assert loaded.packs == ()
+    assert not any(path.suffix == ".pack" for path in backend.reads)
+
+    pack = store.load_document_pack(loaded.manifest, "doc-1")
+
+    assert pack.document_id == "doc-1"
+    assert any(path.suffix == ".pack" for path in backend.reads)
+
+
 @pytest.mark.parametrize("failure_after", range(1, 6))
 def test_interrupted_publication_keeps_old_or_complete_new_generation(failure_after: int):
     root = Path("/owned/session")
@@ -338,6 +361,24 @@ def test_discard_evidence_rejects_paths_outside_session_storage(tmp_path: Path):
         store.discard_evidence(outside)
 
     assert outside.read_bytes() == b"not UNITI-owned"
+
+
+def test_discard_document_prunes_only_its_manifest_views_and_history():
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    store.publish(_snapshot(_pack("doc-1"), _pack("doc-2", text="B")))
+
+    store.discard("doc-1")
+
+    loaded = store.load_latest()
+    assert loaded.manifest is not None
+    assert tuple(item.document_id for item in loaded.manifest.documents) == ("doc-2",)
+    assert tuple(item.view_id for item in loaded.manifest.views) == ("view-doc-2",)
+    assert loaded.manifest.windows[0].root.view_ids == ("view-doc-2",)
+    assert loaded.manifest.active_view_id == "view-doc-2"
+    assert loaded.manifest.find_replace.last_target_view_id == "view-doc-2"
+    assert tuple(item.document_id for item in loaded.packs) == ("doc-2",)
 
 
 def test_low_space_is_injected_and_writes_no_nonessential_history():

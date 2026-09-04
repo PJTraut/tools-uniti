@@ -30,6 +30,10 @@ class QuitChoice(StrEnum):
     CANCEL = "cancel"
 
 
+class _QuitExecutionError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class QuitDecision:
     document_id: str
@@ -72,14 +76,22 @@ class _RecoveryBinding:
 class _PublicationQueue:
     """Serialize publication and retain only the newest queued snapshot."""
 
-    def __init__(self, resource_manager: object, session_store: object) -> None:
+    def __init__(
+        self,
+        resource_manager: object,
+        session_store: object,
+        on_result: Callable[[object, object], None],
+    ) -> None:
         coordinator = getattr(resource_manager, "tasks", None)
         if coordinator is None or not callable(getattr(coordinator, "submit", None)):
             raise TypeError("resource manager must provide a task coordinator")
         if not callable(getattr(session_store, "publish", None)):
             raise TypeError("session store must provide publish()")
+        if not callable(on_result):
+            raise TypeError("publication result callback must be callable")
         self._coordinator = coordinator
         self._session_store = session_store
+        self._on_result = on_result
         self._condition = threading.Condition(threading.RLock())
         self._active: _PublicationRequest | None = None
         self._pending: _PublicationRequest | None = None
@@ -142,11 +154,18 @@ class _PublicationQueue:
         handle: TaskHandle[Any],
     ) -> None:
         try:
-            handle.future.result()
+            result = handle.future.result()
         except Exception as exc:
             error: Exception | None = exc
+            result = None
         else:
             error = None
+        if error is None:
+            try:
+                self._on_result(result, request.snapshot)
+            except Exception:
+                # A durable publication must not be reclassified by observers.
+                pass
         next_request: _PublicationRequest | None = None
         with self._condition:
             if self._active is not request:
@@ -186,20 +205,39 @@ class UNITIService:
         session_capture: Callable[[bool], SessionSnapshot] | None = None,
         documents: DocumentRegistry | None = None,
         windows: WindowManager | None = None,
+        service_id: str | None = None,
+        build_identity: str | None = None,
+        instance_service: object | None = None,
     ) -> None:
         if session_capture is not None and not callable(session_capture):
             raise TypeError("session capture must be callable")
+        if instance_service is not None and not callable(
+            getattr(instance_service, "close", None)
+        ):
+            raise TypeError("instance service must provide close()")
         self.resources = resource_manager
         self.settings = settings_store
         self.sessions = session_store
         self.recovery = recovery_manager
         self.documents = documents or DocumentRegistry()
         self.windows = windows or WindowManager()
+        self._instance_service = instance_service
         self._session_capture = session_capture
+        from .session_controller import SessionController
+
+        self._session_controller = SessionController(
+            self,
+            session_capture=session_capture,
+            service_id=service_id,
+            build_identity=build_identity,
+        )
+        self._last_quit_error: str | None = None
+        self._quitting = False
         self._find_replace: FindReplaceWindow | None = None
         self._publication_queue: _PublicationQueue | None = None
         self._publication_generation = 0
         self._last_recovery_errors: tuple[str, ...] = ()
+        self._recovery_degraded = False
         self._running = True
         try:
             from PySide6.QtWidgets import QApplication
@@ -272,6 +310,42 @@ class UNITIService:
     def last_recovery_errors(self) -> tuple[str, ...]:
         return self._last_recovery_errors
 
+    @property
+    def recovery_degraded(self) -> bool:
+        return self._recovery_degraded
+
+    def _publication_finished(self, result: object, snapshot: object) -> None:
+        truncations = tuple(getattr(result, "truncations", ()))
+        low_space = any(
+            getattr(item, "reason", "") == "low_space_history_suppressed"
+            for item in truncations
+        )
+        self._recovery_degraded = low_space
+        rebased = self._session_controller.publication_durable(snapshot)
+        if not low_space:
+            return
+        compact = getattr(self.recovery, "compact", None)
+        if not callable(compact):
+            return
+        for entry in self.documents.entries:
+            if (
+                not entry.document.modified
+                or entry.document_id in rebased
+            ):
+                continue
+            try:
+                compact(entry.document)
+            except (RuntimeError, ValueError):
+                continue
+
+    @property
+    def last_quit_error(self) -> str | None:
+        return self._last_quit_error
+
+    @property
+    def is_quitting(self) -> bool:
+        return self._quitting
+
     @staticmethod
     def _candidate_entry_kind(candidate: object):
         from uniti.core.file_identity import FileMatch
@@ -328,7 +402,21 @@ class UNITIService:
             not isinstance(item, SessionProblem) for item in session_problems
         ):
             raise TypeError("session problems must be a tuple of SessionProblem")
-        if len(recovery_candidates) + len(session_problems) > MAX_RECOVERY_ENTRIES:
+        unique_session_problems: list[object] = []
+        seen_session_problems: set[tuple[object, ...]] = set()
+        for problem in session_problems:
+            key = (
+                ("document", problem.document_id)
+                if problem.document_id is not None
+                else ("evidence", problem.kind, problem.evidence_path)
+            )
+            if key not in seen_session_problems:
+                seen_session_problems.add(key)
+                unique_session_problems.append(problem)
+        if (
+            len(recovery_candidates) + len(unique_session_problems)
+            > MAX_RECOVERY_ENTRIES
+        ):
             raise ValueError("too many recovery entries")
 
         ordered: list[tuple[str, object]] = [
@@ -341,7 +429,7 @@ class UNITIService:
         ordered.extend(
             ("session", problem)
             for problem in sorted(
-                session_problems,
+                unique_session_problems,
                 key=lambda item: str(item.evidence_path),
             )
         )
@@ -396,11 +484,22 @@ class UNITIService:
         selected = target or self.most_recent_window
         return self.new_window() if selected is None else selected
 
+    def _publish_snapshot_durably(self, snapshot: object) -> object:
+        """Run serialization and durable storage away from the GUI thread."""
+
+        coordinator = getattr(self.resources, "tasks", None)
+        submit = getattr(coordinator, "submit", None)
+        if not callable(submit):
+            return self.sessions.publish(snapshot)
+        handle = submit(
+            TaskSpec.create(TaskKind.SESSION, foreground=True),
+            lambda _context: self.sessions.publish(snapshot),
+        )
+        return handle.future.result()
+
     def _publish_recovered_state(self, recovered: object) -> None:
-        if self._session_capture is None:
-            return
         snapshot = self.capture_session(clean_shutdown=False)
-        self.sessions.publish(snapshot)
+        self._publish_snapshot_durably(snapshot)
         self.recovery.commit_recovery(recovered)
 
     def _recover_candidate(self, candidate: object, target: object) -> None:
@@ -487,16 +586,20 @@ class UNITIService:
             document_id = getattr(problem, "document_id", None)
             if document_id is not None:
                 self.sessions.discard(document_id)
+                self._session_controller.discard_document(document_id)
             else:
                 discard_evidence = getattr(self.sessions, "discard_evidence", None)
                 if not callable(discard_evidence):
                     raise TypeError("session store cannot discard selected evidence")
                 discard_evidence(problem.evidence_path)
             return False
-        handler = getattr(self.sessions, "resolve_problem", None)
-        if not callable(handler):
-            raise TypeError("session problem cannot be resolved by this store")
-        handler(problem, action=action, located_path=decision.located_path, target=target)
+        if getattr(problem, "document_id", None) is None and action is RecoveryAction.RECOVER:
+            return False
+        self._session_controller.resolve_problem(
+            problem,
+            action=action,
+            located_path=decision.located_path,
+        )
         return True
 
     def apply_recovery_decisions(
@@ -644,6 +747,12 @@ class UNITIService:
             return resolver(view_id) if callable(resolver) else None
         return None
 
+    def track_document(self, entry: DocumentEntry, *, hash_saved: bool = True) -> None:
+        self._session_controller.track_document(entry, hash_saved=hash_saved)
+
+    def _complete_saved_hash(self, document_id: str) -> None:
+        self._session_controller.complete_saved_hash(document_id)
+
     def move_view_to_new_window(self, view_id: str):
         self._ensure_running()
         source = self.windows.window_for_view(view_id)
@@ -671,12 +780,46 @@ class UNITIService:
         return window
 
     def capture_session(self, clean_shutdown: bool = False) -> SessionSnapshot:
-        if not isinstance(clean_shutdown, bool):
-            raise TypeError("clean_shutdown must be bool")
-        capture = self._session_capture
-        if capture is None:
-            raise RuntimeError("session capture is not configured")
-        return capture(clean_shutdown)
+        return self._session_controller.capture(clean_shutdown)
+
+    def _capture_session_snapshot(
+        self,
+        clean_shutdown: bool,
+        *,
+        excluded_document_ids: frozenset[str],
+    ) -> SessionSnapshot:
+        return self._session_controller.capture(
+            clean_shutdown,
+            excluded_document_ids=excluded_document_ids,
+        )
+
+    @property
+    def restore_problems(self) -> tuple[object, ...]:
+        return self._session_controller.problems
+
+    def restore_shell(
+        self,
+        manifest: object,
+        *,
+        packs: tuple[object, ...] = (),
+        find_replace_pack: object | None = None,
+        pack_loader: Callable[[str], object] | None = None,
+    ) -> None:
+        self._session_controller.restore_shell(
+            manifest,
+            packs=packs,
+            find_replace_pack=find_replace_pack,
+            pack_loader=pack_loader,
+        )
+
+    def restore_active(self) -> object | None:
+        return self._session_controller.restore_active()
+
+    def schedule_lazy_restore(self) -> tuple[object, ...]:
+        return self._session_controller.schedule_lazy_restore()
+
+    def promote_restore(self, view_id: str) -> None:
+        self._session_controller.promote_restore(view_id)
 
     def schedule_publication(self, clean_shutdown: bool = False) -> int:
         self._ensure_running()
@@ -685,6 +828,7 @@ class UNITIService:
             self._publication_queue = _PublicationQueue(
                 self.resources,
                 self.sessions,
+                self._publication_finished,
             )
         self._publication_generation += 1
         request = _PublicationRequest(self._publication_generation, snapshot)
@@ -736,23 +880,66 @@ class UNITIService:
             return True
         plan = self.build_quit_plan(choose)
         if plan is None:
+            self._last_quit_error = None
             return False
-        self._execute_quit(plan)
+        try:
+            self._execute_quit(plan)
+        except _QuitExecutionError as error:
+            self._last_quit_error = str(error)
+            self._quitting = False
+            return False
+        except Exception:
+            self._last_quit_error = (
+                "Could not preserve session state; Quit was cancelled."
+            )
+            self._quitting = False
+            return False
+        self._last_quit_error = None
         return True
 
     def _execute_quit(self, plan: QuitPlan) -> None:
         for decision in plan.decisions:
             if decision.choice is QuitChoice.SAVE:
-                self.documents.get(decision.document_id).document.save()
+                entry = self.documents.get(decision.document_id)
+                try:
+                    entry.document.save()
+                    if self._session_capture is None:
+                        self._complete_saved_hash(decision.document_id)
+                except Exception as error:
+                    raise _QuitExecutionError(
+                        f"Could not save {entry.canonical_path.name}; Quit was cancelled."
+                    ) from error
 
-        if self._session_capture is not None:
+        discarded_ids = frozenset(
+            decision.document_id
+            for decision in plan.decisions
+            if decision.choice is QuitChoice.DISCARD
+        )
+        try:
             if self._publication_queue is not None:
                 self._publication_queue.close_before_final_publication()
-            final_snapshot = self.capture_session(clean_shutdown=True)
-            self.sessions.publish(final_snapshot)
+            final_snapshot = self._capture_session_snapshot(
+                True,
+                excluded_document_ids=discarded_ids,
+            )
+            self._publish_snapshot_durably(final_snapshot)
+        except Exception as error:
+            raise _QuitExecutionError(
+                "Could not preserve session state; Quit was cancelled."
+            ) from error
+
+        for document_id in discarded_ids:
+            entry = self.documents.get(document_id)
+            for view_id in tuple(entry.view_ids):
+                window = self.windows.window_for_view(view_id)
+                close_view = getattr(window, "_close_view_id", None)
+                if callable(close_view):
+                    close_view(view_id, force=True)
 
         for entry in self.documents.entries:
             self.recovery.detach(entry.document, clean=True)
+
+        self._quitting = True
 
         panel = self._find_replace
         if panel is not None:
@@ -770,8 +957,12 @@ class UNITIService:
 
         self.documents.close_all()
         self.windows.clear()
+        self._session_controller.shutdown()
         self.recovery.shutdown()
         self.resources.shutdown(wait=True)
+        if self._instance_service is not None:
+            self._instance_service.close()
+            self._instance_service = None
         self._running = False
         try:
             from PySide6.QtWidgets import QApplication

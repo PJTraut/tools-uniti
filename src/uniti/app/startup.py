@@ -34,14 +34,31 @@ class StartupPhase(IntEnum):
     ENVIRONMENT_VALIDATION = 2
     DEPENDENCY_VALIDATION = 3
     APPLICATION_PATHS = 4
-    SCHEMA_MIGRATIONS = 5
-    SETTINGS_LOAD = 6
-    RESOURCE_CALIBRATION = 7
-    STALE_STATE_CLEANUP = 8
-    RECOVERY_DISCOVERY = 9
-    GUI_CAPABILITIES = 10
-    SESSION_RESTORE = 11
-    READY = 12
+    GUI_CAPABILITIES = 5
+    INSTANCE_ARBITRATION = 6
+    SCHEMA_MIGRATIONS = 7
+    SETTINGS_LOAD = 8
+    RESOURCE_CALIBRATION = 9
+    STALE_STATE_CLEANUP = 10
+    RECOVERY_DISCOVERY = 11
+    SESSION_RESTORE = 12
+    READY = 13
+
+
+@dataclass(frozen=True, slots=True)
+class StartupCompletion:
+    """Intentional successful completion before the READY phase."""
+
+    exit_code: int
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.exit_code, bool)
+            or not isinstance(self.exit_code, int)
+            or not 0 <= self.exit_code <= 255
+        ):
+            raise ValueError("startup completion exit code must be between 0 and 255")
+        object.__setattr__(self, "exit_code", int(self.exit_code))
 
 
 class StartupFailure(RuntimeError):
@@ -198,7 +215,13 @@ class StartupCoordinator:
         failure: StartupFailure | None = None,
     ) -> None:
         startup = {
-            "ok": bool(ok and context.phase is StartupPhase.READY),
+            "ok": bool(
+                ok
+                and (
+                    context.phase is StartupPhase.READY
+                    or "completion_exit_code" in context.data
+                )
+            ),
             "stage": context.phase.name,
             "failure_code": int(failure.exit_code) if failure is not None else None,
             "failure_message": failure.safe_message if failure is not None else None,
@@ -240,7 +263,7 @@ class StartupCoordinator:
                 context.cleanup()
                 raise failure
             try:
-                callback(context)
+                result = callback(context)
             except StartupFailure as failure:
                 self._record_failure(context, failure, started, traceback_text=None)
                 context.cleanup()
@@ -261,6 +284,8 @@ class StartupCoordinator:
                 context.cleanup()
                 raise failure from cause
             duration = (time.perf_counter() - started) * 1000.0
+            if isinstance(result, StartupCompletion):
+                context.data["completion_exit_code"] = result.exit_code
             self._save_phase(context, ok=True, duration_ms=duration)
             self.startup_log.append(
                 {
@@ -270,6 +295,9 @@ class StartupCoordinator:
                     "duration_ms": round(duration, 3),
                 }
             )
+            if isinstance(result, StartupCompletion):
+                context.diagnostics = context.snapshot()
+                return context
         context.diagnostics = context.snapshot()
         return context
 

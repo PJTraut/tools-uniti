@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+from uniti.core.file_identity import FileMatch, verify_saved_file
 from uniti.core.history import HistorySnapshot, HistoryTruncation, estimate_transaction_bytes
 
 from .atomic_json import atomic_write_bytes, sync_directory_strict, utc_timestamp
@@ -24,6 +25,7 @@ from .session import (
     HistoryPack,
     HistoryPackReference,
     LoadedSession,
+    PaneRecord,
     PersistenceNotice,
     SessionManifest,
     SessionProblem,
@@ -231,6 +233,91 @@ def _without_stale_references(manifest: SessionManifest) -> SessionManifest:
         manifest,
         packs=(),
         find_replace=replace(manifest.find_replace, history_pack=None),
+    )
+
+
+def _filter_pane_view_ids(
+    pane: PaneRecord,
+    retained_view_ids: frozenset[str],
+) -> PaneRecord:
+    if pane.kind == "leaf":
+        view_ids = tuple(
+            view_id for view_id in pane.view_ids if view_id in retained_view_ids
+        )
+        selected = (
+            pane.selected_view_id
+            if pane.selected_view_id in view_ids
+            else (view_ids[0] if view_ids else None)
+        )
+        return replace(pane, view_ids=view_ids, selected_view_id=selected)
+    return replace(
+        pane,
+        children=tuple(
+            _filter_pane_view_ids(child, retained_view_ids)
+            for child in pane.children
+        ),
+    )
+
+
+def _pane_has_view(pane: PaneRecord, view_id: str) -> bool:
+    if pane.kind == "leaf":
+        return view_id in pane.view_ids
+    return any(_pane_has_view(child, view_id) for child in pane.children)
+
+
+def _without_document(
+    manifest: SessionManifest,
+    document_id: str,
+) -> SessionManifest:
+    removed_view_ids = frozenset(
+        view.view_id
+        for view in manifest.views
+        if view.document_id == document_id
+    )
+    views = tuple(
+        view for view in manifest.views if view.view_id not in removed_view_ids
+    )
+    retained_view_ids = frozenset(view.view_id for view in views)
+    windows = tuple(
+        replace(
+            window,
+            root=_filter_pane_view_ids(window.root, retained_view_ids),
+        )
+        for window in manifest.windows
+    )
+    active_view_id = manifest.active_view_id
+    if active_view_id not in retained_view_ids:
+        active_view_id = views[0].view_id if views else None
+    active_window_id = manifest.active_window_id
+    if active_view_id is not None:
+        active_window_id = next(
+            window.window_id
+            for window in windows
+            if _pane_has_view(window.root, active_view_id)
+        )
+    target = manifest.find_replace.last_target_view_id
+    if target not in retained_view_ids:
+        target = active_view_id
+    return replace(
+        manifest,
+        active_window_id=active_window_id,
+        active_view_id=active_view_id,
+        windows=windows,
+        views=views,
+        documents=tuple(
+            document
+            for document in manifest.documents
+            if document.document_id != document_id
+        ),
+        find_replace=replace(manifest.find_replace, last_target_view_id=target),
+        packs=tuple(
+            reference
+            for reference in manifest.packs
+            if not (
+                reference.kind == "document"
+                and reference.owner_id == document_id
+            )
+        ),
     )
 
 
@@ -688,6 +775,7 @@ class SessionStore:
         path: Path,
         *,
         expected_sha256: str | None,
+        load_packs: bool = True,
     ) -> tuple[LoadedSession | None, tuple[SessionProblem, ...]]:
         problems: list[SessionProblem] = []
         try:
@@ -735,6 +823,9 @@ class SessionStore:
                 self._problem("invalid_manifest", path, "Session manifest is invalid.")
             )
             return None, tuple(problems)
+
+        if not load_packs:
+            return LoadedSession(manifest, (), None, ()), tuple(problems)
 
         document_packs: list[HistoryPack] = []
         find_pack: FindReplaceHistoryPack | None = None
@@ -864,7 +955,7 @@ class SessionStore:
             )
         return None, None, (problem,)
 
-    def load_latest(self) -> LoadedSession:
+    def _load_latest(self, *, load_packs: bool) -> LoadedSession:
         accumulated: list[SessionProblem] = []
         pointer_path, pointer_sha, pointer_problems = self._pointer_target()
         accumulated.extend(pointer_problems)
@@ -874,6 +965,7 @@ class SessionStore:
             loaded, problems = self._load_manifest_path(
                 pointer_path,
                 expected_sha256=pointer_sha,
+                load_packs=load_packs,
             )
             accumulated.extend(problems)
             if loaded is not None:
@@ -891,11 +983,146 @@ class SessionStore:
         for path in manifests:
             if path in attempted:
                 continue
-            loaded, problems = self._load_manifest_path(path, expected_sha256=None)
+            loaded, problems = self._load_manifest_path(
+                path,
+                expected_sha256=None,
+                load_packs=load_packs,
+            )
             accumulated.extend(problems)
             if loaded is not None:
                 return replace(loaded, problems=tuple(accumulated))
         return LoadedSession(None, (), None, tuple(accumulated))
+
+    def load_latest(self) -> LoadedSession:
+        """Load and validate the newest complete manifest and every pack."""
+
+        return self._load_latest(load_packs=True)
+
+    def load_manifest(self) -> LoadedSession:
+        """Load only the newest valid pointer and manifest for shell restore."""
+
+        return self._load_latest(load_packs=False)
+
+    def load_document_pack(
+        self,
+        manifest: SessionManifest,
+        document_id: str,
+    ) -> HistoryPack:
+        """Validate and decode one document pack on demand."""
+
+        if not isinstance(manifest, SessionManifest):
+            raise TypeError("manifest must be a SessionManifest")
+        reference = next(
+            (
+                item
+                for item in manifest.packs
+                if item.kind == "document" and item.owner_id == document_id
+            ),
+            None,
+        )
+        if reference is None:
+            raise KeyError(document_id)
+        pack_path = self.packs_dir / reference.filename
+        data = self.backend.read_bytes(pack_path)
+        if (
+            len(data) != reference.encoded_bytes
+            or hashlib.sha256(data).hexdigest() != reference.sha256
+        ):
+            self._preserve_invalid(pack_path, data)
+            raise ValueError("session history pack failed size or checksum validation")
+        pack = decode_history_pack(data)
+        if (
+            pack.document_id != reference.owner_id
+            or pack.generation != reference.generation
+        ):
+            self._preserve_invalid(pack_path, data)
+            raise ValueError("document pack reference does not match payload")
+        return pack
+
+    def load_find_replace_pack(
+        self,
+        manifest: SessionManifest,
+    ) -> FindReplaceHistoryPack | None:
+        """Validate and decode the optional Find/Replace history pack on demand."""
+
+        if not isinstance(manifest, SessionManifest):
+            raise TypeError("manifest must be a SessionManifest")
+        reference = manifest.find_replace.history_pack
+        if reference is None:
+            return None
+        pack_path = self.packs_dir / reference.filename
+        data = self.backend.read_bytes(pack_path)
+        if (
+            len(data) != reference.encoded_bytes
+            or hashlib.sha256(data).hexdigest() != reference.sha256
+        ):
+            self._preserve_invalid(pack_path, data)
+            raise ValueError("Find/Replace pack failed size or checksum validation")
+        pack = decode_find_replace_pack(data)
+        if pack.generation != reference.generation:
+            self._preserve_invalid(pack_path, data)
+            raise ValueError("Find/Replace pack reference does not match payload")
+        return pack
+
+    def discover_restore_problems(
+        self,
+        manifest: SessionManifest,
+    ) -> tuple[SessionProblem, ...]:
+        """Validate every referenced source off-thread before one recovery dialog."""
+
+        if not isinstance(manifest, SessionManifest):
+            raise TypeError("manifest must be a SessionManifest")
+        problems: list[SessionProblem] = []
+        referenced_ids = {
+            reference.owner_id
+            for reference in manifest.packs
+            if reference.kind == "document"
+        }
+        for document in manifest.documents:
+            if document.document_id not in referenced_ids:
+                continue
+            reference = next(
+                item
+                for item in manifest.packs
+                if item.kind == "document"
+                and item.owner_id == document.document_id
+            )
+            evidence_path = self.packs_dir / reference.filename
+            try:
+                pack = self.load_document_pack(manifest, document.document_id)
+                match = verify_saved_file(
+                    Path(pack.canonical_path),
+                    pack.saved_stamp,
+                )
+            except Exception:
+                problems.append(
+                    SessionProblem(
+                        "history_pack_invalid",
+                        evidence_path,
+                        "Saved edit history could not be validated and was preserved.",
+                        document.document_id,
+                    )
+                )
+                continue
+            if match is FileMatch.CHANGED:
+                problems.append(
+                    SessionProblem(
+                        "changed_source",
+                        Path(pack.canonical_path),
+                        "A saved session source changed outside UNITI.",
+                        pack.document_id,
+                    )
+                )
+            elif match is FileMatch.MISSING:
+                problems.append(
+                    SessionProblem(
+                        "missing_source",
+                        Path(pack.canonical_path),
+                        "A saved session source is missing.",
+                        pack.document_id,
+                    )
+                )
+        return tuple(problems)
 
     def discard(self, document_id: str) -> None:
         loaded = self.load_latest()
@@ -905,7 +1132,9 @@ class SessionStore:
             pack for pack in loaded.packs if pack.document_id != document_id
         )
         snapshot = SessionSnapshot(
-            _without_stale_references(loaded.manifest),
+            _without_stale_references(
+                _without_document(loaded.manifest, document_id)
+            ),
             retained_packs,
             loaded.find_replace_pack,
         )

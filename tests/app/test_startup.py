@@ -12,6 +12,7 @@ from uniti.app.startup import (
     StartupFailure,
     StartupLog,
     StartupPhase,
+    StartupCompletion,
 )
 
 
@@ -45,7 +46,21 @@ def test_coordinator_runs_exact_order_and_persists_ready(tmp_path: Path):
 
     result = _coordinator(paths).run(context, _callbacks(observed))
 
-    assert observed == list(StartupPhase)[1:]
+    assert observed == [
+        StartupPhase.RUNTIME_IDENTITY,
+        StartupPhase.ENVIRONMENT_VALIDATION,
+        StartupPhase.DEPENDENCY_VALIDATION,
+        StartupPhase.APPLICATION_PATHS,
+        StartupPhase.GUI_CAPABILITIES,
+        StartupPhase.INSTANCE_ARBITRATION,
+        StartupPhase.SCHEMA_MIGRATIONS,
+        StartupPhase.SETTINGS_LOAD,
+        StartupPhase.RESOURCE_CALIBRATION,
+        StartupPhase.STALE_STATE_CLEANUP,
+        StartupPhase.RECOVERY_DISCOVERY,
+        StartupPhase.SESSION_RESTORE,
+        StartupPhase.READY,
+    ]
     assert result.phase is StartupPhase.READY
     state = SetupStateStore(paths.setup_state_file).prepare()
     assert state["startup"]["ok"] is True
@@ -54,6 +69,39 @@ def test_coordinator_runs_exact_order_and_persists_ready(tmp_path: Path):
     records = [json.loads(line) for line in paths.startup_log_file.read_text().splitlines()]
     assert records[0]["phase"] == "BOOT"
     assert records[-1]["phase"] == "READY"
+
+
+def test_intentional_secondary_completion_stops_without_failure_or_late_writers(
+    tmp_path: Path,
+):
+    paths = _paths(tmp_path)
+    observed: list[StartupPhase] = []
+    callbacks = _callbacks(observed)
+
+    def forwarded(_context):
+        observed.append(StartupPhase.INSTANCE_ARBITRATION)
+        return StartupCompletion(7)
+
+    callbacks[StartupPhase.INSTANCE_ARBITRATION] = forwarded
+    context = StartupContext.create(paths, session_id="secondary")
+
+    result = _coordinator(paths).run(context, callbacks)
+
+    assert observed == [
+        StartupPhase.RUNTIME_IDENTITY,
+        StartupPhase.ENVIRONMENT_VALIDATION,
+        StartupPhase.DEPENDENCY_VALIDATION,
+        StartupPhase.APPLICATION_PATHS,
+        StartupPhase.GUI_CAPABILITIES,
+        StartupPhase.INSTANCE_ARBITRATION,
+    ]
+    assert result.phase is StartupPhase.INSTANCE_ARBITRATION
+    assert result.data["completion_exit_code"] == 7
+    state = SetupStateStore(paths.setup_state_file).prepare()
+    assert state["startup"]["ok"] is True
+    records = [json.loads(line) for line in paths.startup_log_file.read_text().splitlines()]
+    assert records[-1]["phase"] == "INSTANCE_ARBITRATION"
+    assert records[-1]["status"] == "pass"
 
 
 def test_context_rejects_illegal_phase_transition(tmp_path: Path):

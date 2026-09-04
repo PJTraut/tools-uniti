@@ -9,7 +9,7 @@ import os
 import platform
 import sys
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Mapping
 
@@ -18,6 +18,7 @@ import uniti
 from .paths import AppPaths
 from .startup import (
     ExitCode,
+    StartupCompletion,
     StartupContext,
     StartupCoordinator,
     StartupFailure,
@@ -79,6 +80,68 @@ def run_self_check(request: ApplicationRequest):
     from .self_check import SelfCheckRunner
 
     return SelfCheckRunner().run(deep=request.deep)
+
+
+def _load_session_surface(session_store: object):
+    """Load bounded startup state and surface persistence loss as choices."""
+
+    from uniti.app.session import SessionProblem
+
+    loaded = session_store.load_manifest()
+    manifest = loaded.manifest
+    if manifest is None:
+        return loaded
+    problems = list(loaded.problems)
+    discover = getattr(session_store, "discover_restore_problems", None)
+    if callable(discover):
+        problems.extend(discover(manifest))
+    reference = manifest.find_replace.history_pack
+    find_pack = None
+    if reference is not None:
+        try:
+            find_pack = session_store.load_find_replace_pack(manifest)
+        except Exception:
+            problems.append(
+                SessionProblem(
+                    "find_history_truncated",
+                    session_store.packs_dir / reference.filename,
+                    (
+                        "Find/Replace history is unavailable; current fields "
+                        "were retained."
+                    ),
+                )
+            )
+    elif any(
+        notice.scope == "find_replace"
+        or notice.reason == "low_space_history_suppressed"
+        for notice in manifest.notices
+    ):
+        problems.append(
+            SessionProblem(
+                "find_history_truncated",
+                session_store.root,
+                "Find/Replace history was reduced; current fields were retained.",
+            )
+        )
+    if any(
+        notice.reason == "low_space_history_suppressed"
+        for notice in manifest.notices
+    ):
+        problems.append(
+            SessionProblem(
+                "recovery_degraded",
+                session_store.root,
+                (
+                    "Saved edit history was reduced to preserve the 512 MiB "
+                    "free-space reserve."
+                ),
+            )
+        )
+    return replace(
+        loaded,
+        find_replace_pack=find_pack,
+        problems=tuple(problems),
+    )
 
 
 def run_smoke() -> dict[str, object]:
@@ -173,6 +236,57 @@ def _normal_dependencies() -> dict[str, str]:
     return versions
 
 
+def _handle_instance_request(
+    context: StartupContext,
+    connection: object,
+    request: object,
+) -> None:
+    """Apply one validated local request and return bounded safe outcomes."""
+
+    from .instance_protocol import (
+        InstancePathOutcome,
+        InstanceReply,
+        InstanceRequest,
+    )
+
+    manager = context.data["instance_service"]
+    if not isinstance(request, InstanceRequest):
+        manager.reply(
+            connection,
+            InstanceReply(False, (), "The local UNITI request was invalid."),
+        )
+        return
+    service = context.data.get("service")
+    if service is None:
+        manager.reply(
+            connection,
+            InstanceReply(False, (), "UNITI is still starting."),
+        )
+        return
+    window = service.most_recent_window
+    if window is None:
+        window = service.new_window()
+    outcomes = []
+    for path in request.files:
+        try:
+            opened = window.open_path(Path(path))
+        except Exception:
+            opened = None
+        outcomes.append(
+            InstancePathOutcome(
+                path,
+                opened is not None,
+                None if opened is not None else "Could not open the requested file.",
+            )
+        )
+    if request.activate:
+        for method_name in ("show", "raise_", "activateWindow"):
+            method = getattr(window, method_name, None)
+            if callable(method):
+                method()
+    manager.reply(connection, InstanceReply(True, tuple(outcomes), None))
+
+
 def _startup_callbacks(
     request: ApplicationRequest,
     marker_path: Path,
@@ -182,6 +296,7 @@ def _startup_callbacks(
     from .capabilities import CapabilityStatus, probe_filesystem, probe_qt, probe_runtime
     from .cleanup import cleanup_stale, create_session_record
     from .recovery_manager import RecoveryManager
+    from .session_store import SessionStore
     from .settings import SettingsStore, UnsupportedSettingsSchema
 
     def runtime(context: StartupContext) -> None:
@@ -252,6 +367,9 @@ def _startup_callbacks(
             ) from error
         context.data["settings_store"] = store
         context.data["settings_preparation"] = preparation
+        context.data["session_store"] = SessionStore(
+            context.paths.durable_session_dir
+        )
 
     def settings(context: StartupContext) -> None:
         store = context.data["settings_store"]
@@ -282,10 +400,34 @@ def _startup_callbacks(
         context.data["session_record"] = record
 
     def recovery(context: StartupContext) -> None:
-        manager = RecoveryManager(context.paths.recovery_dir)
+        from uniti.resources import TaskKind, TaskSpec
+
+        resource_manager = context.data.get("resource_manager")
+        manager = (
+            RecoveryManager(context.paths.recovery_dir)
+            if resource_manager is None
+            else RecoveryManager(
+                context.paths.recovery_dir,
+                resource_manager=resource_manager,
+            )
+        )
         context.data["recovery_manager"] = manager
         context.register_cleanup(manager.shutdown)
-        context.recovery_candidates = manager.discover()
+        if resource_manager is None or "session_store" not in context.data:
+            context.recovery_candidates = manager.discover()
+            return
+        recovery_handle = resource_manager.tasks.submit(
+            TaskSpec.create(TaskKind.RECOVERY, foreground=False),
+            lambda _task_context: manager.discover(),
+        )
+        session_handle = resource_manager.tasks.submit(
+            TaskSpec.create(TaskKind.SESSION, foreground=False),
+            lambda _task_context: _load_session_surface(
+                context.data["session_store"]
+            ),
+        )
+        context.recovery_candidates = recovery_handle.future.result()
+        context.data["loaded_session"] = session_handle.future.result()
 
     def gui(context: StartupContext) -> None:
         try:
@@ -308,26 +450,75 @@ def _startup_callbacks(
         context.data["qapplication"] = app
         context.capabilities["qt"] = _capability_payload(results)
 
+    def instance(context: StartupContext) -> StartupCompletion | None:
+        from .instance_protocol import InstanceRequest
+        from .instance_service import InstanceRole, InstanceService
+
+        manager = InstanceService(
+            context.paths.instance_lock_file,
+            context.paths.instance_endpoint_name,
+        )
+        context.data["instance_service"] = manager
+        context.register_cleanup(manager.close)
+        result = manager.start(
+            InstanceRequest(
+                1,
+                True,
+                tuple(str(path) for path in request.files),
+            )
+        )
+        context.data["instance_start"] = result
+        if result.role is InstanceRole.FORWARDED:
+            assert result.reply is not None
+            code = ExitCode.SUCCESS if result.reply.accepted else ExitCode.STATE
+            return StartupCompletion(int(code))
+        manager.requestReceived.connect(
+            lambda connection, forwarded_request: _handle_instance_request(
+                context,
+                connection,
+                forwarded_request,
+            )
+        )
+        return None
+
     def session(context: StartupContext) -> None:
         from PySide6.QtWidgets import QMessageBox
         from uniti.app.service import UNITIService
-        from uniti.app.session_store import SessionStore
-
-        session_store = SessionStore(context.paths.durable_session_dir)
-        loaded_session = session_store.load_latest()
+        session_store = context.data["session_store"]
+        loaded_session = context.data["loaded_session"]
         service = UNITIService(
             resource_manager=context.data["resource_manager"],
             settings_store=context.data["settings_store"],
             session_store=session_store,
             recovery_manager=context.data["recovery_manager"],
+            service_id=context.session_id,
+            instance_service=context.data.get("instance_service"),
         )
-        window = service.new_window()
+        if loaded_session.manifest is not None:
+            service.restore_shell(
+                loaded_session.manifest,
+                packs=loaded_session.packs,
+                find_replace_pack=loaded_session.find_replace_pack,
+                pack_loader=lambda document_id: session_store.load_document_pack(
+                    loaded_session.manifest,
+                    document_id,
+                ),
+            )
+            service.restore_active()
+            window = service.most_recent_window
+            assert window is not None
+        else:
+            window = service.new_window()
         window.set_startup_snapshot(context.snapshot())
         service.run_recovery_center(
             window,
             recovery_candidates=context.recovery_candidates,
-            session_problems=loaded_session.problems,
+            session_problems=(
+                loaded_session.problems + service.restore_problems
+            ),
         )
+        if loaded_session.manifest is not None:
+            service.schedule_lazy_restore()
         for path in request.files:
             try:
                 window.open_path(path)
@@ -348,12 +539,13 @@ def _startup_callbacks(
         StartupPhase.ENVIRONMENT_VALIDATION: environment,
         StartupPhase.DEPENDENCY_VALIDATION: dependencies,
         StartupPhase.APPLICATION_PATHS: application_paths,
+        StartupPhase.GUI_CAPABILITIES: gui,
+        StartupPhase.INSTANCE_ARBITRATION: instance,
         StartupPhase.SCHEMA_MIGRATIONS: schemas,
         StartupPhase.SETTINGS_LOAD: settings,
         StartupPhase.RESOURCE_CALIBRATION: resources,
         StartupPhase.STALE_STATE_CLEANUP: stale_cleanup,
         StartupPhase.RECOVERY_DISCOVERY: recovery,
-        StartupPhase.GUI_CAPABILITIES: gui,
         StartupPhase.SESSION_RESTORE: session,
         StartupPhase.READY: ready,
     }
@@ -390,6 +582,11 @@ def run_desktop(
             file=sys.stderr,
         )
         return int(ExitCode.STATE)
+
+    completion = context.data.get("completion_exit_code")
+    if isinstance(completion, int):
+        context.cleanup()
+        return completion
 
     app = context.data["qapplication"]
     window = context.data["window"]
