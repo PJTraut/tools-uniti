@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import pytest
 
+import uniti.app.window_manager as window_manager_module
 from uniti.app.window_manager import WindowManager
 
 
@@ -17,6 +18,20 @@ class FakeWindow:
 
     def view_for_id(self, view_id: str):
         return self._views.get(view_id)
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        ("", "pane", 0),
+        ("window", "", 0),
+        ("window", "pane", -1),
+        ("window", "pane", True),
+    ],
+)
+def test_view_location_rejects_untrusted_values(values):
+    with pytest.raises(ValueError):
+        window_manager_module.ViewLocation(*values)
 
 
 def test_windows_remain_in_registration_order_while_activation_changes():
@@ -112,3 +127,17 @@ def test_most_recent_window_and_view_lookup_follow_activation():
     assert manager.most_recent_window is first
     assert manager.window_id_for_view("missing") is None
     assert manager.window_for_view("missing") is None
+
+
+def test_windows_by_recency_preserves_activation_then_registration_fallback():
+    manager = WindowManager()
+    first = FakeWindow("view-a")
+    second = FakeWindow("view-b")
+    third = FakeWindow("view-c")
+    manager.register("window-a", first)
+    manager.register("window-b", second)
+    manager.register("window-c", third)
+    manager.activate("window-a", "view-a")
+    manager.activate("window-b", "view-b")
+
+    assert manager.windows_by_recency == (second, first, third)

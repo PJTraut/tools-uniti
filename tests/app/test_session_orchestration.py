@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication
 from uniti.app.session import (
     SESSION_SCHEMA,
     DocumentRecord,
+    DockReturnRecord,
     FindReplaceHistoryPack,
     FindReplaceManifestRecord,
     HistoryPack,
@@ -550,6 +551,7 @@ def test_restore_shell_then_active_document_round_trips_history_views_and_panel(
         0,
         False,
         120,
+        DockReturnRecord("window-return", "pane-return", 2),
     )
     manifest = SessionManifest(
         schema=SESSION_SCHEMA,
@@ -646,6 +648,11 @@ def test_restore_shell_then_active_document_round_trips_history_views_and_panel(
     assert service.active_view.view_id == "active-view"
     assert service.active_view.state.selection == (1, 4)
     assert service.active_view.zoom_percent == 120
+    assert service.active_view.dock_return == view_record.dock_return
+    assert (
+        restored_window.panes.first_leaf.controls.dock_button.accessibleName()
+        == "Dock Document"
+    )
     assert service.find_replace.export_state("active-view").find == find_history
     assert service.find_replace.export_state("active-view").replace == replace_history
     assert service.capture_session(clean_shutdown=True) == SessionSnapshot(

@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING, Any
 from uniti.resources.tasks import TaskHandle, TaskKind, TaskSpec
 
 from .document_registry import DocumentEntry, DocumentRegistry
-from .window_manager import WindowManager
+from .session import MAX_VIEWS, MAX_WINDOWS, DockReturnRecord
+from .window_manager import ViewLocation, WindowManager
+
+
+_UNCHANGED_DOCK_RETURN = object()
 
 if TYPE_CHECKING:
     from uniti.app.recovery_manager import RecoveryManager
@@ -266,6 +270,8 @@ class UNITIService:
 
     def new_window(self, record=None):
         self._ensure_running()
+        if self.window_count >= MAX_WINDOWS:
+            raise ValueError(f"UNITI cannot exceed {MAX_WINDOWS} windows")
         if record is not None:
             from uniti.app.session import WindowRecord
 
@@ -753,31 +759,193 @@ class UNITIService:
     def _complete_saved_hash(self, document_id: str) -> None:
         self._session_controller.complete_saved_hash(document_id)
 
-    def move_view_to_new_window(self, view_id: str):
+    @staticmethod
+    def _window_active_pane_id(window: object) -> str:
+        panes = getattr(window, "panes", None)
+        active_leaf = getattr(panes, "active_leaf", None)
+        pane_id = getattr(active_leaf, "pane_id", None)
+        if not isinstance(pane_id, str) or not pane_id:
+            raise TypeError("window has no active editor pane")
+        return pane_id
+
+    def _resolve_dock_destination(
+        self,
+        source: object,
+        anchor: DockReturnRecord,
+    ) -> tuple[ViewLocation, bool]:
+        windows = dict(self.windows.items)
+        original = windows.get(anchor.window_id)
+        if original is not None and original is not source:
+            panes = getattr(original, "panes", None)
+            pane_ids = getattr(panes, "pane_ids", ())
+            if anchor.pane_id in pane_ids:
+                return ViewLocation(
+                    anchor.window_id,
+                    anchor.pane_id,
+                    anchor.tab_index,
+                ), False
+            return ViewLocation(
+                anchor.window_id,
+                self._window_active_pane_id(original),
+                anchor.tab_index,
+            ), False
+        for window in self.windows.windows_by_recency:
+            if window is source:
+                continue
+            window_id = getattr(window, "window_id", None)
+            if not isinstance(window_id, str) or not window_id:
+                continue
+            return ViewLocation(
+                window_id,
+                self._window_active_pane_id(window),
+                anchor.tab_index,
+            ), False
+        window = self.new_window()
+        return ViewLocation(
+            window.window_id,
+            self._window_active_pane_id(window),
+            anchor.tab_index,
+        ), True
+
+    def _transfer_view(
+        self,
+        view_id: str,
+        target_window_id: str,
+        *,
+        pane_id: str | None = None,
+        index: int | None = None,
+        dock_return: object = _UNCHANGED_DOCK_RETURN,
+        close_empty_source: bool = False,
+        close_failed_target: bool = False,
+    ):
         self._ensure_running()
         source = self.windows.window_for_view(view_id)
         if source is None:
             raise KeyError(view_id)
+        target = dict(self.windows.items).get(target_window_id)
+        if target is None:
+            raise KeyError(target_window_id)
+        if target is source:
+            raise ValueError("source and destination windows must differ")
+        locate = getattr(source, "view_location", None)
         take = getattr(source, "take_view_for_transfer", None)
-        if not callable(take):
-            raise TypeError("source window cannot transfer views")
-        window = self.new_window()
-        accept = getattr(window, "accept_transferred_view", None)
+        accept = getattr(target, "accept_transferred_view", None)
+        if not callable(locate) or not callable(take):
+            raise TypeError("source window cannot transfer views with a location")
         if not callable(accept):
             raise TypeError("target window cannot accept views")
+        source_location = locate(view_id)
+        if not isinstance(source_location, ViewLocation):
+            raise TypeError("source window returned an invalid view location")
+        validate = getattr(target, "validate_transfer_destination", None)
+        selected_pane_id = pane_id
+        if callable(validate):
+            selected_pane_id = validate(pane_id)
+        else:
+            target_view_ids = getattr(target, "view_ids", ())
+            if len(tuple(target_view_ids)) >= MAX_VIEWS:
+                raise ValueError(f"pane tree cannot exceed {MAX_VIEWS} views")
+        view = getattr(source, "view_for_id")(view_id)
+        if view is None:
+            raise KeyError(view_id)
+        old_anchor = getattr(view, "dock_return", None)
+        new_anchor = old_anchor if dock_return is _UNCHANGED_DOCK_RETURN else dock_return
         view = None
         try:
             view = take(view_id)
-            accept(view)
+            setter = getattr(view, "set_dock_return", None)
+            if not callable(setter):
+                raise TypeError("view cannot retain a dock return location")
+            setter(new_anchor)
+            accept(view, pane_id=selected_pane_id, index=index)
         except Exception:
-            window.close()
             if view is not None:
+                target_resolver = getattr(target, "view_for_id", None)
+                target_take = getattr(target, "take_view_for_transfer", None)
+                if (
+                    callable(target_resolver)
+                    and target_resolver(view_id) is view
+                    and callable(target_take)
+                ):
+                    target_take(view_id)
+                setter = getattr(view, "set_dock_return", None)
+                if callable(setter):
+                    setter(old_anchor)
                 rollback = getattr(source, "accept_transferred_view", None)
                 if callable(rollback):
-                    rollback(view)
+                    rollback(
+                        view,
+                        pane_id=source_location.pane_id,
+                        index=source_location.tab_index,
+                    )
+                    self.set_active_view(source_location.window_id, view_id)
+            if close_failed_target and not tuple(getattr(target, "view_ids", ())):
+                close = getattr(target, "close", None)
+                if callable(close):
+                    close()
             raise
-        window.show()
-        return window
+        self.set_active_view(target_window_id, view_id)
+        if close_empty_source and not tuple(getattr(source, "view_ids", ())):
+            close = getattr(source, "close", None)
+            if callable(close):
+                close()
+        return target
+
+    def undock_view(self, view_id: str):
+        self._ensure_running()
+        source = self.windows.window_for_view(view_id)
+        if source is None:
+            raise KeyError(view_id)
+        view = getattr(source, "view_for_id")(view_id)
+        if view is None:
+            raise KeyError(view_id)
+        if getattr(view, "dock_return", None) is not None:
+            raise ValueError("view is already undocked")
+        location = getattr(source, "view_location")(view_id)
+        window = self.new_window()
+        anchor = DockReturnRecord(
+            location.window_id,
+            location.pane_id,
+            location.tab_index,
+        )
+        try:
+            result = self._transfer_view(
+                view_id,
+                window.window_id,
+                dock_return=anchor,
+                close_failed_target=True,
+            )
+        except Exception:
+            if window in self.windows.windows and not tuple(window.view_ids):
+                window.close()
+            raise
+        result.show()
+        return result
+
+    def dock_view(self, view_id: str):
+        self._ensure_running()
+        source = self.windows.window_for_view(view_id)
+        if source is None:
+            raise KeyError(view_id)
+        view = getattr(source, "view_for_id")(view_id)
+        if view is None:
+            raise KeyError(view_id)
+        anchor = getattr(view, "dock_return", None)
+        if not isinstance(anchor, DockReturnRecord):
+            raise ValueError("view is not undocked")
+        destination, created = self._resolve_dock_destination(source, anchor)
+        return self._transfer_view(
+            view_id,
+            destination.window_id,
+            pane_id=destination.pane_id,
+            index=destination.tab_index,
+            dock_return=None,
+            close_empty_source=True,
+            close_failed_target=created,
+        )
+
+    def move_view_to_new_window(self, view_id: str):
+        return self.undock_view(view_id)
 
     def capture_session(self, clean_shutdown: bool = False) -> SessionSnapshot:
         return self._session_controller.capture(clean_shutdown)

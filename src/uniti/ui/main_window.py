@@ -37,7 +37,9 @@ from uniti.app.commands import (
 from uniti.app.editor_state import EditorState
 from uniti.app.platform_policy import native_paths_equal, normalize_native_path
 from uniti.app.recovery_manager import RecoveryManager
+from uniti.app.session import MAX_VIEWS
 from uniti.app.settings import Settings, SettingsStore
+from uniti.app.window_manager import ViewLocation
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.eol import EOLReport, analyze_eol
@@ -241,7 +243,7 @@ class UNITIMainWindow(QMainWindow):
         self._panes.dockToggleRequested.connect(self._toggle_view_dock)
         if service is not None:
             self._panes.viewDetachRequested.connect(
-                lambda view_id, _position: service.move_view_to_new_window(view_id)
+                lambda view_id, _position: service.undock_view(view_id)
             )
         central = QWidget(self)
         central_layout = QVBoxLayout(central)
@@ -842,7 +844,7 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is None or self._service is None:
             return None
-        return self._service.move_view_to_new_window(view.view_id)
+        return self._service.undock_view(view.view_id)
 
     def _toggle_view_dock(self, view_id: str) -> None:
         if self._service is None:
@@ -854,7 +856,7 @@ class UNITIMainWindow(QMainWindow):
         if view.dock_return is not None and callable(dock):
             dock(view_id)
             return
-        self._service.move_view_to_new_window(view_id)
+        self._service.undock_view(view_id)
 
     def _show_assignment_menu(self, pane_id: str, position: QPoint) -> None:
         if self._service is None:
@@ -927,6 +929,22 @@ class UNITIMainWindow(QMainWindow):
         for action in self._command_actions.values():
             view.removeAction(action)
 
+    def view_location(self, view_id: str) -> ViewLocation:
+        leaf = self._panes.leaf_for_view(view_id)
+        if leaf is None:
+            raise KeyError(view_id)
+        return ViewLocation(
+            self.window_id,
+            leaf.pane_id,
+            leaf.index_of(view_id),
+        )
+
+    def validate_transfer_destination(self, pane_id: str | None = None) -> str:
+        leaf = self._panes.active_leaf if pane_id is None else self._panes.leaf(pane_id)
+        if len(self._panes.view_ids) >= MAX_VIEWS:
+            raise ValueError(f"pane tree cannot exceed {MAX_VIEWS} views")
+        return leaf.pane_id
+
     def take_view_for_transfer(self, view_id: str) -> UNITITextView:
         view = self.view_for_id(view_id)
         if view is None:
@@ -939,15 +957,32 @@ class UNITIMainWindow(QMainWindow):
         assert leaf is not None
         leaf.take_view(view_id)
         self._disconnect_view(view)
-        if leaf.count() == 0 and self._panes.leaf_count > 1:
-            self._panes.close_leaf(leaf.pane_id)
         return view
 
-    def accept_transferred_view(self, view: UNITITextView) -> UNITITextView:
+    def accept_transferred_view(
+        self,
+        view: UNITITextView,
+        *,
+        pane_id: str | None = None,
+        index: int | None = None,
+    ) -> UNITITextView:
         if not isinstance(view, UNITITextView):
             raise TypeError("view must be a UNITITextView")
+        selected_pane_id = self.validate_transfer_destination(pane_id)
+        if index is not None and (type(index) is not int or index < 0):
+            raise ValueError("tab index must be a nonnegative integer or None")
+        leaf = self._panes.leaf(selected_pane_id)
+        selected_index = None if index is None else min(index, leaf.count())
+        leaf = self._panes.add_view(
+            view,
+            pane_id=selected_pane_id,
+            index=selected_index,
+        )
         self._connect_view(view)
-        leaf = self._panes.add_view(view)
+        self._panes.set_dock_mode(
+            view.view_id,
+            "dock" if view.dock_return is not None else "undock",
+        )
         self._tabs = leaf.tabs
         self._schedule_eol_analysis(view)
         view.setFocus()
@@ -1124,6 +1159,10 @@ class UNITIMainWindow(QMainWindow):
             self._show_mixed_eol_report(view, initial_eol_report)
         if restore_record is not None:
             view.restore_state(restore_record)
+            self._panes.set_dock_mode(
+                view.view_id,
+                "dock" if view.dock_return is not None else "undock",
+            )
         if select:
             view.setFocus()
         return view

@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from uniti.app.recovery_manager import RecoveryCandidate
-from uniti.app.session import SessionProblem
+from uniti.app.session import MAX_WINDOWS, DockReturnRecord, SessionProblem
 from uniti.app.service import QuitChoice, QuitDecision, UNITIService
 from uniti.core.file_identity import FileIdentity, FileMatch
 from uniti.core.history import HistorySnapshot
@@ -542,6 +542,242 @@ def test_duplicate_open_splits_and_moves_keep_one_document_authority(
             open_window.close()
         app.processEvents()
         _stop_desktop_service(app, service)
+
+
+def test_undock_records_exact_source_and_dock_returns_there(tmp_path: Path):
+    app, service, _recovery = _desktop_service(tmp_path)
+    first_path = tmp_path / "first-tab.txt"
+    second_path = tmp_path / "second-tab.txt"
+    first_path.write_text("first", encoding="utf-8")
+    second_path.write_text("second", encoding="utf-8")
+    source = service.new_window()
+    first = source.open_path(first_path)
+    second = source.open_path(second_path)
+    assert first is not None and second is not None
+    before = source.view_location(first.view_id)
+    entry = service.documents.entry_for_view(first.view_id)
+    try:
+        detached = service.undock_view(first.view_id)
+
+        assert first.dock_return == DockReturnRecord(
+            source.window_id,
+            before.pane_id,
+            before.tab_index,
+        )
+        assert detached.current_view is first
+        assert detached.panes.first_leaf.controls.dock_button.accessibleName() == (
+            "Dock Document"
+        )
+
+        returned = service.dock_view(first.view_id)
+
+        assert returned is source
+        assert source.view_location(first.view_id) == before
+        assert first.dock_return is None
+        assert detached not in service.windows.windows
+        assert service.documents.entry_for_view(first.view_id) is entry
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_dock_falls_back_from_missing_pane_then_missing_window(tmp_path: Path):
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "fallback.txt"
+    path.write_text("fallback", encoding="utf-8")
+    source = service.new_window()
+    first = source.open_path(path)
+    assert first is not None
+    clone = source.split_right()
+    assert clone is not None
+    original_pane_id = source.view_location(clone.view_id).pane_id
+    try:
+        detached = service.undock_view(clone.view_id)
+        assert source.panes.close_leaf(original_pane_id)
+
+        service.dock_view(clone.view_id)
+
+        assert source.view_location(clone.view_id).pane_id == source.panes.active_leaf.pane_id
+        detached = service.undock_view(clone.view_id)
+        other = service.new_window()
+        source.close()
+        app.processEvents()
+        service.set_active_view(other.window_id, None)
+
+        service.dock_view(clone.view_id)
+
+        assert other.view_for_id(clone.view_id) is clone
+        assert detached not in service.windows.windows
+        assert clone.dock_return is None
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_dock_clamps_stale_tab_index_to_the_live_pane_end(tmp_path: Path):
+    app, service, _recovery = _desktop_service(tmp_path)
+    first_path = tmp_path / "stale-first.txt"
+    second_path = tmp_path / "stale-second.txt"
+    first_path.write_text("first", encoding="utf-8")
+    second_path.write_text("second", encoding="utf-8")
+    source = service.new_window()
+    first = source.open_path(first_path)
+    second = source.open_path(second_path)
+    assert first is not None and second is not None
+    try:
+        service.undock_view(first.view_id)
+        anchor = first.dock_return
+        assert anchor is not None
+        first.set_dock_return(
+            DockReturnRecord(anchor.window_id, anchor.pane_id, 200)
+        )
+
+        service.dock_view(first.view_id)
+
+        assert source.view_location(first.view_id).tab_index == 1
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_dock_creates_a_window_when_no_other_destination_survives(tmp_path: Path):
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "new-fallback.txt"
+    path.write_text("fallback", encoding="utf-8")
+    source = service.new_window()
+    view = source.open_path(path)
+    assert view is not None
+    detached = service.undock_view(view.view_id)
+    source.close()
+    app.processEvents()
+    try:
+        returned = service.dock_view(view.view_id)
+
+        assert returned is not detached
+        assert returned.view_for_id(view.view_id) is view
+        assert service.window_count == 1
+        assert view.dock_return is None
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_failed_destination_acceptance_rolls_back_exactly(
+    tmp_path: Path,
+    monkeypatch,
+):
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "rollback.txt"
+    path.write_text("rollback", encoding="utf-8")
+    source = service.new_window()
+    view = source.open_path(path)
+    assert view is not None
+    source.open_existing_document(view.document)
+    before = source.view_location(view.view_id)
+    target = service.new_window()
+    entry = service.documents.entry_for_view(view.view_id)
+    monkeypatch.setattr(
+        target,
+        "accept_transferred_view",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("refused")),
+    )
+    try:
+        with pytest.raises(RuntimeError, match="refused"):
+            service._transfer_view(view.view_id, target.window_id)
+
+        assert source.view_location(view.view_id) == before
+        assert view.dock_return is None
+        assert service.documents.entry_for_view(view.view_id) is entry
+    finally:
+        monkeypatch.undo()
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_all_ui_detach_paths_route_to_one_service_operation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from PySide6.QtCore import QPoint
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "routes.txt"
+    path.write_text("routes", encoding="utf-8")
+    window = service.new_window()
+    view = window.open_path(path)
+    assert view is not None
+    calls: list[str] = []
+    monkeypatch.setattr(service, "undock_view", calls.append)
+    try:
+        window.move_current_to_new_window()
+        window.panes.detach_view(view.view_id, QPoint(20, 30))
+        window.panes.first_leaf.controls.dock_button.click()
+
+        assert calls == [view.view_id, view.view_id, view.view_id]
+    finally:
+        monkeypatch.undo()
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_window_limit_rejects_undock_before_source_removal(tmp_path: Path):
+    from uniti.app.window_manager import ViewLocation
+
+    class TransferView:
+        view_id = "view-a"
+        dock_return = None
+
+        def set_dock_return(self, record):
+            self.dock_return = record
+
+    class TransferSource(FakeWindow):
+        def __init__(self):
+            self.window_id = "window-source"
+            self.view = TransferView()
+            self.view_ids = (self.view.view_id,)
+            self.take_count = 0
+
+        def view_for_id(self, view_id: str):
+            return self.view if view_id == self.view.view_id else None
+
+        def view_location(self, view_id: str):
+            if view_id != self.view.view_id:
+                raise KeyError(view_id)
+            return ViewLocation(self.window_id, "pane-a", 0)
+
+        def take_view_for_transfer(self, view_id: str):
+            self.take_count += 1
+            return self.view
+
+    service = _service()
+    source = TransferSource()
+    service.register_window(source.window_id, source)
+    for index in range(MAX_WINDOWS - 1):
+        service.register_window(f"window-{index}", FakeWindow())
+
+    with pytest.raises(ValueError, match="32 windows"):
+        service.undock_view(source.view.view_id)
+
+    assert source.take_count == 0
+    assert source.view_ids == (source.view.view_id,)
+    service.windows.clear()
 
 
 def test_shared_view_closes_without_prompt_then_final_view_offers_save_cancel(

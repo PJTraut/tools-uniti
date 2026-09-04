@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 
 def _identifier(value: str, label: str) -> str:
     if not isinstance(value, str) or not value:
@@ -17,6 +19,19 @@ def _window_view_ids(window: object) -> tuple[str, ...] | None:
     if value is None:
         return ()
     return tuple(_identifier(view_id, "view ID") for view_id in value)
+
+
+@dataclass(frozen=True, slots=True)
+class ViewLocation:
+    window_id: str
+    pane_id: str
+    tab_index: int
+
+    def __post_init__(self) -> None:
+        _identifier(self.window_id, "window ID")
+        _identifier(self.pane_id, "pane ID")
+        if type(self.tab_index) is not int or self.tab_index < 0:
+            raise ValueError("tab index must be a nonnegative integer")
 
 
 class WindowManager:
@@ -58,6 +73,16 @@ class WindowManager:
         if self.active_window is not None:
             return self.active_window
         return next(reversed(self._windows.values()), None)
+
+    @property
+    def windows_by_recency(self) -> tuple[object, ...]:
+        ordered_ids = list(reversed(self._activation_order))
+        ordered_ids.extend(
+            window_id
+            for window_id in self._windows
+            if window_id not in self._activation_order
+        )
+        return tuple(self._windows[window_id] for window_id in ordered_ids)
 
     @property
     def active_view_id(self) -> str | None:
@@ -176,4 +201,4 @@ class WindowManager:
         self._active_view_id = None
 
 
-__all__ = ["WindowManager"]
+__all__ = ["ViewLocation", "WindowManager"]
