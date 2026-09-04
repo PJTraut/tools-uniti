@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from uniti.app.session import (
+    SESSION_SCHEMA,
     DocumentRecord,
     FindReplaceManifestRecord,
     HistoryPack,
@@ -207,7 +208,7 @@ def _snapshot(
         windows = (WindowRecord("window-1", (0, 0, 800, 600), "normal", root),)
         active_window_id = "window-1"
     manifest = SessionManifest(
-        schema=1,
+        schema=SESSION_SCHEMA,
         generation="capture",
         service_id="service-1",
         build_identity="test",

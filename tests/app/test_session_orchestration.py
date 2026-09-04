@@ -33,6 +33,7 @@ from uniti.app.session import (
     estimate_input_history_bytes,
 )
 from uniti.app.session_store import SessionStore
+from uniti.app.session_runtime import merge_find_replace_history
 from uniti.app.service import UNITIService
 from uniti.app.settings import SettingsStore
 from uniti.core.file_identity import FileIdentity, SavedFileStamp
@@ -86,6 +87,40 @@ def _input_history(
         redo,
         estimate_input_history_bytes(current, undo, redo),
     )
+
+
+@pytest.mark.parametrize("with_pack", [False, True])
+def test_find_replace_placement_survives_history_merge(with_pack: bool):
+    current = InputStateRecord("needle", 6, 6)
+    empty = InputStateRecord("", 0, 0)
+    find_history = _input_history(
+        current,
+        undo=(InputStateRecord("needl", 5, 5),),
+    )
+    replace_history = _input_history(empty)
+    record = FindReplaceManifestRecord(
+        current,
+        empty,
+        False,
+        False,
+        False,
+        True,
+        None,
+        100,
+        False,
+        None,
+        None,
+        placement="attached",
+    )
+    pack = FindReplaceHistoryPack(
+        "find-generation",
+        find_history,
+        replace_history,
+    )
+
+    restored = merge_find_replace_history(record, pack if with_pack else None)
+
+    assert restored.placement == "attached"
 
 
 def _published_session(

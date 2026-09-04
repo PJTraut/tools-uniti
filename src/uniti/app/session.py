@@ -25,7 +25,8 @@ from uniti.core.history import (
 )
 
 
-SESSION_SCHEMA = 1
+SESSION_SCHEMA = 2
+HISTORY_PACK_SCHEMA = 1
 MAX_MANIFEST_BYTES = 1 << 20
 MAX_PACK_ENCODED_BYTES = 32 << 20
 MAX_PACK_DECODED_BYTES = 32 << 20
@@ -39,6 +40,7 @@ MAX_INPUT_HISTORY_STATES = 50
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _EOL_VALUES = frozenset({None, "LF", "CRLF", "CR"})
 _WINDOW_STATES = frozenset({"normal", "maximized", "fullscreen", "minimized"})
+_FIND_REPLACE_PLACEMENTS = frozenset({"attached", "detached"})
 
 
 class UnsupportedSessionSchema(ValueError):
@@ -187,6 +189,7 @@ class FindReplaceRecord:
     zoom_percent: int
     report_visible: bool
     last_target_view_id: str | None
+    placement: Literal["attached", "detached"] = "detached"
 
     def __post_init__(self) -> None:
         if not isinstance(self.find, InputHistoryRecord) or not isinstance(
@@ -291,6 +294,7 @@ class FindReplaceManifestRecord:
     report_visible: bool
     last_target_view_id: str | None
     history_pack: HistoryPackReference | None
+    placement: Literal["attached", "detached"] = "detached"
 
     def __post_init__(self) -> None:
         if not isinstance(self.find_current, InputStateRecord) or not isinstance(
@@ -318,6 +322,29 @@ def _validate_find_replace_options(record: object) -> None:
     target = getattr(record, "last_target_view_id")
     if target is not None:
         _require_identifier(target, "find/replace target view ID")
+    _require_placement(getattr(record, "placement"))
+
+
+def _require_placement(value: object) -> str:
+    if value not in _FIND_REPLACE_PLACEMENTS:
+        raise ValueError("find/replace placement must be attached or detached")
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class DockReturnRecord:
+    window_id: str
+    pane_id: str
+    tab_index: int
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.window_id, "dock return window ID")
+        _require_identifier(self.pane_id, "dock return pane ID")
+        _require_plain_int(
+            self.tab_index,
+            "dock return tab index",
+            maximum=MAX_VIEWS,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,6 +359,7 @@ class ViewRecord:
     wrap_viewport_row: int
     soft_wrap: bool
     zoom_percent: int
+    dock_return: DockReturnRecord | None = None
 
     def __post_init__(self) -> None:
         _require_identifier(self.view_id, "view ID")
@@ -347,6 +375,10 @@ class ViewRecord:
         _require_plain_int(
             self.zoom_percent, "view zoom_percent", minimum=25, maximum=500
         )
+        if self.dock_return is not None and not isinstance(
+            self.dock_return, DockReturnRecord
+        ):
+            raise ValueError("view dock return is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -816,6 +848,7 @@ def manifest_to_payload(manifest: SessionManifest) -> dict[str, object]:
                 else None
             ),
             "last_target_view_id": manifest.find_replace.last_target_view_id,
+            "placement": manifest.find_replace.placement,
             "regex": manifest.find_replace.regex,
             "replace_current": _state_to_payload(manifest.find_replace.replace_current),
             "report_visible": manifest.find_replace.report_visible,
@@ -834,6 +867,15 @@ def manifest_to_payload(manifest: SessionManifest) -> dict[str, object]:
                 "anchor": item.anchor,
                 "cursor": item.cursor,
                 "document_id": item.document_id,
+                "dock_return": (
+                    None
+                    if item.dock_return is None
+                    else {
+                        "pane_id": item.dock_return.pane_id,
+                        "tab_index": item.dock_return.tab_index,
+                        "window_id": item.dock_return.window_id,
+                    }
+                ),
                 "horizontal_scroll": item.horizontal_scroll,
                 "preferred_column": item.preferred_column,
                 "soft_wrap": item.soft_wrap,
@@ -964,6 +1006,18 @@ def _pane_from_payload(value: object, *, depth: int = 1) -> PaneRecord:
     )
 
 
+def _dock_return_from_payload(value: object) -> DockReturnRecord | None:
+    if value is None:
+        return None
+    payload = _mapping(value, "dock return")
+    _keys(payload, {"window_id", "pane_id", "tab_index"}, "dock return")
+    return DockReturnRecord(
+        payload["window_id"],
+        payload["pane_id"],
+        payload["tab_index"],
+    )
+
+
 def manifest_from_payload(value: object) -> SessionManifest:
     if len(_canonical_json(value)) > MAX_MANIFEST_BYTES:
         raise ValueError("session manifest exceeds the 1 MiB decoded limit")
@@ -986,6 +1040,11 @@ def manifest_from_payload(value: object) -> SessionManifest:
         "notices",
     }
     _keys(payload, required, "session manifest")
+    source_schema = payload.get("schema")
+    if type(source_schema) is not int or source_schema not in {1, SESSION_SCHEMA}:
+        raise UnsupportedSessionSchema(
+            f"unsupported session schema: {source_schema}"
+        )
 
     windows_payload = _list(payload["windows"], "session windows")
     views_payload = _list(payload["views"], "session views")
@@ -1013,7 +1072,7 @@ def manifest_from_payload(value: object) -> SessionManifest:
         )
 
     views = []
-    view_fields = {
+    view_fields_v1 = {
         "view_id",
         "document_id",
         "cursor",
@@ -1025,10 +1084,21 @@ def manifest_from_payload(value: object) -> SessionManifest:
         "soft_wrap",
         "zoom_percent",
     }
+    view_fields = (
+        view_fields_v1
+        if source_schema == 1
+        else view_fields_v1 | {"dock_return"}
+    )
     for value in views_payload:
         item = _mapping(value, "view")
         _keys(item, view_fields, "view")
-        views.append(ViewRecord(**item))
+        view_values = dict(item)
+        view_values["dock_return"] = (
+            None
+            if source_schema == 1
+            else _dock_return_from_payload(item["dock_return"])
+        )
+        views.append(ViewRecord(**view_values))
 
     documents = []
     for value in documents_payload:
@@ -1049,7 +1119,7 @@ def manifest_from_payload(value: object) -> SessionManifest:
         )
 
     find_payload = _mapping(payload["find_replace"], "find/replace manifest")
-    find_fields = {
+    find_fields_v1 = {
         "find_current",
         "replace_current",
         "regex",
@@ -1062,6 +1132,11 @@ def manifest_from_payload(value: object) -> SessionManifest:
         "last_target_view_id",
         "history_pack",
     }
+    find_fields = (
+        find_fields_v1
+        if source_schema == 1
+        else find_fields_v1 | {"placement"}
+    )
     _keys(find_payload, find_fields, "find/replace manifest")
     find_geometry = find_payload["geometry"]
     find_replace = FindReplaceManifestRecord(
@@ -1080,10 +1155,11 @@ def manifest_from_payload(value: object) -> SessionManifest:
         None
         if find_payload["history_pack"] is None
         else _reference_from_payload(find_payload["history_pack"]),
+        "detached" if source_schema == 1 else find_payload["placement"],
     )
 
     return SessionManifest(
-        schema=payload["schema"],
+        schema=SESSION_SCHEMA,
         generation=payload["generation"],
         service_id=payload["service_id"],
         build_identity=payload["build_identity"],
@@ -1382,7 +1458,7 @@ def _encode_envelope(
         "encoded_bytes": len(compressed),
         "kind": kind,
         "payload": base64.b64encode(compressed).decode("ascii"),
-        "schema": SESSION_SCHEMA,
+        "schema": HISTORY_PACK_SCHEMA,
         "sha256": hashlib.sha256(raw).hexdigest(),
     }
     return _canonical_json(envelope)
@@ -1444,7 +1520,10 @@ def _decode_envelope(
         },
         "history pack envelope",
     )
-    if type(envelope["schema"]) is not int or envelope["schema"] != SESSION_SCHEMA:
+    if (
+        type(envelope["schema"]) is not int
+        or envelope["schema"] != HISTORY_PACK_SCHEMA
+    ):
         raise UnsupportedSessionSchema(
             f"unsupported history pack schema: {envelope['schema']}"
         )

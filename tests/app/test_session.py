@@ -8,6 +8,7 @@ import pytest
 
 import uniti.app.session as session_module
 from uniti.app.session import (
+    SESSION_SCHEMA,
     DocumentRecord,
     FindReplaceHistoryPack,
     FindReplaceManifestRecord,
@@ -112,7 +113,7 @@ def _manifest(**changes) -> SessionManifest:
         closed_at=None,
     )
     values = {
-        "schema": 1,
+        "schema": SESSION_SCHEMA,
         "generation": "generation-1",
         "service_id": "service-1",
         "build_identity": "0.001a20-test",
@@ -129,6 +130,78 @@ def _manifest(**changes) -> SessionManifest:
     }
     values.update(changes)
     return SessionManifest(**values)
+
+
+def _schema_one_payload_fixture() -> dict[str, object]:
+    return {
+        "active_view_id": "view-1",
+        "active_window_id": "window-1",
+        "build_identity": "0.001a20-test",
+        "clean_shutdown": False,
+        "created_at": NOW,
+        "documents": [
+            {
+                "canonical_path": "/tmp/document.txt",
+                "closed_at": None,
+                "document_id": "doc-1",
+                "last_active_at": NOW,
+                "view_ids": ["view-1"],
+            }
+        ],
+        "find_replace": {
+            "case_sensitive": False,
+            "find_current": {"anchor": 6, "position": 6, "text": "needle"},
+            "geometry": [10, 20, 640, 320],
+            "history_pack": None,
+            "last_target_view_id": "view-1",
+            "regex": True,
+            "replace_current": {
+                "anchor": 11,
+                "position": 11,
+                "text": "replacement",
+            },
+            "report_visible": True,
+            "visible": True,
+            "whole_word": True,
+            "zoom_percent": 110,
+        },
+        "generation": "generation-1",
+        "notices": [],
+        "packs": [],
+        "schema": 1,
+        "service_id": "service-1",
+        "updated_at": NOW,
+        "views": [
+            {
+                "anchor": 1,
+                "cursor": 3,
+                "document_id": "doc-1",
+                "horizontal_scroll": 0,
+                "preferred_column": 3,
+                "soft_wrap": True,
+                "vertical_scroll": 2,
+                "view_id": "view-1",
+                "wrap_viewport_row": 0,
+                "zoom_percent": 100,
+            }
+        ],
+        "windows": [
+            {
+                "geometry": [20, 30, 1024, 768],
+                "root": {
+                    "children": [],
+                    "kind": "leaf",
+                    "orientation": None,
+                    "pane_id": "pane-1",
+                    "proportions": None,
+                    "selected_view_id": "view-1",
+                    "view_ids": ["view-1"],
+                },
+                "window_id": "window-1",
+                "window_state": "normal",
+            }
+        ],
+    }
 
 
 def _history_pack() -> HistoryPack:
@@ -179,14 +252,70 @@ def _canonical_envelope(envelope: dict[str, object]) -> bytes:
 
 
 def test_manifest_payload_round_trips_complete_structural_state():
-    manifest = _manifest()
+    anchor = session_module.DockReturnRecord("window-a", "pane-left", 3)
+    manifest = _manifest(
+        views=(replace(_manifest().views[0], dock_return=anchor),),
+        find_replace=replace(_find_manifest(), placement="attached"),
+    )
 
     payload = manifest_to_payload(manifest)
 
     assert manifest_from_payload(payload) == manifest
+    assert payload["views"][0]["dock_return"] == {
+        "window_id": "window-a",
+        "pane_id": "pane-left",
+        "tab_index": 3,
+    }
+    assert payload["find_replace"]["placement"] == "attached"
     assert len(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ) <= (1 << 20)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"window_id": "", "pane_id": "pane", "tab_index": 0},
+        {"window_id": "window", "pane_id": "", "tab_index": 0},
+        {"window_id": "window", "pane_id": "pane", "tab_index": -1},
+        {"window_id": "window", "pane_id": "pane", "tab_index": True},
+    ],
+)
+def test_dock_return_record_rejects_untrusted_values(kwargs):
+    with pytest.raises(ValueError):
+        session_module.DockReturnRecord(**kwargs)
+
+
+def test_schema_one_manifest_migrates_new_presentation_fields():
+    restored = manifest_from_payload(_schema_one_payload_fixture())
+
+    assert restored.schema == SESSION_SCHEMA == 2
+    assert all(view.dock_return is None for view in restored.views)
+    assert restored.find_replace.placement == "detached"
+
+
+@pytest.mark.parametrize(
+    "dock_return",
+    [
+        {},
+        {"window_id": "window", "pane_id": "pane", "tab_index": 0, "extra": 1},
+        {"window_id": "window", "pane_id": "pane"},
+    ],
+)
+def test_schema_two_manifest_rejects_malformed_dock_return(dock_return):
+    payload = manifest_to_payload(_manifest())
+    payload["views"][0]["dock_return"] = dock_return
+
+    with pytest.raises(ValueError, match="dock return"):
+        manifest_from_payload(payload)
+
+
+def test_schema_two_manifest_rejects_invalid_find_replace_placement():
+    payload = manifest_to_payload(_manifest())
+    payload["find_replace"]["placement"] = "sidebar"
+
+    with pytest.raises(ValueError, match="placement"):
+        manifest_from_payload(payload)
 
 
 def test_document_history_pack_round_trips_deterministically():
@@ -384,7 +513,7 @@ def test_pack_decoder_rejects_checksum_mismatch():
 
 def test_manifest_and_pack_reject_unsupported_schemas():
     manifest_payload = manifest_to_payload(_manifest())
-    manifest_payload["schema"] = 2
+    manifest_payload["schema"] = 3
     with pytest.raises(UnsupportedSessionSchema):
         manifest_from_payload(manifest_payload)
 
@@ -392,6 +521,13 @@ def test_manifest_and_pack_reject_unsupported_schemas():
     envelope["schema"] = 2
     with pytest.raises(UnsupportedSessionSchema):
         decode_history_pack(_canonical_envelope(envelope))
+
+
+def test_history_pack_decoder_keeps_accepting_schema_one_after_manifest_upgrade():
+    envelope = json.loads(encode_history_pack(_history_pack()))
+    envelope["schema"] = 1
+
+    assert decode_history_pack(_canonical_envelope(envelope)) == _history_pack()
 
 
 def test_pack_decoder_rejects_trailing_compressed_stream():

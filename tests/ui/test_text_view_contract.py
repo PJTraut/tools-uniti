@@ -472,6 +472,7 @@ def test_view_state_round_trips_selection_scroll_wrap_row_and_zoom(tmp_path: Pat
     from PySide6.QtWidgets import QApplication
 
     from uniti.app.editor_state import EditorState, EditorStateSnapshot
+    from uniti.app.session import DockReturnRecord
     from uniti.core.document import Document
     from uniti.ui.text_view import UNITITextView
 
@@ -485,6 +486,8 @@ def test_view_state_round_trips_selection_scroll_wrap_row_and_zoom(tmp_path: Pat
         app.processEvents()
         original.state.restore_state(EditorStateSnapshot(35, 5, 12))
         original.set_zoom_percent(130)
+        anchor = DockReturnRecord("window-a", "pane-left", 2)
+        original.set_dock_return(anchor)
         original.horizontalScrollBar().setValue(48)
         original.verticalScrollBar().setValue(7)
         nonwrapped = original.export_state("doc-a")
@@ -496,6 +499,7 @@ def test_view_state_round_trips_selection_scroll_wrap_row_and_zoom(tmp_path: Pat
         restored.restore_state(nonwrapped)
 
         assert restored.export_state("doc-a") == nonwrapped
+        assert restored.dock_return == anchor
 
         original.set_soft_wrap(True)
         original._wrapped_row_index().ensure_row(20)

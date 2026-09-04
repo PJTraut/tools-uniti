@@ -25,7 +25,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QAbstractScrollArea, QApplication
 
 from uniti.app.editor_state import EditorState, EditorStateSnapshot
-from uniti.app.session import ViewRecord
+from uniti.app.session import DockReturnRecord, ViewRecord
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
 from uniti.ui.wrap_index import WrappedRowIndex
@@ -93,6 +93,7 @@ class UNITITextView(QAbstractScrollArea):
         self._preedit_text = ""
         self._match_index = MatchIndex(())
         self._progressive_navigation = False
+        self._dock_return: DockReturnRecord | None = None
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
         self.setMouseTracking(True)
@@ -169,6 +170,15 @@ class UNITITextView(QAbstractScrollArea):
     @property
     def soft_wrap(self) -> bool:
         return self._soft_wrap
+
+    @property
+    def dock_return(self) -> DockReturnRecord | None:
+        return self._dock_return
+
+    def set_dock_return(self, record: DockReturnRecord | None) -> None:
+        if record is not None and not isinstance(record, DockReturnRecord):
+            raise TypeError("dock return must be a DockReturnRecord or None")
+        self._dock_return = record
 
     def _wrap_columns(self) -> int:
         width = max(1, self.viewport().width() - self._gutter_width - 8)
@@ -247,6 +257,7 @@ class UNITITextView(QAbstractScrollArea):
             vertical if self._soft_wrap else 0,
             self._soft_wrap,
             self._zoom_percent,
+            self._dock_return,
         )
 
     def _restore_vertical_scroll(self, requested: int) -> None:
@@ -277,6 +288,7 @@ class UNITITextView(QAbstractScrollArea):
             raise TypeError("record must be a ViewRecord")
         if record.view_id != self.view_id:
             raise ValueError("view record ID does not match this view")
+        self.set_dock_return(record.dock_return)
         self.set_zoom_percent(record.zoom_percent)
         self.set_soft_wrap(record.soft_wrap)
         self.state.restore_state(

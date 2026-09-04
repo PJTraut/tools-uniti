@@ -308,6 +308,7 @@ def capture_service_session(
         report_visible=find_state.report_visible,
         last_target_view_id=find_state.last_target_view_id,
         history_pack=find_reference,
+        placement=find_state.placement,
     )
     manifest = SessionManifest(
         schema=SESSION_SCHEMA,
@@ -460,6 +461,7 @@ def merge_find_replace_history(manifest_record, history_pack):
         zoom_percent=manifest_record.zoom_percent,
         report_visible=manifest_record.report_visible,
         last_target_view_id=manifest_record.last_target_view_id,
+        placement=manifest_record.placement,
     )
 
 
