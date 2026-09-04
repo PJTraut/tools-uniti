@@ -48,6 +48,7 @@ def test_main_window_offscreen_open_edit_save_when_pyside6_available(tmp_path: P
     source.write_text("abc\n", encoding="utf-8")
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow()
+    assert window._tabs is window.panes.active_leaf.tabs
     view = window.open_path(source)
     view.state.move_to(3)
     view.state.insert_text("X")
@@ -77,6 +78,13 @@ def test_application_uses_app_paths_and_settings_store():
     assert "AppPaths.current" in application
     assert "SettingsStore" in application
     assert "paths.recovery_dir" in application
+
+
+def test_desktop_startup_creates_one_service_owned_window():
+    application = APPLICATION.read_text()
+    assert "UNITIService(" in application
+    assert "service.new_window()" in application
+    assert 'context.data["service"] = service' in application
 
 
 def test_main_window_handles_open_and_external_save_errors_in_ui():
@@ -407,10 +415,10 @@ def test_cancelled_serious_open_creates_no_tab(tmp_path: Path, monkeypatch):
             return QDialog.DialogCode.Rejected
 
     monkeypatch.setattr(main_window, "OpenFormatDialog", CancelledDialog)
-    before = window._tabs.count()
+    before = window.panes.active_leaf.tabs.count()
 
     assert window.open_path(source) is None
-    assert window._tabs.count() == before
+    assert window.panes.active_leaf.tabs.count() == before
     window.close()
     app.processEvents()
 

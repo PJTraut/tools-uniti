@@ -102,6 +102,11 @@ class UNITITextView(QAbstractScrollArea):
             self.refresh_document_revision,
             Qt.ConnectionType.QueuedConnection,
         )
+        self._remove_document_listener = None
+        self._bind_document_listener()
+        self._refresh_scrollbars(advance_index=False)
+
+    def _bind_document_listener(self) -> None:
         view_ref = weakref.ref(self)
 
         def document_changed(_event) -> None:
@@ -112,7 +117,21 @@ class UNITITextView(QAbstractScrollArea):
         self._remove_document_listener = self.document.add_history_listener(
             document_changed
         )
-        self._refresh_scrollbars(advance_index=False)
+
+    def replace_state(self, state: EditorState) -> None:
+        """Rebind this view to a replacement authoritative document."""
+
+        if self._disposed:
+            raise RuntimeError("cannot replace state on a disposed view")
+        if not isinstance(state, EditorState):
+            raise TypeError("state must be an EditorState")
+        remove = self._remove_document_listener
+        self._remove_document_listener = None
+        if remove is not None:
+            remove()
+        self.state = state
+        self._document_refresh_queued = False
+        self._bind_document_listener()
 
     @staticmethod
     def _fixed_pitch_font() -> QFont:

@@ -97,7 +97,7 @@ def test_new_destination_opens_export_without_mutating_source_tab(
 
     assert result == target
     assert _document_state(source_view.document) == before
-    assert window._tabs.count() == 2
+    assert window.panes.active_leaf.tabs.count() == 2
     assert window.current_view is not source_view
     assert window.current_view.document.path == target
     assert window.current_view.document.source_profile.key == "utf-16-le-bom"
@@ -116,7 +116,7 @@ def test_dirty_open_target_blocks_before_any_write_or_confirmation(
     target.state.insert_text("dirty")
     target_bytes = target.document.path.read_bytes()
     target_document = target.document
-    window._tabs.setCurrentWidget(source)
+    window.panes.active_leaf.tabs.setCurrentWidget(source)
     calls = _warning_responses(monkeypatch, [None])
 
     assert (
@@ -127,7 +127,7 @@ def test_dirty_open_target_blocks_before_any_write_or_confirmation(
     assert [title for title, _text in calls] == ["Target Has Unsaved Changes"]
     assert target.document.path.read_bytes() == target_bytes
     assert target.document is target_document
-    assert window._tabs.count() == 2
+    assert window.panes.active_leaf.tabs.count() == 2
 
 
 def test_existing_closed_target_requires_one_normal_overwrite_confirmation(
@@ -197,7 +197,7 @@ def test_target_changed_after_confirmation_is_not_overwritten(
     assert window.save_current_as(target, source.document.output_format) is None
     assert target.read_text(encoding="utf-8") == "external change\n"
     assert calls == ["Replace Existing File", "File Changed on Disk"]
-    assert window._tabs.count() == 1
+    assert window.panes.active_leaf.tabs.count() == 1
 
 
 @pytest.mark.parametrize("refused_warning", [0, 1])
@@ -220,7 +220,7 @@ def test_refusing_an_existing_target_warning_leaves_disk_and_tabs_unchanged(
     assert window.save_current_as(target, selected) is None
 
     assert target.read_bytes() == before
-    assert window._tabs.count() == 1
+    assert window.panes.active_leaf.tabs.count() == 1
     assert window.current_view is source
     assert len(calls) == refused_warning + 1
 
@@ -233,7 +233,7 @@ def test_clean_open_target_requires_two_overwrite_confirmations_and_reuses_tab(
     source = _open(window, tmp_path / "source.txt", "replacement\n")
     target = _open(window, tmp_path / "target.txt", "old\n")
     old_target_document = target.document
-    window._tabs.setCurrentWidget(source)
+    window.panes.active_leaf.tabs.setCurrentWidget(source)
     calls = _warning_responses(
         monkeypatch,
         [QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Yes],
@@ -249,7 +249,7 @@ def test_clean_open_target_requires_two_overwrite_confirmations_and_reuses_tab(
         "Replace Existing File",
         "Replace Open Document",
     ]
-    assert window._tabs.count() == 2
+    assert window.panes.active_leaf.tabs.count() == 2
     assert window.current_view is target
     assert target.document is not old_target_document
     assert target.document.read(0, target.document.total_chars()) == "replacement\n"
@@ -265,7 +265,7 @@ def test_refusing_open_tab_replacement_leaves_disk_and_documents_unchanged(
     target = _open(window, tmp_path / "target.txt", "old\n")
     old_target_document = target.document
     before = target.document.path.read_bytes()
-    window._tabs.setCurrentWidget(source)
+    window.panes.active_leaf.tabs.setCurrentWidget(source)
     calls = _warning_responses(
         monkeypatch,
         [QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Cancel],
@@ -378,7 +378,7 @@ def test_same_destination_save_as_updates_current_tab_without_generic_overwrite(
     assert window.save_current_as(view.document.path, selected) == view.document.path
 
     assert [title for title, _text in calls] == ["Change Text Encoding"]
-    assert window._tabs.count() == 1
+    assert window.panes.active_leaf.tabs.count() == 1
     assert window.current_view is view
     assert view.document.source_profile.key == "utf-16-le-bom"
 

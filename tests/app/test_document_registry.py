@@ -120,3 +120,36 @@ def test_view_id_cannot_be_bound_to_two_authoritative_documents(tmp_path: Path):
 
     assert registry.entry_for_view("view-a") is first_entry
     registry.close_all()
+
+
+def test_retire_requires_all_views_to_be_released(tmp_path: Path):
+    document = _open_document(tmp_path)
+    registry = DocumentRegistry(clock=lambda: NOW)
+    entry = registry.adopt(document)
+    registry.bind_view(entry.document_id, "view-a")
+
+    with pytest.raises(ValueError, match="live views"):
+        registry.retire(entry.document_id)
+
+    assert document.read(0, 3) == "abc"
+    registry.release_view("view-a")
+    assert registry.retire(entry.document_id) is entry
+    with pytest.raises(ValueError, match="closed"):
+        document.read(0, 1)
+
+
+def test_replacing_document_authority_preserves_view_bindings(tmp_path: Path):
+    original = _open_document(tmp_path)
+    replacement = Document.open(original.path)
+    registry = DocumentRegistry(clock=lambda: NOW)
+    entry = registry.adopt(original)
+    registry.bind_view(entry.document_id, "view-a")
+    registry.bind_view(entry.document_id, "view-b")
+
+    assert registry.replace_document(entry.document_id, replacement) is original
+    assert entry.document is replacement
+    assert entry.view_ids == ("view-a", "view-b")
+    assert registry.find_path(replacement.path) is entry
+    with pytest.raises(ValueError, match="closed"):
+        original.read(0, 1)
+    registry.close_all()

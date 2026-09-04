@@ -207,6 +207,40 @@ class DocumentRegistry:
         entry.document.close()
         return entry
 
+    def retire(self, document_id: str) -> DocumentEntry:
+        """Remove and close an entry that must not remain in history retention."""
+
+        selected_id = _identifier(document_id, "document ID")
+        entry = self.get(selected_id)
+        if entry.view_ids:
+            raise ValueError("cannot retire a document with live views")
+        return self._remove(selected_id)
+
+    def replace_document(
+        self,
+        document_id: str,
+        replacement: Document,
+    ) -> Document:
+        """Atomically replace one authority while retaining its view bindings."""
+
+        if not isinstance(replacement, Document):
+            raise TypeError("replacement must be a Document")
+        entry = self.get(document_id)
+        if id(replacement) in self._documents:
+            raise DuplicateDocumentError("replacement document is already owned")
+        canonical_path = Path(replacement.path).resolve(strict=False)
+        if canonical_path != entry.canonical_path:
+            raise DuplicateDocumentError("replacement path does not match the authority")
+        original = entry.document
+        self._documents.pop(id(original), None)
+        self._documents[id(replacement)] = entry.document_id
+        entry.document = replacement
+        entry.canonical_path = canonical_path
+        entry.saved_stamp = None
+        entry.last_active_at = _datetime(self._clock(), "clock result")
+        original.close()
+        return original
+
     def close_all(self) -> None:
         """Close every owned document during final service teardown."""
 

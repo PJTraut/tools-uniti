@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import math
 import uuid
 
-from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtCore import QPoint, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -110,6 +110,10 @@ class PaneLeaf(QTabWidget):
         tab_bar.detachRequested.connect(self.viewDetachRequested)
 
     @property
+    def tabs(self) -> QTabWidget:
+        return self
+
+    @property
     def parent_split_id(self) -> str | None:
         parent = self._parent_branch
         return None if parent is None else parent.split_id
@@ -172,11 +176,15 @@ class PaneLeaf(QTabWidget):
         if not 0 <= position <= self.count():
             raise IndexError("tab index is outside the pane")
         label = title or self._title_for(view, view_id)
+        blocker = QSignalBlocker(self)
         inserted = self.insertTab(position, view, label)
         self.tabBar().setTabData(inserted, view_id)
         if select:
             self._selection_suppressed = False
             self.setCurrentIndex(inserted)
+        del blocker
+        if select or self.count() == 1:
+            self._publish_active_view()
         return inserted
 
     def add_placeholder(
@@ -330,6 +338,10 @@ class EditorPaneTree(QWidget):
         return self._leaves()[0]
 
     @property
+    def active_leaf(self) -> PaneLeaf:
+        return self._active_leaf
+
+    @property
     def leaf_count(self) -> int:
         return len(self._leaves())
 
@@ -349,6 +361,11 @@ class EditorPaneTree(QWidget):
             if leaf.index_of(view_id) >= 0:
                 return leaf
         return None
+
+    def activate_view(self, view_id: str) -> None:
+        if self.leaf_for_view(view_id) is None:
+            raise KeyError(view_id)
+        self._activate_view(view_id)
 
     def _leaf(self, pane_id: str) -> PaneLeaf:
         for leaf in self._leaves():
@@ -387,7 +404,15 @@ class EditorPaneTree(QWidget):
     def _connect_view_focus(self, view: QWidget) -> None:
         signal = getattr(view, "viewFocused", None)
         if signal is not None:
-            signal.connect(lambda view_id: self._activate_view(view_id))
+            previous = getattr(view, "_uniti_pane_focus_callback", None)
+            if previous is not None:
+                try:
+                    signal.disconnect(previous)
+                except RuntimeError:
+                    pass
+            callback = lambda view_id: self._activate_view(view_id)
+            signal.connect(callback)
+            view._uniti_pane_focus_callback = callback
 
     def _activate_view(self, view_id: str) -> None:
         leaf = self.leaf_for_view(view_id)

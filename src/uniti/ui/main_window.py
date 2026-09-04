@@ -8,6 +8,8 @@ from dataclasses import dataclass, replace as dataclass_replace
 import os
 from pathlib import Path
 import sys
+from typing import TYPE_CHECKING
+import uuid
 import weakref
 
 from PySide6.QtCore import QEvent, Qt, QTimer
@@ -30,6 +32,7 @@ from uniti.app.commands import (
     CommandDefinition,
     CommandRegistry,
     CommandScope,
+    PANE_COMMAND_DEFINITIONS,
 )
 from uniti.app.editor_state import EditorState
 from uniti.app.recovery_manager import RecoveryManager
@@ -77,9 +80,13 @@ from uniti.ui.file_format_dialogs import (
 from uniti.ui.file_operations import FileOperationController, FileOperationHandle
 from uniti.ui.find_replace import FindReplaceWindow
 from uniti.ui.hotkeys import HotkeysPopup
+from uniti.ui.panes import EditorPaneTree
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
 from uniti.ui.theme import THEME_MODES, apply_theme
+
+if TYPE_CHECKING:
+    from uniti.app.service import UNITIService
 
 
 def _standard_shortcut(key: QKeySequence.StandardKey, fallback: str = "") -> str:
@@ -124,7 +131,7 @@ def _command_definitions() -> tuple[CommandDefinition, ...]:
         CommandDefinition("find.zoom_out", "Zoom Out", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
         CommandDefinition("find.zoom_reset", "Reset Zoom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+0"),
         CommandDefinition("find.report_cycle", "Toggle Match Report", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+Alt+R"),
-    )
+    ) + PANE_COMMAND_DEFINITIONS
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,17 +173,36 @@ class _SaveJob:
 class UNITIMainWindow(QMainWindow):
     def __init__(
         self,
+        service: UNITIService | None = None,
         parent=None,
         *,
+        window_id: str | None = None,
         recovery_manager: RecoveryManager | None = None,
         settings_store: SettingsStore | None = None,
         resource_manager: ResourceManager | None = None,
         startup_snapshot: Mapping[str, object] | None = None,
     ) -> None:
         super().__init__(parent)
-        self._recovery_manager = recovery_manager
-        self._settings_store = settings_store
-        self._settings = settings_store.load() if settings_store is not None else Settings()
+        self._service = service
+        self.window_id = window_id or uuid.uuid4().hex
+        if service is not None and any(
+            item is not None
+            for item in (recovery_manager, settings_store, resource_manager)
+        ):
+            raise ValueError(
+                "service-owned windows cannot override process services"
+            )
+        self._recovery_manager = (
+            service.recovery if service is not None else recovery_manager
+        )
+        self._settings_store = (
+            service.settings if service is not None else settings_store
+        )
+        self._settings = (
+            self._settings_store.load()
+            if self._settings_store is not None
+            else Settings()
+        )
         app = QApplication.instance()
         if isinstance(app, QApplication):
             apply_theme(app, self._settings.theme_mode)
@@ -188,8 +214,12 @@ class UNITIMainWindow(QMainWindow):
         self._find_replace_shortcuts: dict[str, QShortcut] = {}
         self._hotkeys_popup: HotkeysPopup | None = None
         self._command_registry.add_listener(self._on_command_binding_changed)
-        self._owns_resources = resource_manager is None
-        self._resources = resource_manager or ResourceManager()
+        self._owns_resources = service is None and resource_manager is None
+        self._resources = (
+            service.resources
+            if service is not None
+            else resource_manager or ResourceManager()
+        )
         self._file_operations = FileOperationController(self._resources, self)
         self._file_operations.operationFinished.connect(
             self._finish_file_operation,
@@ -199,18 +229,27 @@ class UNITIMainWindow(QMainWindow):
         self._startup_snapshot = dict(startup_snapshot or {})
         self.setWindowTitle("UNITI")
         self.resize(1100, 760)
-        self._tabs = QTabWidget(self)
-        self._tabs.setTabsClosable(True)
-        self._tabs.setMovable(True)
-        self._tabs.tabCloseRequested.connect(self._close_tab)
-        self._tabs.currentChanged.connect(self._on_current_changed)
+        self._panes = EditorPaneTree(self)
+        self._tabs = self._panes.active_leaf.tabs
+        self._panes.activeViewChanged.connect(self._on_pane_active)
+        self._panes.viewCloseRequested.connect(self._close_view_id)
+        if service is not None:
+            self._panes.viewDetachRequested.connect(
+                lambda view_id, _position: service.move_view_to_new_window(view_id)
+            )
         central = QWidget(self)
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
-        central_layout.addWidget(self._tabs, 1)
-        self._find_replace = FindReplaceWindow(
-            lambda: self.current_view, self, resource_manager=self._resources
+        central_layout.addWidget(self._panes, 1)
+        self._find_replace = (
+            service.find_replace
+            if service is not None
+            else FindReplaceWindow(
+                lambda: self.current_view,
+                self,
+                resource_manager=self._resources,
+            )
         )
         for field in (
             self._find_replace.find_input,
@@ -255,6 +294,8 @@ class UNITIMainWindow(QMainWindow):
         self._resource_probe_future: Future[ResourceSnapshot] | None = None
         self._resource_timer.start()
         self._build_menus()
+        if service is not None:
+            service.register_window(self.window_id, self)
 
     def _observe_resource_pressure(self) -> None:
         future = self._resource_probe_future
@@ -350,6 +391,10 @@ class UNITIMainWindow(QMainWindow):
         if (
             event.type() == QEvent.Type.KeyPress
             and self._find_replace.focused_input() is not None
+            and (
+                self._service is None
+                or self._service.most_recent_window is self
+            )
         ):
             pressed = QKeySequence(event.keyCombination())
             for definition in self._command_registry.definitions(
@@ -364,10 +409,71 @@ class UNITIMainWindow(QMainWindow):
                     return True
         return super().eventFilter(watched, event)
 
+    def event(self, event) -> bool:
+        handled = super().event(event)
+        service = getattr(self, "_service", None)
+        if (
+            event.type() == QEvent.Type.WindowActivate
+            and service is not None
+            and getattr(self, "window_id", None) in dict(service.windows.items)
+        ):
+            service.set_active_view(self.window_id, self.active_view_id)
+        return handled
+
     @property
     def current_view(self) -> UNITITextView | None:
-        widget = self._tabs.currentWidget()
+        widget = self._panes.active_view
         return widget if isinstance(widget, UNITITextView) else None
+
+    @property
+    def panes(self) -> EditorPaneTree:
+        return self._panes
+
+    @property
+    def find_replace(self) -> FindReplaceWindow:
+        return self._find_replace
+
+    @property
+    def views(self) -> tuple[UNITITextView, ...]:
+        found: list[UNITITextView] = []
+        for view_id in self._panes.view_ids:
+            leaf = self._panes.leaf_for_view(view_id)
+            if leaf is None:
+                continue
+            widget = leaf.widget(leaf.index_of(view_id))
+            if isinstance(widget, UNITITextView):
+                found.append(widget)
+        return tuple(found)
+
+    @property
+    def view_ids(self) -> tuple[str, ...]:
+        return tuple(view.view_id for view in self.views)
+
+    @property
+    def active_view_id(self) -> str | None:
+        view = self.current_view
+        return None if view is None else view.view_id
+
+    def view_for_id(self, view_id: str) -> UNITITextView | None:
+        leaf = self._panes.leaf_for_view(view_id)
+        if leaf is None:
+            return None
+        widget = leaf.widget(leaf.index_of(view_id))
+        return widget if isinstance(widget, UNITITextView) else None
+
+    def _contains_view(self, view: UNITITextView) -> bool:
+        return self.view_for_id(view.view_id) is view
+
+    def _select_view(self, view: UNITITextView) -> None:
+        if not self._contains_view(view):
+            raise ValueError("view does not belong to this window")
+        self._panes.activate_view(view.view_id)
+
+    def _on_pane_active(self, _view: object) -> None:
+        self._tabs = self._panes.active_leaf.tabs
+        self._on_current_changed(self._tabs.currentIndex())
+        if self._service is not None:
+            self._service.set_active_view(self.window_id, self.active_view_id)
 
     def _action(self, text: str, shortcut, handler) -> QAction:
         action = QAction(text, self)
@@ -399,6 +505,10 @@ class UNITIMainWindow(QMainWindow):
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
+        file_menu.addAction(
+            self._command_action("window.new", self.new_window)
+        )
+        file_menu.addSeparator()
         file_menu.addAction(self._command_action("file.open", self.open_dialog))
         file_menu.addAction(
             self._command_action("file.save", self.start_save_current)
@@ -409,7 +519,7 @@ class UNITIMainWindow(QMainWindow):
         file_menu.addAction(self._command_action("file.reload", self.reload_current))
         file_menu.addSeparator()
         file_menu.addAction(self._command_action("file.close", self.close_current))
-        file_menu.addAction(self._command_action("file.quit", self.close))
+        file_menu.addAction(self._command_action("file.quit", self.request_quit))
 
         edit_menu = self.menuBar().addMenu("&Edit")
         edit_menu.addAction(self._command_action("editing.undo", self.undo_current))
@@ -533,6 +643,22 @@ class UNITIMainWindow(QMainWindow):
             self._resources.tasks.snapshot().background_paused
         )
         editor_view_menu.addAction(self._pause_background_action)
+        editor_view_menu.addSeparator()
+        editor_view_menu.addAction(
+            self._command_action("view.split_right", self.split_right)
+        )
+        editor_view_menu.addAction(
+            self._command_action("view.split_down", self.split_down)
+        )
+        editor_view_menu.addAction(
+            self._command_action("view.close_split", self.close_current_split)
+        )
+        editor_view_menu.addAction(
+            self._command_action(
+                "view.move_new_window",
+                self.move_current_to_new_window,
+            )
+        )
 
         find_view_menu = view_menu.addMenu("F/R &View")
         find_view_menu.addAction(
@@ -596,6 +722,133 @@ class UNITIMainWindow(QMainWindow):
         directory = str(Path(path).parent)
         self._settings = dataclass_replace(self._settings, last_directory=directory)
         self._save_settings()
+
+    def new_window(self):
+        if self._service is None:
+            return None
+        window = self._service.new_window()
+        window.show()
+        return window
+
+    def _quit_choice(self, entry):
+        from uniti.app.service import QuitChoice
+
+        result = QMessageBox.warning(
+            self,
+            "Unsaved UNITI Document",
+            f"Save changes to {entry.document.path.name}?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if result == QMessageBox.StandardButton.Save:
+            return QuitChoice.SAVE
+        if result == QMessageBox.StandardButton.Discard:
+            return QuitChoice.DISCARD
+        return QuitChoice.CANCEL
+
+    def request_quit(self) -> bool:
+        if self._service is None:
+            return self.close()
+        try:
+            return self._service.request_quit(self._quit_choice)
+        except Exception as exc:
+            self._show_save_error(exc)
+            return False
+
+    def split_current(self, orientation: Qt.Orientation) -> UNITITextView | None:
+        view = self.current_view
+        if view is None or self._service is None:
+            return None
+        leaf = self._panes.split_view(view.view_id, orientation)
+        return self._add_document(
+            view.document,
+            attach_recovery=False,
+            pane_id=leaf.pane_id,
+        )
+
+    def split_right(self) -> UNITITextView | None:
+        return self.split_current(Qt.Orientation.Horizontal)
+
+    def split_down(self) -> UNITITextView | None:
+        return self.split_current(Qt.Orientation.Vertical)
+
+    def close_current_split(self) -> bool:
+        leaf = self._panes.active_leaf
+        if self._panes.leaf_count == 1:
+            return False
+        for view_id in reversed(leaf.view_ids):
+            if not self._close_view_id(view_id):
+                return False
+        try:
+            return self._panes.close_leaf(leaf.pane_id)
+        except KeyError:
+            return True
+
+    def move_current_to_new_window(self):
+        view = self.current_view
+        if view is None or self._service is None:
+            return None
+        return self._service.move_view_to_new_window(view.view_id)
+
+    def _disconnect_view(self, view: UNITITextView) -> None:
+        for signal in (
+            view.stateChanged,
+            view.cursorPositionChanged,
+            view.zoomChanged,
+            view.wrapChanged,
+            view.navigationRequested,
+        ):
+            try:
+                signal.disconnect()
+            except RuntimeError:
+                pass
+        for action in self._command_actions.values():
+            view.removeAction(action)
+
+    def take_view_for_transfer(self, view_id: str) -> UNITITextView:
+        view = self.view_for_id(view_id)
+        if view is None:
+            raise KeyError(view_id)
+        self._cancel_navigation(view)
+        self._cancel_eol_analysis(view)
+        self._dismiss_eol_dialog(view)
+        self._eol_reports.pop(id(view), None)
+        leaf = self._panes.leaf_for_view(view_id)
+        assert leaf is not None
+        leaf.take_view(view_id)
+        self._disconnect_view(view)
+        if leaf.count() == 0 and self._panes.leaf_count > 1:
+            self._panes.close_leaf(leaf.pane_id)
+        return view
+
+    def accept_transferred_view(self, view: UNITITextView) -> UNITITextView:
+        if not isinstance(view, UNITITextView):
+            raise TypeError("view must be a UNITITextView")
+        self._connect_view(view)
+        leaf = self._panes.add_view(view)
+        self._tabs = leaf.tabs
+        self._schedule_eol_analysis(view)
+        view.setFocus()
+        return view
+
+    def restore_window_record(self, record) -> None:
+        from uniti.app.session import WindowRecord
+
+        if not isinstance(record, WindowRecord):
+            raise TypeError("record must be a WindowRecord")
+        if record.window_id != self.window_id:
+            raise ValueError("window record ID does not match the window")
+        self.setGeometry(*record.geometry)
+        self._panes.restore_shell(record.root)
+        self._tabs = self._panes.active_leaf.tabs
+        if record.window_state == "maximized":
+            self.showMaximized()
+        elif record.window_state == "fullscreen":
+            self.showFullScreen()
+        elif record.window_state == "minimized":
+            self.showMinimized()
 
     def open_dialog(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
@@ -665,16 +918,30 @@ class UNITIMainWindow(QMainWindow):
         attach_recovery: bool = True,
         initial_eol_report: EOLReport | None = None,
         initial_eol_complete: bool = True,
+        pane_id: str | None = None,
     ) -> UNITITextView:
-        if attach_recovery and self._recovery_manager is not None:
+        entry = None
+        adopted = False
+        if self._service is not None:
+            entry = self._service.documents.find_path(document.path)
+            if entry is None:
+                entry = self._service.documents.adopt(document)
+                adopted = True
+            elif entry.document is not document:
+                raise ValueError("document path already has another authority")
+            if adopted and attach_recovery and self._recovery_manager is not None:
+                self._recovery_manager.attach(document)
+        elif attach_recovery and self._recovery_manager is not None:
             self._recovery_manager.attach(document)
         state = EditorState(document)
-        view = UNITITextView(state, self._tabs)
+        view = UNITITextView(state)
         view.set_zoom_percent(self._settings.editor_zoom_percent)
         view.set_soft_wrap(self._settings.soft_wrap)
         self._connect_view(view)
-        index = self._tabs.addTab(view, self._tab_label(view))
-        self._tabs.setCurrentIndex(index)
+        leaf = self._panes.add_view(view, pane_id=pane_id)
+        self._tabs = leaf.tabs
+        if entry is not None:
+            self._service.documents.bind_view(entry.document_id, view.view_id)
         if initial_eol_report is not None:
             document.set_source_eol_report(initial_eol_report)
             if initial_eol_complete:
@@ -687,6 +954,11 @@ class UNITIMainWindow(QMainWindow):
             self._show_mixed_eol_report(view, initial_eol_report)
         view.setFocus()
         return view
+
+    def open_existing_document(self, document: Document) -> UNITITextView:
+        if not isinstance(document, Document):
+            raise TypeError("document must be a Document")
+        return self._add_document(document)
 
     def _inspect_open_path(
         self,
@@ -724,6 +996,13 @@ class UNITIMainWindow(QMainWindow):
         *,
         profile: EncodingProfile | None = None,
     ) -> UNITITextView | None:
+        if self._service is not None:
+            existing = self._service.documents.find_path(Path(path))
+            if existing is not None:
+                focused = self._service.focus_document(existing.document_id)
+                if isinstance(focused, UNITITextView):
+                    return focused
+                return self.open_existing_document(existing.document)
         decision = self._inspect_open_path(path, profile=profile)
         if decision is None:
             return None
@@ -830,19 +1109,17 @@ class UNITIMainWindow(QMainWindow):
             for job in self._navigation_jobs.values()
         ):
             self._cancel_navigation(view)
-        index = self._tabs.indexOf(view)
-        if index >= 0:
-            self._tabs.setTabText(index, self._tab_label(view))
+        leaf = self._panes.leaf_for_view(view.view_id)
+        if leaf is not None:
+            leaf.setTabText(leaf.index_of(view.view_id), self._tab_label(view))
         if view is self.current_view:
             self._set_status_document(view)
 
     def _on_current_changed(self, _index: int) -> None:
         self._find_replace.document_changed()
         view = self.current_view
-        for index in range(self._tabs.count()):
-            widget = self._tabs.widget(index)
-            if isinstance(widget, UNITITextView):
-                widget.document.set_resource_active(widget is view)
+        for widget in self.views:
+            widget.document.set_resource_active(widget is view)
         if view is None:
             self._status.clear_document()
             self.setWindowTitle("UNITI")
@@ -930,7 +1207,7 @@ class UNITIMainWindow(QMainWindow):
         dialog = LineEndingReportDialog(report, self)
 
         def apply_policy(policy: EOLPolicy) -> None:
-            if self._tabs.indexOf(view) < 0:
+            if not self._contains_view(view):
                 return
             current = view.document.output_format
             view.document.set_output_format(OutputFormat(current.encoding, policy))
@@ -948,7 +1225,7 @@ class UNITIMainWindow(QMainWindow):
             view = job.view_ref()
             if (
                 view is None
-                or self._tabs.indexOf(view) < 0
+                or not self._contains_view(view)
                 or view.document is not job.document
             ):
                 continue
@@ -1133,7 +1410,7 @@ class UNITIMainWindow(QMainWindow):
             view = job.view_ref()
             if (
                 view is None
-                or self._tabs.indexOf(view) < 0
+                or not self._contains_view(view)
                 or view.document is not job.document
                 or view.document.revision != job.revision
             ):
@@ -1234,25 +1511,80 @@ class UNITIMainWindow(QMainWindow):
         initial_eol_complete: bool = True,
     ) -> None:
         old_document = view.document
-        self._cancel_navigation(view)
-        self._cancel_eol_analysis(view)
-        self._dismiss_eol_dialog(view)
+        if self._service is not None:
+            entry = self._service.documents.entry_for_view(view.view_id)
+            if entry is None or entry.document is not old_document:
+                raise ValueError("view is not bound to its document authority")
+            affected: list[tuple[UNITIMainWindow, UNITITextView]] = []
+            for view_id in entry.view_ids:
+                owner = self._service.windows.window_for_view(view_id)
+                candidate = (
+                    None
+                    if owner is None
+                    else getattr(owner, "view_for_id", lambda _value: None)(view_id)
+                )
+                if not isinstance(owner, UNITIMainWindow) or not isinstance(
+                    candidate, UNITITextView
+                ):
+                    raise ValueError("document authority has an unavailable view")
+                owner._prepare_view_document_replacement(candidate)
+                affected.append((owner, candidate))
+            if self._recovery_manager is not None:
+                self._recovery_manager.attach(replacement)
+                self._recovery_manager.detach(old_document, clean=True)
+            self._service.documents.replace_document(
+                entry.document_id,
+                replacement,
+            )
+            if initial_eol_report is not None:
+                replacement.set_source_eol_report(initial_eol_report)
+            for owner, candidate in affected:
+                owner._install_view_document_replacement(
+                    candidate,
+                    replacement,
+                    initial_eol_report=initial_eol_report,
+                    initial_eol_complete=initial_eol_complete,
+                )
+            self._find_replace.document_changed()
+            return
+
+        self._prepare_view_document_replacement(view)
         if self._recovery_manager is not None:
             self._recovery_manager.attach(replacement)
             self._recovery_manager.detach(old_document, clean=True)
-        view.state = EditorState(replacement)
-        self._eol_reports.pop(id(view), None)
         if initial_eol_report is not None:
             replacement.set_source_eol_report(initial_eol_report)
-            if initial_eol_complete:
-                self._eol_reports[id(view)] = initial_eol_report
+        self._install_view_document_replacement(
+            view,
+            replacement,
+            initial_eol_report=initial_eol_report,
+            initial_eol_complete=initial_eol_complete,
+        )
         old_document.close()
+        self._find_replace.document_changed()
+
+    def _prepare_view_document_replacement(self, view: UNITITextView) -> None:
+        self._cancel_navigation(view)
+        self._cancel_eol_analysis(view)
+        self._dismiss_eol_dialog(view)
+        self._eol_reports.pop(id(view), None)
+
+    def _install_view_document_replacement(
+        self,
+        view: UNITITextView,
+        replacement: Document,
+        *,
+        initial_eol_report: EOLReport | None,
+        initial_eol_complete: bool,
+    ) -> None:
+        view.replace_state(EditorState(replacement))
+        if initial_eol_report is not None and initial_eol_complete:
+            self._eol_reports[id(view)] = initial_eol_report
         view.set_match_index(None)
         view._max_seen_line_width = 0
         view._wrap_index = None
         view._wrap_signature = None
         view._refresh_scrollbars(advance_index=False)
-        self._find_replace.document_changed()
         view._state_changed()
         if initial_eol_report is None or not initial_eol_complete:
             self._schedule_eol_analysis(view)
@@ -1330,11 +1662,7 @@ class UNITIMainWindow(QMainWindow):
         dialog.exec()
 
     def show_diagnostics(self) -> None:
-        documents = []
-        for index in range(self._tabs.count()):
-            widget = self._tabs.widget(index)
-            if isinstance(widget, UNITITextView):
-                documents.append(widget.document)
+        documents = list(dict.fromkeys(view.document for view in self.views))
         dialog = DiagnosticsDialog(
             diagnostics_snapshot(
                 documents,
@@ -1381,12 +1709,17 @@ class UNITIMainWindow(QMainWindow):
         *,
         excluding: UNITITextView | None = None,
     ) -> UNITITextView | None:
-        for index in range(self._tabs.count()):
-            candidate = self._tabs.widget(index)
-            if not isinstance(candidate, UNITITextView) or candidate is excluding:
-                continue
-            if self._same_resolved_path(candidate.document.path, path):
-                return candidate
+        windows = (
+            tuple(window for _window_id, window in self._service.windows.items)
+            if self._service is not None
+            else (self,)
+        )
+        for window in windows:
+            for candidate in getattr(window, "views", ()):
+                if candidate is excluding:
+                    continue
+                if self._same_resolved_path(candidate.document.path, path):
+                    return candidate
         return None
 
     def _confirm_encoding_change(
@@ -1511,7 +1844,13 @@ class UNITIMainWindow(QMainWindow):
         except Exception:
             document.close()
             raise
-        self._tabs.setCurrentWidget(existing_view)
+        owner = (
+            self._service.windows.window_for_view(existing_view.view_id)
+            if self._service is not None
+            else self
+        )
+        if owner is not None:
+            owner._select_view(existing_view)
         return existing_view
 
     def _resolve_save_as_decision(
@@ -1987,6 +2326,8 @@ class UNITIMainWindow(QMainWindow):
         widget = self._tabs.widget(index)
         if not isinstance(widget, UNITITextView):
             return True
+        if self._service is not None:
+            return self._close_service_view(widget, force=force)
         self._tabs.setCurrentIndex(index)
         if not force and not widget.isEnabled():
             QMessageBox.information(
@@ -2005,8 +2346,56 @@ class UNITIMainWindow(QMainWindow):
             self._recovery_manager.detach(widget.document, clean=True)
         widget.document.close()
         self._tabs.removeTab(index)
+        widget.dispose()
         widget.deleteLater()
         return True
+
+    def _close_service_view(
+        self,
+        view: UNITITextView,
+        *,
+        force: bool = False,
+    ) -> bool:
+        entry = self._service.documents.entry_for_view(view.view_id)
+        if entry is None:
+            return False
+        if not force and not view.isEnabled():
+            QMessageBox.information(
+                self,
+                "UNITI Operation in Progress",
+                "Cancel the active Find/Replace operation before closing this document.",
+            )
+            return False
+        final_view = len(entry.view_ids) == 1
+        if final_view and not force and not self._confirm_close(view):
+            return False
+        discarded = final_view and entry.document.modified
+        self._cancel_navigation(view)
+        self._cancel_eol_analysis(view)
+        self._dismiss_eol_dialog(view)
+        self._eol_reports.pop(id(view), None)
+        leaf = self._panes.leaf_for_view(view.view_id)
+        if leaf is None:
+            return False
+        leaf.take_view(view.view_id)
+        self._service.documents.release_view(view.view_id)
+        view.dispose()
+        view.deleteLater()
+        if leaf.count() == 0 and self._panes.leaf_count > 1:
+            self._panes.close_leaf(leaf.pane_id)
+        if final_view:
+            if (
+                self._recovery_manager is not None
+                and not getattr(self, "_service_close_requested", False)
+            ):
+                self._recovery_manager.detach(entry.document, clean=True)
+            if discarded:
+                self._service.documents.retire(entry.document_id)
+        return True
+
+    def _close_view_id(self, view_id: str, *, force: bool = False) -> bool:
+        view = self.view_for_id(view_id)
+        return view is None or self._close_service_view(view, force=force)
 
     def close_current(self) -> bool:
         index = self._tabs.currentIndex()
@@ -2015,6 +2404,11 @@ class UNITIMainWindow(QMainWindow):
         return self._close_tab(index)
 
     def close_all_documents(self, *, force: bool = False) -> bool:
+        if self._service is not None:
+            for view_id in reversed(self.view_ids):
+                if not self._close_view_id(view_id, force=force):
+                    return False
+            return True
         while self._tabs.count():
             if not self._close_tab(self._tabs.count() - 1, force=force):
                 return False
@@ -2027,6 +2421,30 @@ class UNITIMainWindow(QMainWindow):
         self._find_replace.focus_replace()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        if self._service is not None:
+            force = bool(getattr(self, "_service_close_requested", False))
+            if force:
+                accepted = self.close_all_documents(force=True)
+            else:
+                accepted = self._close_service_window_views()
+            if not accepted:
+                event.ignore()
+                return
+            self._navigation_timer.stop()
+            self._resource_timer.stop()
+            if self._resource_probe_future is not None:
+                self._resource_probe_future.cancel()
+                self._resource_probe_future = None
+            self._file_operations.shutdown()
+            self._detach_global_panel_bindings()
+            if self.window_id in dict(self._service.windows.items):
+                self._service.unregister_window(self.window_id)
+                try:
+                    self._service.schedule_publication(clean_shutdown=False)
+                except RuntimeError:
+                    pass
+            event.accept()
+            return
         if self.close_all_documents(force=False):
             self._navigation_timer.stop()
             self._resource_timer.stop()
@@ -2042,3 +2460,84 @@ class UNITIMainWindow(QMainWindow):
             event.accept()
         else:
             event.ignore()
+
+    def _close_service_window_views(self) -> bool:
+        views = self.views
+        if any(not view.isEnabled() for view in views):
+            QMessageBox.information(
+                self,
+                "UNITI Operation in Progress",
+                "Cancel active operations before closing this window.",
+            )
+            return False
+        local_view_ids = set(self.view_ids)
+        decisions: dict[str, QMessageBox.StandardButton] = {}
+        for view in views:
+            entry = self._service.documents.entry_for_view(view.view_id)
+            if (
+                entry is None
+                or entry.document_id in decisions
+                or not entry.document.modified
+                or not set(entry.view_ids).issubset(local_view_ids)
+            ):
+                continue
+            result = QMessageBox.warning(
+                self,
+                "Unsaved UNITI Document",
+                f"Save changes to {entry.document.path.name}?",
+                QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save,
+            )
+            if result == QMessageBox.StandardButton.Cancel:
+                return False
+            decisions[entry.document_id] = result
+        for document_id, decision in decisions.items():
+            if decision != QMessageBox.StandardButton.Save:
+                continue
+            try:
+                self._service.documents.get(document_id).document.save()
+            except Exception as exc:
+                self._show_save_error(exc)
+                return False
+        return self.close_all_documents(force=True)
+
+    def close_for_service(self) -> None:
+        self._service_close_requested = True
+        self.close()
+
+    def _detach_global_panel_bindings(self) -> None:
+        if self._service is None:
+            return
+        for field in (
+            self._find_replace.find_input,
+            self._find_replace.replace_input,
+        ):
+            field.removeEventFilter(self)
+            field.viewport().removeEventFilter(self)
+        for shortcut in self._find_replace_shortcuts.values():
+            shortcut.setEnabled(False)
+            shortcut.deleteLater()
+        self._find_replace_shortcuts.clear()
+        for definition in self._command_registry.definitions():
+            if definition.scope == CommandScope.FIND_REPLACE:
+                action = self._command_actions.get(definition.command_id)
+                if action is not None:
+                    self._find_replace.removeAction(action)
+
+    def set_global_panel_bindings_enabled(self, enabled: bool) -> None:
+        if self._service is None:
+            return
+        for definition in self._command_registry.definitions():
+            if definition.scope == CommandScope.FIND_REPLACE:
+                action = self._command_actions.get(definition.command_id)
+                if action is not None:
+                    action.setEnabled(bool(enabled))
+        for shortcut in self._find_replace_shortcuts.values():
+            shortcut.setEnabled(bool(enabled))
+
+    def set_service_window_active(self, enabled: bool) -> None:
+        current = self.current_view if enabled else None
+        for view in self.views:
+            view.document.set_resource_active(view is current)

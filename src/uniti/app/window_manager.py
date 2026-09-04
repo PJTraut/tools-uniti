@@ -54,6 +54,12 @@ class WindowManager:
         return self._windows.get(self._active_window_id)
 
     @property
+    def most_recent_window(self) -> object | None:
+        if self.active_window is not None:
+            return self.active_window
+        return next(reversed(self._windows.values()), None)
+
+    @property
     def active_view_id(self) -> str | None:
         return self._active_view_id
 
@@ -70,6 +76,18 @@ class WindowManager:
                     seen.add(view_id)
                     ordered.append(view_id)
         return tuple(ordered)
+
+    def window_id_for_view(self, view_id: str) -> str | None:
+        selected_id = _identifier(view_id, "view ID")
+        for window_id, window in self._windows.items():
+            view_ids = _window_view_ids(window)
+            if view_ids is not None and selected_id in view_ids:
+                return window_id
+        return None
+
+    def window_for_view(self, view_id: str) -> object | None:
+        window_id = self.window_id_for_view(view_id)
+        return None if window_id is None else self._windows[window_id]
 
     def register(self, window_id: str, window: object) -> None:
         selected_id = _identifier(window_id, "window ID")

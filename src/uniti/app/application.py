@@ -310,20 +310,24 @@ def _startup_callbacks(
 
     def session(context: StartupContext) -> None:
         from PySide6.QtWidgets import QMessageBox
-        from uniti.ui.main_window import UNITIMainWindow
+        from uniti.app.service import UNITIService
+        from uniti.app.session_store import SessionStore
 
-        window = UNITIMainWindow(
-            recovery_manager=context.data["recovery_manager"],
-            settings_store=context.data["settings_store"],
+        service = UNITIService(
             resource_manager=context.data["resource_manager"],
-            startup_snapshot=context.snapshot(),
+            settings_store=context.data["settings_store"],
+            session_store=SessionStore(context.paths.durable_session_dir),
+            recovery_manager=context.data["recovery_manager"],
         )
+        window = service.new_window()
+        window.set_startup_snapshot(context.snapshot())
         window.recover_startup_sessions()
         for path in request.files:
             try:
                 window.open_path(path)
             except Exception as error:
                 QMessageBox.critical(window, "Open Failed", f"{path}\n\n{error}")
+        context.data["service"] = service
         context.data["window"] = window
 
     def ready(context: StartupContext) -> None:

@@ -93,7 +93,8 @@ def test_closed_tab_cancels_full_eol_without_publishing(
         view = window.open_path(path)
         assert view is not None
         assert started.wait(1.0)
-        assert window._close_tab(window._tabs.indexOf(view), force=True)
+        tabs = window.panes.active_leaf.tabs
+        assert window._close_tab(tabs.indexOf(view), force=True)
         release.set()
         _pump_until(app, lambda: not window._eol_jobs)
 

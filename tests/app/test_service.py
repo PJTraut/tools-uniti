@@ -32,7 +32,12 @@ class RecordingRecoveryManager:
     def __init__(self, events: list[object] | None = None) -> None:
         self.events = events if events is not None else []
         self.detached: list[tuple[Document, bool]] = []
+        self.attached: list[Document] = []
         self.shutdown_count = 0
+
+    def attach(self, document: Document) -> None:
+        self.events.append(("attach", document.path.name))
+        self.attached.append(document)
 
     def detach(self, document: Document, *, clean: bool) -> None:
         self.events.append(("detach", document.path.name, clean))
@@ -100,6 +105,31 @@ def _service(
         recovery_manager=recovery or RecordingRecoveryManager(),
         session_capture=capture,
     )
+
+
+def _desktop_service(tmp_path: Path):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+
+    app = QApplication.instance() or QApplication([])
+    app.setQuitOnLastWindowClosed(True)
+    recovery = RecordingRecoveryManager()
+    service = UNITIService(
+        resource_manager=ResourceManager(max_workers=2),
+        settings_store=SettingsStore(tmp_path / "settings.json"),
+        session_store=RecordingSessionStore(),
+        recovery_manager=recovery,
+        session_capture=lambda clean: ("snapshot", clean),
+    )
+    return app, service, recovery
+
+
+def _stop_desktop_service(app, service: UNITIService) -> None:
+    if service.is_running:
+        service.request_quit(lambda _entry: QuitChoice.DISCARD)
+    app.processEvents()
 
 
 def test_quit_prompts_once_per_modified_document_shared_by_views(tmp_path: Path):
@@ -324,3 +354,295 @@ def test_publication_scheduler_keeps_active_and_only_latest_pending_snapshot():
 
     assert sessions.publications == ["first", "latest"]
     assert service.request_quit(lambda _item: QuitChoice.DISCARD) is True
+
+
+def test_one_service_owns_two_windows_one_document_and_one_find_panel(
+    tmp_path: Path,
+):
+    app, service, recovery = _desktop_service(tmp_path)
+    path = tmp_path / "shared.txt"
+    path.write_text("shared document", encoding="utf-8")
+    try:
+        first = service.new_window()
+        view_a = first.open_path(path)
+        assert view_a is not None
+        second = service.new_window()
+        view_b = second.open_existing_document(view_a.document)
+
+        assert view_a is not view_b
+        assert view_a.document is view_b.document
+        assert first.find_replace is second.find_replace is service.find_replace
+        assert recovery.attached == [view_a.document]
+
+        first.show()
+        second.show()
+        second.activateWindow()
+        view_b.setFocus()
+        app.processEvents()
+
+        assert service.active_view is view_b
+        assert service.find_replace._current_view() is view_b
+
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QApplication
+
+        QApplication.sendEvent(first, QEvent(QEvent.Type.WindowActivate))
+        assert service.active_view is view_a
+        assert service.find_replace._current_view() is view_a
+
+        first.close()
+        second.close()
+        app.processEvents()
+
+        assert service.window_count == 0
+        assert service.is_running is True
+        assert app.quitOnLastWindowClosed() is False
+    finally:
+        _stop_desktop_service(app, service)
+
+
+def test_duplicate_open_splits_and_moves_keep_one_document_authority(
+    tmp_path: Path,
+):
+    from PySide6.QtCore import QPoint
+
+    app, service, recovery = _desktop_service(tmp_path)
+    path = tmp_path / "split.txt"
+    path.write_text("split me", encoding="utf-8")
+    try:
+        window = service.new_window()
+        original = window.open_path(path)
+        assert original is not None
+
+        assert window.open_path(path) is original
+        assert service.window_count == 1
+        assert window.view_ids == (original.view_id,)
+
+        right = window.split_right()
+        assert right is not None
+        down = window.split_down()
+        assert down is not None
+        assert right.document is original.document
+        assert down.document is original.document
+        assert window.panes.leaf_count == 3
+
+        assert window.close_current_split() is True
+        assert window.view_for_id(down.view_id) is None
+        assert window.panes.leaf_count == 2
+        down = window.split_down()
+        assert down is not None
+
+        moved = window.move_current_to_new_window()
+        assert moved is not None
+        assert moved.current_view is down
+        assert window.view_for_id(down.view_id) is None
+        assert len(service.documents.entries[0].view_ids) == 3
+
+        window.panes.detach_view(right.view_id, QPoint(20, 30))
+        app.processEvents()
+        detached = service.most_recent_window
+        assert detached is not None
+        assert detached is not window and detached is not moved
+        assert detached.current_view is right
+        assert service.window_count == 3
+        assert recovery.attached == [original.document]
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_shared_view_closes_without_prompt_then_final_view_offers_save_cancel(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from PySide6.QtWidgets import QMessageBox
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "choices.txt"
+    path.write_text("body", encoding="utf-8")
+    first = service.new_window()
+    first_view = first.open_path(path)
+    assert first_view is not None
+    second = service.new_window()
+    final_view = second.open_existing_document(first_view.document)
+    final_view.state.move_document_end()
+    final_view.state.insert_text(" changed")
+    document = final_view.document
+    try:
+        monkeypatch.setattr(
+            QMessageBox,
+            "warning",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                AssertionError("a non-final shared view must not prompt")
+            ),
+        )
+        assert first.close_current() is True
+        assert document.read(0, document.total_chars()) == "body changed"
+        assert service.documents.entries[0].view_ids == (final_view.view_id,)
+
+        monkeypatch.setattr(
+            QMessageBox,
+            "warning",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Cancel,
+        )
+        assert second.close_current() is False
+        assert second.current_view is final_view
+        assert document.modified is True
+
+        monkeypatch.setattr(
+            QMessageBox,
+            "warning",
+            lambda *_args, **_kwargs: QMessageBox.StandardButton.Save,
+        )
+        assert second.close_current() is True
+        assert path.read_text(encoding="utf-8") == "body changed"
+        assert service.documents.entries[0].view_ids == ()
+        assert document.read(0, 4) == "body"
+    finally:
+        first.close()
+        second.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_discarding_the_final_view_retires_unsaved_document_and_recovery(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from PySide6.QtWidgets import QMessageBox
+
+    app, service, recovery = _desktop_service(tmp_path)
+    path = tmp_path / "discard.txt"
+    path.write_text("disk", encoding="utf-8")
+    window = service.new_window()
+    view = window.open_path(path)
+    assert view is not None
+    document = view.document
+    view.state.insert_text("local ")
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Discard,
+    )
+    try:
+        assert window.close_current() is True
+        assert service.documents.count == 0
+        assert recovery.detached[-1] == (document, True)
+        with pytest.raises(ValueError, match="closed"):
+            document.read(0, 1)
+        assert path.read_text(encoding="utf-8") == "disk"
+    finally:
+        window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_window_close_cancel_preserves_every_view_and_service_binding(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from PySide6.QtWidgets import QMessageBox
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    dirty_path = tmp_path / "dirty.txt"
+    clean_path = tmp_path / "clean.txt"
+    dirty_path.write_text("dirty", encoding="utf-8")
+    clean_path.write_text("clean", encoding="utf-8")
+    window = service.new_window()
+    dirty = window.open_path(dirty_path)
+    clean = window.open_path(clean_path)
+    assert dirty is not None and clean is not None
+    dirty.state.insert_text("local ")
+    before = window.view_ids
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda *_args, **_kwargs: QMessageBox.StandardButton.Cancel,
+    )
+    try:
+        window.show()
+        assert window.close() is False
+        app.processEvents()
+
+        assert window.view_ids == before
+        assert service.window_count == 1
+        assert service.documents.entry_for_view(dirty.view_id) is not None
+        assert service.documents.entry_for_view(clean.view_id) is not None
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_new_window_restores_a_bounded_shell_and_quit_action_routes_to_service(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from uniti.app.session import PaneRecord, WindowRecord
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    record = WindowRecord(
+        "restored-window",
+        (30, 40, 700, 500),
+        "normal",
+        PaneRecord(
+            "leaf",
+            "restored-pane",
+            view_ids=("pending-view",),
+            selected_view_id="pending-view",
+        ),
+    )
+    window = service.new_window(record)
+    calls = []
+    monkeypatch.setattr(
+        service,
+        "request_quit",
+        lambda choose: calls.append(choose) or True,
+    )
+    try:
+        assert window.window_id == record.window_id
+        assert window.panes.export_state() == record.root
+        assert window._tabs is window.panes.active_leaf.tabs
+
+        window._command_actions["file.quit"].trigger()
+
+        assert calls == [window._quit_choice]
+    finally:
+        window.close()
+        app.processEvents()
+        monkeypatch.undo()
+        _stop_desktop_service(app, service)
+
+
+def test_reload_replaces_shared_document_authority_in_every_view(tmp_path: Path):
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "reload-shared.txt"
+    path.write_text("before", encoding="utf-8")
+    first = service.new_window()
+    first_view = first.open_path(path)
+    assert first_view is not None
+    second = service.new_window()
+    second_view = second.open_existing_document(first_view.document)
+    original = first_view.document
+    path.write_text("after", encoding="utf-8")
+    try:
+        assert first.reload_current() is True
+
+        replacement = first_view.document
+        assert replacement is not original
+        assert second_view.document is replacement
+        assert service.documents.entries[0].document is replacement
+        assert replacement.read(0, replacement.total_chars()) == "after"
+        with pytest.raises(ValueError, match="closed"):
+            original.read(0, 1)
+    finally:
+        first.close_all_documents(force=True)
+        second.close_all_documents(force=True)
+        first.close()
+        second.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)

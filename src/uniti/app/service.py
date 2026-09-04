@@ -191,6 +191,14 @@ class UNITIService:
         self._publication_queue: _PublicationQueue | None = None
         self._publication_generation = 0
         self._running = True
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if isinstance(app, QApplication):
+                app.setQuitOnLastWindowClosed(False)
+        except (ImportError, ModuleNotFoundError):
+            pass
 
     @property
     def is_running(self) -> bool:
@@ -203,6 +211,27 @@ class UNITIService:
     @property
     def active_view(self) -> object | None:
         return self.windows.resolve_active_view()
+
+    @property
+    def most_recent_window(self) -> object | None:
+        return self.windows.most_recent_window
+
+    def new_window(self, record=None):
+        self._ensure_running()
+        if record is not None:
+            from uniti.app.session import WindowRecord
+
+            if not isinstance(record, WindowRecord):
+                raise TypeError("record must be a WindowRecord or None")
+        from uniti.ui.main_window import UNITIMainWindow
+
+        window = UNITIMainWindow(
+            self,
+            window_id=None if record is None else record.window_id,
+        )
+        if record is not None:
+            window.restore_window_record(record)
+        return window
 
     @property
     def find_replace(self) -> FindReplaceWindow:
@@ -249,10 +278,63 @@ class UNITIService:
     def set_active_view(self, window_id: str, view_id: str | None) -> None:
         self._ensure_running()
         self.windows.activate(window_id, view_id)
+        for candidate_id, window in self.windows.items:
+            sync = getattr(window, "set_global_panel_bindings_enabled", None)
+            if callable(sync):
+                sync(candidate_id == window_id)
+            activate_resources = getattr(window, "set_service_window_active", None)
+            if callable(activate_resources):
+                activate_resources(candidate_id == window_id)
         if view_id is not None and self.documents.entry_for_view(view_id) is not None:
             self.documents.activate_view(view_id)
         if self._find_replace is not None:
             self._find_replace.target_changed()
+
+    def focus_document(self, document_id: str) -> object | None:
+        self._ensure_running()
+        entry = self.documents.get(document_id)
+        for view_id in entry.view_ids:
+            window = self.windows.window_for_view(view_id)
+            if window is None:
+                continue
+            panes = getattr(window, "panes", None)
+            activate = getattr(panes, "activate_view", None)
+            if callable(activate):
+                activate(view_id)
+            self.set_active_view(getattr(window, "window_id"), view_id)
+            for method_name in ("show", "raise_", "activateWindow"):
+                method = getattr(window, method_name, None)
+                if callable(method):
+                    method()
+            resolver = getattr(window, "view_for_id", None)
+            return resolver(view_id) if callable(resolver) else None
+        return None
+
+    def move_view_to_new_window(self, view_id: str):
+        self._ensure_running()
+        source = self.windows.window_for_view(view_id)
+        if source is None:
+            raise KeyError(view_id)
+        take = getattr(source, "take_view_for_transfer", None)
+        if not callable(take):
+            raise TypeError("source window cannot transfer views")
+        window = self.new_window()
+        accept = getattr(window, "accept_transferred_view", None)
+        if not callable(accept):
+            raise TypeError("target window cannot accept views")
+        view = None
+        try:
+            view = take(view_id)
+            accept(view)
+        except Exception:
+            window.close()
+            if view is not None:
+                rollback = getattr(source, "accept_transferred_view", None)
+                if callable(rollback):
+                    rollback(view)
+            raise
+        window.show()
+        return window
 
     def capture_session(self, clean_shutdown: bool = False) -> SessionSnapshot:
         if not isinstance(clean_shutdown, bool):
@@ -329,10 +411,11 @@ class UNITIService:
             if decision.choice is QuitChoice.SAVE:
                 self.documents.get(decision.document_id).document.save()
 
-        if self._publication_queue is not None:
-            self._publication_queue.close_before_final_publication()
-        final_snapshot = self.capture_session(clean_shutdown=True)
-        self.sessions.publish(final_snapshot)
+        if self._session_capture is not None:
+            if self._publication_queue is not None:
+                self._publication_queue.close_before_final_publication()
+            final_snapshot = self.capture_session(clean_shutdown=True)
+            self.sessions.publish(final_snapshot)
 
         for entry in self.documents.entries:
             self.recovery.detach(entry.document, clean=True)
@@ -356,6 +439,14 @@ class UNITIService:
         self.recovery.shutdown()
         self.resources.shutdown(wait=True)
         self._running = False
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if isinstance(app, QApplication):
+                app.quit()
+        except (ImportError, ModuleNotFoundError):
+            pass
 
 
 __all__ = [

@@ -94,3 +94,21 @@ def test_view_order_follows_stable_window_then_window_local_order():
     manager.register("window-b", FakeWindow("view-c", "view-a"))
 
     assert manager.ordered_view_ids == ("view-b", "view-a", "view-c")
+
+
+def test_most_recent_window_and_view_lookup_follow_activation():
+    manager = WindowManager()
+    first = FakeWindow("view-a")
+    second = FakeWindow("view-b")
+    manager.register("window-a", first)
+    manager.register("window-b", second)
+
+    assert manager.most_recent_window is second
+    assert manager.window_id_for_view("view-a") == "window-a"
+    assert manager.window_for_view("view-b") is second
+
+    manager.activate("window-a", "view-a")
+
+    assert manager.most_recent_window is first
+    assert manager.window_id_for_view("missing") is None
+    assert manager.window_for_view("missing") is None

@@ -145,6 +145,7 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
     from uniti.ui.main_window import UNITIMainWindow
 
     app = QApplication.instance() or QApplication(["uniti-smoke"])
+    app.setQuitOnLastWindowClosed(True)
     window = UNITIMainWindow()
     try:
         view = window.open_path(source)

@@ -43,7 +43,7 @@ def test_progressive_save_as_locks_only_source_and_cancel_preserves_target(
     window = UNITIMainWindow()
     source = window.open_path(source_path)
     other = window.open_path(other_path)
-    window._tabs.setCurrentWidget(source)
+    window.panes.active_leaf.tabs.setCurrentWidget(source)
     monkeypatch.setattr(
         QMessageBox,
         "warning",
@@ -110,7 +110,7 @@ def test_progressive_save_as_commits_and_opens_target_tab(
         assert source.document.path == source_path
         assert window.current_view is not source
         assert window.current_view.document.path == target
-        assert window._tabs.count() == 2
+        assert window.panes.active_leaf.tabs.count() == 2
     finally:
         window.close_all_documents(force=True)
         window.close()
