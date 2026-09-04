@@ -19,3 +19,4 @@ Each record contains its date, status, context, decision, consequences, and affe
 | [ADR-0002](ADR-0002-document-authority-boundary.md) | accepted | UNITI's custom document engine owns text; Qt is presentation and input only. |
 | [ADR-0003](ADR-0003-regex-engine-authority.md) | accepted | Third-party Python `regex` is the sole authoritative regex engine. |
 | [ADR-0004](ADR-0004-a16-usability-boundary.md) | accepted | a16 keeps document authority in core while defining bounded focus-owned histories, floating F/R, mode separation, scoped commands, and no toolbar. |
+| [ADR-0005](ADR-0005-editor-layout-and-visibility-boundary.md) | accepted | Extend A20 panes with reversible view docking, one movable F/R dock, bounded whitespace overlays, and a separate contrast axis. |

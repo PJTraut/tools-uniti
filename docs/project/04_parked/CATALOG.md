@@ -1,15 +1,8 @@
 # UNITI Parked Capability Catalog
 
-Last reviewed: 2026-09-03
+Last reviewed: 2026-09-05
 
 These capabilities are intentionally outside the lean editor boundary described by [Current Scope](../01_current/SCOPE.md). They are recorded for later re-evaluation, not promised delivery.
-
-## Editor whitespace visualization and Unicode inspection
-
-- **Future capability:** Treat spaces, tabs, line endings, non-breaking spaces, zero-width characters, and related invisibles as optional editor-display overlays without inserting or changing document text. Add a keyboard command that reports the Unicode code point, name, category, and encoded representation for the selection or, when there is no selection, the preceding character or grapheme-aware unit.
-- **Why parked:** The feature needs an explicit display grammar, selection/preceding-character rule, grapheme-versus-code-point decision, shortcut ownership, accessibility behavior, and bounded rendering contract. It is intentionally excluded from a19 and is not part of a20 Recovery & Session scope.
-- **Known dependencies/risks:** visible-only viewport painting, tabs and mixed EOL presentation, combining sequences, surrogate-free Python/Qt coordinates, ambiguous zero-width markers, IME interaction, shortcut collisions, large-file performance, screen readers, and copy/paste remaining byte-for-byte unaffected.
-- **Re-evaluation trigger:** approve a focused editor-display milestone or incorporate the bounded behavior into a later usability milestone after a20 recovery ownership is stable.
 
 ## Project and workspace concepts
 
