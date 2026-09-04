@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import uuid
 import weakref
 
-from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QInputDialog,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QTabWidget,
     QVBoxLayout,
@@ -235,6 +236,9 @@ class UNITIMainWindow(QMainWindow):
         if service is not None:
             self._panes.viewSelected.connect(self._on_pane_view_selected)
         self._panes.viewCloseRequested.connect(self._close_view_id)
+        self._panes.splitRequested.connect(self._split_pane)
+        self._panes.assignmentRequested.connect(self._show_assignment_menu)
+        self._panes.dockToggleRequested.connect(self._toggle_view_dock)
         if service is not None:
             self._panes.viewDetachRequested.connect(
                 lambda view_id, _position: service.move_view_to_new_window(view_id)
@@ -783,16 +787,38 @@ class UNITIMainWindow(QMainWindow):
             self._show_save_error(exc)
             return False
 
-    def split_current(self, orientation: Qt.Orientation) -> UNITITextView | None:
-        view = self.current_view
-        if view is None or self._service is None:
+    def _split_pane(
+        self,
+        pane_id: str,
+        orientation: Qt.Orientation,
+    ) -> UNITITextView | None:
+        if self._service is None:
             return None
-        leaf = self._panes.split_view(view.view_id, orientation)
-        return self._add_document(
-            view.document,
-            attach_recovery=False,
-            pane_id=leaf.pane_id,
-        )
+        source_leaf = self._panes.leaf(pane_id)
+        view_id = source_leaf.selected_view_id
+        view = None if view_id is None else self.view_for_id(view_id)
+        if view is None:
+            return None
+        editor_snapshot = view.state.export_state()
+        new_leaf = None
+        try:
+            new_leaf = self._panes.split_view(view.view_id, orientation)
+            clone = self._add_document(
+                view.document,
+                attach_recovery=False,
+                pane_id=new_leaf.pane_id,
+            )
+        except ValueError as exc:
+            if new_leaf is not None:
+                self._panes.close_leaf(new_leaf.pane_id)
+            self.statusBar().showMessage(str(exc)[:256], 5000)
+            return None
+        clone.state.restore_state(editor_snapshot)
+        clone._state_changed()
+        return clone
+
+    def split_current(self, orientation: Qt.Orientation) -> UNITITextView | None:
+        return self._split_pane(self._panes.active_leaf.pane_id, orientation)
 
     def split_right(self) -> UNITITextView | None:
         return self.split_current(Qt.Orientation.Horizontal)
@@ -817,6 +843,74 @@ class UNITIMainWindow(QMainWindow):
         if view is None or self._service is None:
             return None
         return self._service.move_view_to_new_window(view.view_id)
+
+    def _toggle_view_dock(self, view_id: str) -> None:
+        if self._service is None:
+            return
+        view = self.view_for_id(view_id)
+        if view is None:
+            return
+        dock = getattr(self._service, "dock_view", None)
+        if view.dock_return is not None and callable(dock):
+            dock(view_id)
+            return
+        self._service.move_view_to_new_window(view_id)
+
+    def _show_assignment_menu(self, pane_id: str, position: QPoint) -> None:
+        if self._service is None:
+            return
+        entries = tuple(
+            entry for entry in self._service.documents.entries if entry.view_ids
+        )
+        name_counts: dict[str, int] = {}
+        for entry in entries:
+            name = entry.canonical_path.name
+            name_counts[name] = name_counts.get(name, 0) + 1
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        for entry in entries:
+            name = entry.canonical_path.name
+            label = (
+                name
+                if name_counts[name] == 1
+                else f"{name} — {entry.canonical_path.parent}"
+            )
+            action = menu.addAction(label)
+            action.triggered.connect(
+                lambda _checked=False, document_id=entry.document_id: (
+                    self.assign_document_to_pane(document_id, pane_id)
+                )
+            )
+        if not entries:
+            empty = menu.addAction("No Open Documents")
+            empty.setEnabled(False)
+        menu.popup(position)
+
+    def assign_document_to_pane(
+        self,
+        document_id: str,
+        pane_id: str,
+    ) -> UNITITextView:
+        if self._service is None:
+            raise RuntimeError("document assignment requires the UNITI service")
+        entry = self._service.documents.get(document_id)
+        leaf = self._panes.leaf(pane_id)
+        for view_id in leaf.view_ids:
+            if self._service.documents.entry_for_view(view_id) is entry:
+                leaf.select_view(view_id)
+                view = self.view_for_id(view_id)
+                if view is None:
+                    raise RuntimeError("assigned document view is unavailable")
+                return view
+        try:
+            return self._add_document(
+                entry.document,
+                attach_recovery=False,
+                pane_id=pane_id,
+            )
+        except ValueError as exc:
+            self.statusBar().showMessage(str(exc)[:256], 5000)
+            raise
 
     def _disconnect_view(self, view: UNITITextView) -> None:
         for signal in (

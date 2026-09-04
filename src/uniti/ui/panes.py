@@ -10,9 +10,11 @@ from PySide6.QtCore import QPoint, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QHBoxLayout,
     QSplitter,
     QTabBar,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -84,12 +86,76 @@ class _DetachableTabBar(QTabBar):
             self.detachRequested.emit(view_id, global_position)
 
 
+class PaneControlBar(QWidget):
+    """Compact, accessible controls sharing a pane's native tab row."""
+
+    splitRequested = Signal(Qt.Orientation)
+    assignmentRequested = Signal(QPoint)
+    dockToggleRequested = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(1)
+        self.dock_button = self._button("Undock Document", "↗")
+        self.split_right_button = self._button("Split Right", "⇹")
+        self.split_down_button = self._button("Split Down", "⇳")
+        self.assign_button = self._button("Assign Document", "+")
+        for button in (
+            self.dock_button,
+            self.split_right_button,
+            self.split_down_button,
+            self.assign_button,
+        ):
+            layout.addWidget(button)
+        self.dock_button.clicked.connect(self.dockToggleRequested)
+        self.split_right_button.clicked.connect(
+            lambda: self.splitRequested.emit(Qt.Orientation.Horizontal)
+        )
+        self.split_down_button.clicked.connect(
+            lambda: self.splitRequested.emit(Qt.Orientation.Vertical)
+        )
+        self.assign_button.clicked.connect(self._request_assignment)
+        self.set_view_available(False)
+
+    @staticmethod
+    def _button(accessible_name: str, text: str) -> QToolButton:
+        button = QToolButton()
+        button.setAutoRaise(True)
+        button.setText(text)
+        button.setAccessibleName(accessible_name)
+        button.setToolTip(accessible_name)
+        return button
+
+    def _request_assignment(self) -> None:
+        position = self.assign_button.mapToGlobal(
+            QPoint(0, self.assign_button.height())
+        )
+        self.assignmentRequested.emit(position)
+
+    def set_view_available(self, available: bool) -> None:
+        self.dock_button.setEnabled(available)
+        self.split_right_button.setEnabled(available)
+        self.split_down_button.setEnabled(available)
+
+    def set_dock_mode(self, mode: str) -> None:
+        labels = {"dock": "Dock Document", "undock": "Undock Document"}
+        label = labels.get(mode, "Dock Document")
+        self.dock_button.setEnabled(mode in labels)
+        self.dock_button.setAccessibleName(label)
+        self.dock_button.setToolTip(label)
+
+
 class PaneLeaf(QTabWidget):
     """One tab group. It publishes intent and never owns document lifetime."""
 
     activeViewChanged = Signal(object)
     viewCloseRequested = Signal(str)
     viewDetachRequested = Signal(str, QPoint)
+    splitRequested = Signal(str, Qt.Orientation)
+    assignmentRequested = Signal(str, QPoint)
+    dockToggleRequested = Signal(str)
 
     def __init__(
         self,
@@ -101,13 +167,23 @@ class PaneLeaf(QTabWidget):
         self.setProperty(_PANE_ID_PROPERTY, self.pane_id)
         self._parent_branch: _SplitNode | None = None
         self._selection_suppressed = False
+        self._dock_modes: dict[str, str] = {}
         tab_bar = _DetachableTabBar(self)
         self.setTabBar(tab_bar)
+        self.controls = PaneControlBar(self)
+        self.setCornerWidget(self.controls, Qt.Corner.TopRightCorner)
         self.setMovable(True)
         self.setTabsClosable(True)
         self.currentChanged.connect(self._publish_active_view)
         self.tabCloseRequested.connect(self._publish_close_request)
         tab_bar.detachRequested.connect(self.viewDetachRequested)
+        self.controls.splitRequested.connect(
+            lambda orientation: self.splitRequested.emit(self.pane_id, orientation)
+        )
+        self.controls.assignmentRequested.connect(
+            lambda position: self.assignmentRequested.emit(self.pane_id, position)
+        )
+        self.controls.dockToggleRequested.connect(self._publish_dock_request)
 
     @property
     def tabs(self) -> QTabWidget:
@@ -179,12 +255,15 @@ class PaneLeaf(QTabWidget):
         blocker = QSignalBlocker(self)
         inserted = self.insertTab(position, view, label)
         self.tabBar().setTabData(inserted, view_id)
+        self._dock_modes[view_id] = "undock"
         if select:
             self._selection_suppressed = False
             self.setCurrentIndex(inserted)
         del blocker
         if select or self.count() == 1:
             self._publish_active_view()
+        else:
+            self._refresh_controls()
         return inserted
 
     def add_placeholder(
@@ -218,8 +297,31 @@ class PaneLeaf(QTabWidget):
         title = self.tabText(index)
         selected = index == self.currentIndex()
         self.removeTab(index)
+        self._dock_modes.pop(view_id, None)
         widget.setParent(None)
+        self._refresh_controls()
         return widget, title, selected
+
+    def set_dock_mode(self, view_id: str, mode: str) -> None:
+        if mode not in {"dock", "undock"}:
+            raise ValueError("dock mode must be dock or undock")
+        if self.index_of(view_id) < 0:
+            raise KeyError(view_id)
+        self._dock_modes[view_id] = mode
+        self._refresh_controls()
+
+    def _refresh_controls(self) -> None:
+        selected = self.selected_view_id
+        available = selected is not None
+        self.controls.set_view_available(available)
+        self.controls.set_dock_mode(
+            "" if selected is None else self._dock_modes.get(selected, "undock")
+        )
+
+    def _publish_dock_request(self) -> None:
+        view_id = self.selected_view_id
+        if view_id is not None:
+            self.dockToggleRequested.emit(view_id)
 
     @staticmethod
     def _title_for(view: QWidget, view_id: str) -> str:
@@ -230,10 +332,12 @@ class PaneLeaf(QTabWidget):
 
     def _publish_active_view(self, _index: int = -1) -> None:
         self._selection_suppressed = False
+        self._refresh_controls()
         self.activeViewChanged.emit(self.active_view)
 
     def suppress_selection(self) -> None:
         self._selection_suppressed = True
+        self._refresh_controls()
         self.activeViewChanged.emit(None)
 
     def _publish_close_request(self, index: int) -> None:
@@ -262,6 +366,9 @@ class EditorPaneTree(QWidget):
     viewSelected = Signal(str)
     viewCloseRequested = Signal(str)
     viewDetachRequested = Signal(str, QPoint)
+    splitRequested = Signal(str, Qt.Orientation)
+    assignmentRequested = Signal(str, QPoint)
+    dockToggleRequested = Signal(str)
 
     def __init__(
         self,
@@ -284,6 +391,9 @@ class EditorPaneTree(QWidget):
         )
         leaf.viewCloseRequested.connect(self.viewCloseRequested)
         leaf.viewDetachRequested.connect(self.viewDetachRequested)
+        leaf.splitRequested.connect(self.splitRequested)
+        leaf.assignmentRequested.connect(self.assignmentRequested)
+        leaf.dockToggleRequested.connect(self.dockToggleRequested)
         return leaf
 
     def _make_split(
@@ -351,6 +461,10 @@ class EditorPaneTree(QWidget):
         return tuple(view_id for leaf in self._leaves() for view_id in leaf.view_ids)
 
     @property
+    def pane_ids(self) -> tuple[str, ...]:
+        return tuple(leaf.pane_id for leaf in self._leaves())
+
+    @property
     def active_view(self) -> QWidget | None:
         return self._active_leaf.active_view
 
@@ -383,10 +497,19 @@ class EditorPaneTree(QWidget):
             self.close_leaf(leaf.pane_id)
 
     def _leaf(self, pane_id: str) -> PaneLeaf:
+        return self.leaf(pane_id)
+
+    def leaf(self, pane_id: str) -> PaneLeaf:
         for leaf in self._leaves():
             if leaf.pane_id == pane_id:
                 return leaf
         raise KeyError(pane_id)
+
+    def set_dock_mode(self, view_id: str, mode: str) -> None:
+        leaf = self.leaf_for_view(view_id)
+        if leaf is None:
+            raise KeyError(view_id)
+        leaf.set_dock_mode(view_id, mode)
 
     def add_view(
         self,

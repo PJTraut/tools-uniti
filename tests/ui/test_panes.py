@@ -51,6 +51,41 @@ def _leaf_count(record: PaneRecord) -> int:
     return sum(_leaf_count(child) for child in record.children)
 
 
+def test_every_leaf_exposes_accessible_title_row_controls(qapp, three_views):
+    _document, views = three_views
+    tree = EditorPaneTree(pane_id="left")
+    tree.add_view(views[0])
+
+    controls = tree.first_leaf.controls
+
+    assert controls.dock_button.accessibleName() == "Undock Document"
+    assert controls.split_right_button.accessibleName() == "Split Right"
+    assert controls.split_down_button.accessibleName() == "Split Down"
+    assert controls.assign_button.accessibleName() == "Assign Document"
+    tree.set_dock_mode(views[0].view_id, "dock")
+    assert controls.dock_button.accessibleName() == "Dock Document"
+
+
+def test_control_requests_use_stable_pane_and_view_ids(qapp, three_views):
+    _document, views = three_views
+    tree = EditorPaneTree(pane_id="left")
+    tree.add_view(views[0])
+    split = QSignalSpy(tree.splitRequested)
+    dock = QSignalSpy(tree.dockToggleRequested)
+    assignment = QSignalSpy(tree.assignmentRequested)
+
+    tree.first_leaf.controls.split_right_button.click()
+    tree.first_leaf.controls.dock_button.click()
+    tree.first_leaf.controls.assign_button.click()
+
+    assert tree.pane_ids == ("left",)
+    assert tree.leaf("left") is tree.first_leaf
+    assert list(split.at(0)) == ["left", Qt.Orientation.Horizontal]
+    assert list(dock.at(0)) == [views[0].view_id]
+    assert assignment.at(0)[0] == "left"
+    assert isinstance(assignment.at(0)[1], QPoint)
+
+
 def test_split_tree_round_trip_and_empty_leaf_collapse(qapp, three_views):
     _document, views = three_views
     tree = EditorPaneTree(pane_id="left")

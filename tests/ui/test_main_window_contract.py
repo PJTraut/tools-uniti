@@ -168,6 +168,83 @@ def test_main_window_applies_and_preserves_editor_view_settings(tmp_path: Path):
     window.close()
 
 
+def test_pane_split_clones_view_state_and_assignment_is_non_destructive(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.service import UNITIService
+    from uniti.app.session_store import SessionStore
+    from uniti.app.settings import SettingsStore
+    from uniti.resources import ResourceManager
+
+    class Recovery:
+        def attach(self, _document, **_kwargs):
+            return None
+
+        def detach(self, _document, *, clean):
+            return None
+
+        def shutdown(self):
+            return None
+
+    app = QApplication.instance() or QApplication([])
+    first_path = tmp_path / "first.txt"
+    second_path = tmp_path / "second.txt"
+    first_path.write_text("first document", encoding="utf-8")
+    second_path.write_text("second document", encoding="utf-8")
+    service = UNITIService(
+        resource_manager=ResourceManager(max_workers=2),
+        settings_store=SettingsStore(tmp_path / "settings.json"),
+        session_store=SessionStore(tmp_path / "sessions"),
+        recovery_manager=Recovery(),
+    )
+    window = service.new_window()
+    first = window.open_path(first_path)
+    assert first is not None
+    first.state.move_to(2)
+    first.state.move_to(7, selecting=True)
+    first.set_zoom_percent(120)
+    expected_editor_state = first.state.export_state()
+
+    window.panes.first_leaf.controls.split_right_button.click()
+    app.processEvents()
+
+    clone = window.current_view
+    assert clone is not None
+    assert clone is not first
+    assert clone.document is first.document
+    assert clone.state.export_state() == expected_editor_state
+    assert service.documents.count == 1
+    assert window.panes.leaf_count == 2
+
+    second = window.open_path(second_path)
+    assert second is not None
+    left_id = window.panes.first_leaf.pane_id
+    count_before = len(window.views)
+
+    assigned = window.assign_document_to_pane(
+        service.documents.entry_for_view(second.view_id).document_id,
+        left_id,
+    )
+    selected_again = window.assign_document_to_pane(
+        service.documents.entry_for_view(second.view_id).document_id,
+        left_id,
+    )
+
+    assert assigned is selected_again
+    assert assigned.document is second.document
+    assert len(window.views) == count_before + 1
+    assert window.panes.first_leaf.selected_view_id == assigned.view_id
+    assert service.documents.count == 2
+    assert len(service.documents.entry_for_view(second.view_id).view_ids) == 2
+    service.request_quit(lambda _entry: None)
+    app.processEvents()
+
+
 def test_go_to_line_moves_to_one_based_line_and_rejects_invalid_target(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
