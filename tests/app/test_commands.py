@@ -5,6 +5,7 @@ from uniti.app.commands import (
     CommandDefinition,
     CommandRegistry,
     CommandScope,
+    PANE_COMMAND_DEFINITIONS,
     ShortcutCollision,
 )
 
@@ -86,3 +87,26 @@ def test_unknown_command_and_empty_definition_set_are_rejected():
         CommandRegistry(())
     with pytest.raises(KeyError):
         _registry().assign("missing", "Ctrl+M")
+
+
+def test_pane_and_multi_window_commands_have_stable_ids_and_scopes():
+    assert tuple(item.command_id for item in PANE_COMMAND_DEFINITIONS) == (
+        "window.new",
+        "view.split_right",
+        "view.split_down",
+        "view.close_split",
+        "view.move_new_window",
+    )
+    assert PANE_COMMAND_DEFINITIONS[0] == CommandDefinition(
+        "window.new",
+        "New Window",
+        CommandCategory.FILE,
+        CommandScope.WINDOW,
+        "Ctrl+Shift+N",
+    )
+    assert all(
+        item.category == CommandCategory.EDITOR_VIEW
+        and item.scope == CommandScope.EDITOR
+        and item.default_shortcut == ""
+        for item in PANE_COMMAND_DEFINITIONS[1:]
+    )
