@@ -684,6 +684,46 @@ def test_theme_menu_switches_persists_and_restores_system_palette(tmp_path: Path
         app.processEvents()
 
 
+def test_theme_contrast_toggle_is_independent_and_persisted(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import Settings, SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+    from uniti.ui.theme import active_theme
+
+    app = QApplication.instance() or QApplication([])
+    original_palette = QPalette(app.palette())
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(Settings(theme_mode="Dark", theme_contrast="High Contrast"))
+    window = None
+    try:
+        window = UNITIMainWindow(settings_store=store)
+        assert window._theme_actions["Dark"].isChecked() is True
+        assert window._high_contrast_action.isChecked() is True
+        assert active_theme(app).mode == "Dark"
+        assert active_theme(app).contrast == "High Contrast"
+
+        window._high_contrast_action.trigger()
+        assert store.load().theme_mode == "Dark"
+        assert store.load().theme_contrast == "Standard"
+
+        window.set_theme("Light")
+        window.set_theme_contrast("High Contrast")
+        assert store.load().theme_mode == "Light"
+        assert store.load().theme_contrast == "High Contrast"
+        assert active_theme(app).mode == "Light"
+        assert active_theme(app).contrast == "High Contrast"
+    finally:
+        if window is not None:
+            window.close()
+        app.setPalette(original_palette)
+        app.processEvents()
+
+
 def test_system_theme_refreshes_when_the_platform_palette_changes():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

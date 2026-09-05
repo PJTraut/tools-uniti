@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .atomic_json import atomic_write_json, preserve_invalid
 
-SETTINGS_SCHEMA = 2
+SETTINGS_SCHEMA = 3
 
 
 class UnsupportedSettingsSchema(ValueError):
@@ -22,6 +22,8 @@ class Settings:
     editor_zoom_percent: int = 100
     soft_wrap: bool = False
     theme_mode: str = "System"
+    theme_contrast: str = "Standard"
+    whitespace_mode: str = "off"
     find_replace_zoom_percent: int = 100
     find_replace_report_location: str = "Right"
     find_replace_geometry: tuple[int, int, int, int] | None = None
@@ -62,6 +64,18 @@ def _settings_from_payload(payload: object) -> Settings:
     theme_mode = payload.get("theme_mode", "System")
     if theme_mode not in {"System", "Light", "Dark"}:
         theme_mode = "System"
+    theme_contrast = payload.get("theme_contrast", "Standard")
+    if theme_contrast not in {"Standard", "High Contrast"}:
+        theme_contrast = "Standard"
+    whitespace_mode = payload.get("whitespace_mode", "off")
+    if whitespace_mode not in {
+        "off",
+        "eol",
+        "spaces_tabs",
+        "invisible_unicode",
+        "all",
+    }:
+        whitespace_mode = "off"
     find_replace_zoom_percent = payload.get("find_replace_zoom_percent", 100)
     if (
         not isinstance(find_replace_zoom_percent, int)
@@ -102,6 +116,8 @@ def _settings_from_payload(payload: object) -> Settings:
         editor_zoom_percent=editor_zoom_percent,
         soft_wrap=soft_wrap,
         theme_mode=theme_mode,
+        theme_contrast=theme_contrast,
+        whitespace_mode=whitespace_mode,
         find_replace_zoom_percent=find_replace_zoom_percent,
         find_replace_report_location=find_replace_report_location,
         find_replace_geometry=find_replace_geometry,

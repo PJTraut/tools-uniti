@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import weakref
 
 from PySide6.QtGui import QColor, QPalette
@@ -9,10 +10,40 @@ from PySide6.QtWidgets import QApplication
 
 
 THEME_MODES = ("System", "Light", "Dark")
+THEME_CONTRASTS = ("Standard", "High Contrast")
+
+
+@dataclass(frozen=True, slots=True)
+class EditorThemeTokens:
+    base: QColor
+    text: QColor
+    gutter_base: QColor
+    gutter_text: QColor
+    selection: QColor
+    selected_text: QColor
+    match: QColor
+    current_match: QColor
+    invalid_byte: QColor
+    space_marker: QColor
+    tab_marker: QColor
+    eol_marker: QColor
+    invisible_marker: QColor
+    invisible_background: QColor
+    invisible_border: QColor
+
+
+@dataclass(frozen=True, slots=True)
+class ThemeSpec:
+    mode: str
+    contrast: str
+    palette: QPalette
+    editor: EditorThemeTokens
 
 _system_app: weakref.ReferenceType[QApplication] | None = None
 _system_palette: QPalette | None = None
 _active_mode: str | None = None
+_active_contrast: str | None = None
+_active_spec: ThemeSpec | None = None
 
 
 def _remember_system_palette(app: QApplication) -> QPalette:
@@ -21,7 +52,8 @@ def _remember_system_palette(app: QApplication) -> QPalette:
     if (
         remembered_app is not app
         or _system_palette is None
-        or _active_mode in {None, "System"}
+        or _active_mode is None
+        or (_active_mode == "System" and _active_contrast == "Standard")
     ):
         _system_app = weakref.ref(app)
         _system_palette = QPalette(app.palette())
@@ -111,17 +143,183 @@ def _dark_palette(system_palette: QPalette) -> QPalette:
     return palette
 
 
-def apply_theme(app: QApplication, mode: str) -> None:
-    """Apply one of UNITI's supported palettes to the whole application."""
+def _high_contrast_palette(system_palette: QPalette, *, dark: bool) -> QPalette:
+    palette = QPalette(system_palette)
+    colors = (
+        {
+            QPalette.ColorRole.Window: "#000000",
+            QPalette.ColorRole.WindowText: "#ffffff",
+            QPalette.ColorRole.Base: "#000000",
+            QPalette.ColorRole.AlternateBase: "#101010",
+            QPalette.ColorRole.ToolTipBase: "#000000",
+            QPalette.ColorRole.ToolTipText: "#ffffff",
+            QPalette.ColorRole.Text: "#ffffff",
+            QPalette.ColorRole.Button: "#000000",
+            QPalette.ColorRole.ButtonText: "#ffffff",
+            QPalette.ColorRole.BrightText: "#ff8080",
+            QPalette.ColorRole.Highlight: "#66ccff",
+            QPalette.ColorRole.HighlightedText: "#000000",
+            QPalette.ColorRole.Link: "#66ccff",
+            QPalette.ColorRole.PlaceholderText: "#cfcfcf",
+        }
+        if dark
+        else {
+            QPalette.ColorRole.Window: "#ffffff",
+            QPalette.ColorRole.WindowText: "#000000",
+            QPalette.ColorRole.Base: "#ffffff",
+            QPalette.ColorRole.AlternateBase: "#f2f2f2",
+            QPalette.ColorRole.ToolTipBase: "#ffffff",
+            QPalette.ColorRole.ToolTipText: "#000000",
+            QPalette.ColorRole.Text: "#000000",
+            QPalette.ColorRole.Button: "#ffffff",
+            QPalette.ColorRole.ButtonText: "#000000",
+            QPalette.ColorRole.BrightText: "#8b0000",
+            QPalette.ColorRole.Highlight: "#003b80",
+            QPalette.ColorRole.HighlightedText: "#ffffff",
+            QPalette.ColorRole.Link: "#004c99",
+            QPalette.ColorRole.PlaceholderText: "#404040",
+        }
+    )
+    _set_colors(palette, colors)
+    disabled = "#b3b3b3" if dark else "#595959"
+    for role in (
+        QPalette.ColorRole.Text,
+        QPalette.ColorRole.WindowText,
+        QPalette.ColorRole.ButtonText,
+    ):
+        palette.setColor(
+            QPalette.ColorGroup.Disabled,
+            role,
+            QColor(disabled),
+        )
+    return palette
 
-    global _active_mode
-    if mode not in THEME_MODES:
-        mode = "System"
-    system_palette = _remember_system_palette(app)
-    if mode == "Light":
-        app.setPalette(_light_palette(system_palette))
-    elif mode == "Dark":
-        app.setPalette(_dark_palette(system_palette))
+
+def _relative_luminance(color: QColor) -> float:
+    channels = []
+    for value in color.getRgbF()[:3]:
+        channels.append(
+            value / 12.92
+            if value <= 0.04045
+            else ((value + 0.055) / 1.055) ** 2.4
+        )
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _editor_tokens(
+    palette: QPalette,
+    *,
+    dark: bool,
+    high_contrast: bool,
+) -> EditorThemeTokens:
+    def role(selected: QPalette.ColorRole) -> QColor:
+        return QColor(palette.color(selected))
+
+    if high_contrast and dark:
+        markers = ("#cfcfcf", "#ffffff", "#66ccff", "#ff80ff")
+        invisible_background = QColor("#240024")
+    elif high_contrast:
+        markers = ("#595959", "#404040", "#004c99", "#700070")
+        invisible_background = QColor("#fff2cc")
+    elif dark:
+        markers = ("#8b949e", "#a5b4c3", "#79c0ff", "#ffa198")
+        invisible_background = QColor("#2d1b20")
     else:
-        app.setPalette(system_palette)
-    _active_mode = mode
+        markers = ("#667085", "#475467", "#075fd8", "#7a271a")
+        invisible_background = QColor("#fffaeb")
+    match = role(QPalette.ColorRole.Highlight)
+    match.setAlpha(120)
+    current_match = QColor("#ffbf00" if dark else "#b54708")
+    return EditorThemeTokens(
+        base=role(QPalette.ColorRole.Base),
+        text=role(QPalette.ColorRole.Text),
+        gutter_base=role(QPalette.ColorRole.AlternateBase),
+        gutter_text=role(QPalette.ColorRole.PlaceholderText),
+        selection=role(QPalette.ColorRole.Highlight),
+        selected_text=role(QPalette.ColorRole.HighlightedText),
+        match=match,
+        current_match=current_match,
+        invalid_byte=role(QPalette.ColorRole.BrightText),
+        space_marker=QColor(markers[0]),
+        tab_marker=QColor(markers[1]),
+        eol_marker=QColor(markers[2]),
+        invisible_marker=QColor(markers[3]),
+        invisible_background=invisible_background,
+        invisible_border=QColor(markers[3]),
+    )
+
+
+def build_theme(
+    system_palette: QPalette,
+    mode: str,
+    contrast: str,
+) -> ThemeSpec:
+    selected_mode = mode if mode in THEME_MODES else "System"
+    selected_contrast = (
+        contrast if contrast in THEME_CONTRASTS else "Standard"
+    )
+    system = QPalette(system_palette)
+    if selected_contrast == "High Contrast":
+        dark = selected_mode == "Dark" or (
+            selected_mode == "System"
+            and _relative_luminance(
+                system.color(QPalette.ColorRole.Base)
+            ) < 0.5
+        )
+        palette = _high_contrast_palette(system, dark=dark)
+    elif selected_mode == "Light":
+        dark = False
+        palette = _light_palette(system)
+    elif selected_mode == "Dark":
+        dark = True
+        palette = _dark_palette(system)
+    else:
+        palette = system
+        dark = _relative_luminance(
+            palette.color(QPalette.ColorRole.Base)
+        ) < 0.5
+    return ThemeSpec(
+        mode=selected_mode,
+        contrast=selected_contrast,
+        palette=palette,
+        editor=_editor_tokens(
+            palette,
+            dark=dark,
+            high_contrast=selected_contrast == "High Contrast",
+        ),
+    )
+
+
+def apply_theme(
+    app: QApplication,
+    mode: str,
+    contrast: str = "Standard",
+) -> ThemeSpec:
+    """Apply one complete UNITI theme specification to the application."""
+
+    global _active_mode, _active_contrast, _active_spec
+    system_palette = _remember_system_palette(app)
+    spec = build_theme(system_palette, mode, contrast)
+    app.setPalette(spec.palette)
+    _active_mode = spec.mode
+    _active_contrast = spec.contrast
+    _active_spec = spec
+    return spec
+
+
+def active_theme(app: QApplication) -> ThemeSpec:
+    active_app = _system_app() if _system_app is not None else None
+    if active_app is app and _active_spec is not None:
+        return _active_spec
+    return build_theme(_remember_system_palette(app), "System", "Standard")
+
+
+__all__ = [
+    "EditorThemeTokens",
+    "THEME_CONTRASTS",
+    "THEME_MODES",
+    "ThemeSpec",
+    "active_theme",
+    "apply_theme",
+    "build_theme",
+]

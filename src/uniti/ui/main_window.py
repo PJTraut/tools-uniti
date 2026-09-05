@@ -87,7 +87,7 @@ from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.panes import EditorPaneTree
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
-from uniti.ui.theme import THEME_MODES, apply_theme
+from uniti.ui.theme import THEME_CONTRASTS, THEME_MODES, ThemeSpec, apply_theme
 
 if TYPE_CHECKING:
     from uniti.app.service import UNITIService
@@ -209,7 +209,11 @@ class UNITIMainWindow(QMainWindow):
         )
         app = QApplication.instance()
         if isinstance(app, QApplication):
-            apply_theme(app, self._settings.theme_mode)
+            apply_theme(
+                app,
+                self._settings.theme_mode,
+                self._settings.theme_contrast,
+            )
         self._command_registry = CommandRegistry(
             _command_definitions(),
             overrides=self._settings.shortcut_overrides,
@@ -395,14 +399,58 @@ class UNITIMainWindow(QMainWindow):
     def set_theme(self, mode: str) -> None:
         if mode not in THEME_MODES:
             return
-        action = getattr(self, "_theme_actions", {}).get(mode)
-        if action is not None:
-            action.setChecked(True)
         app = QApplication.instance()
+        spec = None
         if isinstance(app, QApplication):
-            apply_theme(app, mode)
-        self._settings = dataclass_replace(self._settings, theme_mode=mode)
+            spec = apply_theme(app, mode, self._settings.theme_contrast)
+        for window in self._appearance_windows():
+            action = getattr(window, "_theme_actions", {}).get(mode)
+            if action is not None:
+                action.setChecked(True)
+            window._settings = dataclass_replace(
+                window._settings,
+                theme_mode=mode,
+            )
+        if spec is not None:
+            self._propagate_theme_tokens(spec)
         self._save_settings()
+
+    def set_theme_contrast(self, contrast: str) -> None:
+        if contrast not in THEME_CONTRASTS:
+            return
+        app = QApplication.instance()
+        spec = None
+        if isinstance(app, QApplication):
+            spec = apply_theme(app, self._settings.theme_mode, contrast)
+        for window in self._appearance_windows():
+            action = getattr(window, "_high_contrast_action", None)
+            if action is not None:
+                blocked = action.blockSignals(True)
+                action.setChecked(contrast == "High Contrast")
+                action.blockSignals(blocked)
+            window._settings = dataclass_replace(
+                window._settings,
+                theme_contrast=contrast,
+            )
+        if spec is not None:
+            self._propagate_theme_tokens(spec)
+        self._save_settings()
+
+    def _appearance_windows(self) -> tuple[UNITIMainWindow, ...]:
+        if self._service is None:
+            return (self,)
+        return tuple(
+            window
+            for window in self._service.windows.windows
+            if isinstance(window, UNITIMainWindow)
+        )
+
+    def _propagate_theme_tokens(self, spec: ThemeSpec) -> None:
+        for window in self._appearance_windows():
+            for view in window.views:
+                setter = getattr(view, "set_theme_tokens", None)
+                if callable(setter):
+                    setter(spec.editor)
 
     def _on_command_binding_changed(self, command_id: str, shortcut: str) -> None:
         action = self._command_actions.get(command_id)
@@ -648,6 +696,18 @@ class UNITIMainWindow(QMainWindow):
             theme_menu.addAction(action)
             self._theme_actions[mode] = action
         self._theme_group = theme_group
+        theme_menu.addSeparator()
+        self._high_contrast_action = QAction("High Contrast", self)
+        self._high_contrast_action.setCheckable(True)
+        self._high_contrast_action.setChecked(
+            self._settings.theme_contrast == "High Contrast"
+        )
+        self._high_contrast_action.toggled.connect(
+            lambda enabled: self.set_theme_contrast(
+                "High Contrast" if enabled else "Standard"
+            )
+        )
+        theme_menu.addAction(self._high_contrast_action)
 
         editor_view_menu = view_menu.addMenu("&Editor View")
         editor_view_menu.addAction(
