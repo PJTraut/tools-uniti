@@ -375,6 +375,87 @@ def test_service_owns_one_lazy_find_replace_panel(tmp_path: Path):
     app.processEvents()
 
 
+def test_global_find_replace_attachment_follows_active_window_and_survives_hosts(
+    tmp_path: Path,
+):
+    app, service, _recovery = _desktop_service(tmp_path)
+    first = service.new_window()
+    second = service.new_window()
+    panel = service.find_replace
+    try:
+        panel.find_input.set_text("needle")
+        panel.replace_input.set_text("replacement")
+        service.set_active_view(first.window_id, None)
+        service.attach_find_replace()
+        app.processEvents()
+
+        assert panel.parentWidget() is first
+        assert panel.placement == "attached"
+        assert first.find_replace is second.find_replace is panel
+
+        service.set_active_view(second.window_id, None)
+        app.processEvents()
+
+        assert service.find_replace is panel
+        assert panel.parentWidget() is second
+        assert panel.placement == "attached"
+        assert panel.find_input.text() == "needle"
+        assert panel.replace_input.text() == "replacement"
+
+        second.close()
+        app.processEvents()
+
+        assert service.window_count == 1
+        assert panel.parentWidget() is first
+        assert panel.placement == "attached"
+
+        first.close()
+        app.processEvents()
+
+        assert service.window_count == 0
+        assert panel.parentWidget() is None
+        assert panel.isHidden() is True
+        assert panel.placement == "attached"
+
+        replacement_host = service.new_window()
+        app.processEvents()
+        assert panel.parentWidget() is replacement_host
+        assert panel.placement == "attached"
+    finally:
+        _stop_desktop_service(app, service)
+
+
+def test_detached_global_find_replace_stays_put_and_new_window_does_not_hide_it(
+    tmp_path: Path,
+):
+    app, service, _recovery = _desktop_service(tmp_path)
+    first = service.new_window()
+    first.show()
+    panel = service.find_replace
+    try:
+        service.set_active_view(first.window_id, None)
+        toggle = first._command_actions["find.toggle_attachment"]
+        toggle.trigger()
+        assert panel.placement == "attached"
+        toggle.trigger()
+        assert panel.placement == "detached"
+        panel.show()
+        app.processEvents()
+        detached_parent = panel.parentWidget()
+
+        second = service.new_window()
+        second.show()
+        service.set_active_view(second.window_id, None)
+        app.processEvents()
+
+        assert service.find_replace is panel
+        assert panel.placement == "detached"
+        assert panel.parentWidget() is detached_parent
+        assert panel.isVisible() is True
+    finally:
+        _stop_desktop_service(app, service)
+
+
 class BlockingSessionStore(RecordingSessionStore):
     def __init__(self) -> None:
         super().__init__()

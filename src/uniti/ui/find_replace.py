@@ -422,6 +422,33 @@ class FindReplaceWindow(QDockWidget):
         self._set_placement("detached")
         self.show()
 
+    def release_from(self, host: QMainWindow) -> None:
+        if not isinstance(host, QMainWindow):
+            raise TypeError("find/replace host must be a QMainWindow")
+        if self.parentWidget() is not host and self._dock_host is not host:
+            return
+        was_visible = not self.isHidden()
+        if self._placement == "detached":
+            self._detached_geometry = self._geometry_tuple(self)
+        self._changing_placement = True
+        try:
+            self.hide()
+            host.removeDockWidget(self)
+            self.setParent(None)
+            self._dock_host = None
+            if self._placement == "detached":
+                self.setWindowFlag(Qt.WindowType.Tool, True)
+                self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+                self.setAttribute(
+                    Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow,
+                    True,
+                )
+                self.setGeometry(*self._detached_geometry)
+        finally:
+            self._changing_placement = False
+        if was_visible and self._placement == "detached":
+            self.show()
+
     @property
     def zoom_percent(self) -> int:
         return self._zoom_percent
@@ -617,7 +644,7 @@ class FindReplaceWindow(QDockWidget):
             regex=self.regex_checkbox.isChecked(),
             case_sensitive=self.case_sensitive_checkbox.isChecked(),
             whole_word=self.whole_word_checkbox.isChecked(),
-            visible=self.isVisible(),
+            visible=not self.isHidden(),
             geometry=self._detached_geometry,
             zoom_percent=self.zoom_percent,
             report_visible=self._report_open,

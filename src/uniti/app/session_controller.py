@@ -334,9 +334,15 @@ class SessionController:
         self._updated_at = manifest.updated_at
         for record in manifest.windows:
             service.new_window(record)
-        service.find_replace.restore_state(
-            merge_find_replace_history(manifest.find_replace, find_replace_pack)
+        find_record = merge_find_replace_history(
+            manifest.find_replace,
+            find_replace_pack,
         )
+        service.find_replace.restore_state(find_record)
+        if find_record.placement == "attached":
+            service.attach_find_replace()
+        else:
+            service.detach_find_replace()
 
     def _document_id_for_view(self, view_id: str | None) -> str | None:
         if view_id is None:

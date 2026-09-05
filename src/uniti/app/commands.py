@@ -70,6 +70,15 @@ PANE_COMMAND_DEFINITIONS = (
 )
 
 
+FIND_REPLACE_DOCK_COMMAND_DEFINITION = CommandDefinition(
+    "find.toggle_attachment",
+    "Attach/Detach Find & Replace",
+    CommandCategory.FIND_REPLACE_VIEW,
+    CommandScope.FIND_REPLACE,
+    "",
+)
+
+
 class ShortcutCollision(ValueError):
     def __init__(
         self,

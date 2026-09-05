@@ -32,6 +32,7 @@ from uniti.app.commands import (
     CommandDefinition,
     CommandRegistry,
     CommandScope,
+    FIND_REPLACE_DOCK_COMMAND_DEFINITION,
     PANE_COMMAND_DEFINITIONS,
 )
 from uniti.app.editor_state import EditorState
@@ -134,7 +135,7 @@ def _command_definitions() -> tuple[CommandDefinition, ...]:
         CommandDefinition("find.zoom_out", "Zoom Out", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
         CommandDefinition("find.zoom_reset", "Reset Zoom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+0"),
         CommandDefinition("find.report_cycle", "Toggle Match Report", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+Alt+R"),
-    ) + PANE_COMMAND_DEFINITIONS
+    ) + PANE_COMMAND_DEFINITIONS + (FIND_REPLACE_DOCK_COMMAND_DEFINITION,)
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,15 +266,16 @@ class UNITIMainWindow(QMainWindow):
         ):
             field.installEventFilter(self)
             field.viewport().installEventFilter(self)
-        self._find_replace.hide()
-        self._find_replace.set_zoom_percent(
-            self._settings.find_replace_zoom_percent
-        )
-        self._find_replace.set_report_location(
-            self._settings.find_replace_report_location
-        )
-        if self._settings.find_replace_geometry is not None:
-            self._find_replace.setGeometry(*self._settings.find_replace_geometry)
+        if service is None:
+            self._find_replace.hide()
+            self._find_replace.set_zoom_percent(
+                self._settings.find_replace_zoom_percent
+            )
+            self._find_replace.set_report_location(
+                self._settings.find_replace_report_location
+            )
+            if self._settings.find_replace_geometry is not None:
+                self._find_replace.setGeometry(*self._settings.find_replace_geometry)
         self.setCentralWidget(central)
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
@@ -693,6 +695,13 @@ class UNITIMainWindow(QMainWindow):
         )
 
         find_view_menu = view_menu.addMenu("F/R &View")
+        find_view_menu.addAction(
+            self._command_action(
+                "find.toggle_attachment",
+                self.toggle_find_replace_attachment,
+            )
+        )
+        find_view_menu.addSeparator()
         find_view_menu.addAction(
             self._command_action("find.zoom_in", self._find_replace.zoom_in)
         )
@@ -2585,10 +2594,37 @@ class UNITIMainWindow(QMainWindow):
         return True
 
     def show_find(self) -> None:
-        self._find_replace.focus_find()
+        if self._service is not None:
+            self._service.focus_find()
+        else:
+            self._find_replace.focus_find()
 
     def show_replace(self) -> None:
-        self._find_replace.focus_replace()
+        if self._service is not None:
+            self._service.focus_replace()
+        else:
+            self._find_replace.focus_replace()
+
+    def toggle_find_replace_attachment(self) -> None:
+        if self._service is not None:
+            self._service.toggle_find_replace_attachment()
+        elif self._find_replace.placement == "attached":
+            self._find_replace.detach()
+        else:
+            self._find_replace.attach_to(self)
+
+    def host_find_replace(self, panel: FindReplaceWindow) -> None:
+        if not isinstance(panel, FindReplaceWindow):
+            raise TypeError("panel must be a FindReplaceWindow")
+        was_visible = not panel.isHidden()
+        panel.attach_to(self)
+        if was_visible:
+            panel.show()
+
+    def release_find_replace(self, panel: FindReplaceWindow) -> None:
+        if not isinstance(panel, FindReplaceWindow):
+            raise TypeError("panel must be a FindReplaceWindow")
+        panel.release_from(self)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self._service is not None:

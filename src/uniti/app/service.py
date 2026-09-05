@@ -238,6 +238,7 @@ class UNITIService:
         self._last_quit_error: str | None = None
         self._quitting = False
         self._find_replace: FindReplaceWindow | None = None
+        self._find_replace_placement = "detached"
         self._publication_queue: _PublicationQueue | None = None
         self._publication_generation = 0
         self._last_recovery_errors: tuple[str, ...] = ()
@@ -305,7 +306,77 @@ class UNITIService:
                 lambda: self.active_view,
                 resource_manager=self.resources,
             )
+            self._find_replace.placementChanged.connect(
+                self._record_find_replace_placement
+            )
+            load_settings = getattr(self.settings, "load", None)
+            if callable(load_settings):
+                settings = load_settings()
+                self._find_replace.set_zoom_percent(
+                    settings.find_replace_zoom_percent
+                )
+                self._find_replace.set_report_location(
+                    settings.find_replace_report_location
+                )
+                if settings.find_replace_geometry is not None:
+                    self._find_replace.setGeometry(
+                        *settings.find_replace_geometry
+                    )
+            self._find_replace.hide()
         return self._find_replace
+
+    def _record_find_replace_placement(self, placement: str) -> None:
+        if placement not in {"attached", "detached"}:
+            raise ValueError(f"unsupported find/replace placement: {placement}")
+        self._find_replace_placement = placement
+
+    def attach_find_replace(self) -> None:
+        self._ensure_running()
+        self._find_replace_placement = "attached"
+        self._sync_find_replace_host()
+
+    def detach_find_replace(self) -> None:
+        self._ensure_running()
+        self._find_replace_placement = "detached"
+        panel = self.find_replace
+        was_hidden = panel.isHidden()
+        panel.detach()
+        if was_hidden:
+            panel.hide()
+
+    def toggle_find_replace_attachment(self) -> None:
+        if self._find_replace_placement == "attached":
+            self.detach_find_replace()
+        else:
+            self.attach_find_replace()
+
+    def _sync_find_replace_host(self) -> None:
+        panel = self._find_replace
+        if panel is None or self._find_replace_placement != "attached":
+            return
+        window = self.windows.active_window or self.windows.most_recent_window
+        if window is None:
+            parent = panel.parentWidget()
+            release = getattr(parent, "release_find_replace", None)
+            if callable(release):
+                release(panel)
+            else:
+                panel.hide()
+                panel.setParent(None)
+            return
+        host = getattr(window, "host_find_replace", None)
+        if callable(host):
+            host(panel)
+
+    def focus_find(self) -> None:
+        panel = self.find_replace
+        self._sync_find_replace_host()
+        panel.focus_find()
+
+    def focus_replace(self) -> None:
+        panel = self.find_replace
+        self._sync_find_replace_host()
+        panel.focus_replace()
 
     @property
     def last_publication_error(self) -> Exception | None:
@@ -708,11 +779,18 @@ class UNITIService:
     def register_window(self, window_id: str, window: object) -> None:
         self._ensure_running()
         self.windows.register(window_id, window)
+        self._sync_find_replace_host()
 
     def unregister_window(self, window_id: str) -> object:
         self._ensure_running()
         window = self.windows.unregister(window_id)
         if self._find_replace is not None:
+            if self._find_replace_placement == "attached" and self.window_count:
+                self._sync_find_replace_host()
+            elif self._find_replace.parentWidget() is window:
+                release = getattr(window, "release_find_replace", None)
+                if callable(release):
+                    release(self._find_replace)
             self._find_replace.target_changed()
             if self.window_count == 0:
                 self._find_replace.hide()
@@ -731,6 +809,7 @@ class UNITIService:
         if view_id is not None and self.documents.entry_for_view(view_id) is not None:
             self.documents.activate_view(view_id)
         if self._find_replace is not None:
+            self._sync_find_replace_host()
             self._find_replace.target_changed()
 
     def focus_document(self, document_id: str) -> object | None:

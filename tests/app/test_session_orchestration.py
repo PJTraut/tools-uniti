@@ -637,6 +637,7 @@ def test_restore_shell_then_active_document_round_trips_history_views_and_panel(
             True,
             "active-view",
             None,
+            placement="attached",
         ),
         packs=(),
     )
@@ -700,6 +701,8 @@ def test_restore_shell_then_active_document_round_trips_history_views_and_panel(
     )
     assert service.find_replace.export_state("active-view").find == find_history
     assert service.find_replace.export_state("active-view").replace == replace_history
+    assert service.find_replace.placement == "attached"
+    assert service.find_replace.parentWidget() is restored_window
     assert service.capture_session(clean_shutdown=True) == SessionSnapshot(
         loaded.manifest,
         loaded.packs,

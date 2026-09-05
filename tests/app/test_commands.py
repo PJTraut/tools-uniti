@@ -5,6 +5,7 @@ from uniti.app.commands import (
     CommandDefinition,
     CommandRegistry,
     CommandScope,
+    FIND_REPLACE_DOCK_COMMAND_DEFINITION,
     PANE_COMMAND_DEFINITIONS,
     ShortcutCollision,
 )
@@ -109,4 +110,14 @@ def test_pane_and_multi_window_commands_have_stable_ids_and_scopes():
         and item.scope == CommandScope.EDITOR
         and item.default_shortcut == ""
         for item in PANE_COMMAND_DEFINITIONS[1:]
+    )
+
+
+def test_find_replace_attachment_command_has_one_stable_definition():
+    assert FIND_REPLACE_DOCK_COMMAND_DEFINITION == CommandDefinition(
+        "find.toggle_attachment",
+        "Attach/Detach Find & Replace",
+        CommandCategory.FIND_REPLACE_VIEW,
+        CommandScope.FIND_REPLACE,
+        "",
     )
