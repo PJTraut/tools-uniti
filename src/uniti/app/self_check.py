@@ -51,6 +51,7 @@ from uniti.resources import (
 
 from .capabilities import CapabilityStatus, probe_filesystem, probe_runtime
 from .paths import AppPaths
+from .platform_policy import PlatformFamily
 from .recovery_manager import RecoveryManager
 from .settings import SETTINGS_SCHEMA, SettingsStore
 from .setup_state import SetupStateStore
@@ -212,8 +213,43 @@ class SelfCheckRunner:
             raise RuntimeError("Python 3.12+ is required")
         if marker.status is not CapabilityStatus.AVAILABLE:
             raise RuntimeError(marker.reason)
+        python_details = results["python"].details
+        marker_mode = marker.details.get("mode")
         return "runtime and ownership marker are valid", {
-            key: result.as_dict() for key, result in results.items()
+            "python": {
+                "version": python_details.get("version"),
+                "implementation": python_details.get("implementation"),
+                "architecture": python_details.get("architecture"),
+            },
+            "memory": {
+                "status": results["memory"].status.value,
+                "physical_bytes": results["memory"].details.get("physical_bytes"),
+                "available_bytes": results["memory"].details.get("available_bytes"),
+                "effective_available_bytes": results["memory"].details.get(
+                    "effective_available_bytes"
+                ),
+            },
+            "cpu": {
+                "status": results["cpu"].status.value,
+                "logical_count": results["cpu"].details.get("logical_count"),
+            },
+            "disk": {
+                "status": results["disk"].status.value,
+                "free_bytes": results["disk"].details.get("free_bytes"),
+            },
+            "file_handles": {
+                "status": results["file_handles"].status.value,
+                "soft": results["file_handles"].details.get("soft"),
+                "hard": results["file_handles"].details.get("hard"),
+            },
+            "environment_marker": {
+                "owned": True,
+                "mode": (
+                    marker_mode
+                    if marker_mode in {"source", "local"}
+                    else "unknown"
+                ),
+            },
         }
 
     def _dependencies(self) -> tuple[str, Mapping[str, object]]:
@@ -252,11 +288,47 @@ class SelfCheckRunner:
             except FileNotFoundError:
                 pass
         return "application-owned paths are writable", {
-            "config": str(self.paths.config_dir),
-            "data": str(self.paths.data_dir),
-            "state": str(self.paths.state_dir),
-            "cache": str(self.paths.cache_dir),
+            "category": self._path_category(self.paths.family),
+            "config": self._path_facts(self.paths.config_dir),
+            "data": self._path_facts(self.paths.data_dir),
+            "state": self._path_facts(self.paths.state_dir),
+            "cache": self._path_facts(self.paths.cache_dir),
         }
+
+    @staticmethod
+    def _path_category(family: PlatformFamily) -> str:
+        return {
+            PlatformFamily.MACOS: "macos-library",
+            PlatformFamily.WINDOWS: "windows-local-app-data",
+            PlatformFamily.LINUX: "linux-xdg/home-fallback",
+        }[family]
+
+    @staticmethod
+    def _path_facts(path: Path) -> dict[str, bool]:
+        return {
+            "absolute": path.is_absolute(),
+            "writable": path.is_dir() and os.access(path, os.W_OK),
+        }
+
+    @staticmethod
+    def _bounded_label(value: object, *, fallback: str = "unknown") -> str:
+        if not isinstance(value, str) or not value:
+            return fallback
+        selected = "".join(
+            character if character.isprintable() else "?"
+            for character in value
+        )
+        return selected[:128] or fallback
+
+    def _launcher_mode(self) -> str:
+        try:
+            payload = json.loads(self.marker_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return "unknown"
+        if not isinstance(payload, dict):
+            return "unknown"
+        mode = payload.get("mode")
+        return mode if mode in {"source", "local"} else "unknown"
 
     def _schemas(self) -> tuple[str, Mapping[str, object]]:
         setup = SetupStateStore(self.paths.setup_state_file).prepare()
@@ -986,11 +1058,121 @@ class SelfCheckRunner:
                 raise RuntimeError("Qt application probe failed")
             if results["font"].status is not CapabilityStatus.AVAILABLE:
                 raise RuntimeError("required fixed font coverage is unavailable")
-            details = {key: value.as_dict() for key, value in results.items()}
+            qt_details = results["qt"].details
+            font_details = results["font"].details
+            details = {
+                "qt": {
+                    "status": results["qt"].status.value,
+                    "pyside_version": qt_details.get("pyside_version"),
+                    "qt_version": qt_details.get("qt_version"),
+                    "platform_plugin": qt_details.get("platform_plugin"),
+                },
+                "font": {
+                    "status": results["font"].status.value,
+                    "requested_family": SelfCheckRunner._bounded_label(
+                        font_details.get("requested_family")
+                    ),
+                    "resolved_family": SelfCheckRunner._bounded_label(
+                        font_details.get("resolved_family")
+                    ),
+                    "fixed_pitch": font_details.get("fixed_pitch") is True,
+                    "latin_coverage": font_details.get("latin_coverage") is True,
+                    "cyrillic_coverage": (
+                        font_details.get("cyrillic_coverage") is True
+                    ),
+                    "fallback": font_details.get("fallback") is True,
+                },
+                "clipboard": {
+                    "status": results["clipboard"].status.value,
+                    "selection_supported": results["clipboard"].details.get(
+                        "selection_supported"
+                    )
+                    is True,
+                },
+                "input_method": {
+                    "status": results["input_method"].status.value,
+                    "visible": (
+                        results["input_method"].details.get("visible") is True
+                    ),
+                },
+                "screens": {
+                    "status": results["screens"].status.value,
+                    "count": int(results["screens"].details.get("count", 0)),
+                },
+            }
         finally:
             view.close()
             document.close()
         return "offscreen Qt view and platform probes passed", details
+
+    def _deep_cross_platform(self, root: Path) -> tuple[str, Mapping[str, object]]:
+        if not root.is_absolute():
+            raise RuntimeError("cross-platform probe root is not absolute")
+
+        import PySide6
+        from PySide6.QtCore import qVersion
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtWidgets import QApplication
+
+        from uniti.ui.font_policy import resolve_editor_font
+
+        app = QApplication.instance() or QApplication(
+            ["uniti-cross-platform-check"]
+        )
+        filesystem = probe_filesystem(self.paths)
+        required = ("write", "fsync", "atomic_replace")
+        if any(
+            filesystem[name].status is not CapabilityStatus.AVAILABLE
+            for name in required
+        ):
+            raise RuntimeError("required cross-platform filesystem primitive failed")
+        durability = filesystem["durability"].details.get("level")
+        if durability not in {"full", "file_synced"}:
+            raise RuntimeError("safe cross-platform durability is unavailable")
+
+        resolution = resolve_editor_font()
+        if not (
+            resolution.fixed_pitch
+            and resolution.latin_coverage
+            and resolution.cyrillic_coverage
+        ):
+            raise RuntimeError("required cross-platform font coverage is unavailable")
+        launcher_mode = self._launcher_mode()
+        if launcher_mode not in {"source", "local"}:
+            raise RuntimeError("UNITI launcher mode is unavailable")
+
+        return "bounded cross-platform runtime evidence passed", {
+            "family": self.paths.family.value,
+            "python_version": platform.python_version(),
+            "pyside_version": PySide6.__version__,
+            "qt_version": qVersion(),
+            "platform_plugin": self._bounded_label(QGuiApplication.platformName()),
+            "path_categories": {
+                "category": self._path_category(self.paths.family),
+                "config": self._path_facts(self.paths.config_dir),
+                "data": self._path_facts(self.paths.data_dir),
+                "state": self._path_facts(self.paths.state_dir),
+                "cache": self._path_facts(self.paths.cache_dir),
+            },
+            "filesystem_capabilities": {
+                name: result.status.value
+                for name, result in sorted(filesystem.items())
+            },
+            "durability": durability,
+            "font": {
+                "requested_family": self._bounded_label(
+                    resolution.requested_family
+                ),
+                "resolved_family": self._bounded_label(
+                    resolution.resolved_family
+                ),
+                "fixed_pitch": resolution.fixed_pitch,
+                "latin_coverage": resolution.latin_coverage,
+                "cyrillic_coverage": resolution.cyrillic_coverage,
+                "fallback": resolution.fallback,
+            },
+            "launcher_mode": launcher_mode,
+        }
 
     def run(self, *, deep: bool = False) -> SelfCheckReport:
         results = [
@@ -1019,6 +1201,7 @@ class SelfCheckRunner:
                     ("recovery", self._deep_recovery),
                     ("recovery-session", self._deep_recovery_session),
                     ("qt-offscreen", self._deep_qt),
+                    ("cross-platform", self._deep_cross_platform),
                 )
                 for name, check in deep_checks:
                     code = ExitCode.GUI if name == "qt-offscreen" else ExitCode.FUNCTIONAL
@@ -1029,7 +1212,6 @@ class SelfCheckRunner:
             "display_version": uniti.__display_version__,
             "package_version": uniti.__version__,
             "python": platform.python_version(),
-            "executable": str(self.runtime_python.resolve()),
-            "platform": sys.platform,
+            "family": self.paths.family.value,
         }
         return SelfCheckReport.from_results("deep" if deep else "fast", identity, results)

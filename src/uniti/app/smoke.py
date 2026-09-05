@@ -7,6 +7,7 @@ import json
 import sys
 import tempfile
 import time
+import uuid
 from pathlib import Path
 
 from uniti.app.recovery_manager import RecoveryManager
@@ -79,19 +80,33 @@ def _run_in(directory: Path) -> dict[str, object]:
     recovery_source.write_text("abc", encoding="utf-8")
     recovery_dir = directory / "recovery"
     first_manager = RecoveryManager(recovery_dir)
-    recovery_document = Document.open(recovery_source)
-    first_manager.attach(recovery_document)
-    recovery_document.insert(3, "X")
-    first_manager.detach(recovery_document, clean=False)
-    recovery_document.close()
-    second_manager = RecoveryManager(recovery_dir)
-    candidate = second_manager.discover()[0]
-    recovered = second_manager.recover(candidate)
     try:
-        recovered_text = recovered.read(0, recovered.total_chars())
+        recovery_document = Document.open(recovery_source)
+        try:
+            first_manager.attach(recovery_document)
+            recovery_document.insert(3, "X")
+            first_manager.detach(recovery_document, clean=False)
+        finally:
+            recovery_document.close()
     finally:
-        second_manager.detach(recovered, clean=True)
-        recovered.close()
+        first_manager.shutdown()
+    second_manager = RecoveryManager(recovery_dir)
+    try:
+        candidate = second_manager.discover()[0]
+        recovered = second_manager.recover(candidate)
+        try:
+            recovered_text = recovered.read(0, recovered.total_chars())
+        finally:
+            second_manager.detach(recovered, clean=True)
+            recovered.close()
+    finally:
+        second_manager.shutdown()
+
+    utf16_output_exact = (
+        utf16_output == "Pieter [2026-08-31]\nJohn [2026-09-01]\n"
+    )
+    legacy_output_exact = legacy_output_text == "café\nlegacy\n"
+    recovery_exact = recovered_text == "abcX"
 
     external_source = directory / "external-source.txt"
     external_replacement = directory / "external-replacement.txt"
@@ -109,16 +124,16 @@ def _run_in(directory: Path) -> dict[str, object]:
     return {
         "ok": (
             replacements == 2
-            and utf16_output == "Pieter [2026-08-31]\nJohn [2026-09-01]\n"
-            and legacy_output_text == "café\nlegacy\n"
-            and recovered_text == "abcX"
+            and utf16_output_exact
+            and legacy_output_exact
+            and recovery_exact
             and external_change_blocked
             and text_integrity
         ),
         "regex_replacements": replacements,
-        "utf16_output": utf16_output,
-        "legacy_output": legacy_output_text,
-        "recovered_text": recovered_text,
+        "utf16_output_exact": utf16_output_exact,
+        "legacy_output_exact": legacy_output_exact,
+        "recovery_exact": recovery_exact,
         "external_change_blocked": external_change_blocked,
         "text_integrity": text_integrity,
     }
@@ -136,16 +151,27 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
 
     directory = Path(base_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    source = directory / "gui-smoke.txt"
+    source_directory = directory / "Unicode Ω & spaced"
+    source_directory.mkdir(parents=True, exist_ok=True)
+    source = source_directory / "gui-smoke Привет.txt"
     source.write_text("UNITI smoke Привет\r\n", encoding="utf-8")
 
-    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtGui import QGuiApplication, QKeySequence
     from PySide6.QtWidgets import QApplication
 
+    from uniti.app.instance_protocol import (
+        InstancePathOutcome,
+        InstanceReply,
+        InstanceRequest,
+    )
+    from uniti.app.instance_service import InstanceRole, InstanceService
+    from uniti.app.platform_policy import classify_platform
     from uniti.app.service import QuitChoice, UNITIService
     from uniti.app.session_store import SessionStore
     from uniti.app.settings import SettingsStore
     from uniti.resources import ResourceManager
+    from uniti.ui.font_policy import resolve_editor_font
+    from uniti.ui.shortcut_policy import build_shortcut_policy
     from uniti.ui.theme import active_theme
     from uniti.ui.whitespace import WhitespaceMode
 
@@ -154,6 +180,10 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
     store = SessionStore(directory / "sessions")
     first_service = None
     second_service = None
+    first_resources = None
+    second_resources = None
+    primary_instance = None
+    forwarding_instance = None
 
     def wait_until(predicate, *, timeout: float = 5.0) -> None:
         deadline = time.monotonic() + timeout
@@ -167,6 +197,76 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             raise TimeoutError("GUI smoke state did not settle")
 
     try:
+        family = classify_platform(sys.platform).value
+        font_resolution = resolve_editor_font()
+        font = {
+            "requested_family": font_resolution.requested_family[:128],
+            "resolved_family": font_resolution.resolved_family[:128],
+            "fixed_pitch": font_resolution.fixed_pitch,
+            "latin_coverage": font_resolution.latin_coverage,
+            "cyrillic_coverage": font_resolution.cyrillic_coverage,
+            "fallback": font_resolution.fallback,
+        }
+        shortcuts = build_shortcut_policy({})
+        definitions = {
+            item.command_id: item.default_shortcut
+            for item in shortcuts.definitions
+        }
+        standard = QKeySequence.StandardKey
+        portable = QKeySequence.SequenceFormat.PortableText
+        expected_shortcuts = {
+            "file.open": QKeySequence(standard.Open).toString(portable),
+            "file.save": QKeySequence(standard.Save).toString(portable),
+            "editing.undo": QKeySequence(standard.Undo).toString(portable),
+            "find.open": QKeySequence(standard.Find).toString(portable),
+            "find.next": QKeySequence(standard.FindNext).toString(portable),
+        }
+        shortcut_defaults = (
+            not shortcuts.notices
+            and all(expected_shortcuts.values())
+            and all(
+                definitions.get(command_id) == sequence
+                for command_id, sequence in expected_shortcuts.items()
+            )
+        )
+
+        endpoint = f"uniti-smoke-instance-{uuid.uuid4().hex}"
+        primary_instance = InstanceService(directory / "instance.lock", endpoint)
+        forwarding_instance = InstanceService(directory / "instance.lock", endpoint)
+        received: list[InstanceRequest] = []
+
+        def accept_instance(connection, request: InstanceRequest) -> None:
+            received.append(request)
+            primary_instance.reply(
+                connection,
+                InstanceReply(
+                    True,
+                    tuple(
+                        InstancePathOutcome(path, True, None)
+                        for path in request.files
+                    ),
+                    None,
+                ),
+            )
+
+        primary_instance.requestReceived.connect(accept_instance)
+        primary_start = primary_instance.start(InstanceRequest(1, True, ()))
+        forwarded_start = forwarding_instance.start(
+            InstanceRequest(1, True, (str(source.resolve()),))
+        )
+        instance_forwarded = (
+            primary_start.role is InstanceRole.PRIMARY
+            and forwarded_start.role is InstanceRole.FORWARDED
+            and forwarded_start.reply is not None
+            and forwarded_start.reply.accepted
+            and len(forwarded_start.reply.outcomes) == 1
+            and received == [
+                InstanceRequest(1, True, (str(source.resolve()),))
+            ]
+        )
+        forwarding_instance.close()
+        primary_instance.close()
+
         first_resources = ResourceManager(max_workers=2)
         first_service = UNITIService(
             resource_manager=first_resources,
@@ -304,6 +404,17 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             lambda _entry: QuitChoice.DISCARD
         )
         app.processEvents()
+        durability_result = store.last_durability
+        durability = (
+            "unsafe"
+            if durability_result is None
+            else durability_result.level.value
+        )
+        unicode_spaced_path = (
+            source.parent.name == "Unicode Ω & spaced"
+            and source.name == "gui-smoke Привет.txt"
+            and source.resolve().is_absolute()
+        )
         explicit_quit = (
             first_quit
             and second_quit
@@ -325,14 +436,26 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
                 and find_replace_detached
                 and find_replace_restored
                 and display_settings_applied
+                and durability in {"full", "file_synced"}
+                and font["fixed_pitch"]
+                and font["latin_coverage"]
+                and font["cyrillic_coverage"]
+                and shortcut_defaults
+                and instance_forwarded
+                and unicode_spaced_path
                 and explicit_quit
             ),
             "window_shown": window_shown,
             "window_closed": closed,
             "document_profile": document_profile,
             "qt_platform": qt_platform,
-            "platform": sys.platform,
+            "platform_family": family,
             "exit_code": 0,
+            "durability": durability,
+            "font": font,
+            "shortcut_defaults": shortcut_defaults,
+            "instance_forwarded": instance_forwarded,
+            "unicode_spaced_path": unicode_spaced_path,
             "service_remained_running": service_remained_running,
             "activation_created_window": activation_created_window,
             "one_document_authority": one_document_authority,
@@ -346,19 +469,27 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             "explicit_quit": explicit_quit,
         }
     except Exception as error:
-        for service in (second_service, first_service):
-            if service is not None and service.is_running:
-                service.request_quit(lambda _entry: QuitChoice.DISCARD)
-        app.processEvents()
         return {
             "ok": False,
             "window_shown": False,
             "window_closed": True,
             "document_profile": None,
             "qt_platform": QGuiApplication.platformName(),
-            "platform": sys.platform,
+            "platform_family": classify_platform(sys.platform).value,
             "exit_code": 1,
             "error": type(error).__name__,
+            "durability": "unsafe",
+            "font": {
+                "requested_family": "unknown",
+                "resolved_family": "unknown",
+                "fixed_pitch": False,
+                "latin_coverage": False,
+                "cyrillic_coverage": False,
+                "fallback": True,
+            },
+            "shortcut_defaults": False,
+            "instance_forwarded": False,
+            "unicode_spaced_path": False,
             "service_remained_running": False,
             "activation_created_window": False,
             "one_document_authority": False,
@@ -371,19 +502,52 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             "display_settings_applied": False,
             "explicit_quit": False,
         }
+    finally:
+        for service in (second_service, first_service):
+            if service is not None and service.is_running:
+                service.request_quit(lambda _entry: QuitChoice.DISCARD)
+        for instance in (forwarding_instance, primary_instance):
+            if instance is not None:
+                instance.close()
+        for resources in (second_resources, first_resources):
+            if resources is not None:
+                resources.shutdown()
+        app.processEvents()
 
 
 def run_combined_smoke(base_dir: str | Path | None = None) -> dict[str, object]:
     def run(directory: Path) -> dict[str, object]:
         core = run_alpha_smoke(directory / "core")
         gui = run_gui_smoke(directory / "gui")
-        return {
+        combined = {
             "ok": core.get("ok") is True and gui.get("ok") is True,
             "core_ok": core.get("ok") is True,
             "gui_ok": gui.get("ok") is True,
             "core": core,
             "gui": gui,
         }
+        for name in (
+            "platform_family",
+            "qt_platform",
+            "durability",
+            "font",
+            "shortcut_defaults",
+            "instance_forwarded",
+            "unicode_spaced_path",
+            "service_remained_running",
+            "activation_created_window",
+            "one_document_authority",
+            "session_restored",
+            "history_restored",
+            "find_replace_attached",
+            "find_replace_followed_window",
+            "find_replace_detached",
+            "find_replace_restored",
+            "display_settings_applied",
+            "explicit_quit",
+        ):
+            combined[name] = gui.get(name)
+        return combined
 
     if base_dir is not None:
         return run(Path(base_dir))

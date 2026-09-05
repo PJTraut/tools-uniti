@@ -5,8 +5,8 @@ from __future__ import annotations
 import platform
 import sys
 import tempfile
-from copy import deepcopy
 from collections.abc import Iterable
+from copy import deepcopy
 from pathlib import Path
 from typing import Mapping
 
@@ -28,23 +28,26 @@ def diagnostics_snapshot(
     startup_snapshot: Mapping[str, object] | None = None,
     *,
     resource_manager: ResourceManager | None = None,
+    safe_for_export: bool = False,
 ) -> dict[str, object]:
     memory = probe_memory()
     document_items: list[dict[str, object]] = []
     for document in documents:
-        document_items.append(
-            {
-                "path": str(document.path),
-                "source_size_bytes": int(document.source.size),
-                "detected_encoding": str(document.encoding_info.detected),
-                "output_encoding": str(document.output_encoding),
-                "output_eol": document.output_eol,
-                "modified": bool(document.modified),
-                "offset_index_complete": bool(document.offset_mapper.complete),
-                "source_line_index_complete": bool(document.source_line_index.complete),
-                "line_index_complete": bool(document.document_line_index.complete),
-            }
-        )
+        item = {
+            "source_size_bytes": int(document.source.size),
+            "detected_encoding": str(document.encoding_info.detected),
+            "output_encoding": str(document.output_encoding),
+            "output_eol": document.output_eol,
+            "modified": bool(document.modified),
+            "offset_index_complete": bool(document.offset_mapper.complete),
+            "source_line_index_complete": bool(
+                document.source_line_index.complete
+            ),
+            "line_index_complete": bool(document.document_line_index.complete),
+        }
+        if not safe_for_export:
+            item = {"path": str(document.path), **item}
+        document_items.append(item)
 
     if resource_manager is None:
         profile = probe_host_profile(Path(tempfile.gettempdir()))
@@ -91,26 +94,41 @@ def diagnostics_snapshot(
     if task_snapshot is not None:
         for task in task_snapshot.tasks:
             progress = task.progress
-            task_items.append(
-                {
+            item = {
+                "kind": task.spec.kind.value,
+                "state": task.state.value,
+                "foreground": task.spec.foreground,
+                "revision": task.spec.revision,
+                "progress": (
+                    None
+                    if progress is None
+                    else {
+                        "phase": progress.phase,
+                        "completed": progress.completed,
+                        "total": progress.total,
+                        "cancellable": progress.cancellable,
+                    }
+                ),
+            }
+            if not safe_for_export:
+                item = {
                     "task_id": task.spec.task_id,
-                    "kind": task.spec.kind.value,
-                    "state": task.state.value,
-                    "foreground": task.spec.foreground,
                     "document_key": task.spec.document_key,
-                    "revision": task.spec.revision,
-                    "progress": (
-                        None
-                        if progress is None
-                        else {
-                            "phase": progress.phase,
-                            "completed": progress.completed,
-                            "total": progress.total,
-                            "cancellable": progress.cancellable,
-                        }
-                    ),
+                    **item,
                 }
-            )
+            task_items.append(item)
+
+    host_items = {
+        "cpu_model": profile.cpu_model,
+        "architecture": profile.architecture,
+        "physical_cores": profile.physical_cores,
+        "logical_cores": profile.logical_cores,
+        "physical_memory_bytes": profile.physical_memory,
+        "platform": profile.platform,
+        "platform_release": profile.platform_release,
+    }
+    if not safe_for_export:
+        host_items["temp_root"] = str(profile.temp_root)
 
     snapshot = {
         "uniti": {
@@ -132,16 +150,7 @@ def diagnostics_snapshot(
             "automatic_cache_target_bytes": automatic_cache_target(memory),
             "pressure": pressure_state(memory).value,
         },
-        "host": {
-            "cpu_model": profile.cpu_model,
-            "architecture": profile.architecture,
-            "physical_cores": profile.physical_cores,
-            "logical_cores": profile.logical_cores,
-            "physical_memory_bytes": profile.physical_memory,
-            "platform": profile.platform,
-            "platform_release": profile.platform_release,
-            "temp_root": str(profile.temp_root),
-        },
+        "host": host_items,
         "resources": resource_items,
         "tasks": {
             "background_paused": (
@@ -153,6 +162,6 @@ def diagnostics_snapshot(
         },
         "documents": document_items,
     }
-    if startup_snapshot is not None:
+    if startup_snapshot is not None and not safe_for_export:
         snapshot["startup"] = deepcopy(dict(startup_snapshot))
     return snapshot

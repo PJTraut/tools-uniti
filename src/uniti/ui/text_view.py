@@ -11,6 +11,7 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QFont,
     QFontMetrics,
+    QGuiApplication,
     QInputMethodEvent,
     QKeyEvent,
     QMouseEvent,

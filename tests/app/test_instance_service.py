@@ -69,8 +69,12 @@ def test_primary_receives_one_normalized_request_and_secondary_is_forwarded(
 ):
     lock_path = tmp_path / "instance.lock"
     endpoint = _endpoint()
-    first = str((tmp_path / "first.txt").resolve())
-    second = str((tmp_path / "second.txt").resolve())
+    first = str(
+        (tmp_path / "Unicode Ω & spaced" / "first Привет.txt").resolve()
+    )
+    second = str(
+        (tmp_path / "Unicode Ω & spaced" / "second file.txt").resolve()
+    )
     primary = InstanceService(lock_path, endpoint)
     secondary = InstanceService(lock_path, endpoint)
     received: list[InstanceRequest] = []
@@ -287,6 +291,10 @@ def test_primary_rejects_malformed_socket_input_before_emitting_request(
         primary.close()
 
 
+@pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="requires a filesystem-backed QLocalServer endpoint",
+)
 def test_primary_removes_stale_endpoint_only_after_acquiring_lease(
     qapp,
     tmp_path: Path,
@@ -296,8 +304,7 @@ def test_primary_removes_stale_endpoint_only_after_acquiring_lease(
     assert probe.listen(endpoint)
     socket_path = Path(probe.fullServerName())
     probe.close()
-    if not socket_path.is_absolute():
-        pytest.skip("local server does not expose a filesystem endpoint")
+    assert socket_path.is_absolute()
     socket_path.write_bytes(b"stale endpoint")
     service = InstanceService(tmp_path / "instance.lock", endpoint)
     try:
@@ -335,28 +342,47 @@ def test_dead_lock_owner_is_recovered_by_qt_stale_lock_semantics(qapp, tmp_path:
         service.close()
 
 
-def test_two_simultaneous_processes_converge_on_one_primary(tmp_path: Path):
+def test_two_simultaneous_processes_forward_unicode_path_to_one_primary(
+    tmp_path: Path,
+):
     lock_path = tmp_path / "instance.lock"
     endpoint = _endpoint()
     first_result = tmp_path / "first.json"
     second_result = tmp_path / "second.json"
+    source = tmp_path / "Unicode Ω & spaced" / "leading- Привет & file.txt"
+    source.parent.mkdir()
+    source.write_text("content is not IPC evidence", encoding="utf-8")
     script = r'''import json, sys, time
 from pathlib import Path
 from PySide6.QtCore import QCoreApplication
-from uniti.app.instance_protocol import InstanceReply, InstanceRequest
+from uniti.app.instance_protocol import InstancePathOutcome, InstanceReply, InstanceRequest
 from uniti.app.instance_service import InstanceService
 
 app = QCoreApplication([])
-lock_path, endpoint, output, other = sys.argv[1:]
+lock_path, endpoint, output, other, source = sys.argv[1:]
 service = InstanceService(Path(lock_path), endpoint)
 service.requestReceived.connect(
     lambda connection, request: service.reply(
-        connection, InstanceReply(True, (), None)
+        connection,
+        InstanceReply(
+            True,
+            tuple(InstancePathOutcome(path, True, None) for path in request.files),
+            None,
+        ),
     )
 )
 try:
-    started = service.start(InstanceRequest(1, True, ()), timeout_ms=3000)
-    Path(output).write_text(json.dumps({"role": started.role.value}), encoding="utf-8")
+    started = service.start(InstanceRequest(1, True, (source,)), timeout_ms=3000)
+    Path(output).write_text(
+        json.dumps(
+            {
+                "role": started.role.value,
+                "accepted": started.reply is None or started.reply.accepted,
+                "outcomes": 0 if started.reply is None else len(started.reply.outcomes),
+            }
+        ),
+        encoding="utf-8",
+    )
     if started.role.value == "primary":
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline and not Path(other).exists():
@@ -374,6 +400,7 @@ finally:
             endpoint,
             str(first_result),
             str(second_result),
+            str(source),
         ],
         cwd=Path.cwd(),
     )
@@ -386,6 +413,7 @@ finally:
             endpoint,
             str(second_result),
             str(first_result),
+            str(source),
         ],
         cwd=Path.cwd(),
     )
@@ -398,11 +426,14 @@ finally:
                 process.kill()
                 process.wait(timeout=2)
 
-    roles = {
-        json.loads(first_result.read_text(encoding="utf-8"))["role"],
-        json.loads(second_result.read_text(encoding="utf-8"))["role"],
-    }
+    results = (
+        json.loads(first_result.read_text(encoding="utf-8")),
+        json.loads(second_result.read_text(encoding="utf-8")),
+    )
+    roles = {result["role"] for result in results}
     assert roles == {"primary", "forwarded"}
+    forwarded = next(result for result in results if result["role"] == "forwarded")
+    assert forwarded == {"role": "forwarded", "accepted": True, "outcomes": 1}
 
 
 def test_close_releases_endpoint_and_lease_for_the_next_primary(qapp, tmp_path: Path):

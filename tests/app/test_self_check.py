@@ -110,8 +110,96 @@ def test_deep_check_exercises_complete_core_matrix(tmp_path: Path, monkeypatch):
         "recovery",
         "recovery-session",
         "qt-offscreen",
+        "cross-platform",
     } <= names
-    assert [result.name for result in report.results if result.status is CheckStatus.FAIL] == []
+    assert [
+        result.name
+        for result in report.results
+        if result.status is CheckStatus.FAIL
+    ] == []
+
+
+def test_cross_platform_probe_reports_exact_bounded_safe_facts(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    secret = "UNITI_ENV_SECRET_9b53"
+    marker = _marker(tmp_path)
+    payload = json.loads(marker.read_text(encoding="utf-8"))
+    payload.update(
+        {
+            "environment_id": secret,
+            "environment_path": str(tmp_path / "runtime secret-user"),
+            "source_root": str(tmp_path / "workspace Unicode Ω"),
+            "document_text": "SECRET Unicode source Привет",
+            "endpoint": "uniti-secret-endpoint",
+            "session_path": str(tmp_path / "session-secret-path"),
+            "recovery_path": str(tmp_path / "recovery-secret-path"),
+        }
+    )
+    marker.write_text(json.dumps(payload), encoding="utf-8")
+    runner = SelfCheckRunner(
+        _paths(tmp_path / "application roots"),
+        marker_path=marker,
+        runtime_python=Path(sys.executable),
+    )
+
+    report = runner.run(deep=True)
+
+    cross_platform = next(
+        result for result in report.results if result.name == "cross-platform"
+    )
+    assert cross_platform.status is CheckStatus.PASS
+    assert set(cross_platform.details) == {
+        "family",
+        "python_version",
+        "pyside_version",
+        "qt_version",
+        "platform_plugin",
+        "path_categories",
+        "filesystem_capabilities",
+        "durability",
+        "font",
+        "launcher_mode",
+    }
+    assert cross_platform.details["family"] in {"macos", "windows", "linux"}
+    path_categories = cross_platform.details["path_categories"]
+    assert isinstance(path_categories, dict)
+    assert path_categories["category"] in {
+        "macos-library",
+        "windows-local-app-data",
+        "linux-xdg/home-fallback",
+    }
+    assert set(path_categories) == {
+        "category",
+        "config",
+        "data",
+        "state",
+        "cache",
+    }
+    for name in ("config", "data", "state", "cache"):
+        assert path_categories[name] == {"absolute": True, "writable": True}
+    assert cross_platform.details["durability"] in {"full", "file_synced"}
+    assert cross_platform.details["launcher_mode"] == "source"
+    assert cross_platform.details["font"]["fixed_pitch"] is True
+    assert cross_platform.details["font"]["latin_coverage"] is True
+    assert cross_platform.details["font"]["cyrillic_coverage"] is True
+
+    serialized = render_json(report)
+    for sensitive in (
+        str(tmp_path),
+        str(Path.home()),
+        str(Path.cwd()),
+        os.environ.get("USER", ""),
+        secret,
+        "SECRET Unicode source Привет",
+        "uniti-secret-endpoint",
+        "session-secret-path",
+        "recovery-secret-path",
+    ):
+        if sensitive:
+            assert sensitive not in serialized
 
 
 def test_regex_intelligence_probe_reports_only_safe_bounded_facts(
