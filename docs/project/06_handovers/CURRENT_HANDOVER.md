@@ -15,10 +15,11 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - A21 Editor Layout and Visibility implementation sequence: `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`
 - A21 Cross-Platform design/plan commit: `a3a4d81`
 - A21 Cross-Platform candidate/remediation sequence: `09ad62b` through `8b24f4b`
+- A22 implementation sequence: `f214635` through exact behavior candidate `7373df0`
 - Latest implemented milestone: `v0.001a21` — Cross-Platform Alpha at hosted-proven commit `8b24f4b`
 - Active milestone: `v0.001a22` — Dogfood / Performance Alpha
 - Queued milestones: `v0.001a23` — Executable Health & Recovery Alpha; `v0.001a24` — Beta Candidate
-- Current display/package metadata: `v0.001a21` / `0.1a21`
+- Current display/package metadata: `v0.001a22` / `0.1a22`
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16 through a20 tags: none
 
@@ -153,8 +154,18 @@ The same-commit hosted matrix is:
 
 Each job also passed compilation, 21/21 deep self-check, offscreen/native smoke, and exact skip verification. Successful jobs uploaded no artifacts, and no distributable package was produced.
 
+## A22 exact candidate and local evidence
+
+A22 source implementation is complete through exact behavior candidate `7373df07de2b32b88bb518efce4587ae338fbc41`. The suite owns one service per family, fixed 5/50 hosted/controlled cycles, bounded evidence, deterministic fault/pressure seams, and one fixed-vocabulary process dogfood recorder with seven-day/16 MiB retention. Resource remediation deletes closed service windows, releases retired document/session bindings, reuses matching empty restore shells, retains only declared stable authorities/views, requests best-effort allocator relief at checkpoints, and separates routine correctness working sets from dedicated large/dense point coverage.
+
+Local verification on that exact source passed 1,428 tests with six policy skips, compileall, 21/21 deep self-check, offscreen and native Cocoa smoke, and all four five-cycle hosted families. Two clean uncontended controlled runs passed 50 cycles per family. Their RSS growth pairs were daily 6.1406/6.4297 MiB, format 0.2266/0.7734 MiB, regex 4.8594/6.8203 MiB, and lifecycle 15.3828/5.8281 MiB.
+
+The selected first sustained anchor is [`v0.001a22-mac15-8-controlled.json`](../../../benchmarks/baselines/v0.001a22-mac15-8-controlled.json), SHA-256 `ef86a39945664bd098f1fe20ca7ab88a5d9990e824ff2dcee2fd26dae1018aa6`. The reviewed two-run confirmation aggregate remains outside the repository and has SHA-256 `ef530efdef046420bbb686ab4e1def794c0491d3d0713a49bc3e10d333dc6981`. Neither record contains document/path/expression/raw-stream content.
+
+The separate sparse 1 GiB design-target probe and native Cocoa quick suite passed; LOWDISK was injected only and never created on the real filesystem. Remote four-lane hosted evidence remains pending separate push authorization. The seven-day dogfood period has not been claimed from synthetic smoke or benchmark activity.
+
 ## Known boundary and next safe action
 
 No known A20, completed A21 workstream, or A21 candidate correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, launcher, native-path, or inherited text-integrity/regex blocker remains in local or hosted evidence. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive.
 
-Begin A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). Preserve A21's source-only hosted matrix and the A17–A21 correctness/storage boundaries; do not create a tag, release, installer, package, or new performance baseline without its own approved gate. A23 Executable Health & Recovery Alpha is approved and queued behind A22; it is not implicit A22 scope. The A21 closure commit remains local unless separately authorized for push.
+Continue A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). The next externally mutating action is a separately authorized push of exact candidate `7373df0`, followed by the four hosted A22 lanes on that commit. The remaining local freeze condition is seven distinct active dogfood days on the same behavior candidate; structural source changes restart that clock, while evidence-only documentation does not. Do not tag, release, install, bundle, or package A22. A23 Executable Health & Recovery Alpha remains queued behind A22 and is not implicit A22 scope.

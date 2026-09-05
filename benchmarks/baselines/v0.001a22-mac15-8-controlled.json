@@ -1,0 +1,4603 @@
+{
+  "evaluations": [
+    {
+      "messages": [],
+      "state": "PASS",
+      "subject": "daily_editing"
+    },
+    {
+      "messages": [],
+      "state": "PASS",
+      "subject": "format_integrity"
+    },
+    {
+      "messages": [],
+      "state": "PASS",
+      "subject": "regex_replacement"
+    },
+    {
+      "messages": [],
+      "state": "PASS",
+      "subject": "session_lifecycle"
+    }
+  ],
+  "execution_class": "controlled",
+  "families": [
+    {
+      "checkpoints": [
+        {
+          "cycle": 1,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 271.52325003407896,
+            "rss_mib": 114.484375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 2,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 252.7306660776958,
+            "rss_mib": 114.0625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 3,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 235.83925003185868,
+            "rss_mib": 114.8125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 4,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 243.2622080668807,
+            "rss_mib": 115.875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 5,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 241.49262497667223,
+            "rss_mib": 116.8125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 6,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 225.99675005767494,
+            "rss_mib": 117.59375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 7,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 230.408874922432,
+            "rss_mib": 117.703125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 8,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 241.0647920332849,
+            "rss_mib": 118.453125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 9,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 227.12179191876203,
+            "rss_mib": 118.484375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 10,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 235.4083750396967,
+            "rss_mib": 118.71875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 11,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 255.68529195152223,
+            "rss_mib": 119.125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 12,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 260.53020800463855,
+            "rss_mib": 119.640625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 13,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 248.00754094030708,
+            "rss_mib": 120.015625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 14,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 253.92879196442664,
+            "rss_mib": 120.34375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 15,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 251.2724589323625,
+            "rss_mib": 119.6875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 16,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 245.97854097373784,
+            "rss_mib": 120.859375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 17,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 236.1342079238966,
+            "rss_mib": 120.40625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 18,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 251.0583329712972,
+            "rss_mib": 120.796875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 19,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 240.53325003478676,
+            "rss_mib": 120.890625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 20,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 242.4098749179393,
+            "rss_mib": 121.546875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 21,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 233.7782089598477,
+            "rss_mib": 121.921875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 22,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 239.7885830141604,
+            "rss_mib": 122.0
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 23,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 245.145249995403,
+            "rss_mib": 122.609375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 24,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 233.87929098680615,
+            "rss_mib": 122.921875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 25,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 223.4321249416098,
+            "rss_mib": 123.0625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 26,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 255.92754210811108,
+            "rss_mib": 123.1875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 27,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 234.41800009459257,
+            "rss_mib": 123.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 28,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 242.26362502668053,
+            "rss_mib": 122.046875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 29,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 220.9932500263676,
+            "rss_mib": 122.4375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 30,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 230.55550002027303,
+            "rss_mib": 121.46875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 31,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 231.32433299906552,
+            "rss_mib": 121.671875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 32,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 241.66795809287578,
+            "rss_mib": 121.640625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 33,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 241.0960840061307,
+            "rss_mib": 121.75
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 34,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 236.63120809942484,
+            "rss_mib": 121.796875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 35,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 240.2580410707742,
+            "rss_mib": 121.828125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 36,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 237.71512508392334,
+            "rss_mib": 121.875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 37,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 233.98916702717543,
+            "rss_mib": 121.890625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 38,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 233.8592919986695,
+            "rss_mib": 121.953125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 39,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 242.95212503056973,
+            "rss_mib": 122.625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 40,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 241.0892080515623,
+            "rss_mib": 123.671875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 41,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 241.8670830084011,
+            "rss_mib": 124.125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 42,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 237.7141669858247,
+            "rss_mib": 122.5
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 43,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 245.32012501731515,
+            "rss_mib": 123.296875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 44,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 234.49183290358633,
+            "rss_mib": 123.625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 45,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 225.60508304741234,
+            "rss_mib": 123.71875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 46,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 244.96266606729478,
+            "rss_mib": 123.28125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 47,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 239.29433291777968,
+            "rss_mib": 123.3125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 48,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 243.39987500570714,
+            "rss_mib": 123.34375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 49,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 225.69695801939815,
+            "rss_mib": 123.34375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 50,
+          "metrics": {
+            "cache_used_mib": 0.2589912414550781,
+            "daily_cycle_ms": 246.32337503135204,
+            "rss_mib": 123.5625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 1,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 23,
+            "views": 1
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        }
+      ],
+      "facts": {
+        "cleanup_ok": true,
+        "cycles_completed": 51,
+        "daily_fixture_bytes": 262144,
+        "document_authorities": 1,
+        "expected_digest": "b34ab684d26f4a97c427d51cc1effe6a7ccb237d18825f405c9d78c90fa9b49d",
+        "final_history_cursor": 50,
+        "final_revision": 204,
+        "final_saved_cursor": 50,
+        "integrity_ok": true,
+        "match_count": 1,
+        "next_span": [
+          32,
+          50
+        ],
+        "previous_span": [
+          32,
+          50
+        ],
+        "reopened_same_document": true,
+        "result_revision": 204,
+        "saved_digest": "b34ab684d26f4a97c427d51cc1effe6a7ccb237d18825f405c9d78c90fa9b49d",
+        "service_identity_reused": true,
+        "stable_view_reused": true
+      },
+      "family": "daily_editing",
+      "measured_cycles": 50,
+      "messages": [],
+      "profile": "a22-v1",
+      "schema": 2,
+      "state": "PASS",
+      "warmup_cycles": 1
+    },
+    {
+      "checkpoints": [
+        {
+          "cycle": 1,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 131.34620792698115,
+            "rss_mib": 99.90625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 2,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 123.34895797539502,
+            "rss_mib": 99.875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 3,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 132.06862495280802,
+            "rss_mib": 100.015625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 4,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 141.32462500128895,
+            "rss_mib": 100.015625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 5,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 129.09025000408292,
+            "rss_mib": 100.046875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 6,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 120.08804199285805,
+            "rss_mib": 100.0625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 7,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 138.36120895575732,
+            "rss_mib": 100.15625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 8,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 148.04100000765175,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 9,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 128.01474996376783,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 10,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 130.63512509688735,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 11,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 129.1772909462452,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 12,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 160.7868339633569,
+            "rss_mib": 99.875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 13,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 123.97795799188316,
+            "rss_mib": 100.109375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 14,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 111.66012496687472,
+            "rss_mib": 100.015625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 15,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 121.44641694612801,
+            "rss_mib": 100.03125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 16,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 110.95283308532089,
+            "rss_mib": 100.109375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 17,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 115.12054200284183,
+            "rss_mib": 100.109375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 18,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 154.47741700336337,
+            "rss_mib": 100.125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 19,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 115.46687502413988,
+            "rss_mib": 100.125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 20,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 134.78054094593972,
+            "rss_mib": 100.171875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 21,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 125.16112497542053,
+            "rss_mib": 100.171875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 22,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 131.35829102247953,
+            "rss_mib": 100.1875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 23,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 131.84341695159674,
+            "rss_mib": 100.1875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 24,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 147.02124998439103,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 25,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 129.8134159296751,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 26,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 123.09516605455428,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 27,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 122.31679097749293,
+            "rss_mib": 100.3125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 28,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 128.1756249954924,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 29,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 135.55008301045746,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 30,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 134.51420795172453,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 31,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 128.4885830245912,
+            "rss_mib": 100.3125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 32,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 132.87129206582904,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 33,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 137.2557090362534,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 34,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 126.56083307228982,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 35,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 126.51758408173919,
+            "rss_mib": 100.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 36,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 136.4452919224277,
+            "rss_mib": 100.265625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 37,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 180.7598340092227,
+            "rss_mib": 100.328125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 38,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 126.1305829975754,
+            "rss_mib": 100.328125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 39,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 149.77229200303555,
+            "rss_mib": 100.3125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 40,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 111.29729205276817,
+            "rss_mib": 100.265625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 41,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 97.35799999907613,
+            "rss_mib": 100.265625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 42,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 96.17624990642071,
+            "rss_mib": 100.265625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 43,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 107.87220799829811,
+            "rss_mib": 100.265625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 44,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 107.7046669088304,
+            "rss_mib": 100.28125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 45,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 127.99670791719109,
+            "rss_mib": 100.28125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 46,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 143.97608302533627,
+            "rss_mib": 100.28125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 47,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 105.59762502089143,
+            "rss_mib": 100.34375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 48,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 110.79249996691942,
+            "rss_mib": 100.453125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 49,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 108.94858394749463,
+            "rss_mib": 100.421875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 50,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "format_cycle_ms": 104.10250001586974,
+            "rss_mib": 100.421875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 33,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        }
+      ],
+      "facts": {
+        "cleanup_ok": true,
+        "converted_digest": "8f067c5cee737099e10457ad266a409b3a24434ab9a980e0f737639e4db54d4f",
+        "cycles_completed": 51,
+        "display_invalid_hex": "ff",
+        "external_save_rejected": true,
+        "fixture_bytes": 161,
+        "history_restore_exact": true,
+        "integrity_ok": true,
+        "malformed_preserved": true,
+        "mixed_eol_kind": "MIXED",
+        "save_as_digest": "c487d23b88fa7291e67805566cdcfb2bfe10aec8755f494562421dd66eb97ad6",
+        "stale_history_match": "changed",
+        "sustained_digest": "68e7c3547d03b86fd3d4b391f419d5095355c2d63dd475c8b8f00ddcc16f9cf1"
+      },
+      "family": "format_integrity",
+      "measured_cycles": 50,
+      "messages": [],
+      "profile": "a22-v1",
+      "schema": 2,
+      "state": "PASS",
+      "warmup_cycles": 1
+    },
+    {
+      "checkpoints": [
+        {
+          "cycle": 1,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1711.098250001669,
+            "rss_mib": 104.421875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 2,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1708.0986250657588,
+            "rss_mib": 104.375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 3,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1701.7670829081908,
+            "rss_mib": 104.875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 4,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1703.3108338946477,
+            "rss_mib": 105.21875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 5,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1698.0822080513462,
+            "rss_mib": 105.359375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 6,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1704.2157500982285,
+            "rss_mib": 105.890625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 7,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1702.3215000517666,
+            "rss_mib": 106.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 8,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1695.477542001754,
+            "rss_mib": 106.53125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 9,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1713.1418340140954,
+            "rss_mib": 106.09375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 10,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1722.561000031419,
+            "rss_mib": 106.9375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 11,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1751.969833043404,
+            "rss_mib": 108.15625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 12,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1753.71533294674,
+            "rss_mib": 107.90625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 13,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1744.991832994856,
+            "rss_mib": 108.578125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 14,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1749.5465830434114,
+            "rss_mib": 107.625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 15,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1754.222625051625,
+            "rss_mib": 108.09375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 16,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1735.9274158952758,
+            "rss_mib": 108.015625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 17,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1767.9480420192704,
+            "rss_mib": 109.109375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 18,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1809.16408309713,
+            "rss_mib": 109.015625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 19,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1701.020292006433,
+            "rss_mib": 107.875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 20,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1737.17254109215,
+            "rss_mib": 108.0625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 21,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1710.021874983795,
+            "rss_mib": 108.6875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 22,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1697.2610419616103,
+            "rss_mib": 108.453125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 23,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1700.931999948807,
+            "rss_mib": 108.75
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 24,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1709.203791921027,
+            "rss_mib": 109.34375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 25,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1728.791999979876,
+            "rss_mib": 109.359375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 26,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1729.516625055112,
+            "rss_mib": 108.5625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 27,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1720.3365419991314,
+            "rss_mib": 108.75
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 28,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1713.6855840217322,
+            "rss_mib": 109.0625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 29,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1736.6746249608696,
+            "rss_mib": 109.109375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 30,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1713.5445419698954,
+            "rss_mib": 109.453125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 31,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1737.2760419966653,
+            "rss_mib": 109.578125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 32,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1710.5387500487268,
+            "rss_mib": 108.984375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 33,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1704.7216249629855,
+            "rss_mib": 109.15625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 34,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1699.7133750701323,
+            "rss_mib": 109.359375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 35,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1701.8632920226082,
+            "rss_mib": 109.578125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 36,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1699.2805410409346,
+            "rss_mib": 109.875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 37,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1695.340209058486,
+            "rss_mib": 109.234375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 38,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1704.0866250172257,
+            "rss_mib": 109.546875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 39,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1700.9376250207424,
+            "rss_mib": 109.578125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 40,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1699.7922080336139,
+            "rss_mib": 110.5
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 41,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1706.5644999966025,
+            "rss_mib": 109.625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 42,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1694.3762500304729,
+            "rss_mib": 109.625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 43,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1704.2491669999436,
+            "rss_mib": 109.875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 44,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1701.0844169417396,
+            "rss_mib": 110.359375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 45,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1698.4868330182508,
+            "rss_mib": 110.453125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 46,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1694.4380829809234,
+            "rss_mib": 110.859375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 47,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1696.2628749897704,
+            "rss_mib": 110.515625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 48,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1698.5691250301898,
+            "rss_mib": 110.5625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 49,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1705.4049590369686,
+            "rss_mib": 111.0
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 50,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "regex_cycle_ms": 1699.485499993898,
+            "rss_mib": 111.328125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 0,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 32,
+            "views": 0
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        }
+      ],
+      "facts": {
+        "atomic_undo_redo": true,
+        "cancelled_before_publication": true,
+        "capture_occurrences": 6,
+        "capture_payload_bytes": 661,
+        "cleanup_ok": true,
+        "cycles_completed": 51,
+        "dense_fixture_bytes": 262144,
+        "dense_matches": 1024,
+        "dense_result_digest": "96a12bc8fc753dbdd19f9e21acf73dd8ed06bd765da53f9ba671eb442d68e0c1",
+        "dense_store_spilled": true,
+        "integrity_ok": true,
+        "lookaround_span": [
+          2,
+          3
+        ],
+        "pathological_timeout": true,
+        "plan_closed": true,
+        "replace_all_count": 1024,
+        "replace_current_count": 1,
+        "replace_current_exact": true,
+        "replacement_digest": "52a0f7ca6952fa10fe12dc850927e369161f6af5f3682846124bf57e88c2e8f3",
+        "replacement_plan_count": 1024,
+        "replacement_plan_refused": true,
+        "replacement_plan_spilled": true,
+        "result_revision_sealed": true,
+        "snapshots_closed": true,
+        "sparse_matches": 1,
+        "sparse_result_digest": "0d49377470ad4f311ebeb926f0b3c79da0c520b4529fa06f3f8fd5fc3e1cd016",
+        "stale_plan_rejected": true,
+        "stale_result_rejected": true,
+        "store_closed": true,
+        "zero_navigation_indices": [
+          1,
+          0
+        ],
+        "zero_width_digest": "44920c03214ffba1dee0ac0f6ca2537ecbac72148859766df07fe914d4fffa69",
+        "zero_width_positions": [
+          0,
+          1,
+          2
+        ],
+        "zero_width_replacements": 2
+      },
+      "family": "regex_replacement",
+      "measured_cycles": 50,
+      "messages": [],
+      "profile": "a22-v1",
+      "schema": 2,
+      "state": "PASS",
+      "warmup_cycles": 1
+    },
+    {
+      "checkpoints": [
+        {
+          "cycle": 1,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 143.00170890055597,
+            "rss_mib": 111.78125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 2,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 137.6975839957595,
+            "rss_mib": 112.625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 3,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.559542035684,
+            "rss_mib": 112.84375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 4,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 133.4057500353083,
+            "rss_mib": 112.59375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 5,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 135.6765410164371,
+            "rss_mib": 112.9375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 6,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 137.36220903228968,
+            "rss_mib": 113.046875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 7,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 138.76395800616592,
+            "rss_mib": 113.265625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 8,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 155.1983340177685,
+            "rss_mib": 113.90625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 9,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 134.68979089520872,
+            "rss_mib": 115.328125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 10,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 133.78437492065132,
+            "rss_mib": 116.09375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 11,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 137.2349999146536,
+            "rss_mib": 116.5
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 12,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 142.75666698813438,
+            "rss_mib": 116.65625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 13,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 141.14941703155637,
+            "rss_mib": 117.6875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 14,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 142.72779203020036,
+            "rss_mib": 118.015625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 15,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 141.11825008876622,
+            "rss_mib": 118.9375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 16,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 133.8784999679774,
+            "rss_mib": 119.328125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 17,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.9470829376951,
+            "rss_mib": 119.4375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 18,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.9900000281632,
+            "rss_mib": 119.640625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 19,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.05874998029321,
+            "rss_mib": 119.765625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 20,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 139.0668749809265,
+            "rss_mib": 120.046875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 21,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.64604094810784,
+            "rss_mib": 120.078125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 22,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 144.18183302041143,
+            "rss_mib": 120.125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 23,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 135.82379196304828,
+            "rss_mib": 120.25
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 24,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.44408294931054,
+            "rss_mib": 120.296875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 25,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 139.16758401319385,
+            "rss_mib": 121.21875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 26,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 155.16062499955297,
+            "rss_mib": 121.765625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 27,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 139.50737507548183,
+            "rss_mib": 122.140625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 28,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 145.31824993900955,
+            "rss_mib": 122.53125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 29,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 138.61525000538677,
+            "rss_mib": 122.484375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 30,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 139.93866695091128,
+            "rss_mib": 122.484375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 31,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 138.47587502095848,
+            "rss_mib": 123.578125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 32,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 139.348000055179,
+            "rss_mib": 123.8125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 33,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 130.1929169567302,
+            "rss_mib": 123.8125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 34,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 133.27795907389373,
+            "rss_mib": 124.890625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 35,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 143.94729200284928,
+            "rss_mib": 125.03125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 36,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 134.44691593758762,
+            "rss_mib": 125.734375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 37,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 158.96679100114852,
+            "rss_mib": 125.96875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 38,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 141.6909999679774,
+            "rss_mib": 126.0625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 39,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.4467500243336,
+            "rss_mib": 126.734375
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 40,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.8067089933902,
+            "rss_mib": 127.0625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 41,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 135.1498750736937,
+            "rss_mib": 127.0625
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 42,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.71333400998265,
+            "rss_mib": 127.078125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 43,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 140.64654102548957,
+            "rss_mib": 127.203125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 44,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.53754198458046,
+            "rss_mib": 128.3125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 45,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 132.74549995549023,
+            "rss_mib": 128.328125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 46,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 134.24137502443045,
+            "rss_mib": 128.421875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 47,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 141.27329201437533,
+            "rss_mib": 128.453125
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 48,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.7211249889806,
+            "rss_mib": 128.46875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 49,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 136.31862495094538,
+            "rss_mib": 128.46875
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        },
+        {
+          "cycle": 50,
+          "metrics": {
+            "cache_used_mib": 0.0,
+            "lifecycle_cycle_ms": 144.16091702878475,
+            "rss_mib": 128.5
+          },
+          "owned_counts": {
+            "active_tasks": 0,
+            "active_workers": 0,
+            "documents": 2,
+            "queued_tasks": 0,
+            "replacement_plans": 0,
+            "result_stores": 0,
+            "snapshots": 0,
+            "temp_paths": 29,
+            "views": 4
+          },
+          "unavailable_probes": [
+            "handle_count"
+          ]
+        }
+      ],
+      "facts": {
+        "activation_created_window": true,
+        "active_first_restored": true,
+        "background_storage": true,
+        "cleanup_ok": true,
+        "crash_recovery_verified": true,
+        "cycles_completed": 51,
+        "expected_terminations": 8,
+        "explicit_quit": true,
+        "fault_case_count": 8,
+        "find_replace_history_restored": true,
+        "history_undo_redo_exact": true,
+        "independent_view_state": true,
+        "injected_capacity": true,
+        "injected_durability": true,
+        "injected_resource_pressure": true,
+        "injected_worker_state": true,
+        "integrity_ok": true,
+        "lazy_documents_restored": true,
+        "one_authority_per_path": true,
+        "one_global_panel": true,
+        "panel_attach_detach": true,
+        "primary_fixture_bytes": 65536,
+        "recovery_choices": [
+          "recover",
+          "discard"
+        ],
+        "recovery_cleanup": true,
+        "recovery_undo_redo_exact": true,
+        "service_identity_reused": true,
+        "service_survived_last_window": true,
+        "session_generation_current": true,
+        "stable_base_views_retained": true
+      },
+      "family": "session_lifecycle",
+      "measured_cycles": 50,
+      "messages": [],
+      "profile": "a22-v1",
+      "schema": 2,
+      "state": "PASS",
+      "warmup_cycles": 1
+    }
+  ],
+  "host": {
+    "architecture": "arm64",
+    "contended": false,
+    "corpus_schema": 2,
+    "git_commit": "7373df07de2b32b88bb518efce4587ae338fbc41",
+    "physical_cores": 16,
+    "physical_memory": 51539607552,
+    "platform": "darwin",
+    "python_version": "3.12.4",
+    "qt_version": "6.11.2"
+  },
+  "profile": "a22-v1",
+  "schema": 2,
+  "state": "PASS"
+}
