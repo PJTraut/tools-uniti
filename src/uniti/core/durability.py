@@ -7,10 +7,38 @@ from dataclasses import dataclass
 from enum import StrEnum
 import os
 from pathlib import Path
+import sys
 from typing import Protocol
 
 
 _MAX_DETAIL_CHARS = 128
+
+
+def _windows_replace_existing(source: Path, destination: Path) -> None:
+    """Atomically replace an existing Windows path that permits delete sharing."""
+
+    import ctypes
+    from ctypes import wintypes
+
+    replace_file = ctypes.WinDLL("kernel32", use_last_error=True).ReplaceFileW
+    replace_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.LPVOID,
+    )
+    replace_file.restype = wintypes.BOOL
+    if not replace_file(
+        str(destination),
+        str(source),
+        None,
+        0,
+        None,
+        None,
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
 
 
 class DurabilityLevel(StrEnum):
@@ -117,6 +145,9 @@ class NativeDurabilityAdapter:
         os.fsync(descriptor)
 
     def replace(self, source: Path, destination: Path) -> None:
+        if sys.platform.startswith("win") and Path(destination).exists():
+            _windows_replace_existing(Path(source), Path(destination))
+            return
         os.replace(source, destination)
 
     def sync_directory(self, directory: Path) -> bool:

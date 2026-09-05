@@ -1,4 +1,5 @@
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 
 import pytest
 
@@ -132,6 +133,34 @@ def test_native_directory_sync_ignores_close_failure_after_success(monkeypatch):
 
     assert NativeDurabilityAdapter().sync_directory("/owned") is True
     assert calls == [("fsync", 73), ("close", 73)]
+
+
+def test_native_windows_replace_uses_replacefile_for_existing_target(
+    tmp_path: Path,
+    monkeypatch,
+):
+    import uniti.core.durability as durability_module
+
+    source = tmp_path / "staged.txt"
+    destination = tmp_path / "document.txt"
+    source.write_bytes(b"new")
+    destination.write_bytes(b"old")
+    calls: list[tuple[Path, Path]] = []
+    monkeypatch.setattr(durability_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        durability_module,
+        "_windows_replace_existing",
+        lambda first, second: calls.append((first, second)),
+    )
+    monkeypatch.setattr(
+        durability_module.os,
+        "replace",
+        lambda *_args: pytest.fail("existing Windows targets require ReplaceFileW"),
+    )
+
+    NativeDurabilityAdapter().replace(source, destination)
+
+    assert calls == [(source, destination)]
 
 
 def test_native_directory_sync_reports_open_or_sync_unavailable(monkeypatch):
