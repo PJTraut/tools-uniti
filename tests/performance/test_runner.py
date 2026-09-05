@@ -116,6 +116,8 @@ def test_repository_performance_script_exposes_cli_without_running_a_tier():
     assert "--tier" in completed.stdout
     assert "--mode" in completed.stdout
     assert "--native-gui" in completed.stdout
+    assert "--suite" in completed.stdout
+    assert "--profile" in completed.stdout
 
 
 def test_a18_search_and_replace_scenarios_are_registered_for_routine_runs():

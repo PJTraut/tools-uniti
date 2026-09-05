@@ -294,6 +294,10 @@ def run_suite(
 def _child_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m benchmarks.runner")
     parser.add_argument("--child", metavar="SCENARIO")
+    parser.add_argument("--sustained-child", metavar="FAMILY")
+    parser.add_argument("--profile", choices=("hosted", "controlled"))
+    parser.add_argument("--cycles", type=int)
+    parser.add_argument("--owned-root", type=Path)
     parser.add_argument("manifest", type=Path)
     parser.add_argument("result", type=Path)
     return parser
@@ -301,8 +305,56 @@ def _child_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = _child_parser().parse_args(argv)
-    if not arguments.child:
-        raise SystemExit("--child is required")
+    if bool(arguments.child) == bool(arguments.sustained_child):
+        raise SystemExit("exactly one of --child or --sustained-child is required")
+    if arguments.sustained_child:
+        if (
+            arguments.profile is None
+            or arguments.cycles is None
+            or arguments.owned_root is None
+        ):
+            raise SystemExit(
+                "--sustained-child requires --profile, --cycles, and --owned-root"
+            )
+        from .sustained_models import SustainedFamilyResult, encode_family_result
+        from .sustained_workloads import run_sustained_workload
+
+        policy = load_performance_policy()
+        try:
+            manifest = CorpusManifest.from_dict(
+                json.loads(arguments.manifest.read_text(encoding="utf-8"))
+            )
+            result = run_sustained_workload(
+                arguments.sustained_child,
+                profile=arguments.profile,
+                cycles=arguments.cycles,
+                manifest=manifest,
+                application_root=arguments.owned_root,
+            )
+        except Exception as error:
+            result = SustainedFamilyResult(
+                schema=2,
+                family=arguments.sustained_child,
+                profile="a22-v1",
+                state=ResultState.FAIL,
+                warmup_cycles=policy.sustained.warmup_cycles,
+                measured_cycles=max(1, arguments.cycles),
+                checkpoints=(),
+                facts={"integrity_ok": False, "cleanup_ok": False},
+                messages=(f"sustained child failed: {type(error).__name__}",),
+            )
+        arguments.result.write_bytes(
+            encode_family_result(
+                result,
+                max_bytes=policy.evidence.family_max_decoded_mib << 20,
+                max_checkpoints=policy.sustained.controlled_cycles,
+            )
+        )
+        if result.state in {ResultState.PASS, ResultState.WARN}:
+            return 0
+        if result.state is ResultState.NOT_RUN:
+            return 2
+        return 1
     try:
         manifest = CorpusManifest.from_dict(
             json.loads(arguments.manifest.read_text(encoding="utf-8"))
