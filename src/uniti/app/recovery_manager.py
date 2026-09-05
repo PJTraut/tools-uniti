@@ -816,7 +816,9 @@ class RecoveryManager:
     def _schedule_compaction(self, binding: _Binding) -> Future:
         with self._lock:
             if binding.compaction_pending and binding.compaction_future is not None:
-                return binding.compaction_future
+                if not binding.compaction_future.done():
+                    return binding.compaction_future
+                binding.compaction_pending = False
             binding.compaction_pending = True
             request = self._compaction_request(binding)
             future = self._submit_serial(

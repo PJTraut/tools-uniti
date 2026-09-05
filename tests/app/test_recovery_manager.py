@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import Future
 from pathlib import Path
 
 import pytest
@@ -548,6 +549,12 @@ def test_compaction_publishes_valid_candidate_before_retiring_old(
         manager.flush(document)
         original = manager.journal_path(document)
         assert original is not None
+
+        completed: Future[None] = Future()
+        completed.set_result(None)
+        binding = manager._bindings[id(document)]
+        binding.compaction_pending = True
+        binding.compaction_future = completed
 
         manager.compact(document).result(timeout=5)
         manager.flush(document)
