@@ -527,6 +527,8 @@ def test_find_all_renders_every_visible_match_with_clear_contrast(tmp_path: Path
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+
     from PySide6.QtGui import QColor, QPalette
     from PySide6.QtWidgets import QApplication
 
@@ -545,6 +547,15 @@ def test_find_all_renders_every_visible_match_with_clear_contrast(tmp_path: Path
         palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
         palette.setColor(QPalette.ColorRole.Highlight, QColor("#204060"))
         view.setPalette(palette)
+        match = QColor("#204060")
+        match.setAlpha(120)
+        view.set_theme_tokens(
+            replace(
+                view.theme_tokens,
+                base=QColor("#ffffff"),
+                match=match,
+            )
+        )
         view.resize(700, 180)
         view.show()
 

@@ -15,6 +15,8 @@ def test_a21_editor_docking_preserves_authority_layout_and_bytes(tmp_path: Path)
     from uniti.app.service import QuitChoice, UNITIService
     from uniti.app.settings import SettingsStore
     from uniti.resources import ResourceManager
+    from uniti.ui.theme import active_theme
+    from uniti.ui.whitespace import WhitespaceMode
 
     class Recovery:
         def attach(self, _document, **_kwargs):
@@ -91,6 +93,14 @@ def test_a21_editor_docking_preserves_authority_layout_and_bytes(tmp_path: Path)
         assert panel.placement == "detached"
         assert panel.isFloating() is True
         assert service.capture_session().manifest.find_replace.placement == "detached"
+
+        window.set_whitespace_mode(WhitespaceMode.ALL)
+        window.set_theme("Dark")
+        window.set_theme_contrast("High Contrast")
+        assert original.whitespace_mode is WhitespaceMode.ALL
+        assert active_theme(app).mode == "Dark"
+        assert active_theme(app).contrast == "High Contrast"
+        assert source_path.read_bytes() == original_bytes
     finally:
         if service.is_running:
             service.request_quit(lambda _entry: QuitChoice.DISCARD)

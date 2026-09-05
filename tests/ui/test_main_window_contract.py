@@ -728,11 +728,12 @@ def test_whitespace_menu_persists_and_propagates_with_theme_tokens(tmp_path: Pat
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import QApplication
 
     from uniti.app.settings import Settings, SettingsStore
     from uniti.ui.main_window import UNITIMainWindow
-    from uniti.ui.theme import active_theme
+    from uniti.ui.theme import active_theme, apply_theme
     from uniti.ui.whitespace import WhitespaceMode
 
     path = tmp_path / "menu-whitespace.txt"
@@ -740,6 +741,7 @@ def test_whitespace_menu_persists_and_propagates_with_theme_tokens(tmp_path: Pat
     store = SettingsStore(tmp_path / "settings.json")
     store.save(Settings(whitespace_mode="all"))
     app = QApplication.instance() or QApplication([])
+    original_palette = QPalette(app.palette())
     window = UNITIMainWindow(settings_store=store)
     try:
         view = window.open_path(path)
@@ -757,6 +759,8 @@ def test_whitespace_menu_persists_and_propagates_with_theme_tokens(tmp_path: Pat
     finally:
         window.close_all_documents(force=True)
         window.close()
+        app.setPalette(original_palette)
+        apply_theme(app, "System")
         app.processEvents()
 
 

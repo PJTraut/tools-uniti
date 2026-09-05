@@ -1,13 +1,13 @@
 # UNITI Current Scope
 
-Date: 2026-09-04
+Date: 2026-09-05
 Version: `v0.001a20` / `0.1a20`
 
 ## Product boundary
 
 UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
 
-The a20 Recovery & Session Alpha is implemented and verified. UNITI combines the inherited text-integrity, bounded large-file, and regex-intelligence rules with one process-lifetime service, bounded session/history persistence, semantic crash recovery, and multi-window shared-document continuity. a21 Cross-Platform Alpha is the active planned milestone.
+The a20 Recovery & Session Alpha is implemented and verified. UNITI combines the inherited text-integrity, bounded large-file, and regex-intelligence rules with one process-lifetime service, bounded session/history persistence, semantic crash recovery, and multi-window shared-document continuity. The a21 Editor Layout and Visibility workstream is also implemented; a21 Cross-Platform Alpha remains the active milestone.
 
 ## Included lifecycle capabilities
 
@@ -17,7 +17,7 @@ The a20 Recovery & Session Alpha is implemented and verified. UNITI combines the
 - canonical `pyproject.toml` dependency selection, managed-Python pip invocation, import/metadata validation, `pip check`, and fingerprints;
 - pre-Qt application CLI, version output, fast/deep self-check including `regex-intelligence`, `text-integrity`, and `large-file`, combined `--smoke`, human/JSON reporting, and lifecycle exit codes;
 - ordered BOOT→READY startup coordination with per-phase atomic state and bounded JSONL logs;
-- schema-1 setup/settings persistence, legacy settings migration, malformed-file preservation, and future-schema refusal;
+- schema-1 setup and schema-3 settings persistence, legacy settings migration, malformed-file preservation, and future-schema refusal;
 - platform application paths, runtime/filesystem/resource/Qt capability reporting, narrow stale cleanup, durable generation sessions, and recovery journals;
 - one user-scoped service/instance lease with bounded local activation/file forwarding, zero-window lifetime, and explicit service-wide Quit;
 - startup recovery discovery and active-first lazy restoration of admitted windows, panes, views, saved histories, and the global Find/Replace state;
@@ -41,11 +41,12 @@ The a20 Recovery & Session Alpha is implemented and verified. UNITI combines the
 - semantic recovery-journal v3 transactions, Undo/Redo, save points, metadata, checkpoints, prefix-safe discovery, v1/v2 compatibility, and validated replay without changing the original file;
 - authoritative `regex==2026.5.9`, immutable pattern/replacement analysis, engine-reconciled group identities, inline-switch and reference highlighting, structured diagnostics, and a 65,536-code-point interactive expression bound;
 - snapshot-based cancellable search, compact spillable revision-bound match storage, deterministic zero-width navigation/rendering/replacement, spillable replacement plans, safe apply admission, and one-transaction replacement;
-- one service-owned mouse-resizable system-topmost Find/Replace panel with Regex/Case/Whole-word checkboxes, per-field clear controls, persisted field state and Undo/Redo, 150 ms off-thread latest-generation analysis, equal-height inputs above one compact `F+ | R+ … << | >> | R` action row, cursor-relative Previous/Next that do not require Find All, clear visible-only result highlighting, a toggleable right-docked Match Report, bounded asynchronous current/next capture-only reports, and independent zoom/geometry/report state;
+- one service-owned Find/Replace surface that is either a full-width bottom dock following the active window or one modeless topmost detached tool, with Regex/Case/Whole-word checkboxes, per-field clear controls, persisted field state and Undo/Redo, 150 ms off-thread latest-generation analysis, equal-height inputs above one compact `F+ | R+ … << | >> | R` action row, cursor-relative Previous/Next that do not require Find All, clear visible-only result highlighting, a toggleable right-docked Match Report, bounded asynchronous current/next capture-only reports, and independent zoom/geometry/report state;
 - one-step undoable Replace All with no disk-rewrite history bypass;
 - a scoped shared command registry and persisted Hotkeys popup for window, editor, and Find/Replace commands;
-- a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with persisted application-wide System/Light/Dark themes, native shortcut display, and no duplicate pre-Cot top-level command groupings;
-- PySide6 multi-window shells, binary horizontal/vertical split panes, detachable tabs, independent synchronized views of one authoritative document, custom virtual viewport, clipboard, IME, menus, compact status, inspections, diagnostics, and one Recovery Center;
+- a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with independently persisted application-wide System/Light/Dark and Standard/High Contrast theme axes, native shortcut display, and no duplicate pre-Cot top-level command groupings;
+- PySide6 multi-window shells, binary horizontal/vertical split panes, per-pane assign/split/dock controls, reversible view transfers with persisted return anchors, detachable tabs, independent synchronized views of one authoritative document, custom virtual viewport, clipboard, IME, menus, compact status, inspections, diagnostics, and one Recovery Center;
+- display-only Off, EOL, Spaces & Tabs, Invisible Unicode, and All whitespace modes with exact LF/CRLF/CR labels, bounded terminator reads, and at most 4,096 marker operations per frame including visible overflow aggregation;
 - progressive Open, background full EOL analysis, cancellable far navigation, Find All, Replace All planning, and verified Save/Save As without GUI-thread long work;
 - source-tab-only locking during output, cancellation cleanup, immutable revision/identity snapshots, and stale-result refusal;
 - read-only CPU generation/core/RAM/disk/load profiling, live Normal/Busy/Constrained/Critical resource state, adaptive worker/cache limits, coalesced nonmodal pressure indication, and a user-controlled background-work pause that does not pause Save; and
@@ -93,13 +94,17 @@ The a20 Recovery & Session Alpha is implemented and verified. UNITI combines the
 38. Find and Replace histories retain at most 50 states each and together at most 4 MiB decoded; their current values are preserved when older states are pruned.
 39. Recovery journals are not disposable history: 64 MiB journals compact publish-before-retire, and the 512 MiB free-space reserve suppresses convenience-history writes before recovery evidence.
 40. Low-space tests inject capacity and write failures; they never consume real filesystem space to manufacture LOWDISK.
+41. Dock/undock transfers one view transactionally and preserves its source return anchor without moving or cloning document/history authority.
+42. Exactly one service-owned Find/Replace surface exists through attached and detached placement changes.
+43. Whitespace visualization consumes only committed visible text, never changes document coordinates or bytes, and admits no more than 4,096 marker draws per frame.
+44. Theme appearance and contrast are independent global settings; complete theme specifications own both application palettes and editor overlay tokens.
 
 ## Approved future scope
 
-`v0.001a21` is active and `v0.001a22`–`v0.001a23` remain queued. All are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a21` is active and `v0.001a22`–`v0.001a23` remain queued. Unimplemented portions of those milestones are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 
-Editor whitespace visualization and expanded keyboard-driven Unicode inspection, Host-Python installation, embedded Python, signed polished installers, updater, accounts, telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, CJK typography specialization, and elaborate preferences remain outside the approved roadmap.
+Expanded keyboard-driven Unicode inspection, Host-Python installation, embedded Python, signed polished installers, updater, accounts, telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, CJK typography specialization, and elaborate preferences remain outside the approved roadmap.
 
 See the [Parked Capability Catalog](../04_parked/CATALOG.md) for rationale and re-evaluation triggers.

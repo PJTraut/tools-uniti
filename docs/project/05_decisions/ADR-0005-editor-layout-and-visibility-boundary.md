@@ -25,13 +25,12 @@ Whitespace visualization was parked until the document/session architecture and 
 - Find/Replace placement changes never create competing panels or histories.
 - Whitespace markers require explicit theme tokens and bounded paint admission, but no document-sized cache or new persistence pack.
 - Session and settings schemas gain compatibility migrations and retain strict validation per source schema.
-- Whitespace visualization leaves the parked catalog and becomes planned A21 work. General syntax highlighting, workspace/project state, user-authored themes, and elaborate preferences remain parked.
+- Whitespace visualization has left the parked catalog and is implemented as bounded A21 display behavior. General syntax highlighting, workspace/project state, user-authored themes, and elaborate preferences remain parked.
 
 ## Affected records
 
-- [A21 Editor Layout and Visibility design](../02_plans/v0.001a21-editor-layout-visibility-design.md)
+- [Implemented A21 Editor Layout and Visibility design](../03_implemented/designs/2026-09-05-uniti-v0.001a21-editor-layout-visibility-design.md)
 - [A21 Cross-Platform Alpha](../02_plans/v0.001a21-cross-platform-alpha.md)
 - [Parked Capability Catalog](../04_parked/CATALOG.md)
 - [ADR-0002: UNITI Document Authority and Qt Boundary](ADR-0002-document-authority-boundary.md)
 - [ADR-0004: a16 Usability Boundary and Command Ownership](ADR-0004-a16-usability-boundary.md)
-

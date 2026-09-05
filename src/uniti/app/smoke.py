@@ -146,6 +146,8 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
     from uniti.app.session_store import SessionStore
     from uniti.app.settings import SettingsStore
     from uniti.resources import ResourceManager
+    from uniti.ui.theme import active_theme
+    from uniti.ui.whitespace import WhitespaceMode
 
     app = QApplication.instance() or QApplication(["uniti-smoke"])
     app.setQuitOnLastWindowClosed(False)
@@ -242,6 +244,14 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             first_service.documents.count == 1
             and activation_view.document is original_document
         )
+        activation.set_whitespace_mode(WhitespaceMode.ALL)
+        activation.set_theme("Dark")
+        activation.set_theme_contrast("High Contrast")
+        display_settings_applied = (
+            activation_view.whitespace_mode is WhitespaceMode.ALL
+            and active_theme(app).mode == "Dark"
+            and active_theme(app).contrast == "High Contrast"
+        )
         first_quit = first_service.request_quit(
             lambda _entry: QuitChoice.DISCARD
         )
@@ -314,6 +324,7 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
                 and find_replace_followed_window
                 and find_replace_detached
                 and find_replace_restored
+                and display_settings_applied
                 and explicit_quit
             ),
             "window_shown": window_shown,
@@ -331,6 +342,7 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             "find_replace_followed_window": find_replace_followed_window,
             "find_replace_detached": find_replace_detached,
             "find_replace_restored": find_replace_restored,
+            "display_settings_applied": display_settings_applied,
             "explicit_quit": explicit_quit,
         }
     except Exception as error:
@@ -356,6 +368,7 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             "find_replace_followed_window": False,
             "find_replace_detached": False,
             "find_replace_restored": False,
+            "display_settings_applied": False,
             "explicit_quit": False,
         }
 

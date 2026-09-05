@@ -1,6 +1,6 @@
 # UNITI Ordered Roadmap
 
-Date: 2026-09-04
+Date: 2026-09-05
 
 This file is the authoritative sequence of approved outstanding product milestones. With Recovery & Session Alpha implemented, UNITI proceeds through cross-platform proof, hardening, and beta stabilization.
 
@@ -13,6 +13,8 @@ This file is the authoritative sequence of approved outstanding product mileston
 | 3 | [`v0.001a23` — Beta Candidate](v0.001a23-beta-candidate.md) | queued | Freeze features and satisfy the beta stabilization gate. |
 
 The complete a20 Recovery & Session Alpha, a19 Regex Intelligence Alpha, a18 Large-File Alpha, a17 Text Integrity Alpha, a16 Usable Test Alpha, and earlier verified work are retained in [`03_implemented`](../03_implemented/README.md).
+
+The a21 Editor Layout and Visibility workstream is also implemented and retained there. Its completion does not close the active Cross-Platform Alpha parent milestone, whose implementation resumes at Task 4.
 
 ## Queue rules
 

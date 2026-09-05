@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
-Date: 2026-09-04
-Baseline: verified a20 implementation through `f829d01` plus the A20 freeze tree on local `main`
+Date: 2026-09-05
+Baseline: verified a20 implementation plus the a21 Editor Layout and Visibility workstream through `dcf04c6` on local `main`
 
 ## Lifecycle boundary
 
@@ -57,7 +57,7 @@ BOOT
 
 The coordinator owns ordering, phase timing, atomic state updates, safe failure translation, bounded JSONL logging, and reverse-order cleanup. Application callbacks construct services and import PySide6 only in GUI phases. Exit codes separate usage, runtime, ownership, dependencies, state/schema, functional, and Qt/platform failures.
 
-`setup-state.json` and schema-1 settings use shared durable JSON replacement with file and parent syncing where supported. Malformed files are copied to timestamped `.invalid` siblings before replacement; future schemas fail without modification. Startup logs rotate at 5 MiB and retain ten rotations.
+`setup-state.json` and schema-3 settings use shared durable JSON replacement with file and parent syncing where supported. Malformed files are copied to timestamped `.invalid` siblings before replacement; settings schemas 0–2 migrate forward and future schemas fail without modification. Startup logs rotate at 5 MiB and retain ten rotations.
 
 ## Paths, capabilities, and cleanup
 
@@ -69,7 +69,7 @@ Cleanup has authority only inside UNITI temp, session, and rotated-log roots. It
 
 One process-lifetime `UNITIService` owns settings, the `ResourceManager`, `SessionStore`, `RecoveryManager`, one `DocumentRegistry`, one `WindowManager`, and one global Find/Replace panel. `QLockFile` and a bounded, versioned `QLocalServer` protocol permit exactly one writer for one user/application-data identity. A secondary launch forwards activation and up to 128 normalized file requests to the primary, receives bounded per-path outcomes, and exits; an unreachable live owner is an error, never permission to create a second writer.
 
-`QApplication.setQuitOnLastWindowClosed(False)` makes windows service clients rather than process owners. The service may own zero or more `UNITIMainWindow` shells. Each shell contains a binary horizontal/vertical splitter tree whose leaves own tab groups; tabs can move or detach into another service-owned window. Each source path resolves through the registry to one authoritative `Document`, while each view retains an independent cursor, anchor, preferred column, scroll positions, wrap viewport, and zoom.
+`QApplication.setQuitOnLastWindowClosed(False)` makes windows service clients rather than process owners. The service may own zero or more `UNITIMainWindow` shells. Each shell contains a binary horizontal/vertical splitter tree whose leaves own tab groups. Every pane title row exposes Assign Document, Split Right, Split Down, and Dock/Undock. Splitting creates an independent view of the active document; assignment selects or creates a view without replacing another tab. Undocking transactionally transfers exactly one view to another service window and stores its source window/pane/tab return anchor. Docking returns it there when possible and otherwise follows bounded deterministic fallbacks. Each source path still resolves through the registry to one authoritative `Document`, while each view retains an independent cursor, anchor, preferred column, scroll positions, wrap viewport, zoom, and optional return anchor.
 
 Ordinary window close affects its views but does not terminate the service. Explicit Quit first gathers every unique modified document, offers Save/Discard/Cancel once per document, and aborts without partial shutdown on Cancel. After all choices succeed, the service publishes the final durable session, completes the corresponding recovery transition, closes owned components, releases the local endpoint/lease, and exits.
 
@@ -143,7 +143,7 @@ In-place `Document.save()` advances the current tab's save point only after veri
 
 ## Editor presentation and command flow
 
-`UNITITextView` continues to paint only visible document content through the custom virtual viewport. It selects a concrete fixed-pitch font with Western/Latin and Cyrillic coverage, applies clamped 50–300% font scaling, and handles primary-modifier wheel zoom without transferring text ownership to Qt.
+`UNITITextView` continues to paint only visible document content through the custom virtual viewport. It selects a concrete fixed-pitch font with Western/Latin and Cyrillic coverage, applies clamped 50–300% font scaling, and handles primary-modifier wheel zoom without transferring text ownership to Qt. Global whitespace modes are Off, EOL, Spaces & Tabs, Invisible Unicode, and All. Markers are transient overlays over committed text, reuse each visible row's `QTextLayout` geometry, classify logical LF/CRLF/CR through at most a two-character terminator read, and admit at most 4,096 draw operations per frame; overflow is represented by one `+N` marker. Text, offsets, selections, clipboard contents, IME preedit, search, history, recovery, and saved bytes are unchanged.
 
 Soft wrap is display-only and defaults off. `ui.wrap_index.WrappedRowIndex` incrementally maps logical lines to visual rows at the current viewport width, retains sparse checkpoints plus at most four 512-row detail blocks, and never constructs a whole-document Qt layout. Wrap therefore does not insert EOLs or change document coordinates. Unwrapped giant lines render bounded horizontal text windows rather than materializing the full line.
 
@@ -162,9 +162,9 @@ UNITI uses CotEditor as a menu, navigation, and shortcut-presentation reference 
 
 These principles are derived from CotEditor's published [design philosophy](https://github.com/coteditor/CotEditor#design-philosophy) and concrete [main-menu definition](https://github.com/coteditor/CotEditor/blob/main/CotEditor/Storyboards/Base.lproj/Main.storyboard). They are reference constraints, not an external dependency and not authority over UNITI's document, regex, resource, or cross-platform boundaries.
 
-## Floating Find/Replace
+## Global Find/Replace dock
 
-`FindReplaceWindow` is the one service-owned modeless, mouse-resizable, system-topmost Qt tool window over the most recently focused live `UNITITextView`, regardless of which UNITI window contains that view. On macOS it remains visible when UNITI is inactive. A native size grip supplements edge resizing. The document remains editable while the panel is visible. Its Find and Replace inputs use explicit immutable snapshot histories capped independently at 50 states and jointly at 4 MiB persisted; focus routing sends Undo/Redo and clipboard commands to the active field before falling back to the document. Current text, cursor/selection, Undo/Redo, options, geometry, visibility, zoom, report visibility, and the surviving target view are restored without automatically executing Find All or Replace. Each input has an overlaid circular `×` control that clears only that input.
+`FindReplaceWindow` is the one service-owned `QDockWidget` over the most recently focused live `UNITITextView`, regardless of which UNITI window contains that view. Attached placement occupies the full bottom dock area and follows the active editor window. Detached placement reparents that same surface as one modeless, resizable, system-topmost tool; it remains visible when UNITI is inactive on macOS. Closing the final editor window hides the surface without terminating or duplicating it. The document remains editable while the panel is visible. Its Find and Replace inputs use explicit immutable snapshot histories capped independently at 50 states and jointly at 4 MiB persisted; focus routing sends Undo/Redo and clipboard commands to the active field before falling back to the document. Current text, cursor/selection, Undo/Redo, options, placement, detached geometry, visibility, zoom, report visibility, and the surviving target view are restored without automatically executing Find All or Replace. Each input has an overlaid circular `×` control that clears only that input.
 
 The `Regex`, `Case`, and `Whole word` checkboxes own search semantics. With Regex clear, the query is escaped and Case/Whole word apply. With Regex checked, Case and Whole word remain visible but disabled with their state preserved, while raw syntax and inline switches such as `(?i)` go to the authoritative third-party engine. The Find and Replace input editors receive equal vertical stretch and divide all space remaining above the controls. The single action row is `F+ | R+ … << | >> | R`, with full tooltips and accessible names; Cancel/status remains below it. F/R zoom changes field fonts and their minimum readable height without restoring a fixed field height. Search remains cancellable and revision-bound.
 
@@ -178,7 +178,7 @@ Every analysis/search/report publication is sealed to the relevant expression ge
 
 Single Replace and Replace All return through the authoritative `Document`. Engine-emitted zero-width matches are first-class stored results: navigation advances by stored result index, rendering uses explicit insertion markers, wrapping is result-index based, and each zero-width replacement applies exactly once. Replace All builds a compact, spillable `ReplacementPlan` off the GUI thread, rejects stale or over-budget application, and rebuilds piece ranges in one monotonic pass. The admitted plan is one document transaction and one Undo operation. The UI does not use the core streaming-rewrite service for Replace All because a disk rewrite would bypass the history contract.
 
-The `View → Theme` submenu applies persisted `System`, `Light`, or `Dark` palettes at application scope. Editor zoom/wrap, theme mode, and Find/Replace zoom/geometry/report visibility persist independently through `SettingsStore`.
+The `View → Theme` submenu applies persisted `System`, `Light`, or `Dark` appearance plus independent `Standard` or `High Contrast` at application scope. One complete `ThemeSpec` supplies both the Qt palette and editor tokens for text, selection, invalid bytes, matches, and whitespace overlays. Verified High Contrast combinations provide at least 7:1 primary text/base contrast and 4.5:1 marker/base contrast. Editor zoom/wrap/whitespace mode, both theme axes, and Find/Replace zoom/placement/geometry/report visibility persist independently through `SettingsStore`.
 
 ## Command registry
 
@@ -199,7 +199,7 @@ File | Edit | Format | View | Find | Tools | Hotkeys
 | `File` | Open, Save, Save As, Reload/Revert, Close, and Quit. |
 | `Edit` | Undo/Redo, Cut/Copy/Paste, Select All, plus a `Navigation` submenu for Go to Line, page, document, and word movement. |
 | `Format` | `Encoding` and `Line Endings` submenus; reinterpretation remains distinct from convert-on-save. |
-| `View` | `Theme`, `Editor View`, and `F/R View` submenus for application theme, independent zoom, editor wrap, and Match Report visibility. |
+| `View` | `Theme`, `Editor View`, and `F/R View` submenus for appearance/contrast, independent zoom, editor wrap/whitespace, panel attachment, and Match Report visibility. |
 | `Find` | Open Find/Replace, Find Next, and Find Previous. |
 | `Tools` | Character Inspector and Diagnostics. |
 | `Hotkeys` | Open the shortcut display/editor; do not duplicate the full command tree in a menu. |
@@ -226,10 +226,10 @@ Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, time
 
 `uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, paths, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, offscreen Qt/view, `regex-intelligence`, `text-integrity`, `large-file`, and `recovery-session`. The recovery/session probe publishes and reloads a bounded session, validates exact hashes, proves external-change discovery preserves disk bytes, and replays semantic transaction/Undo/Redo state. Ordinary tests and measured scenarios cover failure injection, corruption, cancellation, integrity, and cleanup.
 
-The application CLI's `--smoke` mode runs the core alpha probe plus a real service/session workflow: field Undo/Redo, zero-window lifetime, activation/new-window reuse, clean Quit, fresh-service restore, and restored document/Find-Replace histories. `QT_QPA_PLATFORM=offscreen` provides the automated platform gate; an unmodified macOS environment exercises native Cocoa separately.
+The application CLI's `--smoke` mode runs the core alpha probe plus a real service/session workflow: pane splitting and reversible docking, one Find/Replace surface through attached/detached/follow-window placement, field Undo/Redo, global whitespace/theme settings, zero-window lifetime, activation/new-window reuse, clean Quit, fresh-service restore, and restored document/Find-Replace histories. `QT_QPA_PLATFORM=offscreen` provides the automated platform gate; an unmodified macOS environment exercises native Cocoa separately.
 
 The completed startup snapshot is passed into `UNITIMainWindow`. Diagnostics combine it with the authoritative resource manager's CPU generation/core profile, current load/memory/RSS/disk state, cache budget/use, active worker limit, queue, background pause state, and active task progress.
 
 ## Planned-change boundary
 
-The complete a20 Recovery & Session Alpha is implemented and verified current architecture. Its milestone, design, and execution record are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a21` Cross-Platform Alpha is now the sole active milestone; a21 and later behavior remain planned intent and are not current architecture. Editor whitespace visualization, expanded keyboard-driven Unicode inspection, extension-sensed file-type profiles, and syntax highlighting remain parked outside the approved roadmap.
+The complete a20 Recovery & Session Alpha and the a21 Editor Layout and Visibility workstream are implemented and verified current architecture. Their records are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a21` Cross-Platform Alpha remains the sole active milestone and resumes at implementation Task 4; its remaining behavior and later milestones are planned intent rather than current architecture. Expanded keyboard-driven Unicode inspection, extension-sensed file-type profiles, and syntax highlighting remain parked outside the approved roadmap.

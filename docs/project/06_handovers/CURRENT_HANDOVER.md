@@ -1,6 +1,6 @@
 # UNITI Current Handover
 
-Captured: 2026-09-04
+Captured: 2026-09-05
 
 This is a continuation snapshot, not a controlling specification. Resolve conflicts using the authority order in the [Documentation System](../00_governance/DOCUMENTATION_SYSTEM.md).
 
@@ -11,17 +11,20 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - Remote baseline: `origin/main` at `84407e3`
 - A20 design/plan commits: `c9cd792`, `06dd906`
 - A20 implementation/acceptance sequence: `fabd036` through `f829d01`, followed by the A20 freeze closure
+- A21 Editor Layout and Visibility design/plan commits: `9477197`, `61c1f19`
+- A21 Editor Layout and Visibility implementation sequence: `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`
 - Latest implemented milestone: `v0.001a20` — Recovery & Session Alpha
+- Latest implemented workstream: A21 Editor Layout and Visibility; the parent A21 milestone remains active
 - Active milestone: `v0.001a21` — Cross-Platform Alpha
 - Current display/package metadata: `v0.001a20` / `0.1a20`
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16 through a20 tags: none
 
-A20 is implemented and verified on local `main`. `origin/main` is intentionally unchanged until a separate push is authorized; no tag has been created.
+A20 and the A21 Editor Layout and Visibility workstream are implemented and verified on local `main`. `origin/main` is intentionally unchanged until a separate push is authorized; no new tag has been created.
 
 ## Canonical records
 
-- [Current A20 status and exact evidence](../01_current/STATUS.md)
+- [Current status and exact evidence](../01_current/STATUS.md)
 - [Current scope](../01_current/SCOPE.md)
 - [Current architecture](../01_current/ARCHITECTURE.md)
 - [Development and performance workflow](../01_current/DEVELOPMENT.md)
@@ -29,6 +32,10 @@ A20 is implemented and verified on local `main`. `origin/main` is intentionally 
 - [Implemented A20 milestone](../03_implemented/milestones/2026-09-04-uniti-v0.001a20-recovery-session-alpha.md)
 - [Implemented A20 design](../03_implemented/designs/2026-09-04-uniti-v0.001a20-recovery-session-design.md)
 - [Implemented A20 execution plan](../03_implemented/milestones/2026-09-04-uniti-v0.001a20-recovery-session-implementation.md)
+- [Implemented A21 Editor Layout and Visibility design](../03_implemented/designs/2026-09-05-uniti-v0.001a21-editor-layout-visibility-design.md)
+- [Implemented A21 Editor Pane Docking plan](../03_implemented/milestones/2026-09-05-uniti-v0.001a21-editor-pane-docking-implementation.md)
+- [Implemented A21 Find/Replace Docking plan](../03_implemented/milestones/2026-09-05-uniti-v0.001a21-find-replace-docking-implementation.md)
+- [Implemented A21 Whitespace and Theme plan](../03_implemented/milestones/2026-09-05-uniti-v0.001a21-whitespace-theme-implementation.md)
 - [Implemented record index](../03_implemented/README.md)
 - [Parked capabilities](../04_parked/CATALOG.md)
 - [Architecture decisions](../05_decisions/README.md)
@@ -61,23 +68,47 @@ b2bb917 feat: restore complete sessions and histories
 f829d01 test: prove a20 recovery session safety
 ```
 
+## A21 Editor Layout and Visibility workstream
+
+Every pane now exposes Assign Document, Split Right, Split Down, and Dock/Undock. A split creates an independent view; an undock transactionally transfers one view and persists its source return anchor without changing the one authoritative document or shared history.
+
+The one service-owned Find/Replace surface can attach full-width below the active editor window or detach as the same topmost tool. Placement, detached geometry, complete field state, bounded Undo/Redo, results, report state, and zoom survive window moves and session restore without creating a second panel.
+
+Whitespace modes are Off, EOL, Spaces & Tabs, Invisible Unicode, and All. They paint only committed visible content, preserve exact document bytes/coordinates, classify LF/CRLF/CR through bounded terminator reads, and cap one frame at 4,096 marker operations with visible aggregation. System/Light/Dark and Standard/High Contrast are independent settings backed by complete theme tokens.
+
+Implementation commits:
+
+```text
+23d6c2d feat: persist editor docking state
+6bf6e8b feat: expose editor pane controls
+a40d880 feat: add reversible document docking
+5479048 fix: stabilize restored session document order
+e3063c9 test: prove reversible editor layout
+aae36d4 refactor: make find replace dockable
+86cd592 feat: attach find replace to active window
+ad52133 test: prove global find replace docking
+2c5e275 feat: define whitespace display grammar
+1561f32 feat: add high contrast theme axis
+dcf04c6 feat: visualize whitespace safely
+fcfd5ea fix: report current persistence schemas
+```
+
 ## Fresh evidence
 
 ```text
-A20 acceptance: 8 passed
-integrated A20 + inherited A17-A19 app/UI: 508 passed
-full pytest: 1015 passed, 4 skipped
-compileall and git diff --check: pass
+Editor Layout and Visibility focused app/UI/core slice: 390 passed in 23.18s
+full pytest: 1161 passed, 6 skipped in 47.13s
+git diff --check: pass
 deep self-check: pass, 20 checks including recovery-session
-offscreen and native Cocoa combined smoke: pass
-offscreen quick: 13/13 PASS
-native Cocoa quick: 13/13 PASS
+offscreen combined smoke: pass with pane/F/R docking and display-setting facts
 ```
+
+The six skips are two Windows native-path cases, three Windows `cmd.exe` launcher cases, and one unavailable xattr capability case on this macOS/Python host.
 
 `session_restore` passed all worker-thread, responsiveness, cancellation, cleanup, and RSS gates. Its offscreen/native open-to-usable medians were 6.703/6.709 ms and retained RSS growth was 12.844/13.469 MiB. No A20 JSON baseline was selected; the a18/a19 committed baselines remain inherited evidence. No real LOWDISK state was created.
 
 ## Known boundary and next safe action
 
-No known A20 correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, or inherited text-integrity/regex blocker remains. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive.
+No known A20 or completed A21 workstream correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, or inherited text-integrity/regex blocker remains. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive.
 
-Continue with the active A21 Cross-Platform Alpha record on local `main`, preserving all A17-A20 acceptance and performance gates. Verify platform-specific behavior before changing canonical architecture. Do not tag or push until separately authorized.
+Continue with Task 4 of the active [A21 Cross-Platform implementation plan](../02_plans/v0.001a21-cross-platform-implementation.md) on local `main`, preserving all A17-A20 and completed A21 workstream acceptance/performance gates. Verify platform-specific behavior before changing canonical architecture. Do not tag or push until separately authorized.

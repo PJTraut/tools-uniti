@@ -230,6 +230,7 @@ def test_a20_service_lifetime_restart_and_global_panel_smoke(tmp_path: Path):
     assert result["find_replace_followed_window"] is True
     assert result["find_replace_detached"] is True
     assert result["find_replace_restored"] is True
+    assert result["display_settings_applied"] is True
     assert result["explicit_quit"] is True
 
 

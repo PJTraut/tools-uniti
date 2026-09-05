@@ -1,6 +1,6 @@
 # UNITI Current Development Workflow
 
-Date: 2026-09-04
+Date: 2026-09-05
 Version: `v0.001a20` / `0.1a20`
 
 ## Requirements and policy
@@ -131,12 +131,24 @@ Qt-focused coverage:
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
   tests/test_a20_recovery_session_acceptance.py \
+  tests/test_a21_cross_platform_acceptance.py \
   tests/test_a17_text_integrity_acceptance.py \
   tests/test_a16_startup_bootstrap_acceptance.py \
   tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-The A20 freeze gate adds `recovery-session` to deep self-check and a thirteenth quick/routine `session_restore` scenario while retaining the a17 byte-integrity, a18 large-file, and a19 regex-intelligence gates. A20 freeze runs are evidence in the current status/handover but were not selected as committed JSON baselines; the existing a18/a19 baselines remain inherited evidence. Before remote integration, confirm the working tree is clean and ensure any separately authorized push is normal and fast-forward safe.
+The current local gate reports 1,161 passed and six host-inapplicable skips, plus a passing 20-check deep self-check and combined offscreen smoke. The A20 freeze gate adds `recovery-session` to deep self-check and a thirteenth quick/routine `session_restore` scenario while retaining the a17 byte-integrity, a18 large-file, and a19 regex-intelligence gates. A20 freeze runs are evidence in the current status/handover but were not selected as committed JSON baselines; the existing a18/a19 baselines remain inherited evidence. Before remote integration, confirm the working tree is clean and ensure any separately authorized push is normal and fast-forward safe.
+
+## Editor layout and display change discipline
+
+- Keep one process-lifetime `UNITIService`, one global Find/Replace surface, and one authoritative `Document` per native source identity across every window, pane, and placement.
+- Move a view transactionally during Dock/Undock. Preserve its return anchor and independent cursor/presentation state; never transfer or duplicate document/history authority.
+- Splits create independent views. Assign Document selects or adds a view without closing or replacing another pane tab.
+- Keep Find/Replace attached only as a full-width bottom dock following the active window, or detached as the same single modeless topmost surface.
+- Paint whitespace only from committed visible slices using existing row layout geometry. Keep the 4,096-operation frame budget and reserve visible overflow aggregation.
+- Keep logical terminator classification exact and bounded to at most two direct document characters; do not infer CRLF from normalized display text.
+- Preserve appearance and contrast as independent global settings and update complete application/editor theme tokens together.
+- Never create, reserve, or fill real LOWDISK state. Inject capacity and write/fsync failures.
 
 ## Recovery/session change discipline
 
@@ -191,6 +203,6 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a20` is implemented without a new tag; `v0.001a21` is the active planned milestone.
+Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a20` is implemented without a new tag; `v0.001a21` is active, with Editor Layout and Visibility implemented and Cross-Platform implementation resuming at Task 4.
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.

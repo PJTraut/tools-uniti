@@ -344,6 +344,8 @@ def test_wrapped_zero_width_marker_is_painted_on_only_its_owning_row(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+
     from PySide6.QtGui import QColor, QPalette
     from PySide6.QtWidgets import QApplication
 
@@ -361,6 +363,15 @@ def test_wrapped_zero_width_marker_is_painted_on_only_its_owning_row(
         palette.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
         palette.setColor(QPalette.ColorRole.Highlight, QColor("#204060"))
         view.setPalette(palette)
+        match = QColor("#204060")
+        match.setAlpha(120)
+        view.set_theme_tokens(
+            replace(
+                view.theme_tokens,
+                base=QColor("#ffffff"),
+                match=match,
+            )
+        )
         view.resize(view._gutter_width + view._cell_width * 2 + 10, 100)
         view.set_soft_wrap(True)
         view.set_match_index(MatchIndex((MatchRecord(2, 2),)))

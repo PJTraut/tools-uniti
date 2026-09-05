@@ -13,7 +13,14 @@ Directory placement means the work is implemented. Completion is established by 
 
 Historical plans may contain unchecked task boxes because they are retained as originally authored execution records. Those stale checklist marks do not move implemented work back into the outstanding plan queue.
 
-An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. a16's startup/bootstrap foundation was retained here before the parent gate closed; the complete a16 through a20 product milestones are now implemented.
+An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. a16's startup/bootstrap foundation was retained here before the parent gate closed; the complete a16 through a20 product milestones are now implemented, while a21 remains active after its Editor Layout and Visibility workstream completed.
+
+## v0.001a21 implemented workstream records
+
+- [Editor Layout and Visibility design](designs/2026-09-05-uniti-v0.001a21-editor-layout-visibility-design.md)
+- [Editor Pane Docking implementation plan](milestones/2026-09-05-uniti-v0.001a21-editor-pane-docking-implementation.md)
+- [Find/Replace Docking implementation plan](milestones/2026-09-05-uniti-v0.001a21-find-replace-docking-implementation.md)
+- [Whitespace and Theme implementation plan](milestones/2026-09-05-uniti-v0.001a21-whitespace-theme-implementation.md)
 
 ## v0.001a20 records
 
