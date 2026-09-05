@@ -45,6 +45,7 @@ def test_regex_cycle_is_exact_bounded_cancellable_and_revision_sealed(
         )
     )
     assert result.facts["cycles_completed"] == 2
+    assert result.facts["dense_fixture_bytes"] == 65_536
     assert result.facts["dense_matches"] == 256
     assert result.facts["dense_result_digest"] == (
         "d0d1eaff9aa0df0ecd62bc112e031b53a1b5fd06c2d1d49f5e858df991642e95"
@@ -84,3 +85,24 @@ def test_regex_cycle_is_exact_bounded_cancellable_and_revision_sealed(
     assert result.facts["integrity_ok"] is True
     assert result.facts["cleanup_ok"] is True
     assert result.messages == ()
+
+
+def test_regex_replacement_caps_repeated_dense_churn_at_256_kib(tmp_path: Path):
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.SEARCH_DENSE, size_bytes=1 << 20, seed=19),
+        tmp_path / "corpus",
+    )
+    application_root = (tmp_path / "application").resolve()
+    application_root.mkdir()
+
+    result = run_sustained_workload(
+        "regex_replacement",
+        profile="hosted",
+        cycles=1,
+        manifest=manifest,
+        application_root=application_root,
+    )
+
+    assert result.state is ResultState.PASS
+    assert result.facts["dense_fixture_bytes"] == 256 << 10
+    assert result.facts["dense_matches"] == 1024

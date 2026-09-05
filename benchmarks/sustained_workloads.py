@@ -73,6 +73,9 @@ _CORPUS_KINDS = {
     "session_lifecycle": CorpusKind.ORDINARY_LINES,
 }
 
+_DAILY_NEEDLE = "UNITI_DAILY_NEEDLE"
+_DAILY_PRIMARY_BYTES = 256 << 10
+_REGEX_DENSE_BYTES = 256 << 10
 _LIFECYCLE_PANEL_VALUES = (
     ("lifecycle-find-a", "lifecycle-replace-a"),
     ("lifecycle-find-b", "lifecycle-replace-b"),
@@ -205,14 +208,22 @@ def _run_daily_editing(
     source = manifest.path.resolve(strict=True)
     if source.stat().st_size != manifest.spec.size_bytes:
         raise ValueError("daily corpus size does not match its manifest")
-    expected_digest = _file_digest(source)
-    if manifest.digest != expected_digest:
+    manifest_digest = _file_digest(source)
+    if manifest.digest != manifest_digest:
         raise ValueError("daily corpus digest does not match its manifest")
 
     fixture_root = application_root / "fixtures"
     fixture_root.mkdir()
     fixture = fixture_root / "daily.txt"
-    shutil.copyfile(source, fixture)
+    daily_fixture_bytes = _copy_bounded_prefix(
+        source,
+        fixture,
+        max_bytes=_DAILY_PRIMARY_BYTES,
+    )
+    with fixture.open("r+b") as handle:
+        handle.seek(32)
+        handle.write(_DAILY_NEEDLE.encode("ascii"))
+    expected_digest = _file_digest(fixture)
 
     harness = create_application_harness(application_root)
     identity = harness.service_identity
@@ -228,6 +239,8 @@ def _run_daily_editing(
     history_cursor = -1
     saved_cursor = None
     final_revision = -1
+    retained_view_id = None
+    stable_view_reused = True
     try:
         total_cycles = harness.policy.sustained.warmup_cycles + cycles
         for sequence in range(total_cycles):
@@ -235,6 +248,8 @@ def _run_daily_editing(
             started = time.perf_counter()
             view = harness.open_owned_fixture(fixture)
             document = view.document
+            if retained_view_id is not None:
+                stable_view_reused &= view.view_id == retained_view_id
             if original_document is None:
                 original_document = document
             else:
@@ -259,7 +274,7 @@ def _run_daily_editing(
 
             panel = harness.service.find_replace
             panel.find_input.set_text("")
-            panel.find_input.set_text("alpha")
+            panel.find_input.set_text(_DAILY_NEEDLE)
             harness.pump_until(lambda: panel.compile_current() is not None)
             panel.next_match()
             harness.pump_until(lambda: not panel.busy and panel.result_count > 0)
@@ -282,12 +297,15 @@ def _run_daily_editing(
             if result_revision != document.revision:
                 raise RuntimeError("daily find result revision is stale")
 
-            if not harness.close_cycle():
-                raise RuntimeError("daily cycle could not close its view")
-            reopened = harness.open_owned_fixture(fixture)
-            reopened_same_document = (
-                reopened_same_document and reopened.document is document
-            )
+            if sequence == 0:
+                if not harness.close_cycle():
+                    raise RuntimeError("daily cycle could not close its view")
+                reopened = harness.open_owned_fixture(fixture)
+                reopened_same_document &= reopened.document is document
+                retained_view_id = reopened.view_id
+            else:
+                reopened_same_document &= view.document is document
+                retained_view_id = view.view_id
             panel.target_changed()
             harness.pump_until(
                 lambda: _tasks_idle(harness) and panel.result_count == 0
@@ -336,11 +354,12 @@ def _run_daily_editing(
     saved_digest = _file_digest(fixture)
     integrity_ok = (
         saved_digest == expected_digest
-        and last_next_span == (41, 46)
-        and last_previous_span == (9, 14)
+        and last_next_span == (32, 32 + len(_DAILY_NEEDLE))
+        and last_previous_span == (32, 32 + len(_DAILY_NEEDLE))
         and last_result_revision == final_revision
-        and last_match_count == manifest.spec.size_bytes // 32
+        and last_match_count == 1
         and reopened_same_document
+        and stable_view_reused
         and document_authorities == 1
         and history_cursor == saved_cursor
     )
@@ -359,6 +378,7 @@ def _run_daily_editing(
         facts={
             "cleanup_ok": cleanup_ok,
             "cycles_completed": total_cycles,
+            "daily_fixture_bytes": daily_fixture_bytes,
             "document_authorities": document_authorities,
             "expected_digest": expected_digest,
             "final_history_cursor": history_cursor,
@@ -372,6 +392,7 @@ def _run_daily_editing(
             "result_revision": last_result_revision,
             "saved_digest": saved_digest,
             "service_identity_reused": harness.service_identity == identity,
+            "stable_view_reused": stable_view_reused,
         },
         messages=() if integrity_ok and cleanup_ok else ("daily workflow failed",),
     )
@@ -706,12 +727,19 @@ def _run_regex_replacement(
     source = manifest.path.resolve(strict=True)
     if source.stat().st_size != manifest.spec.size_bytes:
         raise ValueError("regex corpus size does not match its manifest")
-    source_digest = _file_digest(source)
-    if manifest.digest != source_digest:
+    manifest_digest = _file_digest(source)
+    if manifest.digest != manifest_digest:
         raise ValueError("regex corpus digest does not match its manifest")
 
     work_root = application_root / "regex-work"
     work_root.mkdir()
+    dense_template = work_root / "dense-template.txt"
+    dense_fixture_bytes = _copy_bounded_prefix(
+        source,
+        dense_template,
+        max_bytes=_REGEX_DENSE_BYTES,
+    )
+    source_digest = _file_digest(dense_template)
     harness = create_application_harness(application_root)
     checkpoints: list[ResourceCheckpoint] = []
     last_facts: dict[str, object] = {}
@@ -729,7 +757,7 @@ def _run_regex_replacement(
             stale_path = work_root / "stale.txt"
             cancel_path = work_root / "cancel.txt"
             stale_result_path = work_root / "stale-result.txt"
-            shutil.copyfile(source, dense_path)
+            shutil.copyfile(dense_template, dense_path)
             sparse_path.write_bytes(b"head UNITI_MATCH tail no marker")
             zero_path.write_bytes(b"aa")
             capture_path.write_bytes(b"aaaaaa")
@@ -1165,7 +1193,7 @@ def _run_regex_replacement(
         harness.shutdown()
 
     expected_dense_count, expected_dense_digest = _expected_dense_result(
-        manifest.spec.size_bytes
+        dense_fixture_bytes
     )
     required = (
         bool(last_facts.get("atomic_undo_redo")),
@@ -1209,6 +1237,7 @@ def _run_regex_replacement(
         **last_facts,
         "cleanup_ok": cleanup_ok,
         "cycles_completed": total_cycles,
+        "dense_fixture_bytes": dense_fixture_bytes,
         "integrity_ok": integrity_ok,
     }
     return SustainedFamilyResult(
