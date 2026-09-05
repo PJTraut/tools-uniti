@@ -95,7 +95,7 @@ def test_native_path_normalizes_relative_dot_components_against_explicit_cwd(
     )
 
     assert normalized.path == cwd / "missing document.txt"
-    assert normalized.comparison_key == str(normalized.path)
+    assert normalized.comparison_key == os.path.normcase(str(normalized.path))
     assert normalized.exists is False
     assert normalized.path.is_absolute()
     with pytest.raises(FrozenInstanceError):
