@@ -438,7 +438,7 @@ def test_text_view_zoom_changes_metrics_without_changing_document_text(tmp_path:
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtGui import QFontDatabase, QRawFont
+    from PySide6.QtGui import QFontDatabase, QFontMetrics
     from PySide6.QtWidgets import QApplication
 
     from uniti.app.editor_state import EditorState
@@ -462,9 +462,9 @@ def test_text_view_zoom_changes_metrics_without_changing_document_text(tmp_path:
         assert view.font().family() == resolve_editor_font().resolved_family
         assert view.font().family().casefold() != "monospace"
         assert QFontDatabase.isFixedPitch(view.font().family())
-        raw_font = QRawFont.fromFont(view.font())
-        assert raw_font.supportsCharacter(ord("A"))
-        assert raw_font.supportsCharacter(ord("Ж"))
+        metrics = QFontMetrics(view.font())
+        assert metrics.inFontUcs4(ord("A"))
+        assert metrics.inFontUcs4(ord("Ж"))
         view.reset_zoom()
         assert view.zoom_percent == 100
         view.close()

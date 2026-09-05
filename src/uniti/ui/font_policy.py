@@ -6,7 +6,13 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication, QRawFont
+from PySide6.QtGui import (
+    QFont,
+    QFontDatabase,
+    QFontInfo,
+    QFontMetrics,
+    QGuiApplication,
+)
 
 from uniti.app.platform_policy import (
     PlatformFamily,
@@ -66,15 +72,27 @@ class FontResolution:
 
 def _font_facts(
     font: QFont,
-    raw_font_factory: Callable[[QFont], object],
+    raw_font_factory: Callable[[QFont], object] | None,
 ) -> tuple[str, bool, bool]:
-    raw_font = raw_font_factory(font)
-    valid = bool(raw_font.isValid())
-    resolved_family = raw_font.familyName() if valid else font.family()
+    if raw_font_factory is not None:
+        raw_font = raw_font_factory(font)
+        valid = bool(raw_font.isValid())
+        resolved_family = raw_font.familyName() if valid else font.family()
+        if not isinstance(resolved_family, str) or not resolved_family:
+            resolved_family = font.family()
+        latin = valid and bool(raw_font.supportsCharacter(ord("A")))
+        cyrillic = valid and bool(raw_font.supportsCharacter(ord("Ж")))
+        return resolved_family, latin, cyrillic
+
+    information = QFontInfo(font)
+    resolved_family = information.family()
     if not isinstance(resolved_family, str) or not resolved_family:
         resolved_family = font.family()
-    latin = valid and bool(raw_font.supportsCharacter(ord("A")))
-    cyrillic = valid and bool(raw_font.supportsCharacter(ord("Ж")))
+    concrete = QFont(font)
+    concrete.setFamily(resolved_family)
+    metrics = QFontMetrics(concrete)
+    latin = bool(metrics.inFontUcs4(ord("A")))
+    cyrillic = bool(metrics.inFontUcs4(ord("Ж")))
     return resolved_family, latin, cyrillic
 
 
@@ -106,7 +124,6 @@ def resolve_editor_font(
         and _cached_resolution is not None
     ):
         return _cached_resolution
-    factory = QRawFont.fromFont if raw_font_factory is None else raw_font_factory
     installed = tuple(str(item) for item in database.families())
     installed_set = set(installed)
     preferred = tuple(
@@ -122,7 +139,10 @@ def resolve_editor_font(
             continue
         font = QFont(requested_family)
         try:
-            resolved_family, latin, cyrillic = _font_facts(font, factory)
+            resolved_family, latin, cyrillic = _font_facts(
+                font,
+                raw_font_factory,
+            )
         except Exception:
             continue
         if not (latin and cyrillic):
@@ -142,7 +162,10 @@ def resolve_editor_font(
         font = database.systemFont(database.SystemFont.FixedFont)
         requested_family = font.family()
         try:
-            resolved_family, latin, cyrillic = _font_facts(font, factory)
+            resolved_family, latin, cyrillic = _font_facts(
+                font,
+                raw_font_factory,
+            )
         except Exception:
             resolved_family = requested_family
             latin = False

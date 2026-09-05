@@ -32,6 +32,29 @@ jobs:
           allow-prereleases: false
           check-latest: ${{ matrix.python == '3.x' }}
 
+      - name: Install Linux Qt runtime dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libegl1 \
+            libfontconfig1 \
+            libgl1 \
+            libx11-xcb1 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
+            xauth \
+            xvfb
+
       - name: Bootstrap owned runtime (POSIX)
         if: runner.os != 'Windows'
         run: ./uniti.command --dev --no-launch

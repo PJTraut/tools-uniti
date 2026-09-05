@@ -46,15 +46,22 @@ def test_real_preflight_reports_required_local_facts(tmp_path: Path):
 def test_insufficient_memory_is_not_run_but_busy_baseline_is_invalid(tmp_path: Path):
     policy = load_performance_policy()
     preflight = collect_host_preflight(tmp_path)
+    eligible = replace(
+        preflight,
+        physical_memory=max(preflight.physical_memory, 16 << 30),
+        available_memory=max(preflight.available_memory, 8 << 30),
+        free_disk=max(preflight.free_disk, 8 << 30),
+        sparse_files=True,
+    )
 
     insufficient = evaluate_host_eligibility(
-        replace(preflight, available_memory=0),
+        replace(eligible, available_memory=0),
         policy,
         tier="routine",
         mode="real-world",
     )
     contended = evaluate_host_eligibility(
-        replace(preflight, load_per_logical_core=1.0),
+        replace(eligible, load_per_logical_core=1.0),
         policy,
         tier="routine",
         mode="baseline",

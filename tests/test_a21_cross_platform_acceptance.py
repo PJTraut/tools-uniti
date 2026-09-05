@@ -71,6 +71,23 @@ def test_a21_workflow_is_pinned_read_only_and_runs_every_required_lane():
     assert "check-latest: ${{ matrix.python == '3.x' }}" in source
     assert "cache:" not in source
 
+    assert "name: Install Linux Qt runtime dependencies" in source
+    assert "if: runner.os == 'Linux'" in source
+    assert "sudo apt-get install --no-install-recommends -y" in source
+    for package in (
+        "libegl1",
+        "libxcb-cursor0",
+        "libxcb-icccm4",
+        "libxcb-image0",
+        "libxcb-keysyms1",
+        "libxcb-render-util0",
+        "libxcb-xinerama0",
+        "libxkbcommon-x11-0",
+        "xauth",
+        "xvfb",
+    ):
+        assert package in source
+
     assert "./uniti.command --dev --no-launch" in source
     assert "uniti.bat --dev --no-launch" in source
     assert "if: runner.os != 'Windows'" in source

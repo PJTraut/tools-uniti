@@ -273,6 +273,18 @@ def test_driver_sets_exact_offscreen_and_native_smoke_environments(tmp_path: Pat
     assert runner.calls[1][1]["shell"] is False
 
 
+def test_driver_runs_complete_pytest_offscreen(tmp_path: Path):
+    runner = RecordingRunner()
+    driver = _driver(tmp_path, runner=runner)
+
+    driver.run_pytest()
+
+    command, options = runner.calls[0]
+    assert command[1:4] == ["-m", "pytest", "-q"]
+    assert options["env"]["QT_QPA_PLATFORM"] == "offscreen"
+    assert options["shell"] is False
+
+
 def test_linux_native_smoke_requires_xvfb_and_xcb(tmp_path: Path):
     payload = {
         "ok": True,

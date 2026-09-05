@@ -655,22 +655,25 @@ def _search(manifest: CorpusManifest, *, scenario_name: str) -> ScenarioResult:
 
         def cancel_work(context):
             with cancel_snapshot:
-                return sum(
-                    1
-                    for _ in search_document(
-                        cancel_snapshot,
-                        compile_pattern(pattern),
-                        options=SearchOptions(
-                            timeout=None,
-                            include_captures=False,
-                            progress_chars=64 << 10,
-                        ),
-                        cancelled=lambda: context.token.cancelled,
-                        progress=lambda completed, total: context.report(
-                            "Searching", completed, total
-                        ),
+                matches = 0
+                while not context.token.cancelled:
+                    matches += sum(
+                        1
+                        for _ in search_document(
+                            cancel_snapshot,
+                            compile_pattern(pattern),
+                            options=SearchOptions(
+                                timeout=None,
+                                include_captures=False,
+                                progress_chars=64 << 10,
+                            ),
+                            cancelled=lambda: context.token.cancelled,
+                            progress=lambda completed, total: context.report(
+                                "Searching", completed, total
+                            ),
+                        )
                     )
-                )
+                return matches
 
         cancel_handle = resources.tasks.submit(
             TaskSpec.create(

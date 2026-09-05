@@ -192,6 +192,19 @@ def test_dense_search_and_replace_scenarios_preserve_integrity(tmp_path: Path):
     assert replace.facts["atomic_undo"] is True
 
 
+def test_dense_search_cancellation_remains_observable_on_fast_small_corpus(
+    tmp_path: Path,
+):
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.SEARCH_DENSE, size_bytes=64 << 10),
+        tmp_path / "small-dense",
+    )
+
+    search = run_scenario("search_dense", manifest)
+
+    assert search.facts["cancelled"] is True
+
+
 def test_progressive_save_scenarios_preserve_integrity(tmp_path: Path):
     manifest = generate_corpus(
         CorpusSpec(CorpusKind.ORDINARY_LINES, size_bytes=1 << 20),

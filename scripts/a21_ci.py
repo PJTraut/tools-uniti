@@ -431,6 +431,8 @@ class A21CIDriver:
 
     def run_pytest(self) -> None:
         self.results.mkdir(parents=True, exist_ok=True)
+        environment = dict(self.environ)
+        environment["QT_QPA_PLATFORM"] = "offscreen"
         self._run(
             "pytest",
             [
@@ -440,6 +442,7 @@ class A21CIDriver:
                 "-q",
                 f"--junitxml={self.results / 'pytest.xml'}",
             ],
+            env=environment,
         )
 
     def run_compile(self) -> None:

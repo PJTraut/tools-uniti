@@ -11,7 +11,7 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtGui import QFont, QFontDatabase, QRawFont
+from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
 from PySide6.QtWidgets import QApplication
 
 from uniti.app.platform_policy import PlatformFamily
@@ -83,6 +83,14 @@ def _factory(specs: dict[str, _RawSpec], calls: list[str]):
         return _RawFont(specs[family])
 
     return create
+
+
+def test_default_font_probe_avoids_unsafe_raw_font_conversion():
+    source = Path("src/uniti/ui/font_policy.py").read_text(encoding="utf-8")
+
+    assert "QRawFont" not in source
+    assert "QFontInfo" in source
+    assert "QFontMetrics" in source
 
 
 def test_font_policy_requires_an_existing_gui_application():
@@ -235,12 +243,12 @@ def test_real_editor_font_is_concrete_fixed_pitch_with_required_coverage(qapp):
     from uniti.ui.font_policy import resolve_editor_font
 
     resolution = resolve_editor_font()
-    raw_font = QRawFont.fromFont(resolution.font)
+    metrics = QFontMetrics(resolution.font)
 
     assert resolution.font.family().casefold() != "monospace"
     assert QFontDatabase.isFixedPitch(resolution.resolved_family)
-    assert raw_font.supportsCharacter(ord("A"))
-    assert raw_font.supportsCharacter(ord("Ж"))
+    assert metrics.inFontUcs4(ord("A"))
+    assert metrics.inFontUcs4(ord("Ж"))
     assert resolution.fixed_pitch is True
     assert resolution.latin_coverage is True
     assert resolution.cyrillic_coverage is True
