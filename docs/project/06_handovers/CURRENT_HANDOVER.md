@@ -34,6 +34,7 @@ A20, the A21 Editor Layout and Visibility workstream, and the A21 Cross-Platform
 - [Approved A22 design](../02_plans/v0.001a22-dogfood-performance-design.md)
 - [A22 implementation plan](../02_plans/v0.001a22-dogfood-performance-implementation.md)
 - [Queued A23 executable health/recovery design](../02_plans/v0.001a23-executable-health-recovery-design.md)
+- [Queued A23 executable health/recovery implementation plan](../02_plans/v0.001a23-executable-health-recovery-implementation.md)
 - [Executable-only product boundary decision](../05_decisions/ADR-0006-executable-health-recovery-boundary.md)
 - [Implemented A20 milestone](../03_implemented/milestones/2026-09-04-uniti-v0.001a20-recovery-session-alpha.md)
 - [Implemented A20 design](../03_implemented/designs/2026-09-04-uniti-v0.001a20-recovery-session-design.md)
