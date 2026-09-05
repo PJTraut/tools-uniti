@@ -50,9 +50,9 @@ NOW = datetime(2026, 9, 4, 10, tzinfo=UTC)
 
 class FakeBackend:
     def __init__(self, root: Path):
-        self.root = root
+        self.root = Path(root).resolve(strict=False)
         self.files: dict[Path, bytes] = {}
-        self.directories = {root}
+        self.directories = {self.root}
         self.operations: list[tuple[str, str]] = []
         self.reads: list[Path] = []
         self.listings: list[Path] = []
