@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Callable, Iterator
 
 from uniti.app.atomic_json import atomic_write_json, utc_timestamp
+from uniti.app.process_liveness import process_is_live
 
 from .discovery import query_python, runtime_python
 from .model import BootstrapError, BootstrapMode, HostPython, RuntimeMarker
@@ -28,20 +29,6 @@ class BootstrapLock:
     session_id: str
     pid: int
     path: Path
-
-
-def _pid_is_live(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
 
 
 class EnvironmentManager:
@@ -232,7 +219,7 @@ class EnvironmentManager:
                 pid = int(existing.get("pid", 0)) if isinstance(existing, dict) else 0
             except (OSError, ValueError, json.JSONDecodeError):
                 pid = 0
-            if _pid_is_live(pid):
+            if process_is_live(pid):
                 raise BootstrapError(f"bootstrap is already running as PID {pid}", 11)
             self._preserve_stale_lock()
 

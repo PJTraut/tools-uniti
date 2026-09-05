@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 import shutil
 from collections.abc import Iterable
@@ -13,6 +12,7 @@ from pathlib import Path
 
 from .atomic_json import atomic_write_json, utc_timestamp
 from .paths import AppPaths
+from .process_liveness import process_is_live
 
 
 def is_durable_session_artifact_name(name: str) -> bool:
@@ -41,20 +41,6 @@ class CleanupReport:
             "retained": self.retained,
             "errors": list(self.errors),
         }
-
-
-def _pid_is_live(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
 
 
 def create_session_record(
@@ -96,7 +82,7 @@ def _session_removable(path: Path, active: set[str], cutoff: datetime) -> bool:
         pid = int(payload.get("pid", 0))
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return False
-    return not _pid_is_live(pid)
+    return not process_is_live(pid)
 
 
 def _safe_remove(path: Path, root: Path) -> None:
