@@ -98,11 +98,21 @@ def test_progressive_save_as_locks_only_source_and_cancel_preserves_target(
         app.processEvents()
 
 
-def test_progressive_save_as_commits_and_opens_target_tab(
+@pytest.mark.parametrize("directory_synced", [True, False])
+def test_progressive_save_as_commits_and_opens_target_tab_with_safe_durability(
     app,
     tmp_path: Path,
+    monkeypatch,
+    directory_synced: bool,
 ):
+    from uniti.core.durability import NativeDurabilityAdapter
     from uniti.ui.main_window import UNITIMainWindow
+
+    monkeypatch.setattr(
+        NativeDurabilityAdapter,
+        "sync_directory",
+        lambda _adapter, _directory: directory_synced,
+    )
 
     source_path = tmp_path / "source.txt"
     target = tmp_path / "target.txt"
@@ -134,8 +144,12 @@ def test_progressive_save_as_commits_and_opens_target_tab(
         saved = next(
             call for call in observations if call[0] is Operation.SAVE_AS
         )
-        assert saved[1] is Outcome.SUCCESS
-        assert saved[2]["durability"] is Durability.FULL
+        if directory_synced:
+            assert saved[1] is Outcome.SUCCESS
+            assert saved[2]["durability"] is Durability.FULL
+        else:
+            assert saved[1] is Outcome.REDUCED_DURABILITY
+            assert saved[2]["durability"] is Durability.FILE_SYNCED
         assert str(source_path) not in repr(saved)
         assert str(target) not in repr(saved)
     finally:
@@ -215,12 +229,22 @@ def test_progressive_save_refuses_external_change_and_records_fixed_outcome(
         app.processEvents()
 
 
-def test_progressive_save_records_success_and_full_durability(
+@pytest.mark.parametrize("directory_synced", [True, False])
+def test_progressive_save_records_safe_durability(
     app,
     tmp_path: Path,
+    monkeypatch,
+    directory_synced: bool,
 ):
     from uniti.app.dogfood import Durability, Operation, Outcome
+    from uniti.core.durability import NativeDurabilityAdapter
     from uniti.ui.main_window import UNITIMainWindow
+
+    monkeypatch.setattr(
+        NativeDurabilityAdapter,
+        "sync_directory",
+        lambda _adapter, _directory: directory_synced,
+    )
 
     source_path = tmp_path / "save.txt"
     source_path.write_text("before", encoding="utf-8")
@@ -239,8 +263,12 @@ def test_progressive_save_records_success_and_full_durability(
         _wait(app, lambda: handle.done and view.isEnabled())
 
         saved = next(call for call in observations if call[0] is Operation.SAVE)
-        assert saved[1] is Outcome.SUCCESS
-        assert saved[2]["durability"] is Durability.FULL
+        if directory_synced:
+            assert saved[1] is Outcome.SUCCESS
+            assert saved[2]["durability"] is Durability.FULL
+        else:
+            assert saved[1] is Outcome.REDUCED_DURABILITY
+            assert saved[2]["durability"] is Durability.FILE_SYNCED
         assert source_path.read_text(encoding="utf-8") == "before after"
     finally:
         window.close_all_documents(force=True)
