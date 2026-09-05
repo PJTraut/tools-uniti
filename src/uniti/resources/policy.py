@@ -67,6 +67,34 @@ class PressureLimits:
 class ComparisonLimits:
     regression_warning_percent: float
     regression_failure_percent: float
+    required_failure_confirmations: int = 2
+
+
+@dataclass(frozen=True, slots=True)
+class SustainedLimits:
+    warmup_cycles: int
+    hosted_cycles: int
+    controlled_cycles: int
+    max_fixture_mib: int
+    rss_growth_warn_mib: int
+    rss_growth_fail_mib: int
+    handle_growth_warn: int
+    handle_growth_fail: int
+    operation_timeout_seconds: int
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceLimits:
+    family_max_decoded_mib: int
+    suite_max_decoded_mib: int
+    failure_retention_days: int
+
+
+@dataclass(frozen=True, slots=True)
+class DogfoodLimits:
+    retention_days: int
+    aggregate_max_mib: int
+    publish_interval_seconds: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +106,9 @@ class PerformancePolicy:
     resources: ResourceLimits
     pressure: PressureLimits
     comparison: ComparisonLimits
+    sustained: SustainedLimits
+    evidence: EvidenceLimits
+    dogfood: DogfoodLimits
 
 
 class ResourceSnapshotLike(Protocol):
@@ -86,7 +117,7 @@ class ResourceSnapshotLike(Protocol):
     load_per_logical_core: float | None
 
 
-_TOP_LEVEL_KEYS = {
+_SCHEMA_1_TOP_LEVEL_KEYS = {
     "schema",
     "tiers",
     "host_requirements",
@@ -94,6 +125,11 @@ _TOP_LEVEL_KEYS = {
     "resources",
     "pressure",
     "comparison",
+}
+_SCHEMA_2_TOP_LEVEL_KEYS = _SCHEMA_1_TOP_LEVEL_KEYS | {
+    "sustained",
+    "evidence",
+    "dogfood",
 }
 _TIER_NAMES = {"quick", "routine", "design_target"}
 _HOST_REQUIREMENT_NAMES = {"routine", "design_target"}
@@ -376,9 +412,11 @@ def _parse_pressure(raw: object) -> PressureLimits:
     return result
 
 
-def _parse_comparison(raw: object) -> ComparisonLimits:
+def _parse_comparison(raw: object, *, schema: int) -> ComparisonLimits:
     values = _table(raw, "comparison")
     keys = {"regression_warning_percent", "regression_failure_percent"}
+    if schema == 2:
+        keys.add("required_failure_confirmations")
     _exact_keys(values, required=keys, name="comparison")
     result = ComparisonLimits(
         regression_warning_percent=_number(
@@ -389,14 +427,174 @@ def _parse_comparison(raw: object) -> ComparisonLimits:
             values["regression_failure_percent"],
             "comparison.regression_failure_percent",
         ),
+        required_failure_confirmations=(
+            _integer(
+                values["required_failure_confirmations"],
+                "comparison.required_failure_confirmations",
+                minimum=1,
+            )
+            if schema == 2
+            else 2
+        ),
     )
     if result.regression_warning_percent > result.regression_failure_percent:
         raise ValueError("comparison warning percent must not exceed failure percent")
     return result
 
 
+_SCHEMA_1_SUSTAINED_DEFAULTS = SustainedLimits(
+    warmup_cycles=1,
+    hosted_cycles=5,
+    controlled_cycles=50,
+    max_fixture_mib=10,
+    rss_growth_warn_mib=16,
+    rss_growth_fail_mib=32,
+    handle_growth_warn=4,
+    handle_growth_fail=16,
+    operation_timeout_seconds=30,
+)
+_SCHEMA_1_EVIDENCE_DEFAULTS = EvidenceLimits(
+    family_max_decoded_mib=2,
+    suite_max_decoded_mib=8,
+    failure_retention_days=7,
+)
+_SCHEMA_1_DOGFOOD_DEFAULTS = DogfoodLimits(
+    retention_days=7,
+    aggregate_max_mib=16,
+    publish_interval_seconds=300,
+)
+
+
+def _parse_sustained(raw: object) -> SustainedLimits:
+    values = _table(raw, "sustained")
+    keys = {
+        "warmup_cycles",
+        "hosted_cycles",
+        "controlled_cycles",
+        "max_fixture_mib",
+        "rss_growth_warn_mib",
+        "rss_growth_fail_mib",
+        "handle_growth_warn",
+        "handle_growth_fail",
+        "operation_timeout_seconds",
+    }
+    _exact_keys(values, required=keys, name="sustained")
+    result = SustainedLimits(
+        warmup_cycles=_integer(
+            values["warmup_cycles"], "sustained.warmup_cycles", minimum=1
+        ),
+        hosted_cycles=_integer(
+            values["hosted_cycles"], "sustained.hosted_cycles", minimum=1
+        ),
+        controlled_cycles=_integer(
+            values["controlled_cycles"], "sustained.controlled_cycles", minimum=1
+        ),
+        max_fixture_mib=_integer(
+            values["max_fixture_mib"], "sustained.max_fixture_mib", minimum=1
+        ),
+        rss_growth_warn_mib=_integer(
+            values["rss_growth_warn_mib"],
+            "sustained.rss_growth_warn_mib",
+            minimum=1,
+        ),
+        rss_growth_fail_mib=_integer(
+            values["rss_growth_fail_mib"],
+            "sustained.rss_growth_fail_mib",
+            minimum=1,
+        ),
+        handle_growth_warn=_integer(
+            values["handle_growth_warn"],
+            "sustained.handle_growth_warn",
+            minimum=0,
+        ),
+        handle_growth_fail=_integer(
+            values["handle_growth_fail"],
+            "sustained.handle_growth_fail",
+            minimum=1,
+        ),
+        operation_timeout_seconds=_integer(
+            values["operation_timeout_seconds"],
+            "sustained.operation_timeout_seconds",
+            minimum=1,
+        ),
+    )
+    if result.hosted_cycles > result.controlled_cycles:
+        raise ValueError("sustained hosted cycles must not exceed controlled cycles")
+    if result.max_fixture_mib > 10:
+        raise ValueError("sustained max fixture must not exceed 10 MiB")
+    if result.rss_growth_warn_mib > result.rss_growth_fail_mib:
+        raise ValueError("sustained RSS warning must not exceed failure growth")
+    if result.handle_growth_warn > result.handle_growth_fail:
+        raise ValueError("sustained handle warning must not exceed failure growth")
+    if result.operation_timeout_seconds > 300:
+        raise ValueError("sustained operation timeout must not exceed 300 seconds")
+    return result
+
+
+def _parse_evidence(raw: object) -> EvidenceLimits:
+    values = _table(raw, "evidence")
+    keys = {
+        "family_max_decoded_mib",
+        "suite_max_decoded_mib",
+        "failure_retention_days",
+    }
+    _exact_keys(values, required=keys, name="evidence")
+    result = EvidenceLimits(
+        family_max_decoded_mib=_integer(
+            values["family_max_decoded_mib"],
+            "evidence.family_max_decoded_mib",
+            minimum=1,
+        ),
+        suite_max_decoded_mib=_integer(
+            values["suite_max_decoded_mib"],
+            "evidence.suite_max_decoded_mib",
+            minimum=1,
+        ),
+        failure_retention_days=_integer(
+            values["failure_retention_days"],
+            "evidence.failure_retention_days",
+            minimum=1,
+        ),
+    )
+    if result.family_max_decoded_mib > 2:
+        raise ValueError("family evidence must not exceed 2 MiB")
+    if result.suite_max_decoded_mib > 8:
+        raise ValueError("suite evidence must not exceed 8 MiB")
+    if result.family_max_decoded_mib > result.suite_max_decoded_mib:
+        raise ValueError("family evidence must not exceed suite evidence")
+    if result.failure_retention_days > 7:
+        raise ValueError("failure evidence retention must not exceed 7 days")
+    return result
+
+
+def _parse_dogfood(raw: object) -> DogfoodLimits:
+    values = _table(raw, "dogfood")
+    keys = {"retention_days", "aggregate_max_mib", "publish_interval_seconds"}
+    _exact_keys(values, required=keys, name="dogfood")
+    result = DogfoodLimits(
+        retention_days=_integer(
+            values["retention_days"], "dogfood.retention_days", minimum=1
+        ),
+        aggregate_max_mib=_integer(
+            values["aggregate_max_mib"], "dogfood.aggregate_max_mib", minimum=1
+        ),
+        publish_interval_seconds=_integer(
+            values["publish_interval_seconds"],
+            "dogfood.publish_interval_seconds",
+            minimum=1,
+        ),
+    )
+    if result.retention_days > 7:
+        raise ValueError("dogfood retention must not exceed 7 days")
+    if result.aggregate_max_mib > 16:
+        raise ValueError("dogfood evidence must not exceed 16 MiB")
+    if result.publish_interval_seconds > 3600:
+        raise ValueError("dogfood publication interval must not exceed one hour")
+    return result
+
+
 def _parse_schema_1(raw: dict[str, object]) -> PerformancePolicy:
-    _exact_keys(raw, required=_TOP_LEVEL_KEYS, name="root")
+    _exact_keys(raw, required=_SCHEMA_1_TOP_LEVEL_KEYS, name="root")
     return PerformancePolicy(
         schema=1,
         tiers=_parse_tiers(raw["tiers"]),
@@ -404,12 +602,37 @@ def _parse_schema_1(raw: dict[str, object]) -> PerformancePolicy:
         gates=_parse_gates(raw["gates"]),
         resources=_parse_resources(raw["resources"]),
         pressure=_parse_pressure(raw["pressure"]),
-        comparison=_parse_comparison(raw["comparison"]),
+        comparison=_parse_comparison(raw["comparison"], schema=1),
+        sustained=_SCHEMA_1_SUSTAINED_DEFAULTS,
+        evidence=_SCHEMA_1_EVIDENCE_DEFAULTS,
+        dogfood=_SCHEMA_1_DOGFOOD_DEFAULTS,
     )
 
 
+def _parse_schema_2(raw: dict[str, object]) -> PerformancePolicy:
+    _exact_keys(raw, required=_SCHEMA_2_TOP_LEVEL_KEYS, name="root")
+    policy = PerformancePolicy(
+        schema=2,
+        tiers=_parse_tiers(raw["tiers"]),
+        host_requirements=_parse_host_requirements(raw["host_requirements"]),
+        gates=_parse_gates(raw["gates"]),
+        resources=_parse_resources(raw["resources"]),
+        pressure=_parse_pressure(raw["pressure"]),
+        comparison=_parse_comparison(raw["comparison"], schema=2),
+        sustained=_parse_sustained(raw["sustained"]),
+        evidence=_parse_evidence(raw["evidence"]),
+        dogfood=_parse_dogfood(raw["dogfood"]),
+    )
+    retained_failure = policy.gates["retained_rss_mib"].fail
+    if policy.sustained.rss_growth_fail_mib >= retained_failure:
+        raise ValueError(
+            "sustained RSS failure growth must remain below retained RSS failure gate"
+        )
+    return policy
+
+
 def load_performance_policy(path: Path | None = None) -> PerformancePolicy:
-    """Load and fully validate schema 1 of UNITI's shared policy table."""
+    """Load and fully validate a compatible UNITI shared policy table."""
 
     if path is None:
         text = files("uniti.resources").joinpath("performance_policy.toml").read_text(
@@ -419,9 +642,11 @@ def load_performance_policy(path: Path | None = None) -> PerformancePolicy:
         text = path.read_text(encoding="utf-8")
     raw = tomllib.loads(text)
     schema = raw.get("schema")
-    if schema != 1:
-        raise ValueError(f"unsupported performance policy schema: {schema!r}")
-    return _parse_schema_1(raw)
+    if schema == 1:
+        return _parse_schema_1(raw)
+    if schema == 2:
+        return _parse_schema_2(raw)
+    raise ValueError(f"unsupported performance policy schema: {schema!r}")
 
 
 def classify_resource_state(

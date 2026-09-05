@@ -1,4 +1,4 @@
-schema = 1
+schema = 2
 
 [tiers.quick]
 size_mib = 10
@@ -88,3 +88,25 @@ healthier_samples_before_recovery = 2
 [comparison]
 regression_warning_percent = 15
 regression_failure_percent = 25
+required_failure_confirmations = 2
+
+[sustained]
+warmup_cycles = 1
+hosted_cycles = 5
+controlled_cycles = 50
+max_fixture_mib = 10
+rss_growth_warn_mib = 16
+rss_growth_fail_mib = 32
+handle_growth_warn = 4
+handle_growth_fail = 16
+operation_timeout_seconds = 30
+
+[evidence]
+family_max_decoded_mib = 2
+suite_max_decoded_mib = 8
+failure_retention_days = 7
+
+[dogfood]
+retention_days = 7
+aggregate_max_mib = 16
+publish_interval_seconds = 300

@@ -32,6 +32,17 @@ def test_project_versions_are_canonical():
     assert display.startswith("v0.001a")
 
 
+def test_packaged_performance_policy_uses_schema_2():
+    from uniti.resources.policy import load_performance_policy
+
+    policy = load_performance_policy()
+
+    assert policy.schema == 2
+    assert policy.sustained.controlled_cycles == 50
+    assert policy.evidence.suite_max_decoded_mib == 8
+    assert policy.dogfood.retention_days == 7
+
+
 def test_project_declares_uniti_console_entrypoint():
     import tomllib
     from pathlib import Path
