@@ -74,6 +74,13 @@ exit /b %ERRORLEVEL%
     return wrapper
 
 
+def _windows_shell_command(executable: Path, arguments: tuple[str, ...]) -> str:
+    values = (str(executable), *arguments)
+    if any('"' in value for value in values):
+        raise ValueError("Windows launcher test values must not contain quotes")
+    return " ".join(f'"{value}"' for value in values)
+
+
 def test_required_platform_launchers_are_shipped():
     assert POSIX_LAUNCHER.is_file()
     assert WINDOWS_LAUNCHER.is_file()
@@ -240,12 +247,13 @@ raise SystemExit(int(os.environ["UNITI_LAUNCH_TEST_EXIT"]))
     )
 
     completed = subprocess.run(
-        [str(launcher), *arguments],
+        _windows_shell_command(launcher, arguments),
         cwd=tmp_path,
         env=env,
         text=True,
         capture_output=True,
         check=False,
+        shell=True,
     )
 
     payload = json.loads(log.read_text(encoding="utf-8"))
