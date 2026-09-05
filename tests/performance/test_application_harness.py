@@ -50,7 +50,7 @@ def test_cycles_reuse_service_and_helpers_drive_public_application_apis(
     root = _root(tmp_path)
     fixture = root / "fixtures" / "ordinary.txt"
     fixture.parent.mkdir()
-    fixture.write_text("alpha needle omega\n", encoding="utf-8")
+    fixture.write_bytes(b"alpha needle omega\n")
 
     with ApplicationWorkloadHarness(root) as harness:
         identity = harness.service_identity
@@ -108,7 +108,7 @@ def test_checkpoint_requests_best_effort_heap_relief(tmp_path: Path, monkeypatch
 def test_checkpoint_settles_deferred_view_deletion(tmp_path: Path):
     root = _root(tmp_path)
     fixture = root / "document.txt"
-    fixture.write_text("owned\n", encoding="utf-8")
+    fixture.write_bytes(b"owned\n")
 
     with ApplicationWorkloadHarness(root) as harness:
         view = harness.open_owned_fixture(fixture)
@@ -181,7 +181,7 @@ def test_shutdown_releases_every_application_authority_and_can_restart(
 ):
     first_root = _root(tmp_path, "first")
     fixture = first_root / "document.txt"
-    fixture.write_text("owned\n", encoding="utf-8")
+    fixture.write_bytes(b"owned\n")
     first = ApplicationWorkloadHarness(first_root)
     first.open_owned_fixture(fixture)
     first.shutdown()
