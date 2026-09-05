@@ -1,0 +1,76 @@
+name: A21 cross-platform
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-platform:
+    name: ${{ matrix.id }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {id: macos-py312, os: macos-15, python: "3.12", family: macos}
+          - {id: windows-py312, os: windows-2025, python: "3.12", family: windows}
+          - {id: linux-py312, os: ubuntu-24.04, python: "3.12", family: linux}
+          - {id: linux-latest, os: ubuntu-24.04, python: "3.x", family: linux}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Select Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          allow-prereleases: false
+          check-latest: ${{ matrix.python == '3.x' }}
+
+      - name: Bootstrap owned runtime (POSIX)
+        if: runner.os != 'Windows'
+        run: ./uniti.command --dev --no-launch
+
+      - name: Bootstrap owned runtime (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: uniti.bat --dev --no-launch
+
+      - name: Validate owned runtime
+        run: python scripts/a21_ci.py runtime --family ${{ matrix.family }}
+
+      - name: Run complete test suite
+        run: python scripts/a21_ci.py pytest --family ${{ matrix.family }}
+
+      - name: Compile Python sources
+        run: python scripts/a21_ci.py compile --family ${{ matrix.family }}
+
+      - name: Run deep self-check
+        run: python scripts/a21_ci.py self-check --family ${{ matrix.family }}
+
+      - name: Run offscreen smoke
+        run: python scripts/a21_ci.py smoke --mode offscreen --family ${{ matrix.family }}
+
+      - name: Run native smoke
+        run: python scripts/a21_ci.py smoke --mode native --family ${{ matrix.family }}
+
+      - name: Verify exact skip policy
+        run: python scripts/a21_ci.py verify-skips --family ${{ matrix.family }}
+
+      - name: Sanitize failure evidence
+        if: failure()
+        run: python scripts/a21_ci.py sanitize --family ${{ matrix.family }}
+
+      - name: Upload bounded failure evidence
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: a21-${{ matrix.id }}
+          path: ci-results/sanitized
+          if-no-files-found: error
+          retention-days: 7

@@ -27,6 +27,80 @@ def test_a21_ci_policy_and_driver_are_checked_in_with_bounded_contracts():
     assert "ci-results/" in Path(".gitignore").read_text(encoding="utf-8").splitlines()
 
 
+def test_a21_workflow_is_pinned_read_only_and_runs_every_required_lane():
+    workflow = Path(".github/workflows/a21-cross-platform.yml")
+
+    assert workflow.is_file()
+    source = workflow.read_text(encoding="utf-8")
+    assert "name: A21 cross-platform" in source
+    assert "  push:" in source
+    assert "  pull_request:" in source
+    assert "  workflow_dispatch:" in source
+    for forbidden_trigger in ("pull_request_target:", "release:", "schedule:"):
+        assert forbidden_trigger not in source
+    assert "permissions:\n  contents: read" in source
+    assert "contents: write" not in source
+    assert "fail-fast: false" in source
+    for row in (
+        '{id: macos-py312, os: macos-15, python: "3.12", family: macos}',
+        '{id: windows-py312, os: windows-2025, python: "3.12", family: windows}',
+        '{id: linux-py312, os: ubuntu-24.04, python: "3.12", family: linux}',
+        '{id: linux-latest, os: ubuntu-24.04, python: "3.x", family: linux}',
+    ):
+        assert source.count(row) == 1
+    assert "name: ${{ matrix.id }}" in source
+    assert "runs-on: ${{ matrix.os }}" in source
+    assert "macos-latest" not in source
+    assert "windows-latest" not in source
+    assert "ubuntu-latest" not in source
+
+    assert (
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1"
+        in source
+    )
+    assert (
+        "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0"
+        in source
+    )
+    assert (
+        "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1"
+        in source
+    )
+    assert "python-version: ${{ matrix.python }}" in source
+    assert "allow-prereleases: false" in source
+    assert "check-latest: ${{ matrix.python == '3.x' }}" in source
+    assert "cache:" not in source
+
+    assert "./uniti.command --dev --no-launch" in source
+    assert "uniti.bat --dev --no-launch" in source
+    assert "if: runner.os != 'Windows'" in source
+    assert "if: runner.os == 'Windows'" in source
+    assert "shell: cmd" in source
+    for command in (
+        "runtime --family ${{ matrix.family }}",
+        "pytest --family ${{ matrix.family }}",
+        "compile --family ${{ matrix.family }}",
+        "self-check --family ${{ matrix.family }}",
+        "smoke --mode offscreen --family ${{ matrix.family }}",
+        "smoke --mode native --family ${{ matrix.family }}",
+        "verify-skips --family ${{ matrix.family }}",
+        "sanitize --family ${{ matrix.family }}",
+    ):
+        assert source.count(f"python scripts/a21_ci.py {command}") == 1
+    assert source.count("if: failure()") == 2
+    assert "path: ci-results/sanitized" in source
+    assert "if-no-files-found: error" in source
+    assert "retention-days: 7" in source
+    assert "name: a21-${{ matrix.id }}" in source
+
+    lowered = source.lower()
+    assert "continue-on-error" not in lowered
+    assert "secrets." not in lowered
+    assert "pip install" not in lowered
+    assert "python -m build" not in lowered
+    assert "deploy" not in lowered
+
+
 def test_a21_safe_diagnostics_omit_user_paths(tmp_path: Path):
     from uniti.app.diagnostics import diagnostics_snapshot
     from uniti.core.document import Document

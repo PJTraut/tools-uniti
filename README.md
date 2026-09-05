@@ -149,6 +149,14 @@ A successful run returns JSON with `"ok": true`.
 
 Qt runtime tests run automatically when PySide6 is installed; otherwise those tests are explicitly skipped while all core/app contracts continue to run.
 
+## A21 cross-platform CI
+
+The read-only `A21 cross-platform` workflow defines four explicit source lanes: macOS 15/Python 3.12, Windows 2025/Python 3.12, Ubuntu 24.04/Python 3.12, and Ubuntu 24.04 on the newest stable Python 3.x. Each lane exercises the public launcher to create a clean UNITI-owned runtime before running the common CI driver.
+
+The driver validates runtime ownership and dependencies, runs the complete suite with exact platform skip accounting, compiles all Python sources, and executes deep self-check plus offscreen and native Qt smoke. CI does not use dependency caches, package builds, deployment credentials, or write permissions. On failure only, parsed and redacted evidence below `ci-results/sanitized` is retained for seven days; raw logs, document paths/content, IPC data, and arbitrary files are excluded.
+
+The checked-in workflow is a gate definition, not evidence that hosted lanes have passed. Running or publishing remote evidence still requires a separately authorized push.
+
 ## Alpha runtime checklist
 
 After installing `.[ui,dev]` on the Mac, run:

@@ -104,6 +104,24 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m uniti --smoke
 git diff --check
 ```
 
+### A21 cross-platform CI
+
+`.github/workflows/a21-cross-platform.yml` defines four fail-closed lanes on fixed runner labels: `macos-py312`, `windows-py312`, `linux-py312`, and `linux-latest`. The workflow has read-only repository permission and uses immutable action revisions. It deliberately avoids dependency caching so each lane proves the public POSIX or Windows bootstrap and its UNITI-owned `.venv`.
+
+After bootstrap, every lane invokes `python scripts/a21_ci.py` for runtime validation, complete pytest/JUnit, compile-all, deep self-check, deterministic offscreen smoke, native Cocoa/Windows/XCB smoke, and exact skip verification. The local equivalents are:
+
+```bash
+.venv/bin/python scripts/a21_ci.py runtime --family macos
+.venv/bin/python scripts/a21_ci.py pytest --family macos
+.venv/bin/python scripts/a21_ci.py compile --family macos
+.venv/bin/python scripts/a21_ci.py self-check --family macos
+.venv/bin/python scripts/a21_ci.py smoke --mode offscreen --family macos
+.venv/bin/python scripts/a21_ci.py smoke --mode native --family macos
+.venv/bin/python scripts/a21_ci.py verify-skips --family macos
+```
+
+On a failed hosted lane, `sanitize` parses only the fixed runtime, self-check, smoke, and JUnit inputs; applies the per-file and aggregate budgets; strips streams/properties and unapproved fields; redacts workspace/home/temp/runner roots; and prepares `ci-results/sanitized` for a seven-day failure-only upload. `ci-results/` is ignored and should be removed after local inspection. A remote run and its resulting URLs require a separately authorized push; the workflow never publishes a package or release.
+
 The host-aware A20 user-experience suite uses the packaged policy table in `src/uniti/resources/performance_policy.toml`. Quick and routine tiers include `session_restore`; the design-target tier intentionally remains focused on sparse large-file behavior:
 
 ```bash
