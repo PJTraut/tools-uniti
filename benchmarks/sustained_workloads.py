@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from benchmarks.corpus import CorpusKind, CorpusManifest
 from benchmarks.models import ResultState
 from benchmarks.sustained_models import SustainedFamilyResult
+from uniti.resources import PerformancePolicy
+
+if TYPE_CHECKING:
+    from benchmarks.application_harness import ApplicationWorkloadHarness
 
 
 SUSTAINED_FAMILY_ORDER = (
@@ -30,6 +35,23 @@ def corpus_kind_for_sustained_family(family: str) -> CorpusKind:
         return _CORPUS_KINDS[family]
     except KeyError as exc:
         raise ValueError(f"unknown sustained workload family: {family}") from exc
+
+
+def create_application_harness(
+    application_root: Path,
+    *,
+    policy: PerformancePolicy | None = None,
+    operation_timeout_seconds: float | None = None,
+) -> "ApplicationWorkloadHarness":
+    """Construct the shared real-application harness without importing Qt eagerly."""
+
+    from benchmarks.application_harness import ApplicationWorkloadHarness
+
+    return ApplicationWorkloadHarness(
+        application_root,
+        policy=policy,
+        operation_timeout_seconds=operation_timeout_seconds,
+    )
 
 
 def run_sustained_workload(
