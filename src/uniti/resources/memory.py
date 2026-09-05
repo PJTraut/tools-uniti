@@ -9,9 +9,49 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 MIB = 1 << 20
 GIB = 1 << 30
+
+
+def current_process_handle_count(
+    *,
+    platform: str = sys.platform,
+    kernel32: object | None = None,
+    proc_fd_root: Path = Path("/proc/self/fd"),
+) -> int | None:
+    """Return a reliable current handle/descriptor count when available."""
+
+    if platform == "win32":
+        if kernel32 is None:
+            loader = getattr(ctypes, "WinDLL", None)
+            if loader is None:
+                return None
+            try:
+                kernel32 = loader("kernel32", use_last_error=True)
+            except (OSError, TypeError):
+                return None
+        try:
+            get_current = kernel32.GetCurrentProcess
+            get_current.argtypes = []
+            get_current.restype = ctypes.c_void_p
+            query = kernel32.GetProcessHandleCount
+            query.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+            query.restype = ctypes.c_int
+            count = ctypes.c_uint32()
+            if not query(get_current(), ctypes.byref(count)):
+                return None
+            return int(count.value)
+        except (AttributeError, OSError, TypeError, ValueError):
+            return None
+    if platform.startswith("linux"):
+        try:
+            with os.scandir(proc_fd_root) as entries:
+                return sum(1 for _entry in entries)
+        except (OSError, TypeError, ValueError):
+            return None
+    return None
 
 
 class PressureState(Enum):

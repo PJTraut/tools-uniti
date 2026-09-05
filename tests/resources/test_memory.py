@@ -4,6 +4,7 @@ from uniti.resources.memory import (
     MemorySnapshot,
     PressureState,
     automatic_cache_target,
+    current_process_handle_count,
     pressure_state,
     probe_memory,
     _parse_macos_memory,
@@ -98,3 +99,44 @@ Pages active:                             500.
 
 def test_macos_vm_stat_parser_rejects_incomplete_output():
     assert _parse_macos_memory("not-a-number", "no page size") is None
+
+
+def test_windows_native_handle_probe_reports_current_process_count():
+    class _GetCurrentProcess:
+        def __call__(self):
+            return 123
+
+    class _GetProcessHandleCount:
+        def __call__(self, process, pointer):
+            assert process == 123
+            pointer._obj.value = 17
+            return 1
+
+    class _Kernel32:
+        GetCurrentProcess = _GetCurrentProcess()
+        GetProcessHandleCount = _GetProcessHandleCount()
+
+    assert current_process_handle_count(
+        platform="win32",
+        kernel32=_Kernel32(),
+    ) == 17
+
+
+def test_linux_handle_probe_counts_only_the_supplied_proc_fd_directory(tmp_path):
+    proc_fd = tmp_path / "fd"
+    proc_fd.mkdir()
+    (proc_fd / "0").write_bytes(b"")
+    (proc_fd / "1").write_bytes(b"")
+
+    assert current_process_handle_count(
+        platform="linux",
+        proc_fd_root=proc_fd,
+    ) == 2
+
+
+def test_unavailable_handle_probe_returns_none(tmp_path):
+    assert current_process_handle_count(platform="darwin") is None
+    assert current_process_handle_count(
+        platform="linux",
+        proc_fd_root=tmp_path / "missing",
+    ) is None

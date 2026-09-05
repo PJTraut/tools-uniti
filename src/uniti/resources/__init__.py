@@ -3,7 +3,14 @@
 from .cache import CacheManager, CachePriority
 from .cancel import CancellationToken, WorkCancelled
 from .manager import ResourceManager, ResourceStatus
-from .memory import MemorySnapshot, PressureState, automatic_cache_target, pressure_state, probe_memory
+from .memory import (
+    MemorySnapshot,
+    PressureState,
+    automatic_cache_target,
+    current_process_handle_count,
+    pressure_state,
+    probe_memory,
+)
 from .policy import (
     ComparisonLimits,
     GateLimit,
@@ -77,6 +84,7 @@ __all__ = [
     "WorkPriority",
     "automatic_cache_target",
     "classify_resource_state",
+    "current_process_handle_count",
     "current_process_rss_bytes",
     "load_performance_policy",
     "peak_process_rss_bytes",
