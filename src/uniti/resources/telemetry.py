@@ -137,6 +137,16 @@ def _linux_physical_cores() -> int | None:
     return len(pairs) or None
 
 
+def _windows_cpu_model() -> str | None:
+    if not sys.platform.startswith("win"):
+        return None
+    selected = "".join(
+        character if character.isprintable() else "?"
+        for character in os.environ.get("PROCESSOR_IDENTIFIER", "")
+    ).strip()[:256]
+    return selected or None
+
+
 def probe_host_profile(temp_root: Path) -> HostResourceProfile:
     """Collect bounded, read-only host facts without making network requests."""
 
@@ -152,7 +162,12 @@ def probe_host_profile(temp_root: Path) -> HostResourceProfile:
         _sysctl("machdep.cpu.brand_string")
         or _sysctl("hw.model")
         or _linux_cpu_model()
-        or platform_module.processor().strip()
+        or _windows_cpu_model()
+        or (
+            None
+            if sys.platform.startswith("win")
+            else platform_module.processor().strip()
+        )
         or architecture
     )
     memory = probe_memory()

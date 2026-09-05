@@ -125,6 +125,34 @@ def test_real_host_probe_is_bounded_and_nonempty(tmp_path: Path):
     assert profile.temp_root == tmp_path.resolve()
 
 
+def test_windows_host_probe_avoids_interruptible_wmi_processor_query(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from uniti.resources import telemetry
+
+    monkeypatch.setattr(telemetry.sys, "platform", "win32")
+    monkeypatch.setattr(telemetry.os, "cpu_count", lambda: 4)
+    monkeypatch.setenv("PROCESSOR_IDENTIFIER", "Hosted Test CPU")
+    monkeypatch.setattr(telemetry.platform_module, "machine", lambda: "AMD64")
+    monkeypatch.setattr(telemetry.platform_module, "release", lambda: "test")
+    monkeypatch.setattr(
+        telemetry.platform_module,
+        "processor",
+        lambda: (_ for _ in ()).throw(KeyboardInterrupt()),
+    )
+    monkeypatch.setattr(
+        telemetry,
+        "probe_memory",
+        lambda: MemorySnapshot(16 << 30, 8 << 30),
+    )
+
+    profile = telemetry.probe_host_profile(tmp_path)
+
+    assert profile.cpu_model == "Hosted Test CPU"
+    assert profile.architecture == "AMD64"
+
+
 def test_process_rss_probes_are_non_negative():
     current = current_process_rss_bytes()
     peak = peak_process_rss_bytes()
