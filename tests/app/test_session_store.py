@@ -286,8 +286,14 @@ def test_publish_syncs_packs_then_manifest_then_pointer():
 
     assert backend.operations == [
         ("write_synced", str(result.pack_paths[0].relative_to(store.root))),
-        ("write_synced", f"manifests/{result.generation}.json"),
-        ("write_synced", f"pointers/{result.generation}.json"),
+        (
+            "write_synced",
+            str(Path("manifests") / f"{result.generation}.json"),
+        ),
+        (
+            "write_synced",
+            str(Path("pointers") / f"{result.generation}.json"),
+        ),
         ("replace", "current.json"),
         ("sync_directory", "."),
     ]
@@ -796,7 +802,7 @@ def test_repair_pointer_durably_promotes_a_scanned_complete_generation(level):
     assert durability.level is level
     assert store.last_durability is durability
     assert backend.operations[0][0] == "write_synced"
-    assert backend.operations[0][1].startswith("pointers/")
+    assert backend.operations[0][1].startswith(f"pointers{os.sep}")
     assert backend.operations[1:] == [
         ("replace", "current.json"),
         ("sync_directory", "."),
