@@ -120,6 +120,7 @@ def test_complete_clean_session_round_trips_two_windows_nested_splits_and_histor
 
     panel = original.find_replace
     panel.show()
+    panel.setGeometry(40, 50, 720, 320)
     panel.find_input.setFocus()
     QTest.keyClicks(panel.find_input, "needleX")
     assert panel.find_input.undo_input()
@@ -133,16 +134,18 @@ def test_complete_clean_session_round_trips_two_windows_nested_splits_and_histor
     qapp.processEvents()
     expected_find = panel.export_state(shared_second.view_id)
 
-    store.publish(original.capture_session(clean_shutdown=True))
+    assert original.request_quit(
+        lambda _entry: pytest.fail("clean session unexpectedly prompted on Quit")
+    )
+    qapp.processEvents()
     loaded = store.load_latest()
     assert loaded.manifest is not None
+    assert loaded.manifest.clean_shutdown is True
     expected = SessionSnapshot(
         loaded.manifest,
         loaded.packs,
         loaded.find_replace_pack,
     )
-    original.request_quit(lambda _entry: None)
-    qapp.processEvents()
 
     restored = _service(tmp_path, store, "restored")
     restored.restore_shell(
