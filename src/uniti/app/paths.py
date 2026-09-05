@@ -97,6 +97,10 @@ class AppPaths:
         return self.state_dir / "session"
 
     @property
+    def dogfood_dir(self) -> Path:
+        return self.state_dir / "dogfood"
+
+    @property
     def instance_lock_file(self) -> Path:
         return self.state_dir / "uniti-instance.lock"
 
@@ -186,5 +190,6 @@ class AppPaths:
             self.temp_dir,
             self.session_dir,
             self.durable_session_dir,
+            self.dogfood_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)

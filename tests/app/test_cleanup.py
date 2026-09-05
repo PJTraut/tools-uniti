@@ -3,7 +3,11 @@ import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from uniti.app.cleanup import cleanup_stale, create_session_record
+from uniti.app.cleanup import (
+    cleanup_stale,
+    create_session_record,
+    is_dogfood_artifact_name,
+)
 from uniti.app.paths import AppPaths
 
 
@@ -94,3 +98,11 @@ def test_process_cleanup_never_touches_durable_session_state(tmp_path: Path):
     cleanup_stale(paths)
 
     assert durable.exists()
+
+
+def test_dogfood_cleanup_vocabulary_accepts_only_owned_segment_names():
+    assert is_dogfood_artifact_name("current.json.gz")
+    assert is_dogfood_artifact_name("day-2026-09-05.json.gz")
+    assert not is_dogfood_artifact_name("day-2026-9-5.json.gz")
+    assert not is_dogfood_artifact_name("../day-2026-09-05.json.gz")
+    assert not is_dogfood_artifact_name("evidence.json.gz")

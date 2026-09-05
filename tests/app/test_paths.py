@@ -63,6 +63,7 @@ def test_macos_paths_use_library_locations(tmp_path: Path):
     assert paths.cache_dir == tmp_path / "Library" / "Caches" / "UNITI"
     assert paths.recovery_dir == paths.state_dir / "recovery"
     assert paths.durable_session_dir == paths.state_dir / "session"
+    assert paths.dogfood_dir == paths.state_dir / "dogfood"
     assert paths.family is PlatformFamily.MACOS
 
 
@@ -140,6 +141,7 @@ def test_app_paths_ensure_creates_required_directories(tmp_path: Path):
     assert paths.temp_dir.is_dir()
     assert paths.session_dir.is_dir()
     assert paths.durable_session_dir.is_dir()
+    assert paths.dogfood_dir.is_dir()
 
 
 def test_lifecycle_paths_are_derived_from_owned_roots(tmp_path: Path):
@@ -151,6 +153,7 @@ def test_lifecycle_paths_are_derived_from_owned_roots(tmp_path: Path):
     assert paths.temp_dir == paths.cache_dir / "temp"
     assert paths.session_dir == paths.cache_dir / "sessions"
     assert paths.durable_session_dir == paths.state_dir / "session"
+    assert paths.dogfood_dir == paths.state_dir / "dogfood"
     assert paths.instance_lock_file == paths.state_dir / "uniti-instance.lock"
     assert paths.instance_endpoint_name.startswith("uniti-")
     assert len(paths.instance_endpoint_name) == len("uniti-") + 24

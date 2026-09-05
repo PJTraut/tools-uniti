@@ -27,6 +27,21 @@ def is_durable_session_artifact_name(name: str) -> bool:
     )
 
 
+def is_dogfood_artifact_name(name: str) -> bool:
+    """Return whether *name* is one exact recorder-owned segment name."""
+
+    if name == "current.json.gz":
+        return True
+    match = re.fullmatch(r"day-(\d{4}-\d{2}-\d{2})\.json\.gz", name)
+    if match is None:
+        return False
+    try:
+        parsed = datetime.fromisoformat(match.group(1)).date()
+    except ValueError:
+        return False
+    return parsed.isoformat() == match.group(1)
+
+
 @dataclass(frozen=True, slots=True)
 class CleanupReport:
     inspected: int
