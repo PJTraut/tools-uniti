@@ -197,6 +197,69 @@ def test_session_startup_uses_one_recovery_center_before_requested_files(
     assert events[2] == ("open", requested)
 
 
+def test_session_startup_reopens_a_window_after_zero_window_shutdown(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from uniti.app.service import UNITIService
+    from uniti.app.session import LoadedSession
+
+    paths = AppPaths(
+        tmp_path / "config",
+        tmp_path / "data",
+        tmp_path / "state",
+        tmp_path / "cache",
+    )
+    paths.ensure()
+    context = StartupContext.create(paths, session_id="startup-session")
+    context.data.update(
+        resource_manager=object(),
+        settings_store=object(),
+        recovery_manager=object(),
+        session_store=object(),
+        loaded_session=LoadedSession(object(), (), None, ()),
+    )
+    snapshots = []
+
+    class StartupWindow:
+        def set_startup_snapshot(self, snapshot):
+            snapshots.append(snapshot)
+
+    window = StartupWindow()
+    monkeypatch.setattr(
+        UNITIService,
+        "restore_shell",
+        lambda self, *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(UNITIService, "restore_active", lambda self: None)
+    monkeypatch.setattr(
+        UNITIService,
+        "most_recent_window",
+        property(lambda self: None),
+    )
+    monkeypatch.setattr(UNITIService, "new_window", lambda self: window)
+    monkeypatch.setattr(
+        UNITIService,
+        "run_recovery_center",
+        lambda self, parent, **_kwargs: 0,
+    )
+    monkeypatch.setattr(UNITIService, "schedule_lazy_restore", lambda self: ())
+    monkeypatch.setattr(
+        application,
+        "_create_dogfood_runtime",
+        lambda _context: (None, None, 300),
+    )
+    callbacks = application._startup_callbacks(
+        application.ApplicationRequest(),
+        tmp_path / "runtime.json",
+    )
+
+    callbacks[StartupPhase.SESSION_RESTORE](context)
+
+    assert context.data["window"] is window
+    assert snapshots == [context.snapshot()]
+
+
 def test_session_surface_never_repairs_a_scanned_pointer_during_discovery(
     tmp_path: Path,
 ):

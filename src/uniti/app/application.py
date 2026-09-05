@@ -556,7 +556,8 @@ def _startup_callbacks(
             )
             service.restore_active()
             window = service.most_recent_window
-            assert window is not None
+            if window is None:
+                window = service.new_window()
         else:
             window = service.new_window()
         window.set_startup_snapshot(context.snapshot())
