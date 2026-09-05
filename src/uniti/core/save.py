@@ -11,6 +11,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO, Callable, Iterable, Iterator, Literal
 
+from uniti.app.phase_control import (
+    NO_OP_PHASE_OBSERVER,
+    OperationId,
+    OwnedObjectCategory,
+    PhaseBoundary,
+    PhaseId,
+    PhaseObserver,
+    emit_phase,
+)
+
 from .byte_source import ByteSource
 from .decoder import iter_decoded_spans
 from .durability import (
@@ -97,6 +107,11 @@ class StagedSave:
     target_identity: FileIdentity | None
     preserves_source_bytes: bool
     _adapter: DurabilityAdapter = field(repr=False, compare=False)
+    _phase_observer: PhaseObserver = field(
+        default=NO_OP_PHASE_OBSERVER,
+        repr=False,
+        compare=False,
+    )
     _verified: bool = False
     _verified_identity: FileIdentity | None = None
     _commit_durability: DurabilityResult | None = field(
@@ -424,9 +439,17 @@ def stage_document(
     progress: SaveProgress | None = None,
     cancelled: Callable[[], bool] | None = None,
     adapter: DurabilityAdapter | None = None,
+    phase_observer: PhaseObserver = NO_OP_PHASE_OBSERVER,
 ) -> StagedSave:
     """Write and fsync a sibling temporary without replacing destination."""
 
+    emit_phase(
+        phase_observer,
+        OperationId.DOCUMENT_SAVE,
+        PhaseId.STAGE,
+        PhaseBoundary.BEFORE,
+        OwnedObjectCategory.DOCUMENT_OUTPUT,
+    )
     if chunk_bytes <= 0 or chunk_chars <= 0:
         raise ValueError("save chunk sizes must be positive")
     preserve_bytes = _preflight_output(
@@ -485,7 +508,21 @@ def stage_document(
             _apply_target_metadata(temp_path, metadata)
             handle.flush()
             try:
+                emit_phase(
+                    phase_observer,
+                    OperationId.DOCUMENT_SAVE,
+                    PhaseId.SYNC,
+                    PhaseBoundary.BEFORE,
+                    OwnedObjectCategory.DOCUMENT_OUTPUT,
+                )
                 selected_adapter.sync_file(handle.fileno())
+                emit_phase(
+                    phase_observer,
+                    OperationId.DOCUMENT_SAVE,
+                    PhaseId.SYNC,
+                    PhaseBoundary.AFTER,
+                    OwnedObjectCategory.DOCUMENT_OUTPUT,
+                )
             except OSError as error:
                 raise _durability_error(
                     "document_save",
@@ -495,7 +532,7 @@ def stage_document(
                 ) from error
             byte_length = writer.byte_length
             digest = writer.digest
-        return StagedSave(
+        staged = StagedSave(
             destination=target,
             temporary=temp_path,
             output_format=output_format,
@@ -505,7 +542,16 @@ def stage_document(
             target_identity=target_identity,
             preserves_source_bytes=preserve_bytes,
             _adapter=selected_adapter,
+            _phase_observer=phase_observer,
         )
+        emit_phase(
+            phase_observer,
+            OperationId.DOCUMENT_SAVE,
+            PhaseId.STAGE,
+            PhaseBoundary.AFTER,
+            OwnedObjectCategory.DOCUMENT_OUTPUT,
+        )
+        return staged
     except Exception:
         if fd is not None:
             os.close(fd)
@@ -686,9 +732,18 @@ def verify_staged_document(
     *,
     progress: SaveProgress | None = None,
     cancelled: Callable[[], bool] | None = None,
+    phase_observer: PhaseObserver | None = None,
 ) -> None:
     """Reread staged bytes and prove exact byte and logical output invariants."""
 
+    observer = staged._phase_observer if phase_observer is None else phase_observer
+    emit_phase(
+        observer,
+        OperationId.DOCUMENT_SAVE,
+        PhaseId.VERIFY,
+        PhaseBoundary.BEFORE,
+        OwnedObjectCategory.DOCUMENT_OUTPUT,
+    )
     content_start = _verify_exact_bom(staged)
     _check_cancelled(cancelled)
     length, digest = _file_length_and_digest(
@@ -720,17 +775,33 @@ def verify_staged_document(
     verified_identity = FileIdentity.from_path(staged.temporary)
     object.__setattr__(staged, "_verified_identity", verified_identity)
     object.__setattr__(staged, "_verified", True)
+    emit_phase(
+        observer,
+        OperationId.DOCUMENT_SAVE,
+        PhaseId.VERIFY,
+        PhaseBoundary.AFTER,
+        OwnedObjectCategory.DOCUMENT_OUTPUT,
+    )
 
 
 def commit_staged_document(
     staged: StagedSave,
     *,
     adapter: DurabilityAdapter | None = None,
+    phase_observer: PhaseObserver | None = None,
 ) -> Path:
     """Atomically replace the destination after successful verification."""
 
     if not staged._verified or staged._verified_identity is None:
         raise SaveVerificationError("staged output has not been verified")
+    observer = staged._phase_observer if phase_observer is None else phase_observer
+    emit_phase(
+        observer,
+        OperationId.DOCUMENT_SAVE,
+        PhaseId.IDENTITY,
+        PhaseBoundary.BEFORE,
+        OwnedObjectCategory.DOCUMENT_OUTPUT,
+    )
     try:
         staged_identity = FileIdentity.from_path(staged.temporary)
     except FileNotFoundError as exc:
@@ -747,9 +818,30 @@ def commit_staged_document(
             staged.target_identity,
             target_identity,
         )
+    emit_phase(
+        observer,
+        OperationId.DOCUMENT_SAVE,
+        PhaseId.IDENTITY,
+        PhaseBoundary.AFTER,
+        OwnedObjectCategory.DOCUMENT_OUTPUT,
+    )
     selected_adapter = staged._adapter if adapter is None else adapter
     try:
+        emit_phase(
+            observer,
+            OperationId.DOCUMENT_SAVE,
+            PhaseId.REPLACE,
+            PhaseBoundary.BEFORE,
+            OwnedObjectCategory.DOCUMENT_OUTPUT,
+        )
         selected_adapter.replace(staged.temporary, staged.destination)
+        emit_phase(
+            observer,
+            OperationId.DOCUMENT_SAVE,
+            PhaseId.REPLACE,
+            PhaseBoundary.AFTER,
+            OwnedObjectCategory.DOCUMENT_OUTPUT,
+        )
     except OSError as error:
         raise _durability_error(
             "document_save",
@@ -796,6 +888,7 @@ def save_document(
     options: SaveOptions | None = None,
     before_commit: Callable[[], None] | None = None,
     adapter: DurabilityAdapter | None = None,
+    phase_observer: PhaseObserver = NO_OP_PHASE_OBSERVER,
 ) -> Path:
     """Stage, verify, and atomically replace one exact document output."""
 
@@ -813,6 +906,7 @@ def save_document(
         chunk_bytes=opts.chunk_bytes,
         chunk_chars=opts.chunk_chars,
         adapter=adapter,
+        phase_observer=phase_observer,
     )
     try:
         verify_staged_document(
@@ -821,10 +915,11 @@ def save_document(
                 chunk_chars=opts.chunk_chars,
                 intent=ReadIntent.STREAMING,
             ),
+            phase_observer=phase_observer,
         )
         if before_commit is not None:
             before_commit()
-        return commit_staged_document(staged)
+        return commit_staged_document(staged, phase_observer=phase_observer)
     finally:
         discard_staged_document(staged)
 

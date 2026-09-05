@@ -13,6 +13,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+from uniti.app.phase_control import (
+    NO_OP_PHASE_OBSERVER,
+    OperationId,
+    OwnedObjectCategory,
+    PhaseBoundary,
+    PhaseId,
+    PhaseObserver,
+    emit_phase,
+)
 from uniti.core.durability import (
     DurabilityAdapter,
     DurabilityError,
@@ -567,6 +576,7 @@ class SessionStore:
         root: Path,
         *,
         backend: StorageBackend | None = None,
+        phase_observer: PhaseObserver = NO_OP_PHASE_OBSERVER,
     ) -> None:
         self.root = Path(root)
         self.backend = backend or LocalStorageBackend(self.root)
@@ -575,6 +585,7 @@ class SessionStore:
         self.pointers_dir = self.root / "pointers"
         self.invalid_dir = self.root / "invalid"
         self._last_durability: DurabilityResult | None = None
+        self._phase_observer = phase_observer
         for directory in (
             self.root,
             self.manifests_dir,
@@ -643,6 +654,20 @@ class SessionStore:
 
     def _previous_complete(self) -> LoadedSession:
         return self.load_latest()
+
+    def _phase(
+        self,
+        phase_id: PhaseId,
+        boundary: PhaseBoundary,
+        category: OwnedObjectCategory,
+    ) -> None:
+        emit_phase(
+            self._phase_observer,
+            OperationId.SESSION_PUBLICATION,
+            phase_id,
+            boundary,
+            category,
+        )
 
     def publish(self, snapshot: SessionSnapshot) -> PublicationResult:
         previous = self._previous_complete()
@@ -768,14 +793,34 @@ class SessionStore:
         durability_results: list[DurabilityResult] = []
         try:
             for item, path in zip(encoded, pack_paths, strict=True):
+                self._phase(
+                    PhaseId.PACK,
+                    PhaseBoundary.BEFORE,
+                    OwnedObjectCategory.SESSION_PACK,
+                )
                 if not self.backend.exists(path):
                     durability_results.append(
                         self.backend.write_synced(path, item.data)
                     )
+                self._phase(
+                    PhaseId.PACK,
+                    PhaseBoundary.AFTER,
+                    OwnedObjectCategory.SESSION_PACK,
+                )
 
             manifest_path = self.manifest_path(generation)
+            self._phase(
+                PhaseId.MANIFEST,
+                PhaseBoundary.BEFORE,
+                OwnedObjectCategory.SESSION_MANIFEST,
+            )
             durability_results.append(
                 self.backend.write_synced(manifest_path, manifest_bytes)
+            )
+            self._phase(
+                PhaseId.MANIFEST,
+                PhaseBoundary.AFTER,
+                OwnedObjectCategory.SESSION_MANIFEST,
             )
             pointer = {
                 "generation": generation,
@@ -784,6 +829,11 @@ class SessionStore:
                 "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
             }
             pointer_path = self.pointers_dir / f"{generation}.json"
+            self._phase(
+                PhaseId.POINTER,
+                PhaseBoundary.BEFORE,
+                OwnedObjectCategory.SESSION_POINTER,
+            )
             durability_results.append(
                 self.backend.write_synced(pointer_path, _canonical_json(pointer))
             )
@@ -791,6 +841,11 @@ class SessionStore:
                 self.backend.replace(pointer_path, self.current_path)
             )
             durability_results.append(self.backend.sync_directory(self.root))
+            self._phase(
+                PhaseId.POINTER,
+                PhaseBoundary.AFTER,
+                OwnedObjectCategory.SESSION_POINTER,
+            )
         except DurabilityError as error:
             self._last_durability = combine_durability(
                 "session_publication",
@@ -1209,6 +1264,11 @@ class SessionStore:
         )
         durability_results: list[DurabilityResult] = []
         try:
+            self._phase(
+                PhaseId.POINTER,
+                PhaseBoundary.BEFORE,
+                OwnedObjectCategory.SESSION_POINTER,
+            )
             durability_results.append(
                 self.backend.write_synced(pointer_path, _canonical_json(pointer))
             )
@@ -1216,6 +1276,11 @@ class SessionStore:
                 self.backend.replace(pointer_path, self.current_path)
             )
             durability_results.append(self.backend.sync_directory(self.root))
+            self._phase(
+                PhaseId.POINTER,
+                PhaseBoundary.AFTER,
+                OwnedObjectCategory.SESSION_POINTER,
+            )
         except DurabilityError as error:
             self._last_durability = combine_durability(
                 "session_pointer_repair",

@@ -46,6 +46,8 @@ from uniti.regex.replace import (
 from uniti.regex.search import RegexSearchTimeout, SearchOptions, search_document
 from uniti.resources import (
     PerformancePolicy,
+    ResourceSnapshot,
+    ResourceState,
     TaskKind,
     TaskSpec,
     WorkCancelled,
@@ -1195,6 +1197,89 @@ def _stage_recovery_candidate(
     return "recovery base" + suffix
 
 
+class _ReducedDurabilityAdapter:
+    def sync_file(self, _descriptor: int) -> None:
+        return None
+
+    def replace(self, source: Path, destination: Path) -> None:
+        source.replace(destination)
+
+    def sync_directory(self, _directory: Path) -> bool:
+        return False
+
+
+def _exercise_injected_pressure(
+    harness: "ApplicationWorkloadHarness",
+    owned_root: Path,
+    sequence: int,
+) -> tuple[bool, bool, bool, bool]:
+    from uniti.app.atomic_json import atomic_write_bytes
+    from uniti.core.durability import DurabilityLevel
+
+    resources = harness.resources
+    status = resources.status
+    physical = max(status.physical_memory, 1 << 30)
+    critical = resources.observe_resources(
+        ResourceSnapshot(
+            physical_memory=physical,
+            available_memory=0,
+            process_rss=status.process_rss,
+            load_per_logical_core=0.0,
+            free_disk=0,
+            cache_used=resources.cache.used_bytes,
+            active_workers=resources.workers.active_count,
+            queued_tasks=resources.workers.queued_count,
+            captured_at=float(sequence + 1),
+        )
+    )
+    resource_pressure = (
+        critical is ResourceState.CRITICAL
+        and resources.workers.active_limit == 1
+    )
+    capacity = resources.status.free_disk == 0
+
+    resources.pause_background(True)
+    worker_started = threading.Event()
+    background = resources.tasks.submit(
+        TaskSpec.create(TaskKind.INDEX, foreground=False),
+        lambda _context: worker_started.set(),
+    )
+    paused = (
+        resources.tasks.snapshot().background_paused
+        and not worker_started.is_set()
+    )
+    resources.pause_background(False)
+    harness.await_operation(background)
+    worker_state = paused and worker_started.is_set()
+
+    for offset in range(resources.policy.pressure.healthier_samples_before_recovery):
+        resources.observe_resources(
+            ResourceSnapshot(
+                physical_memory=physical,
+                available_memory=physical,
+                process_rss=0,
+                load_per_logical_core=0.0,
+                free_disk=max(status.free_disk, 20 << 30),
+                cache_used=resources.cache.used_bytes,
+                active_workers=resources.workers.active_count,
+                queued_tasks=resources.workers.queued_count,
+                captured_at=float(sequence + offset + 2),
+            )
+        )
+
+    durability_path = owned_root / f"injected-durability-{sequence}.bin"
+    durability = atomic_write_bytes(
+        durability_path,
+        b"bounded",
+        adapter=_ReducedDurabilityAdapter(),
+    )
+    durability_injected = (
+        durability.level is DurabilityLevel.FILE_SYNCED
+        and durability_path.read_bytes() == b"bounded"
+    )
+    return resource_pressure, capacity, durability_injected, worker_state
+
+
 def _run_session_lifecycle(
     *,
     cycles: int,
@@ -1239,6 +1324,10 @@ def _run_session_lifecycle(
         "active_first_restored": True,
         "find_replace_history_restored": True,
         "history_undo_redo_exact": True,
+        "injected_capacity": True,
+        "injected_durability": True,
+        "injected_resource_pressure": True,
+        "injected_worker_state": True,
         "independent_view_state": True,
         "lazy_documents_restored": True,
         "one_authority_per_path": True,
@@ -1547,6 +1636,22 @@ def _run_session_lifecycle(
             checks["service_identity_reused"] &= (
                 harness.service_identity == service_identity
             )
+            pressure = _exercise_injected_pressure(
+                harness,
+                fixture_root,
+                sequence,
+            )
+            for key, observed in zip(
+                (
+                    "injected_resource_pressure",
+                    "injected_capacity",
+                    "injected_durability",
+                    "injected_worker_state",
+                ),
+                pressure,
+                strict=True,
+            ):
+                checks[key] &= observed
 
             if sequence >= harness.policy.sustained.warmup_cycles:
                 checkpoint = harness.capture_checkpoint(measured_cycle)

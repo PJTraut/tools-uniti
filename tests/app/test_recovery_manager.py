@@ -4,6 +4,12 @@ from pathlib import Path
 
 import pytest
 
+from uniti.app.phase_control import (
+    OperationId,
+    OwnedObjectCategory,
+    PhaseBoundary,
+    PhaseId,
+)
 from uniti.app.recovery_manager import (
     FileRecoveryIO,
     RecoveryHealth,
@@ -112,6 +118,78 @@ class InjectedRecoveryIO:
 
     def free_bytes(self, path: Path) -> int:
         return self.available_bytes
+
+
+class RecordingPhaseObserver:
+    def __init__(self) -> None:
+        self.events = []
+
+    def observe(self, event) -> None:
+        self.events.append(event)
+
+
+def test_recovery_emits_append_fsync_compaction_and_replace_boundaries(
+    tmp_path: Path,
+):
+    source = tmp_path / "phase-recovery.txt"
+    source.write_text("base", encoding="utf-8")
+    observer = RecordingPhaseObserver()
+    manager = RecoveryManager(
+        tmp_path / "recovery",
+        phase_observer=observer,
+    )
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        document.insert(document.total_chars(), " changed")
+        manager.flush(document)
+        manager.compact(document).result()
+
+        journal_events = [
+            (event.operation_id, event.phase_id, event.boundary)
+            for event in observer.events
+            if event.owned_category is OwnedObjectCategory.RECOVERY_JOURNAL
+        ]
+        assert (
+            OperationId.RECOVERY_WRITE,
+            PhaseId.APPEND,
+            PhaseBoundary.BEFORE,
+        ) in journal_events
+        assert (
+            OperationId.RECOVERY_WRITE,
+            PhaseId.APPEND,
+            PhaseBoundary.AFTER,
+        ) in journal_events
+        assert (
+            OperationId.RECOVERY_WRITE,
+            PhaseId.FSYNC,
+            PhaseBoundary.BEFORE,
+        ) in journal_events
+        assert (
+            OperationId.RECOVERY_WRITE,
+            PhaseId.FSYNC,
+            PhaseBoundary.AFTER,
+        ) in journal_events
+        compaction = [
+            item
+            for item in journal_events
+            if item[0] is OperationId.RECOVERY_COMPACTION
+        ]
+        operation = OperationId.RECOVERY_COMPACTION
+        assert compaction == [
+            (operation, PhaseId.COMPACTION, PhaseBoundary.BEFORE),
+            (operation, PhaseId.APPEND, PhaseBoundary.BEFORE),
+            (operation, PhaseId.APPEND, PhaseBoundary.AFTER),
+            (operation, PhaseId.FSYNC, PhaseBoundary.BEFORE),
+            (operation, PhaseId.FSYNC, PhaseBoundary.AFTER),
+            (operation, PhaseId.REPLACE, PhaseBoundary.BEFORE),
+            (operation, PhaseId.REPLACE, PhaseBoundary.AFTER),
+            (operation, PhaseId.COMPACTION, PhaseBoundary.AFTER),
+        ]
+    finally:
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
 
 
 def test_recovery_manager_is_lazy_and_tracks_undo_redo(tmp_path: Path):

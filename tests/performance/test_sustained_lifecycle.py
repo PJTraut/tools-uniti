@@ -58,6 +58,10 @@ def test_lifecycle_cycle_restores_one_service_and_cleans_recovery(
     assert result.facts["history_undo_redo_exact"] is True
     assert result.facts["find_replace_history_restored"] is True
     assert result.facts["background_storage"] is True
+    assert result.facts["injected_capacity"] is True
+    assert result.facts["injected_durability"] is True
+    assert result.facts["injected_resource_pressure"] is True
+    assert result.facts["injected_worker_state"] is True
     assert result.facts["recovery_choices"] == ("recover", "discard")
     assert result.facts["recovery_undo_redo_exact"] is True
     assert result.facts["recovery_cleanup"] is True

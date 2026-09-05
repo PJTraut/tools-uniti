@@ -7,6 +7,12 @@ from pathlib import Path
 
 import pytest
 
+from uniti.app.phase_control import (
+    OperationId,
+    OwnedObjectCategory,
+    PhaseBoundary,
+    PhaseId,
+)
 from uniti.app.session import (
     SESSION_SCHEMA,
     DocumentRecord,
@@ -164,8 +170,44 @@ class FakeBackend:
         return path in self.files or path in self.directories
 
 
+class RecordingPhaseObserver:
+    def __init__(self) -> None:
+        self.events = []
+
+    def observe(self, event) -> None:
+        self.events.append(event)
+
+
 def _timestamp(value: datetime = NOW) -> str:
     return value.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def test_session_publication_emits_pack_manifest_and_pointer_boundaries(
+    tmp_path: Path,
+):
+    backend = FakeBackend(tmp_path)
+    observer = RecordingPhaseObserver()
+    store = SessionStore(
+        tmp_path,
+        backend=backend,
+        phase_observer=observer,
+    )
+
+    result = store.publish(_snapshot(_pack()))
+
+    assert result.generation
+    operation = OperationId.SESSION_PUBLICATION
+    assert [
+        (event.operation_id, event.phase_id, event.boundary, event.owned_category)
+        for event in observer.events
+    ] == [
+        (operation, PhaseId.PACK, PhaseBoundary.BEFORE, OwnedObjectCategory.SESSION_PACK),
+        (operation, PhaseId.PACK, PhaseBoundary.AFTER, OwnedObjectCategory.SESSION_PACK),
+        (operation, PhaseId.MANIFEST, PhaseBoundary.BEFORE, OwnedObjectCategory.SESSION_MANIFEST),
+        (operation, PhaseId.MANIFEST, PhaseBoundary.AFTER, OwnedObjectCategory.SESSION_MANIFEST),
+        (operation, PhaseId.POINTER, PhaseBoundary.BEFORE, OwnedObjectCategory.SESSION_POINTER),
+        (operation, PhaseId.POINTER, PhaseBoundary.AFTER, OwnedObjectCategory.SESSION_POINTER),
+    ]
 
 
 def _find_state(target: str | None) -> FindReplaceManifestRecord:

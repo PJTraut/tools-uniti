@@ -4,9 +4,19 @@ from pathlib import Path
 
 import pytest
 
+from uniti.app.phase_control import (
+    OperationId,
+    OwnedObjectCategory,
+    PhaseBoundary,
+    PhaseId,
+)
 from uniti.core.document import Document
 from uniti.core.file_identity import FileIdentity
-from uniti.core.save import StaleDocumentRevisionError
+from uniti.core.save import (
+    StaleDocumentRevisionError,
+    stage_document,
+    verify_staged_document,
+)
 from uniti.core.save_job import prepare_document_save
 
 
@@ -117,3 +127,115 @@ def test_prepared_export_commit_keeps_source_document_identity(tmp_path: Path):
         assert document.modified is False
 
     assert destination.read_text(encoding="utf-8") == "copy me\n"
+
+
+def test_prepared_save_emits_stable_stage_sync_verify_identity_replace_phases(
+    tmp_path: Path,
+):
+    source = tmp_path / "phase-source.txt"
+    destination = tmp_path / "phase-target.txt"
+    source.write_text("phase content\n", encoding="utf-8", newline="")
+
+    class Observer:
+        def __init__(self) -> None:
+            self.events = []
+
+        def observe(self, event) -> None:
+            self.events.append(event)
+
+    observer = Observer()
+    with Document.open(source) as document:
+        request = document.create_save_request(
+            destination,
+            document.output_format,
+            expected_destination_identity=None,
+        )
+        prepared = prepare_document_save(
+            request,
+            ImmediateTaskContext(),
+            phase_observer=observer,
+        )
+        try:
+            document.commit_prepared_export(prepared)
+        finally:
+            prepared.discard()
+
+    observed = [
+        (
+            event.operation_id,
+            event.phase_id,
+            event.boundary,
+            event.owned_category,
+        )
+        for event in observer.events
+    ]
+    operation = OperationId.DOCUMENT_SAVE
+    category = OwnedObjectCategory.DOCUMENT_OUTPUT
+    assert observed == [
+        (operation, PhaseId.STAGE, PhaseBoundary.BEFORE, category),
+        (operation, PhaseId.SYNC, PhaseBoundary.BEFORE, category),
+        (operation, PhaseId.SYNC, PhaseBoundary.AFTER, category),
+        (operation, PhaseId.STAGE, PhaseBoundary.AFTER, category),
+        (operation, PhaseId.IDENTITY, PhaseBoundary.BEFORE, category),
+        (operation, PhaseId.IDENTITY, PhaseBoundary.AFTER, category),
+        (operation, PhaseId.VERIFY, PhaseBoundary.BEFORE, category),
+        (operation, PhaseId.VERIFY, PhaseBoundary.AFTER, category),
+        (operation, PhaseId.IDENTITY, PhaseBoundary.BEFORE, category),
+        (operation, PhaseId.IDENTITY, PhaseBoundary.AFTER, category),
+        (operation, PhaseId.REPLACE, PhaseBoundary.BEFORE, category),
+        (operation, PhaseId.REPLACE, PhaseBoundary.AFTER, category),
+    ]
+    assert destination.read_bytes() == b"phase content\n"
+
+
+def test_default_observer_keeps_legacy_stage_and_verify_injection_compatible(
+    tmp_path: Path,
+):
+    source = tmp_path / "legacy-source.txt"
+    destination = tmp_path / "legacy-target.txt"
+    source.write_text("legacy hooks\n", encoding="utf-8", newline="")
+
+    def legacy_stage(
+        byte_source,
+        piece_table,
+        *,
+        source_profile,
+        destination,
+        output_format,
+        progress=None,
+        cancelled=None,
+    ):
+        return stage_document(
+            byte_source,
+            piece_table,
+            source_profile=source_profile,
+            destination=destination,
+            output_format=output_format,
+            progress=progress,
+            cancelled=cancelled,
+        )
+
+    def legacy_verify(staged, chunks, *, progress=None, cancelled=None):
+        return verify_staged_document(
+            staged,
+            chunks,
+            progress=progress,
+            cancelled=cancelled,
+        )
+
+    with Document.open(source) as document:
+        request = document.create_save_request(
+            destination,
+            document.output_format,
+            expected_destination_identity=None,
+        )
+        prepared = prepare_document_save(
+            request,
+            ImmediateTaskContext(),
+            stage=legacy_stage,
+            verify=legacy_verify,
+        )
+        prepared.discard()
+
+    assert source.read_bytes() == b"legacy hooks\n"
+    assert destination.exists() is False

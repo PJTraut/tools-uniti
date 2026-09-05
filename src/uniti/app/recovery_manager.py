@@ -14,6 +14,15 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
+from .phase_control import (
+    NO_OP_PHASE_OBSERVER,
+    OperationId,
+    OwnedObjectCategory,
+    PhaseBoundary,
+    PhaseId,
+    PhaseObserver,
+    emit_phase,
+)
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.durability import (
@@ -269,6 +278,7 @@ class RecoveryManager:
         fsync_interval: float = 0.25,
         backend: RecoveryIO | None = None,
         resource_manager: ResourceManager | None = None,
+        phase_observer: PhaseObserver = NO_OP_PHASE_OBSERVER,
     ) -> None:
         if fsync_interval <= 0:
             raise ValueError("fsync_interval must be positive")
@@ -288,8 +298,57 @@ class RecoveryManager:
         ] = []
         self.last_error: Exception | None = None
         self._fsync_interval = float(fsync_interval)
+        self._phase_observer = phase_observer
         self._lock = threading.RLock()
         self._shutdown = False
+
+    def _phase(
+        self,
+        operation_id: OperationId,
+        phase_id: PhaseId,
+        boundary: PhaseBoundary,
+    ) -> None:
+        emit_phase(
+            self._phase_observer,
+            operation_id,
+            phase_id,
+            boundary,
+            OwnedObjectCategory.RECOVERY_JOURNAL,
+        )
+
+    def _append(
+        self,
+        journal: RecoveryJournal,
+        record: RecoveryEvent | RecoveryCheckpoint,
+        *,
+        operation_id: OperationId = OperationId.RECOVERY_WRITE,
+    ) -> None:
+        self._phase(operation_id, PhaseId.APPEND, PhaseBoundary.BEFORE)
+        self._backend.append(journal, record)
+        self._phase(operation_id, PhaseId.APPEND, PhaseBoundary.AFTER)
+
+    def _fsync(
+        self,
+        journal: RecoveryJournal,
+        *,
+        operation_id: OperationId = OperationId.RECOVERY_WRITE,
+    ) -> DurabilityResult:
+        self._phase(operation_id, PhaseId.FSYNC, PhaseBoundary.BEFORE)
+        result = self._backend.fsync(journal)
+        self._phase(operation_id, PhaseId.FSYNC, PhaseBoundary.AFTER)
+        return result
+
+    def _replace(
+        self,
+        source: Path,
+        destination: Path,
+        *,
+        operation_id: OperationId = OperationId.RECOVERY_COMPACTION,
+    ) -> DurabilityResult:
+        self._phase(operation_id, PhaseId.REPLACE, PhaseBoundary.BEFORE)
+        result = self._backend.replace(source, destination)
+        self._phase(operation_id, PhaseId.REPLACE, PhaseBoundary.AFTER)
+        return result
 
     def _new_journal_path(self, document: Document) -> Path:
         source_path = normalize_native_path(document.path).path
@@ -455,7 +514,7 @@ class RecoveryManager:
         journal = binding.journal
         if journal is None:
             return
-        results = [self._require_safe(self._backend.fsync(journal))]
+        results = [self._require_safe(self._fsync(journal))]
         if binding.directory_sync_pending:
             directory = self._require_safe(
                 self._backend.sync_directory(self.directory)
@@ -488,7 +547,7 @@ class RecoveryManager:
         assert binding.journal is not None
         if event.sequence != binding.written_sequence + 1:
             raise OSError("recovery journal has an unwritten semantic gap")
-        self._backend.append(binding.journal, event)
+        self._append(binding.journal, event)
         binding.written_sequence = event.sequence
         binding.written_revision = event.revision
         self._backend.flush(binding.journal)
@@ -500,7 +559,7 @@ class RecoveryManager:
         self._start_journal(binding)
         assert binding.journal is not None
         if binding.events:
-            self._backend.append(
+            self._append(
                 binding.journal,
                 RecoveryCheckpoint(binding.base_history, tuple(binding.events)),
             )
@@ -737,6 +796,11 @@ class RecoveryManager:
         old_path = binding.journal_path
         if old_journal is None or old_path is None or binding.base_hash is None:
             return
+        self._phase(
+            OperationId.RECOVERY_COMPACTION,
+            PhaseId.COMPACTION,
+            PhaseBoundary.BEFORE,
+        )
         self._flush_binding(binding)
 
         published = self._owned_path(self._new_journal_path(binding.document))
@@ -756,12 +820,18 @@ class RecoveryManager:
                 output_eol=binding.output_eol,
                 base_history=request.base_history,
             )
-            self._backend.append(
+            self._append(
                 new_journal,
                 RecoveryCheckpoint(request.base_history, request.events),
+                operation_id=OperationId.RECOVERY_COMPACTION,
             )
             self._backend.flush(new_journal)
-            fsync_result = self._require_safe(self._backend.fsync(new_journal))
+            fsync_result = self._require_safe(
+                self._fsync(
+                    new_journal,
+                    operation_id=OperationId.RECOVERY_COMPACTION,
+                )
+            )
             loaded = load_recovery_candidate(temporary)
             if (
                 loaded.status is not RecoveryLoadStatus.COMPLETE
@@ -770,7 +840,7 @@ class RecoveryManager:
             ):
                 raise ValueError("compacted recovery candidate did not validate")
             replace_result = self._require_safe(
-                self._backend.replace(temporary, published)
+                self._replace(temporary, published)
             )
             directory_result = self._require_safe(
                 self._backend.sync_directory(self.directory)
@@ -807,6 +877,11 @@ class RecoveryManager:
             pass
         except OSError as exc:
             self.last_error = exc
+        self._phase(
+            OperationId.RECOVERY_COMPACTION,
+            PhaseId.COMPACTION,
+            PhaseBoundary.AFTER,
+        )
 
     def _compaction_finished(self, binding: _Binding, future: Future) -> None:
         with self._lock:
@@ -883,13 +958,17 @@ class RecoveryManager:
                     output_eol=request.output_eol,
                     base_history=request.base_history,
                 )
-                self._backend.append(
+                self._append(
                     new_journal,
                     RecoveryCheckpoint(request.base_history, request.events),
+                    operation_id=OperationId.RECOVERY_COMPACTION,
                 )
                 self._backend.flush(new_journal)
                 fsync_result = self._require_safe(
-                    self._backend.fsync(new_journal)
+                    self._fsync(
+                        new_journal,
+                        operation_id=OperationId.RECOVERY_COMPACTION,
+                    )
                 )
                 loaded = load_recovery_candidate(temporary)
                 if (
@@ -900,7 +979,7 @@ class RecoveryManager:
                 ):
                     raise ValueError("saved recovery base did not validate")
                 replace_result = self._require_safe(
-                    self._backend.replace(temporary, published)
+                    self._replace(temporary, published)
                 )
                 directory_result = self._require_safe(
                     self._backend.sync_directory(self.directory)
