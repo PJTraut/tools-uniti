@@ -15,7 +15,7 @@ Date: 2026-09-05
 | Active product milestone | `v0.001a22` — Dogfood / Performance Alpha |
 | Display/package metadata | `v0.001a21` / `0.1a21` |
 | Latest immutable release tag | `v0.001a15` at `10f419e` |
-| Queued milestones | `v0.001a23` |
+| Queued milestones | `v0.001a23`, `v0.001a24` |
 
 The A20 implementation/freeze, completed A21 workstream, and A21 cross-platform candidate are on `main`. The required macOS, Windows, Linux/Python 3.12, and Linux/latest-Python hosted lanes all passed on identical commit `8b24f4b`. No new tag, release, installer, bundle, or other distributable package was created.
 

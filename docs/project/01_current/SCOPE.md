@@ -103,10 +103,10 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 
 ## Approved future scope
 
-`v0.001a21` is implemented and retained in the historical records. `v0.001a22` is active and `v0.001a23` remains queued; their unimplemented portions are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a21` is implemented and retained in the historical records. `v0.001a22` is active; `v0.001a23` Executable Health & Recovery Alpha and `v0.001a24` Beta Candidate remain queued. Their unimplemented portions are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 
-Expanded keyboard-driven Unicode inspection, Host-Python installation, embedded Python, signed polished installers, updater, accounts, telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, CJK typography specialization, and elaborate preferences remain outside the approved roadmap.
+Expanded keyboard-driven Unicode inspection, Host-Python installation, signed polished installers, notarization, updater, network repair, accounts, cloud telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, CJK typography specialization, and elaborate preferences remain outside the approved roadmap. Embedded native application bundles and local executable health/repair are approved future A23 scope but are not implemented behavior.
 
 See the [Parked Capability Catalog](../04_parked/CATALOG.md) for rationale and re-evaluation triggers.

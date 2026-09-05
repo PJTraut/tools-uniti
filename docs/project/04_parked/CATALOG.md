@@ -71,8 +71,8 @@ These capabilities are intentionally outside the lean editor boundary described 
 - **Known dependencies/risks:** resource prioritization, recovery identity, external-file changes, window topology, and startup latency.
 - **Re-evaluation trigger:** a18-a20 evidence shows a bounded multi-document/session design is required for normal use.
 
-## Polished installers and embedded runtimes
+## Polished installers, signing, and update delivery
 
-- **Why parked:** a23 requires reproducible executable packaging, but the current startup direction still excludes embedded Python, signed polished `.app`/`.exe` installers, notarized distribution, shortcuts, and update delivery.
-- **Known dependencies/risks:** runtime bundling, code signing, notarization, Windows signing, update delivery, platform packaging, licensing, and release infrastructure.
-- **Re-evaluation trigger:** cross-platform and beta-candidate evidence supports a separate distribution architecture decision beyond reproducible packaging.
+- **Why parked:** A23 now owns unsigned standalone application bundles with embedded runtime and guided offline health/repair. Installer UX, privileged installation, publisher signing, macOS notarization, update delivery, and distribution-channel trust are separate security/release systems.
+- **Known dependencies/risks:** code signing and certificate custody, notarization, Windows signing, platform installers, update metadata and rollback, secure transport, release hosting, licensing, and incident response.
+- **Re-evaluation trigger:** A23 executable evidence and A24 beta stability justify a separate distribution/trust architecture decision.
