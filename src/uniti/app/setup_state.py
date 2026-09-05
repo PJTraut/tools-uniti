@@ -6,6 +6,7 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+from uniti.core.durability import DurabilityResult
 from uniti.core.recovery import RECOVERY_FORMAT_VERSION
 
 from .atomic_json import atomic_write_json, preserve_invalid
@@ -80,8 +81,8 @@ class SetupStateStore:
         merged["schemas"] = _supported_schemas()
         return merged
 
-    def save(self, payload: Mapping[str, object]) -> None:
+    def save(self, payload: Mapping[str, object]) -> DurabilityResult:
         schema = payload.get("schema")
         if schema != SETUP_STATE_SCHEMA:
             raise UnsupportedSetupSchema(f"unsupported setup-state schema {schema}")
-        atomic_write_json(self.path, payload)
+        return atomic_write_json(self.path, payload)

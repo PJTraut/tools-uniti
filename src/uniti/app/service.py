@@ -10,6 +10,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from uniti.core.durability import DurabilityLevel, DurabilityResult
 from uniti.resources.tasks import TaskHandle, TaskKind, TaskSpec
 
 from .document_registry import DocumentEntry, DocumentRegistry
@@ -390,6 +391,48 @@ class UNITIService:
     @property
     def recovery_degraded(self) -> bool:
         return self._recovery_degraded
+
+    @property
+    def session_durability(self) -> DurabilityResult | None:
+        result = getattr(self.sessions, "last_durability", None)
+        return result if isinstance(result, DurabilityResult) else None
+
+    @property
+    def recovery_health(self):
+        from .recovery_manager import RecoveryHealth
+
+        diagnostics = getattr(self.recovery, "diagnostics", None)
+        if not callable(diagnostics):
+            return RecoveryHealth.OK
+        observed = tuple(diagnostics())
+        if any(
+            getattr(item, "health", RecoveryHealth.OK)
+            is RecoveryHealth.DEGRADED
+            for item in observed
+        ):
+            return RecoveryHealth.DEGRADED
+        if any(
+            getattr(item, "health", RecoveryHealth.OK)
+            is RecoveryHealth.REDUCED
+            for item in observed
+        ):
+            return RecoveryHealth.REDUCED
+        return RecoveryHealth.OK
+
+    @property
+    def recovery_durability(self) -> DurabilityLevel:
+        diagnostics = getattr(self.recovery, "diagnostics", None)
+        if not callable(diagnostics):
+            return DurabilityLevel.FULL
+        levels = tuple(
+            getattr(item, "durability", DurabilityLevel.FULL)
+            for item in diagnostics()
+        )
+        if DurabilityLevel.UNSAFE in levels:
+            return DurabilityLevel.UNSAFE
+        if DurabilityLevel.FILE_SYNCED in levels:
+            return DurabilityLevel.FILE_SYNCED
+        return DurabilityLevel.FULL
 
     def _publication_finished(self, result: object, snapshot: object) -> None:
         truncations = tuple(getattr(result, "truncations", ()))

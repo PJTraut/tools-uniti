@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
 
 from uniti.resources import ResourceState, TaskKind
 
@@ -43,6 +45,55 @@ def test_resource_status_is_text_accessible_and_notices_are_coalesced():
         window._apply_resource_status(constrained)
         assert window._resource_notice_count == 2
     finally:
+        window.close()
+        app.processEvents()
+
+
+def test_recovery_durability_notices_are_distinct_nonblocking_and_coalesced(
+    tmp_path: Path,
+):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.recovery_manager import RecoveryHealth
+    from uniti.core.durability import DurabilityLevel
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "editable.txt"
+    source.write_text("editable", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    assert view is not None
+    window._service = SimpleNamespace(
+        recovery_health=RecoveryHealth.REDUCED,
+        recovery_durability=DurabilityLevel.FILE_SYNCED,
+        session_durability=None,
+        recovery_degraded=False,
+    )
+    try:
+        window._apply_recovery_status()
+
+        assert "power-loss durability is reduced" in window.statusBar().currentMessage()
+        assert window._recovery_notice_count == 1
+        assert view.isEnabled()
+
+        window._apply_recovery_status()
+        assert window._recovery_notice_count == 1
+
+        window._service.recovery_health = RecoveryHealth.DEGRADED
+        window._service.recovery_durability = DurabilityLevel.UNSAFE
+        window._apply_recovery_status()
+
+        assert "New recovery is unavailable" in window.statusBar().currentMessage()
+        assert window._recovery_notice_count == 2
+        assert view.isEnabled()
+
+        window._apply_recovery_status()
+        assert window._recovery_notice_count == 2
+    finally:
+        window._service = None
+        window.close_all_documents(force=True)
         window.close()
         app.processEvents()
 

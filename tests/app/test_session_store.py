@@ -29,6 +29,11 @@ from uniti.app.session_store import (
 )
 from uniti.core.file_identity import FileIdentity, SavedFileStamp
 from uniti.core.history import EditHistory, EditOperation, EditTransaction
+from uniti.core.durability import (
+    DurabilityError,
+    DurabilityLevel,
+    DurabilityResult,
+)
 
 
 NOW = datetime(2026, 9, 4, 10, tzinfo=UTC)
@@ -43,6 +48,8 @@ class FakeBackend:
         self.reads: list[Path] = []
         self.free_bytes_value = 1 << 40
         self.fail_after: int | None = None
+        self.unsafe_after: int | None = None
+        self.durability_level = DurabilityLevel.FULL
         self._mutation_count = 0
 
     def _relative(self, path: Path) -> str:
@@ -52,15 +59,46 @@ class FakeBackend:
     def _mutate(self, operation: str, name: str, apply) -> None:
         self.operations.append((operation, name))
         self._mutation_count += 1
+        if self.unsafe_after == self._mutation_count:
+            cause = OSError(f"injected unsafe {operation}")
+            raise DurabilityError(
+                DurabilityResult(
+                    operation,
+                    DurabilityLevel.UNSAFE,
+                    False,
+                    False,
+                    False,
+                    f"{operation}:OSError",
+                ),
+                cause,
+            )
         apply()
         if self.fail_after == self._mutation_count:
             raise OSError(f"injected failure after {operation}")
 
-    def reset_recording(self, *, fail_after: int | None = None) -> None:
+    def _result(self, operation: str) -> DurabilityResult:
+        if self.durability_level is DurabilityLevel.FULL:
+            return DurabilityResult(operation, DurabilityLevel.FULL, True, True, True)
+        return DurabilityResult(
+            operation,
+            DurabilityLevel.FILE_SYNCED,
+            True,
+            True,
+            False,
+            "directory_sync_unavailable",
+        )
+
+    def reset_recording(
+        self,
+        *,
+        fail_after: int | None = None,
+        unsafe_after: int | None = None,
+    ) -> None:
         self.operations.clear()
         self.reads.clear()
         self._mutation_count = 0
         self.fail_after = fail_after
+        self.unsafe_after = unsafe_after
 
     def free_bytes(self, path: Path) -> int:
         return self.free_bytes_value
@@ -68,14 +106,15 @@ class FakeBackend:
     def mkdir(self, path: Path) -> None:
         self.directories.add(path)
 
-    def write_synced(self, path: Path, data: bytes) -> None:
+    def write_synced(self, path: Path, data: bytes) -> DurabilityResult:
         self._mutate(
             "write_synced",
             self._relative(path),
             lambda: self.files.__setitem__(path, bytes(data)),
         )
+        return self._result("session_write")
 
-    def replace(self, source: Path, destination: Path) -> None:
+    def replace(self, source: Path, destination: Path) -> DurabilityResult:
         def apply() -> None:
             self.files[destination] = self.files.pop(source)
 
@@ -84,9 +123,11 @@ class FakeBackend:
             self._relative(destination),
             apply,
         )
+        return self._result("session_replace")
 
-    def sync_directory(self, path: Path) -> None:
+    def sync_directory(self, path: Path) -> DurabilityResult:
         self._mutate("sync_directory", self._relative(path), lambda: None)
+        return self._result("session_directory_sync")
 
     def unlink(self, path: Path) -> None:
         self._mutate("unlink", self._relative(path), lambda: self.files.pop(path, None))
@@ -244,6 +285,51 @@ def test_publish_syncs_packs_then_manifest_then_pointer():
     assert loaded.manifest is not None
     assert loaded.manifest.generation == result.generation
     assert loaded.packs[0].document_id == "doc-1"
+
+
+@pytest.mark.parametrize(
+    "level",
+    (DurabilityLevel.FULL, DurabilityLevel.FILE_SYNCED),
+)
+def test_safe_durability_levels_publish_and_retain_previous_generation(level):
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    first = store.publish(_snapshot(_pack(text="old", generation="history-old")))
+    backend.reset_recording()
+    backend.durability_level = level
+
+    second = store.publish(_snapshot(_pack(text="new", generation="history-new")))
+
+    assert second.durability.level is level
+    assert store.last_durability is second.durability
+    assert first.manifest_path in backend.files
+    loaded = store.load_latest()
+    assert loaded.manifest is not None
+    assert loaded.manifest.generation == second.generation
+
+
+@pytest.mark.parametrize("unsafe_after", range(1, 5))
+def test_unsafe_publication_boundary_preserves_the_old_current_pointer(
+    unsafe_after: int,
+):
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    first = store.publish(_snapshot(_pack(text="old", generation="history-old")))
+    old_pointer = backend.files[store.current_path]
+    backend.reset_recording(unsafe_after=unsafe_after)
+
+    with pytest.raises(DurabilityError):
+        store.publish(_snapshot(_pack(text="new", generation="history-new")))
+
+    assert backend.files[store.current_path] == old_pointer
+    assert store.last_durability is not None
+    assert store.last_durability.level is DurabilityLevel.UNSAFE
+    assert first.manifest_path in backend.files
+    loaded = store.load_latest()
+    assert loaded.manifest is not None
+    assert loaded.manifest.generation == first.generation
 
 
 def test_manifest_only_load_defers_history_pack_read_and_decode():

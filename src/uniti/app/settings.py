@@ -6,6 +6,8 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from uniti.core.durability import DurabilityResult
+
 from .atomic_json import atomic_write_json, preserve_invalid
 
 SETTINGS_SCHEMA = 3
@@ -163,5 +165,5 @@ class SettingsStore:
             self.save(settings)
         return SettingsPreparation(migrated, None, settings)
 
-    def save(self, settings: Settings) -> None:
-        atomic_write_json(self.path, _payload(settings))
+    def save(self, settings: Settings) -> DurabilityResult:
+        return atomic_write_json(self.path, _payload(settings))

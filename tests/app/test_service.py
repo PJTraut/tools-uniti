@@ -9,13 +9,18 @@ from types import SimpleNamespace
 
 import pytest
 
-from uniti.app.recovery_manager import RecoveryCandidate
+from uniti.app.recovery_manager import (
+    RecoveryCandidate,
+    RecoveryDiagnostic,
+    RecoveryHealth,
+)
 from uniti.app.session import MAX_WINDOWS, DockReturnRecord, SessionProblem
 from uniti.app.service import QuitChoice, QuitDecision, UNITIService
 from uniti.core.file_identity import FileIdentity, FileMatch
 from uniti.core.history import HistorySnapshot
 from uniti.core.recovery import RecoveryLoadStatus, RecoverySession
 from uniti.core.document import Document
+from uniti.core.durability import DurabilityLevel, DurabilityResult
 from uniti.resources import ResourceManager
 from uniti.ui.recovery_center import RecoveryAction, RecoveryDecision, RecoveryEntryKind
 
@@ -25,6 +30,7 @@ class RecordingSessionStore:
         self.events = events if events is not None else []
         self.publications: list[object] = []
         self.discarded: list[str] = []
+        self.last_durability: DurabilityResult | None = None
 
     def publish(self, snapshot: object) -> object:
         self.events.append(("publish", snapshot))
@@ -54,6 +60,9 @@ class RecordingRecoveryManager:
     def shutdown(self) -> None:
         self.events.append("recovery-shutdown")
         self.shutdown_count += 1
+
+    def diagnostics(self) -> tuple[RecoveryDiagnostic, ...]:
+        return ()
 
 
 class RecordingResources:
@@ -524,6 +533,40 @@ def test_low_space_publication_warning_remains_until_later_durable_success():
     while service.recovery_degraded and time.monotonic() < deadline:
         time.sleep(0.01)
     assert service.recovery_degraded is False
+    assert service.request_quit(lambda _item: QuitChoice.DISCARD) is True
+
+
+def test_service_exposes_latest_session_and_recovery_durability():
+    session_durability = DurabilityResult(
+        "session_publication",
+        DurabilityLevel.FILE_SYNCED,
+        True,
+        True,
+        False,
+        "directory_sync_unavailable",
+    )
+    sessions = RecordingSessionStore()
+    sessions.last_durability = session_durability
+
+    class ReducedRecovery(RecordingRecoveryManager):
+        def diagnostics(self) -> tuple[RecoveryDiagnostic, ...]:
+            return (
+                RecoveryDiagnostic(
+                    document_id="doc-1",
+                    health=RecoveryHealth.REDUCED,
+                    durability=DurabilityLevel.FILE_SYNCED,
+                    durable_revision=2,
+                    observed_revision=2,
+                    reason="directory sync unavailable",
+                ),
+            )
+
+    service = _service(sessions=sessions, recovery=ReducedRecovery())
+
+    assert service.session_durability is session_durability
+    assert service.recovery_health is RecoveryHealth.REDUCED
+    assert service.recovery_durability is DurabilityLevel.FILE_SYNCED
+
     assert service.request_quit(lambda _item: QuitChoice.DISCARD) is True
 
 

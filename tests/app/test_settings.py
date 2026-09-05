@@ -8,6 +8,18 @@ from uniti.app.settings import (
     SettingsStore,
     UnsupportedSettingsSchema,
 )
+from uniti.core.durability import DurabilityLevel, DurabilityResult
+
+
+def _file_synced(operation: str) -> DurabilityResult:
+    return DurabilityResult(
+        operation,
+        DurabilityLevel.FILE_SYNCED,
+        True,
+        True,
+        False,
+        "directory_sync_unavailable",
+    )
 
 
 def test_settings_store_defaults_when_missing(tmp_path: Path):
@@ -32,6 +44,18 @@ def test_settings_store_round_trips_and_replaces_atomically(tmp_path: Path):
     assert payload["editor_zoom_percent"] == 130
     assert payload["soft_wrap"] is True
     assert not list(path.parent.glob("*.tmp"))
+
+
+def test_settings_save_exposes_file_synced_durability(tmp_path: Path, monkeypatch):
+    expected = _file_synced("atomic_write_json")
+    monkeypatch.setattr(
+        "uniti.app.settings.atomic_write_json",
+        lambda _path, _payload: expected,
+    )
+
+    result = SettingsStore(tmp_path / "settings.json").save(Settings())
+
+    assert result is expected
 
 
 def test_settings_reject_invalid_editor_view_state(tmp_path: Path):
@@ -214,4 +238,21 @@ def test_prepare_refuses_future_schema_without_replacing_it(tmp_path: Path):
     with pytest.raises(UnsupportedSettingsSchema, match="schema 9"):
         SettingsStore(path).prepare()
 
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_future_settings_schema_never_invokes_the_writer(tmp_path: Path, monkeypatch):
+    path = tmp_path / "settings.json"
+    original = '{"schema":9,"last_directory":null}'
+    path.write_text(original, encoding="utf-8")
+    writes: list[object] = []
+    monkeypatch.setattr(
+        "uniti.app.settings.atomic_write_json",
+        lambda *_args, **_kwargs: writes.append(object()) or _file_synced("write"),
+    )
+
+    with pytest.raises(UnsupportedSettingsSchema, match="schema 9"):
+        SettingsStore(path).prepare()
+
+    assert writes == []
     assert path.read_text(encoding="utf-8") == original

@@ -1382,9 +1382,9 @@ def _session_restore(manifest: CorpusManifest) -> ScenarioResult:
             super().__init__(root)
             self.storage_threads: set[int] = set()
 
-        def write_synced(self, path: Path, data: bytes) -> None:
+        def write_synced(self, path: Path, data: bytes):
             self.storage_threads.add(threading.get_ident())
-            super().write_synced(path, data)
+            return super().write_synced(path, data)
 
         def read_bytes(self, path: Path) -> bytes:
             self.storage_threads.add(threading.get_ident())

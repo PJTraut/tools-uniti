@@ -9,6 +9,11 @@ from uniti.app.recovery_manager import (
     RecoveryManager,
 )
 from uniti.core.document import Document
+from uniti.core.durability import (
+    DurabilityError,
+    DurabilityLevel,
+    DurabilityResult,
+)
 from uniti.core.file_identity import FileIdentity, SavedFileStamp, sha256_file
 from uniti.core.recovery import (
     RecoveryEventKind,
@@ -34,7 +39,36 @@ class InjectedRecoveryIO:
         self.fail_flush = False
         self.fail_fsync = False
         self.fail_replace = False
+        self.directory_level = DurabilityLevel.FULL
         self.calls: list[tuple[str, Path | None, Path | None]] = []
+
+    @staticmethod
+    def _result(operation: str, level: DurabilityLevel) -> DurabilityResult:
+        if level is DurabilityLevel.FULL:
+            return DurabilityResult(operation, level, True, True, True)
+        return DurabilityResult(
+            operation,
+            level,
+            True,
+            True,
+            False,
+            "directory_sync_unavailable",
+        )
+
+    @staticmethod
+    def _unsafe(operation: str) -> DurabilityError:
+        cause = OSError(f"injected {operation} failure")
+        return DurabilityError(
+            DurabilityResult(
+                operation,
+                DurabilityLevel.UNSAFE,
+                False,
+                False,
+                False,
+                f"{operation}:OSError",
+            ),
+            cause,
+        )
 
     def append(self, journal, record) -> None:
         self.calls.append(("append", journal.path, None))
@@ -48,22 +82,28 @@ class InjectedRecoveryIO:
             raise OSError("injected flush failure")
         self._real.flush(journal)
 
-    def fsync(self, journal) -> None:
+    def fsync(self, journal) -> DurabilityResult:
         self.calls.append(("fsync", journal.path, None))
         if self.fail_fsync:
-            raise OSError("injected fsync failure")
+            raise self._unsafe("recovery_fsync")
         self._real.fsync(journal)
+        return self._result("recovery_fsync", DurabilityLevel.FULL)
 
     def size(self, path: Path) -> int:
         if self.forced_size is not None:
             return self.forced_size
         return self._real.size(path)
 
-    def replace(self, source: Path, destination: Path) -> None:
+    def replace(self, source: Path, destination: Path) -> DurabilityResult:
         self.calls.append(("replace", source, destination))
         if self.fail_replace:
-            raise OSError("injected replace failure")
+            raise self._unsafe("recovery_replace")
         self._real.replace(source, destination)
+        return self._result("recovery_replace", self.directory_level)
+
+    def sync_directory(self, path: Path) -> DurabilityResult:
+        self.calls.append(("sync_directory", path, None))
+        return self._result("recovery_directory_sync", self.directory_level)
 
     def unlink(self, path: Path) -> None:
         self.calls.append(("unlink", path, None))
@@ -324,6 +364,7 @@ def test_failed_fsync_retains_last_durable_revision_and_warns(tmp_path: Path):
 
         diagnostic = manager.diagnostic(document)
         assert diagnostic.health is RecoveryHealth.DEGRADED
+        assert diagnostic.durability is DurabilityLevel.UNSAFE
         assert diagnostic.durable_revision == durable
         assert diagnostic.observed_revision == document.revision
         assert "fsync" in diagnostic.reason.lower()
@@ -352,8 +393,42 @@ def test_successful_flush_clears_recovery_degradation(tmp_path: Path):
 
         diagnostic = manager.diagnostic(document)
         assert diagnostic.health is RecoveryHealth.OK
+        assert diagnostic.durability is DurabilityLevel.FULL
         assert diagnostic.durable_revision == document.revision
         assert diagnostic.reason == ""
+    finally:
+        manager.detach(document, clean=True)
+        document.close()
+        manager.shutdown()
+
+
+def test_directory_sync_unavailability_is_reduced_and_later_full_sync_heals(
+    tmp_path: Path,
+):
+    backend = InjectedRecoveryIO()
+    backend.directory_level = DurabilityLevel.FILE_SYNCED
+    manager = RecoveryManager(tmp_path / "recovery", backend=backend)
+    source = tmp_path / "reduced.txt"
+    source.write_text("abc", encoding="utf-8")
+    document = Document.open(source)
+    try:
+        manager.attach(document)
+        document.insert(3, "X")
+        manager.flush(document)
+
+        reduced = manager.diagnostic(document)
+        assert reduced.health is RecoveryHealth.REDUCED
+        assert reduced.durability is DurabilityLevel.FILE_SYNCED
+        assert reduced.durable_revision == document.revision
+        assert any(call[0] == "sync_directory" for call in backend.calls)
+
+        backend.directory_level = DurabilityLevel.FULL
+        manager.flush(document)
+
+        healed = manager.diagnostic(document)
+        assert healed.health is RecoveryHealth.OK
+        assert healed.durability is DurabilityLevel.FULL
+        assert healed.durable_revision == healed.observed_revision
     finally:
         manager.detach(document, clean=True)
         document.close()

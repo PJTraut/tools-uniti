@@ -37,12 +37,13 @@ from uniti.app.commands import (
 )
 from uniti.app.editor_state import EditorState
 from uniti.app.platform_policy import native_paths_equal, normalize_native_path
-from uniti.app.recovery_manager import RecoveryManager
+from uniti.app.recovery_manager import RecoveryHealth, RecoveryManager
 from uniti.app.session import MAX_VIEWS
 from uniti.app.settings import Settings, SettingsStore
 from uniti.app.window_manager import ViewLocation
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
+from uniti.core.durability import DurabilityLevel
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
 from uniti.core.index_jobs import (
@@ -292,6 +293,8 @@ class UNITIMainWindow(QMainWindow):
         self.setStatusBar(self._status)
         self._resource_notice_active = False
         self._recovery_notice_active = False
+        self._recovery_notice_key: str | None = None
+        self._recovery_notice_count = 0
         self._resource_notice_count = 0
         self._last_task_snapshot_generation = -1
         self._status.update_resources(self._resources.status)
@@ -340,21 +343,50 @@ class UNITIMainWindow(QMainWindow):
             return
 
     def _apply_recovery_status(self) -> None:
-        degraded = bool(
-            self._service is not None
-            and getattr(self._service, "recovery_degraded", False)
-        )
-        message = (
-            "Recovery degraded: saved edit history was reduced to protect free space."
-        )
-        if degraded:
+        service = self._service
+        message: str | None = None
+        key: str | None = None
+        if service is not None:
+            recovery_health = getattr(service, "recovery_health", RecoveryHealth.OK)
+            recovery_durability = getattr(
+                service,
+                "recovery_durability",
+                DurabilityLevel.FULL,
+            )
+            session = getattr(service, "session_durability", None)
+            session_durability = getattr(session, "level", DurabilityLevel.FULL)
+            if (
+                recovery_health is RecoveryHealth.DEGRADED
+                or recovery_durability is DurabilityLevel.UNSAFE
+            ):
+                key = "recovery_unsafe"
+                message = "New recovery is unavailable; existing durable evidence is retained."
+            elif session_durability is DurabilityLevel.UNSAFE:
+                key = "session_unsafe"
+                message = "New session state is unavailable; the previous complete session is retained."
+            elif (
+                recovery_health is RecoveryHealth.REDUCED
+                or recovery_durability is DurabilityLevel.FILE_SYNCED
+                or session_durability is DurabilityLevel.FILE_SYNCED
+            ):
+                key = "reduced"
+                message = "Persistence is file-synced, but power-loss durability is reduced."
+            elif getattr(service, "recovery_degraded", False):
+                key = "low_space"
+                message = (
+                    "Recovery degraded: saved edit history was reduced to protect free space."
+                )
+        if message is not None:
+            if key != self._recovery_notice_key:
+                self._recovery_notice_count += 1
+            self._recovery_notice_key = key
             self._recovery_notice_active = True
             if self.statusBar().currentMessage() != message:
                 self.statusBar().showMessage(message)
         elif self._recovery_notice_active:
             self._recovery_notice_active = False
-            if self.statusBar().currentMessage() == message:
-                self.statusBar().clearMessage()
+            self._recovery_notice_key = None
+            self.statusBar().clearMessage()
 
     def _apply_resource_status(self, status) -> None:
         self._status.update_resources(status)

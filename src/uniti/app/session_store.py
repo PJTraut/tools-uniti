@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import shutil
 import uuid
@@ -14,10 +13,18 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
+from uniti.core.durability import (
+    DurabilityAdapter,
+    DurabilityError,
+    DurabilityLevel,
+    DurabilityResult,
+    NativeDurabilityAdapter,
+    combine_durability,
+)
 from uniti.core.file_identity import FileMatch, verify_saved_file
 from uniti.core.history import HistorySnapshot, HistoryTruncation, estimate_transaction_bytes
 
-from .atomic_json import atomic_write_bytes, sync_directory_strict, utc_timestamp
+from .atomic_json import atomic_write_bytes, utc_timestamp
 from .cleanup import CleanupReport, is_durable_session_artifact_name
 from .session import (
     MAX_MANIFEST_BYTES,
@@ -53,11 +60,11 @@ class StorageBackend(Protocol):
 
     def mkdir(self, path: Path) -> None: ...
 
-    def write_synced(self, path: Path, data: bytes) -> None: ...
+    def write_synced(self, path: Path, data: bytes) -> DurabilityResult: ...
 
-    def replace(self, source: Path, destination: Path) -> None: ...
+    def replace(self, source: Path, destination: Path) -> DurabilityResult: ...
 
-    def sync_directory(self, path: Path) -> None: ...
+    def sync_directory(self, path: Path) -> DurabilityResult: ...
 
     def unlink(self, path: Path) -> None: ...
 
@@ -71,8 +78,14 @@ class StorageBackend(Protocol):
 class LocalStorageBackend:
     """Strict filesystem backend confined to one UNITI-owned root."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        adapter: DurabilityAdapter | None = None,
+    ) -> None:
         self.root = Path(root).resolve()
+        self._adapter = adapter if adapter is not None else NativeDurabilityAdapter()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
 
     def _owned(self, path: Path) -> Path:
@@ -89,19 +102,48 @@ class LocalStorageBackend:
     def mkdir(self, path: Path) -> None:
         self._owned(path).mkdir(parents=True, exist_ok=True, mode=0o700)
 
-    def write_synced(self, path: Path, data: bytes) -> None:
-        atomic_write_bytes(
+    def write_synced(self, path: Path, data: bytes) -> DurabilityResult:
+        return atomic_write_bytes(
             self._owned(path),
             data,
             mode=0o600,
             strict_directory_sync=True,
+            adapter=self._adapter,
         )
 
-    def replace(self, source: Path, destination: Path) -> None:
-        os.replace(self._owned(source), self._owned(destination))
+    def replace(self, source: Path, destination: Path) -> DurabilityResult:
+        owned_source = self._owned(source)
+        owned_destination = self._owned(destination)
+        try:
+            self._adapter.replace(owned_source, owned_destination)
+        except OSError as error:
+            result = DurabilityResult(
+                "session_replace",
+                DurabilityLevel.UNSAFE,
+                True,
+                False,
+                False,
+                f"replace:{type(error).__name__}",
+            )
+            raise DurabilityError(result, error) from error
+        return self.sync_directory(owned_destination.parent)
 
-    def sync_directory(self, path: Path) -> None:
-        sync_directory_strict(self._owned(path))
+    def sync_directory(self, path: Path) -> DurabilityResult:
+        owned = self._owned(path)
+        try:
+            synced = self._adapter.sync_directory(owned) is True
+            reason = None if synced else "directory_sync_unavailable"
+        except OSError as error:
+            synced = False
+            reason = f"directory_sync:{type(error).__name__}"
+        return DurabilityResult(
+            "session_directory_sync",
+            DurabilityLevel.FULL if synced else DurabilityLevel.FILE_SYNCED,
+            True,
+            True,
+            synced,
+            reason,
+        )
 
     def unlink(self, path: Path) -> None:
         self._owned(path).unlink()
@@ -123,6 +165,7 @@ class PublicationResult:
     pack_paths: tuple[Path, ...]
     retained_previous: str | None
     truncations: tuple[PersistenceNotice, ...]
+    durability: DurabilityResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -530,6 +573,7 @@ class SessionStore:
         self.packs_dir = self.root / "packs"
         self.pointers_dir = self.root / "pointers"
         self.invalid_dir = self.root / "invalid"
+        self._last_durability: DurabilityResult | None = None
         for directory in (
             self.root,
             self.manifests_dir,
@@ -538,6 +582,10 @@ class SessionStore:
             self.invalid_dir,
         ):
             self.backend.mkdir(directory)
+
+    @property
+    def last_durability(self) -> DurabilityResult | None:
+        return self._last_durability
 
     def manifest_path(self, generation: str) -> Path:
         return self.manifests_dir / f"{generation}.json"
@@ -716,22 +764,62 @@ class SessionStore:
             raise ValueError("published manifest exceeds the decoded limit")
 
         pack_paths = tuple(self.packs_dir / item.filename for item in encoded)
-        for item, path in zip(encoded, pack_paths, strict=True):
-            if not self.backend.exists(path):
-                self.backend.write_synced(path, item.data)
+        durability_results: list[DurabilityResult] = []
+        try:
+            for item, path in zip(encoded, pack_paths, strict=True):
+                if not self.backend.exists(path):
+                    durability_results.append(
+                        self.backend.write_synced(path, item.data)
+                    )
 
-        manifest_path = self.manifest_path(generation)
-        self.backend.write_synced(manifest_path, manifest_bytes)
-        pointer = {
-            "generation": generation,
-            "manifest": f"manifests/{generation}.json",
-            "schema": 1,
-            "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
-        }
-        pointer_path = self.pointers_dir / f"{generation}.json"
-        self.backend.write_synced(pointer_path, _canonical_json(pointer))
-        self.backend.replace(pointer_path, self.current_path)
-        self.backend.sync_directory(self.root)
+            manifest_path = self.manifest_path(generation)
+            durability_results.append(
+                self.backend.write_synced(manifest_path, manifest_bytes)
+            )
+            pointer = {
+                "generation": generation,
+                "manifest": f"manifests/{generation}.json",
+                "schema": 1,
+                "sha256": hashlib.sha256(manifest_bytes).hexdigest(),
+            }
+            pointer_path = self.pointers_dir / f"{generation}.json"
+            durability_results.append(
+                self.backend.write_synced(pointer_path, _canonical_json(pointer))
+            )
+            durability_results.append(
+                self.backend.replace(pointer_path, self.current_path)
+            )
+            durability_results.append(self.backend.sync_directory(self.root))
+        except DurabilityError as error:
+            self._last_durability = combine_durability(
+                "session_publication",
+                (*durability_results, error.result),
+            )
+            raise DurabilityError(self._last_durability, error.cause) from error
+        except OSError as error:
+            unsafe = DurabilityResult(
+                "session_publication",
+                DurabilityLevel.UNSAFE,
+                False,
+                False,
+                False,
+                f"storage:{type(error).__name__}",
+            )
+            self._last_durability = (
+                combine_durability(
+                    "session_publication",
+                    (*durability_results, unsafe),
+                )
+                if durability_results
+                else unsafe
+            )
+            raise
+
+        durability = combine_durability(
+            "session_publication",
+            durability_results,
+        )
+        self._last_durability = durability
 
         truncations = admitted.manifest.notices[before_notice_count:]
         return PublicationResult(
@@ -740,6 +828,7 @@ class SessionStore:
             pack_paths,
             retained_previous,
             truncations,
+            durability,
         )
 
     def _problem(

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import shutil
 import threading
 import time
@@ -17,6 +16,14 @@ from typing import Protocol
 
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
+from uniti.core.durability import (
+    DurabilityAdapter,
+    DurabilityError,
+    DurabilityLevel,
+    DurabilityResult,
+    NativeDurabilityAdapter,
+    combine_durability,
+)
 from uniti.core.file_identity import (
     FileIdentity,
     FileMatch,
@@ -53,6 +60,7 @@ _HISTORY_COALESCE_KEY = "history_coalesce"
 
 class RecoveryHealth(StrEnum):
     OK = "ok"
+    REDUCED = "reduced"
     DEGRADED = "degraded"
 
 
@@ -60,6 +68,7 @@ class RecoveryHealth(StrEnum):
 class RecoveryDiagnostic:
     document_id: str
     health: RecoveryHealth
+    durability: DurabilityLevel
     durable_revision: int
     observed_revision: int
     reason: str
@@ -95,11 +104,13 @@ class RecoveryIO(Protocol):
 
     def flush(self, journal: RecoveryJournal) -> None: ...
 
-    def fsync(self, journal: RecoveryJournal) -> None: ...
+    def fsync(self, journal: RecoveryJournal) -> DurabilityResult: ...
 
     def size(self, path: Path) -> int: ...
 
-    def replace(self, source: Path, destination: Path) -> None: ...
+    def replace(self, source: Path, destination: Path) -> DurabilityResult: ...
+
+    def sync_directory(self, path: Path) -> DurabilityResult: ...
 
     def unlink(self, path: Path) -> None: ...
 
@@ -108,6 +119,9 @@ class RecoveryIO(Protocol):
 
 class FileRecoveryIO:
     """Filesystem recovery backend used outside deterministic failure tests."""
+
+    def __init__(self, *, adapter: DurabilityAdapter | None = None) -> None:
+        self._adapter = adapter if adapter is not None else NativeDurabilityAdapter()
 
     def append(
         self,
@@ -124,14 +138,68 @@ class FileRecoveryIO:
     def flush(self, journal: RecoveryJournal) -> None:
         journal.flush(durable=False)
 
-    def fsync(self, journal: RecoveryJournal) -> None:
-        journal.flush(durable=True)
+    def fsync(self, journal: RecoveryJournal) -> DurabilityResult:
+        try:
+            journal.flush(durable=True)
+        except OSError as error:
+            result = DurabilityResult(
+                "recovery_fsync",
+                DurabilityLevel.UNSAFE,
+                False,
+                False,
+                False,
+                f"file_sync:{type(error).__name__}",
+            )
+            raise DurabilityError(result, error) from error
+        return DurabilityResult(
+            "recovery_fsync",
+            DurabilityLevel.FULL,
+            True,
+            True,
+            True,
+        )
 
     def size(self, path: Path) -> int:
         return path.stat().st_size
 
-    def replace(self, source: Path, destination: Path) -> None:
-        os.replace(source, destination)
+    def replace(self, source: Path, destination: Path) -> DurabilityResult:
+        try:
+            self._adapter.replace(source, destination)
+        except OSError as error:
+            result = DurabilityResult(
+                "recovery_replace",
+                DurabilityLevel.UNSAFE,
+                True,
+                False,
+                False,
+                f"replace:{type(error).__name__}",
+            )
+            raise DurabilityError(result, error) from error
+        directory = self.sync_directory(destination.parent)
+        return DurabilityResult(
+            "recovery_replace",
+            directory.level,
+            True,
+            True,
+            directory.directory_synced,
+            directory.reason,
+        )
+
+    def sync_directory(self, path: Path) -> DurabilityResult:
+        try:
+            synced = self._adapter.sync_directory(path) is True
+            reason = None if synced else "directory_sync_unavailable"
+        except OSError as error:
+            synced = False
+            reason = f"directory_sync:{type(error).__name__}"
+        return DurabilityResult(
+            "recovery_directory_sync",
+            DurabilityLevel.FULL if synced else DurabilityLevel.FILE_SYNCED,
+            True,
+            True,
+            synced,
+            reason,
+        )
 
     def unlink(self, path: Path) -> None:
         path.unlink()
@@ -184,7 +252,9 @@ class _Binding:
     observed_revision: int = 0
     events: list[RecoveryEvent] = field(default_factory=list)
     health: RecoveryHealth = RecoveryHealth.OK
+    durability: DurabilityLevel = DurabilityLevel.FULL
     reason: str = ""
+    directory_sync_pending: bool = False
     compaction_pending: bool = False
     compaction_future: Future | None = None
 
@@ -245,18 +315,46 @@ class RecoveryManager:
     def _degrade(self, binding: _Binding, stage: str, error: Exception) -> None:
         with self._lock:
             binding.health = RecoveryHealth.DEGRADED
+            binding.durability = DurabilityLevel.UNSAFE
             binding.reason = f"{stage} failed ({type(error).__name__})"
             self.last_error = error
         self._notify_diagnostic(binding)
 
-    def _mark_durable(self, binding: _Binding) -> None:
+    @staticmethod
+    def _require_safe(result: DurabilityResult) -> DurabilityResult:
+        if not isinstance(result, DurabilityResult):
+            raise TypeError("recovery backend returned an invalid durability result")
+        if result.level is DurabilityLevel.UNSAFE:
+            raise DurabilityError(result, OSError(result.reason or "unsafe durability"))
+        return result
+
+    def _record_durability(
+        self,
+        binding: _Binding,
+        result: DurabilityResult,
+        *,
+        advance_revision: bool,
+    ) -> None:
+        safe = self._require_safe(result)
         with self._lock:
-            binding.durable_sequence = binding.written_sequence
-            binding.durable_revision = binding.written_revision
-            if binding.durable_sequence >= binding.sequence:
+            if advance_revision:
+                binding.durable_sequence = binding.written_sequence
+                binding.durable_revision = binding.written_revision
+            binding.durability = safe.level
+            if safe.level is DurabilityLevel.FILE_SYNCED:
+                binding.health = RecoveryHealth.REDUCED
+                binding.reason = safe.reason or "directory sync unavailable"
+            elif binding.durable_sequence >= binding.sequence:
                 binding.health = RecoveryHealth.OK
                 binding.reason = ""
         self._notify_diagnostic(binding)
+
+    def _mark_durable(
+        self,
+        binding: _Binding,
+        result: DurabilityResult,
+    ) -> None:
+        self._record_durability(binding, result, advance_revision=True)
 
     def _run_guarded(self, binding: _Binding, stage: str, fn):
         try:
@@ -340,6 +438,35 @@ class RecoveryManager:
         binding.journal = journal
         binding.journal_path = path
         binding.last_fsync = time.monotonic()
+        binding.directory_sync_pending = True
+        directory = self._require_safe(
+            self._backend.sync_directory(self.directory)
+        )
+        binding.directory_sync_pending = (
+            directory.level is not DurabilityLevel.FULL
+        )
+        self._record_durability(
+            binding,
+            directory,
+            advance_revision=False,
+        )
+
+    def _sync_binding(self, binding: _Binding) -> None:
+        journal = binding.journal
+        if journal is None:
+            return
+        results = [self._require_safe(self._backend.fsync(journal))]
+        if binding.directory_sync_pending:
+            directory = self._require_safe(
+                self._backend.sync_directory(self.directory)
+            )
+            results.append(directory)
+            binding.directory_sync_pending = (
+                directory.level is not DurabilityLevel.FULL
+            )
+        durability = combine_durability("recovery_publication", results)
+        binding.last_fsync = time.monotonic()
+        self._mark_durable(binding, durability)
 
     def _maybe_fsync(self, binding: _Binding) -> None:
         journal = binding.journal
@@ -348,9 +475,7 @@ class RecoveryManager:
         now = time.monotonic()
         if now - binding.last_fsync < self._fsync_interval:
             return
-        self._backend.fsync(journal)
-        binding.last_fsync = now
-        self._mark_durable(binding)
+        self._sync_binding(binding)
 
     def _write_event(
         self,
@@ -383,18 +508,14 @@ class RecoveryManager:
             binding.written_sequence = last.sequence
             binding.written_revision = last.revision
         self._backend.flush(binding.journal)
-        self._backend.fsync(binding.journal)
-        binding.last_fsync = time.monotonic()
-        self._mark_durable(binding)
+        self._sync_binding(binding)
 
     def _flush_binding(self, binding: _Binding) -> None:
         journal = binding.journal
         if journal is None:
             return
         self._backend.flush(journal)
-        self._backend.fsync(journal)
-        binding.last_fsync = time.monotonic()
-        self._mark_durable(binding)
+        self._sync_binding(binding)
 
     def _needs_compaction(self, binding: _Binding) -> bool:
         path = binding.journal_path
@@ -547,6 +668,7 @@ class RecoveryManager:
         return RecoveryDiagnostic(
             binding.document_id,
             binding.health,
+            binding.durability,
             binding.durable_revision,
             binding.observed_revision,
             binding.reason,
@@ -615,9 +737,7 @@ class RecoveryManager:
         old_path = binding.journal_path
         if old_journal is None or old_path is None or binding.base_hash is None:
             return
-        self._backend.flush(old_journal)
-        self._backend.fsync(old_journal)
-        self._mark_durable(binding)
+        self._flush_binding(binding)
 
         published = self._owned_path(self._new_journal_path(binding.document))
         temporary = self._owned_path(
@@ -641,7 +761,7 @@ class RecoveryManager:
                 RecoveryCheckpoint(request.base_history, request.events),
             )
             self._backend.flush(new_journal)
-            self._backend.fsync(new_journal)
+            fsync_result = self._require_safe(self._backend.fsync(new_journal))
             loaded = load_recovery_candidate(temporary)
             if (
                 loaded.status is not RecoveryLoadStatus.COMPLETE
@@ -649,21 +769,28 @@ class RecoveryManager:
                 or loaded.durable_events != request.events
             ):
                 raise ValueError("compacted recovery candidate did not validate")
-            self._backend.replace(temporary, published)
+            replace_result = self._require_safe(
+                self._backend.replace(temporary, published)
+            )
+            directory_result = self._require_safe(
+                self._backend.sync_directory(self.directory)
+            )
+            durability = combine_durability(
+                "recovery_compaction",
+                (fsync_result, replace_result, directory_result),
+            )
             new_journal.path = published
             binding.journal = new_journal
             binding.journal_path = published
+            binding.directory_sync_pending = (
+                durability.level is not DurabilityLevel.FULL
+            )
             if request.events:
                 last = request.events[-1]
                 binding.written_sequence = last.sequence
                 binding.written_revision = last.revision
-                binding.durable_sequence = last.sequence
-                binding.durable_revision = last.revision
             binding.last_fsync = time.monotonic()
-            if binding.durable_sequence >= binding.sequence:
-                binding.health = RecoveryHealth.OK
-                binding.reason = ""
-            self._notify_diagnostic(binding)
+            self._mark_durable(binding, durability)
             new_journal = None
         finally:
             if new_journal is not None:
@@ -723,12 +850,18 @@ class RecoveryManager:
         old_journal = binding.journal
         old_path = binding.journal_path
         if old_journal is not None:
-            self._backend.flush(old_journal)
-            self._backend.fsync(old_journal)
+            self._flush_binding(binding)
 
         published: Path | None = None
         temporary: Path | None = None
         new_journal: RecoveryJournal | None = None
+        publication_durability = DurabilityResult(
+            "recovery_saved_base",
+            DurabilityLevel.FULL,
+            True,
+            True,
+            True,
+        )
         try:
             if request.events:
                 published = self._owned_path(
@@ -753,7 +886,9 @@ class RecoveryManager:
                     RecoveryCheckpoint(request.base_history, request.events),
                 )
                 self._backend.flush(new_journal)
-                self._backend.fsync(new_journal)
+                fsync_result = self._require_safe(
+                    self._backend.fsync(new_journal)
+                )
                 loaded = load_recovery_candidate(temporary)
                 if (
                     loaded.status is not RecoveryLoadStatus.COMPLETE
@@ -762,7 +897,16 @@ class RecoveryManager:
                     or loaded.durable_events != request.events
                 ):
                     raise ValueError("saved recovery base did not validate")
-                self._backend.replace(temporary, published)
+                replace_result = self._require_safe(
+                    self._backend.replace(temporary, published)
+                )
+                directory_result = self._require_safe(
+                    self._backend.sync_directory(self.directory)
+                )
+                publication_durability = combine_durability(
+                    "recovery_saved_base",
+                    (fsync_result, replace_result, directory_result),
+                )
                 new_journal.path = published
 
             with self._lock:
@@ -780,6 +924,9 @@ class RecoveryManager:
                 binding.events = list(request.events + tail)
                 binding.journal = new_journal
                 binding.journal_path = published
+                binding.directory_sync_pending = (
+                    publication_durability.level is not DurabilityLevel.FULL
+                )
                 durable = (
                     request.events[-1].sequence
                     if request.events
@@ -791,17 +938,12 @@ class RecoveryManager:
                     else request.save_revision
                 )
                 binding.written_sequence = durable
-                binding.durable_sequence = durable
                 binding.written_revision = durable_revision
-                binding.durable_revision = durable_revision
                 binding.last_fsync = time.monotonic()
-                if binding.durable_sequence >= binding.sequence:
-                    binding.health = RecoveryHealth.OK
-                    binding.reason = ""
                 if binding.base_source is not None:
                     binding.base_source.close()
                     binding.base_source = None
-            self._notify_diagnostic(binding)
+            self._mark_durable(binding, publication_durability)
             new_journal = None
         finally:
             if new_journal is not None:
@@ -1108,7 +1250,12 @@ class RecoveryManager:
             self.flush(document)
             path = self.journal_path(document)
             diagnostic = self.diagnostic(document)
-            if path is None or diagnostic.health is not RecoveryHealth.OK:
+            if (
+                path is None
+                or diagnostic.health is RecoveryHealth.DEGRADED
+                or diagnostic.durability is DurabilityLevel.UNSAFE
+                or diagnostic.durable_revision < diagnostic.observed_revision
+            ):
                 raise OSError("fresh recovery journal is not durable")
             return RecoveredDocument(document, candidate, path)
         except Exception:
@@ -1123,7 +1270,8 @@ class RecoveryManager:
         self.flush(recovered.document)
         diagnostic = self.diagnostic(recovered.document)
         if (
-            diagnostic.health is not RecoveryHealth.OK
+            diagnostic.health is RecoveryHealth.DEGRADED
+            or diagnostic.durability is DurabilityLevel.UNSAFE
             or diagnostic.durable_revision < diagnostic.observed_revision
         ):
             raise OSError("fresh recovery state is not durable")

@@ -35,13 +35,16 @@ _A20_TEST_FILES = (
     Path("tests/app/test_instance_service.py"),
     Path("tests/app/test_recovery_manager.py"),
     Path("tests/app/test_service.py"),
+    Path("tests/app/test_settings.py"),
     Path("tests/app/test_session.py"),
     Path("tests/app/test_session_orchestration.py"),
     Path("tests/app/test_session_roundtrip.py"),
     Path("tests/app/test_session_store.py"),
+    Path("tests/app/test_setup_state.py"),
     Path("tests/ui/test_find_replace_contract.py"),
     Path("tests/ui/test_main_window_contract.py"),
     Path("tests/ui/test_panes.py"),
+    Path("tests/ui/test_resource_status.py"),
     Path("tests/test_a21_cross_platform_acceptance.py"),
 )
 _FORBIDDEN_CAPACITY_CALLS = {
