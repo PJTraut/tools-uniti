@@ -370,6 +370,109 @@ def test_find_replace_state_round_trip_preserves_complete_panel_state(
         app.processEvents()
 
 
+def test_find_replace_is_bottom_only_dock_widget_and_attach_detach_preserves_state():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication, QDockWidget, QMainWindow
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    host = QMainWindow()
+    panel = FindReplacePanel(lambda: None)
+    placements: list[str] = []
+    panel.placementChanged.connect(placements.append)
+    try:
+        assert isinstance(panel, QDockWidget)
+        assert panel.allowedAreas() == Qt.DockWidgetArea.BottomDockWidgetArea
+        assert panel.widget() is not None
+        assert panel.widget().isAncestorOf(panel.find_input)
+        assert panel.widget().isAncestorOf(panel.replace_input)
+        assert panel.placement == "detached"
+
+        panel.find_input.set_text("needle")
+        panel.replace_input.set_text("replacement")
+        panel.regex_checkbox.setChecked(True)
+        panel.set_zoom_percent(130)
+        panel.set_report_location("Hidden")
+        expected_find = panel.find_input.export_history()
+        expected_replace = panel.replace_input.export_history()
+
+        panel.attach_to(host)
+        app.processEvents()
+
+        assert panel.placement == "attached"
+        assert panel.isFloating() is False
+        assert host.dockWidgetArea(panel) == Qt.DockWidgetArea.BottomDockWidgetArea
+
+        panel.detach()
+        app.processEvents()
+
+        assert panel.placement == "detached"
+        assert panel.isFloating() is True
+        assert panel.find_input.export_history() == expected_find
+        assert panel.replace_input.export_history() == expected_replace
+        assert panel.regex_checkbox.isChecked() is True
+        assert panel.zoom_percent == 130
+        assert panel.report_location == "Hidden"
+        assert placements == ["attached", "detached"]
+    finally:
+        panel.shutdown()
+        panel.close()
+        host.close()
+        app.processEvents()
+
+
+def test_find_replace_persists_placement_and_only_tracks_detached_geometry():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+
+    from PySide6.QtWidgets import QApplication, QMainWindow
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    host = QMainWindow()
+    panel = FindReplacePanel(lambda: None)
+    restored = FindReplacePanel(lambda: None)
+    geometry_events: list[tuple[int, int, int, int]] = []
+    panel.geometryChanged.connect(geometry_events.append)
+    try:
+        panel.setGeometry(23, 31, 760, 410)
+        panel.show()
+        app.processEvents()
+        detached = panel.export_state("view-target")
+        assert detached.placement == "detached"
+        assert detached.geometry == (23, 31, 760, 410)
+        assert geometry_events
+
+        panel.attach_to(host)
+        app.processEvents()
+        attached_event_count = len(geometry_events)
+        panel.resize(900, 220)
+        app.processEvents()
+        attached = panel.export_state("view-target")
+
+        assert attached.placement == "attached"
+        assert attached.geometry == detached.geometry
+        assert len(geometry_events) == attached_event_count
+
+        restored.restore_state(replace(attached, visible=False))
+        assert restored.placement == "attached"
+        assert restored.export_state("view-target").placement == "attached"
+        assert restored.export_state("view-target").geometry == detached.geometry
+    finally:
+        for item in (panel, restored):
+            item.shutdown()
+            item.close()
+        host.close()
+        app.processEvents()
+
+
 def test_find_replace_export_prunes_oldest_field_history_with_notice():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
@@ -854,7 +957,7 @@ def test_find_replace_is_modeless_and_keeps_document_enabled(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication, QDialog
+    from PySide6.QtWidgets import QApplication, QDockWidget
 
     from uniti.ui.main_window import UNITIMainWindow
 
@@ -868,8 +971,7 @@ def test_find_replace_is_modeless_and_keeps_document_enabled(tmp_path: Path):
     app.processEvents()
 
     find_window = window._find_replace
-    assert isinstance(find_window, QDialog)
-    assert find_window.isModal() is False
+    assert isinstance(find_window, QDockWidget)
     assert find_window.isVisible() is True
     assert view.isEnabled() is True
     find_window.reject()
@@ -999,7 +1101,6 @@ def test_find_replace_window_and_right_report_are_resizable_and_toggleable():
     panel.report_splitter.setSizes((500, 340))
     app.processEvents()
 
-    assert panel.isSizeGripEnabled() is True
     assert (panel.width(), panel.height()) == (860, 520)
     assert panel.capture_view.maximumHeight() > 1_000_000
     assert panel.report_splitter.sizes()[1] > 82

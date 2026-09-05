@@ -12,11 +12,12 @@ from PySide6.QtGui import QFont, QPainter, QPalette, QPen, QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QApplication,
-    QDialog,
+    QDockWidget,
     QFrame,
     QHBoxLayout,
     QLabel,
     QListView,
+    QMainWindow,
     QPushButton,
     QSizePolicy,
     QSplitter,
@@ -113,12 +114,13 @@ class _CircularClearButton(QToolButton):
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
 
 
-class FindReplaceWindow(QDialog):
+class FindReplaceWindow(QDockWidget):
     """Modeless Find/Replace utility; match records never become document state."""
 
     zoomChanged = Signal(int)
     reportLocationChanged = Signal(str)
     geometryChanged = Signal(tuple)
+    placementChanged = Signal(str)
     _jobCompleted = Signal()
     _analysisCompleted = Signal(int, object)
     _captureCompleted = Signal(int, object)
@@ -130,16 +132,23 @@ class FindReplaceWindow(QDialog):
         *,
         resource_manager: ResourceManager | None = None,
     ) -> None:
-        super().__init__(parent)
-        self.setModal(False)
+        super().__init__("Find / Replace", parent)
+        self.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
+        self.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetClosable
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+            | QDockWidget.DockWidgetFeature.DockWidgetMovable
+        )
+        self._placement = "detached"
+        self._changing_placement = False
+        self._dock_host: QMainWindow | None = None
+        self._detached_geometry = (0, 0, 720, 320)
+        self._restoring_state = False
         self.setWindowFlag(Qt.WindowType.Tool, True)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
-        self.setSizeGripEnabled(True)
-        self.setWindowTitle("Find / Replace")
         self.resize(720, 320)
         self._view_provider = view_provider
-        self._restoring_state = False
         self._shutdown = False
         self._owns_resources = resource_manager is None
         self._resource_manager = resource_manager or ResourceManager(max_workers=1)
@@ -199,16 +208,18 @@ class FindReplaceWindow(QDialog):
             capture_finished,
         )
 
-        self.find_input = RegexInput(self)
-        self.replace_input = ReplacementInput(self)
-        self.status_label = QLabel("0 matches", self)
-        self.capture_view = QListView(self)
+        content = QWidget(self)
+        self.setWidget(content)
+        self.find_input = RegexInput(content)
+        self.replace_input = ReplacementInput(content)
+        self.status_label = QLabel("0 matches", content)
+        self.capture_view = QListView(content)
         self.capture_model = CaptureReportModel(self.capture_view)
         self.capture_view.setModel(self.capture_model)
         self.capture_view.setAccessibleName("Match Report")
-        self.regex_checkbox = QCheckBox("Regex", self)
-        self.case_sensitive_checkbox = QCheckBox("Case", self)
-        self.whole_word_checkbox = QCheckBox("Whole word", self)
+        self.regex_checkbox = QCheckBox("Regex", content)
+        self.case_sensitive_checkbox = QCheckBox("Case", content)
+        self.whole_word_checkbox = QCheckBox("Whole word", content)
 
         self.find_clear_button = self._clear_button("Clear Find", self.find_input)
         self.replace_clear_button = self._clear_button(
@@ -247,7 +258,7 @@ class FindReplaceWindow(QDialog):
         self.report_toggle_button.setFixedWidth(34)
         options_row.addWidget(self.report_toggle_button)
 
-        self.actions_widget = QWidget(self)
+        self.actions_widget = QWidget(content)
         actions = QHBoxLayout(self.actions_widget)
         actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(4)
@@ -273,7 +284,7 @@ class FindReplaceWindow(QDialog):
         actions.addWidget(self.next_button)
         actions.addWidget(self.replace_button)
 
-        self.cancel_button = QPushButton("Cancel", self)
+        self.cancel_button = QPushButton("Cancel", content)
         self.cancel_button.setEnabled(False)
 
         footer = QHBoxLayout()
@@ -281,7 +292,7 @@ class FindReplaceWindow(QDialog):
         footer.addStretch(1)
         footer.addWidget(self.status_label)
 
-        controls_widget = QWidget(self)
+        controls_widget = QWidget(content)
         controls_layout = QVBoxLayout(controls_widget)
         controls_layout.setContentsMargins(4, 4, 4, 4)
         controls_layout.setSpacing(3)
@@ -301,12 +312,12 @@ class FindReplaceWindow(QDialog):
         bottom_controls_layout.addLayout(footer)
         controls_layout.addWidget(self.bottom_controls_widget)
 
-        self.report_frame = QFrame(self)
+        self.report_frame = QFrame(content)
         report_layout = QVBoxLayout(self.report_frame)
         report_layout.setContentsMargins(4, 4, 4, 4)
         report_layout.addWidget(self.capture_view)
 
-        self.report_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        self.report_splitter = QSplitter(Qt.Orientation.Horizontal, content)
         self.report_splitter.addWidget(controls_widget)
         self.report_splitter.addWidget(self.report_frame)
         self.report_splitter.setChildrenCollapsible(False)
@@ -314,7 +325,7 @@ class FindReplaceWindow(QDialog):
         self.report_splitter.setCollapsible(1, False)
         self.report_splitter.setStretchFactor(0, 1)
         self.report_splitter.setStretchFactor(1, 1)
-        layout = QVBoxLayout(self)
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.report_splitter)
 
@@ -348,6 +359,7 @@ class FindReplaceWindow(QDialog):
             Qt.ConnectionType.QueuedConnection,
         )
         self._analysis_timer.timeout.connect(self._submit_pattern_analysis)
+        self.topLevelChanged.connect(self._top_level_changed)
         self._search_mode_changed(False)
         self._report_open = True
         self._report_width = 260
@@ -355,6 +367,60 @@ class FindReplaceWindow(QDialog):
         for widget in self.findChildren(QWidget):
             widget.installEventFilter(self)
         self._position_clear_buttons()
+
+    @property
+    def placement(self) -> str:
+        return self._placement
+
+    def _set_placement(self, placement: str) -> None:
+        if placement not in {"attached", "detached"}:
+            raise ValueError(f"unsupported find/replace placement: {placement}")
+        if placement == self._placement:
+            return
+        self._placement = placement
+        if not self._restoring_state:
+            self.placementChanged.emit(placement)
+
+    @staticmethod
+    def _geometry_tuple(widget: QWidget) -> tuple[int, int, int, int]:
+        geometry = widget.geometry()
+        return geometry.x(), geometry.y(), geometry.width(), geometry.height()
+
+    def _top_level_changed(self, floating: bool) -> None:
+        if self._changing_placement:
+            return
+        self._set_placement("detached" if floating else "attached")
+
+    def attach_to(self, host: QMainWindow) -> None:
+        if not isinstance(host, QMainWindow):
+            raise TypeError("find/replace host must be a QMainWindow")
+        if self._placement == "detached":
+            self._detached_geometry = self._geometry_tuple(self)
+        previous_host = self._dock_host
+        self._changing_placement = True
+        try:
+            if previous_host is not None and previous_host is not host:
+                previous_host.removeDockWidget(self)
+            host.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self)
+            self.setFloating(False)
+            self._dock_host = host
+        finally:
+            self._changing_placement = False
+        self._set_placement("attached")
+
+    def detach(self) -> None:
+        geometry = self._detached_geometry
+        self._changing_placement = True
+        try:
+            self.setFloating(True)
+            self.setWindowFlag(Qt.WindowType.Tool, True)
+            self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
+            self.setGeometry(*geometry)
+        finally:
+            self._changing_placement = False
+        self._set_placement("detached")
+        self.show()
 
     @property
     def zoom_percent(self) -> int:
@@ -543,7 +609,8 @@ class FindReplaceWindow(QDialog):
             self.find_input.export_history(),
             self.replace_input.export_history(),
         )
-        geometry = self.geometry()
+        if self._placement == "detached":
+            self._detached_geometry = self._geometry_tuple(self)
         return FindReplaceRecord(
             find=find,
             replace=replace,
@@ -551,15 +618,11 @@ class FindReplaceWindow(QDialog):
             case_sensitive=self.case_sensitive_checkbox.isChecked(),
             whole_word=self.whole_word_checkbox.isChecked(),
             visible=self.isVisible(),
-            geometry=(
-                geometry.x(),
-                geometry.y(),
-                geometry.width(),
-                geometry.height(),
-            ),
+            geometry=self._detached_geometry,
             zoom_percent=self.zoom_percent,
             report_visible=self._report_open,
             last_target_view_id=last_target_view_id,
+            placement=self._placement,
         )
 
     def restore_state(self, record: FindReplaceRecord) -> None:
@@ -578,6 +641,7 @@ class FindReplaceWindow(QDialog):
         self._restoring_state = True
         try:
             if record.geometry is not None:
+                self._detached_geometry = record.geometry
                 self.setGeometry(*record.geometry)
             self.set_zoom_percent(record.zoom_percent)
             self.set_report_location("Right" if record.report_visible else "Hidden")
@@ -590,6 +654,7 @@ class FindReplaceWindow(QDialog):
             self.whole_word_checkbox.setEnabled(not record.regex)
             self.find_clear_button.setEnabled(bool(record.find.current.text))
             self.replace_clear_button.setEnabled(bool(record.replace.current.text))
+            self._set_placement(record.placement)
             self.show() if record.visible else self.hide()
         finally:
             self._restoring_state = False
@@ -1409,10 +1474,11 @@ class FindReplaceWindow(QDialog):
         super().closeEvent(event)
 
     def _emit_geometry(self) -> None:
-        geometry = self.geometry()
-        self.geometryChanged.emit(
-            (geometry.x(), geometry.y(), geometry.width(), geometry.height())
-        )
+        if self._placement != "detached" or self._changing_placement:
+            return
+        self._detached_geometry = self._geometry_tuple(self)
+        if not self._restoring_state:
+            self.geometryChanged.emit(self._detached_geometry)
 
     def moveEvent(self, event) -> None:
         super().moveEvent(event)
