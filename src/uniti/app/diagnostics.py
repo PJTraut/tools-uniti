@@ -28,6 +28,7 @@ def diagnostics_snapshot(
     startup_snapshot: Mapping[str, object] | None = None,
     *,
     resource_manager: ResourceManager | None = None,
+    dogfood_status: object | None = None,
     safe_for_export: bool = False,
 ) -> dict[str, object]:
     memory = probe_memory()
@@ -162,7 +163,31 @@ def diagnostics_snapshot(
             "items": task_items,
         },
         "documents": document_items,
+        "dogfood": _dogfood_items(dogfood_status),
     }
     if startup_snapshot is not None and not safe_for_export:
         snapshot["startup"] = deepcopy(dict(startup_snapshot))
     return snapshot
+
+
+def _dogfood_items(status: object | None) -> dict[str, object]:
+    if status is None:
+        return {
+            "available": False,
+            "segment_count": 0,
+            "byte_count": 0,
+            "oldest_day": None,
+            "newest_day": None,
+            "last_failure": None,
+        }
+    oldest = getattr(status, "oldest_day", None)
+    newest = getattr(status, "newest_day", None)
+    failure = getattr(status, "last_failure", None)
+    return {
+        "available": bool(getattr(status, "available", False)),
+        "segment_count": max(0, int(getattr(status, "segment_count", 0))),
+        "byte_count": max(0, int(getattr(status, "byte_count", 0))),
+        "oldest_day": None if oldest is None else oldest.isoformat(),
+        "newest_day": None if newest is None else newest.isoformat(),
+        "last_failure": None if failure is None else failure.value,
+    }

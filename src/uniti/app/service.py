@@ -213,6 +213,9 @@ class UNITIService:
         service_id: str | None = None,
         build_identity: str | None = None,
         instance_service: object | None = None,
+        dogfood_recorder: object | None = None,
+        dogfood_store: object | None = None,
+        dogfood_publish_interval_seconds: int = 300,
     ) -> None:
         if session_capture is not None and not callable(session_capture):
             raise TypeError("session capture must be callable")
@@ -242,6 +245,14 @@ class UNITIService:
         self._find_replace_placement = "detached"
         self._publication_queue: _PublicationQueue | None = None
         self._publication_generation = 0
+        from .dogfood_runtime import DogfoodRuntime
+
+        self._dogfood = DogfoodRuntime(
+            resource_manager,
+            dogfood_recorder,
+            dogfood_store,
+            publish_interval_seconds=dogfood_publish_interval_seconds,
+        )
         self._last_recovery_errors: tuple[str, ...] = ()
         self._recovery_degraded = False
         self._running = True
@@ -257,6 +268,37 @@ class UNITIService:
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def dogfood_recorder(self) -> object | None:
+        return self._dogfood.recorder
+
+    @property
+    def dogfood_store(self) -> object | None:
+        return self._dogfood.store
+
+    @property
+    def dogfood_is_active(self) -> bool:
+        return self._dogfood.active
+
+    @property
+    def dogfood_status(self) -> object:
+        return self._dogfood.status
+
+    def schedule_dogfood_publication(self) -> TaskHandle[Any] | None:
+        return self._dogfood.schedule_publication()
+
+    def export_dogfood_evidence(self, destination: Path) -> TaskHandle[Any]:
+        return self._dogfood.export(destination)
+
+    def clear_dogfood_evidence(self) -> TaskHandle[Any]:
+        return self._dogfood.clear()
+
+    def shutdown_dogfood(self) -> None:
+        self._dogfood.shutdown()
+
+    def _finalize_dogfood(self) -> None:
+        self._dogfood.finalize()
 
     @property
     def window_count(self) -> int:
@@ -1251,6 +1293,7 @@ class UNITIService:
         self.windows.clear()
         self._session_controller.shutdown()
         self.recovery.shutdown()
+        self._finalize_dogfood()
         self.resources.shutdown(wait=True)
         if self._instance_service is not None:
             self._instance_service.close()

@@ -3,7 +3,11 @@ from pathlib import Path
 
 import pytest
 
+from uniti.app import application
+from uniti.app.dogfood import DogfoodRecorder
+from uniti.app.dogfood_store import DogfoodStore
 from uniti.app.paths import AppPaths
+from uniti.app.session import LoadedSession
 from uniti.app.setup_state import SetupStateStore
 from uniti.app.startup import (
     ExitCode,
@@ -14,6 +18,7 @@ from uniti.app.startup import (
     StartupPhase,
     StartupCompletion,
 )
+from uniti.resources import ResourceManager
 
 
 def _paths(tmp_path: Path) -> AppPaths:
@@ -102,6 +107,94 @@ def test_intentional_secondary_completion_stops_without_failure_or_late_writers(
     records = [json.loads(line) for line in paths.startup_log_file.read_text().splitlines()]
     assert records[-1]["phase"] == "INSTANCE_ARBITRATION"
     assert records[-1]["status"] == "pass"
+
+
+def test_primary_session_startup_constructs_one_process_dogfood_runtime(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from uniti.app.service import UNITIService
+
+    paths = _paths(tmp_path)
+    paths.ensure()
+    resources = ResourceManager(max_workers=1)
+    context = StartupContext.create(paths, session_id="primary")
+    context.data.update(
+        resource_manager=resources,
+        settings_store=object(),
+        recovery_manager=object(),
+        session_store=object(),
+        loaded_session=LoadedSession(None, (), None, ()),
+    )
+
+    class Window:
+        def set_startup_snapshot(self, _snapshot):
+            return None
+
+    window = Window()
+    monkeypatch.setattr(UNITIService, "new_window", lambda self: window)
+    monkeypatch.setattr(
+        UNITIService,
+        "run_recovery_center",
+        lambda self, parent, **kwargs: 0,
+    )
+    callbacks = application._startup_callbacks(
+        application.ApplicationRequest(),
+        tmp_path / "runtime.json",
+    )
+
+    try:
+        callbacks[StartupPhase.SESSION_RESTORE](context)
+
+        service = context.data["service"]
+        assert isinstance(context.data["dogfood_recorder"], DogfoodRecorder)
+        assert isinstance(context.data["dogfood_store"], DogfoodStore)
+        assert service.dogfood_recorder is context.data["dogfood_recorder"]
+        assert service.dogfood_store is context.data["dogfood_store"]
+        assert service.dogfood_store.root == paths.dogfood_dir.resolve()
+    finally:
+        service = context.data.get("service")
+        if service is not None:
+            service.shutdown_dogfood()
+        resources.shutdown()
+
+
+def test_forwarded_startup_never_constructs_a_dogfood_runtime(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from uniti.app import instance_service
+    from uniti.app.instance_protocol import InstanceReply
+    from uniti.app.instance_service import InstanceRole, InstanceStart
+
+    class ForwardedInstance:
+        def __init__(self, _lock_path, _endpoint_name):
+            return None
+
+        def start(self, _request):
+            return InstanceStart(
+                InstanceRole.FORWARDED,
+                InstanceReply(True, (), None),
+            )
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(instance_service, "InstanceService", ForwardedInstance)
+    paths = _paths(tmp_path)
+    paths.ensure()
+    context = StartupContext.create(paths, session_id="secondary")
+    callbacks = application._startup_callbacks(
+        application.ApplicationRequest(),
+        tmp_path / "runtime.json",
+    )
+
+    completion = callbacks[StartupPhase.INSTANCE_ARBITRATION](context)
+
+    assert completion == StartupCompletion(ExitCode.SUCCESS)
+    assert "dogfood_recorder" not in context.data
+    assert "dogfood_store" not in context.data
+    context.cleanup()
 
 
 def test_context_rejects_illegal_phase_transition(tmp_path: Path):

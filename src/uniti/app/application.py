@@ -10,6 +10,7 @@ import platform
 import sys
 import uuid
 from dataclasses import dataclass, replace
+from datetime import date
 from pathlib import Path
 from typing import Mapping
 
@@ -235,6 +236,42 @@ def _normal_dependencies() -> dict[str, str]:
             "UNITI requires PySide6 6.8 or newer",
         )
     return versions
+
+
+def _create_dogfood_runtime(context: StartupContext) -> tuple[object, object, int]:
+    from uniti.resources import load_performance_policy
+
+    from .dogfood import (
+        OSFamily,
+        DogfoodRecorder,
+        HostFacts,
+        classify_cpu,
+        classify_ram,
+    )
+    from .dogfood_store import DogfoodStore
+
+    platform_family = {
+        "darwin": OSFamily.MACOS,
+        "win32": OSFamily.WINDOWS,
+        "linux": OSFamily.LINUX,
+    }.get(sys.platform, OSFamily.OTHER)
+    profile = context.data["resource_manager"].host_profile
+    policy = load_performance_policy().dogfood
+    recorder = DogfoodRecorder(
+        HostFacts(
+            uniti.__display_version__,
+            platform_family,
+            classify_cpu(profile.logical_cores),
+            classify_ram(profile.physical_memory),
+        ),
+        day=date.today(),
+    )
+    store = DogfoodStore(
+        context.paths.dogfood_dir,
+        retention_days=policy.retention_days,
+        aggregate_max_bytes=policy.aggregate_max_mib << 20,
+    )
+    return recorder, store, policy.publish_interval_seconds
 
 
 def _handle_instance_request(
@@ -487,6 +524,11 @@ def _startup_callbacks(
         from uniti.app.service import UNITIService
         session_store = context.data["session_store"]
         loaded_session = context.data["loaded_session"]
+        dogfood_recorder, dogfood_store, dogfood_interval = (
+            _create_dogfood_runtime(context)
+        )
+        context.data["dogfood_recorder"] = dogfood_recorder
+        context.data["dogfood_store"] = dogfood_store
         service = UNITIService(
             resource_manager=context.data["resource_manager"],
             settings_store=context.data["settings_store"],
@@ -494,7 +536,11 @@ def _startup_callbacks(
             recovery_manager=context.data["recovery_manager"],
             service_id=context.session_id,
             instance_service=context.data.get("instance_service"),
+            dogfood_recorder=dogfood_recorder,
+            dogfood_store=dogfood_store,
+            dogfood_publish_interval_seconds=dogfood_interval,
         )
+        context.register_cleanup(service.shutdown_dogfood)
         if loaded_session.manifest is not None:
             service.restore_shell(
                 loaded_session.manifest,

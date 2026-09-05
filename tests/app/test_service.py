@@ -4,6 +4,7 @@ import hashlib
 import os
 import threading
 import time
+from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,6 +15,16 @@ from uniti.app.recovery_manager import (
     RecoveryDiagnostic,
     RecoveryHealth,
 )
+from uniti.app.dogfood import (
+    CPUClass,
+    RAMClass,
+    DogfoodRecorder,
+    HostFacts,
+    Operation,
+    OSFamily,
+    Outcome,
+)
+from uniti.app.dogfood_store import ClearReport, DogfoodStore, StoreStatus
 from uniti.app.session import MAX_WINDOWS, DockReturnRecord, SessionProblem
 from uniti.app.service import QuitChoice, QuitDecision, UNITIService
 from uniti.core.file_identity import FileIdentity, FileMatch
@@ -21,7 +32,7 @@ from uniti.core.history import HistorySnapshot
 from uniti.core.recovery import RecoveryLoadStatus, RecoverySession
 from uniti.core.document import Document
 from uniti.core.durability import DurabilityLevel, DurabilityResult
-from uniti.resources import ResourceManager
+from uniti.resources import ResourceManager, TaskKind, WorkPriority
 from uniti.ui.recovery_center import RecoveryAction, RecoveryDecision, RecoveryEntryKind
 
 
@@ -75,6 +86,44 @@ class RecordingResources:
         self.shutdown_count += 1
 
 
+class RecordingDogfoodStore:
+    def __init__(self, *, fail_publish: bool = False) -> None:
+        self.fail_publish = fail_publish
+        self.publications: list[object] = []
+        self.exports: list[Path] = []
+        self.clear_count = 0
+        self.worker_threads: list[int] = []
+
+    def publish(self, snapshot: object) -> object:
+        self.worker_threads.append(threading.get_ident())
+        self.publications.append(snapshot)
+        if self.fail_publish:
+            raise RuntimeError("private dogfood write failure")
+        return snapshot
+
+    def export(self, destination: Path) -> Path:
+        self.worker_threads.append(threading.get_ident())
+        selected = Path(destination)
+        self.exports.append(selected)
+        return selected
+
+    def clear(self) -> ClearReport:
+        self.worker_threads.append(threading.get_ident())
+        self.clear_count += 1
+        return ClearReport((), 0, ())
+
+    def status(self) -> StoreStatus:
+        return StoreStatus(True, len(self.publications), 0, None, None, None)
+
+
+DOGFOOD_HOST = HostFacts(
+    "v0.001a21",
+    OSFamily.MACOS,
+    CPUClass.C5_8,
+    RAMClass.GIB_16_31,
+)
+
+
 class FakeView:
     def __init__(self, view_id: str, document: Document) -> None:
         self.view_id = view_id
@@ -114,6 +163,8 @@ def _service(
     sessions=None,
     recovery=None,
     capture=lambda clean_shutdown: ("snapshot", clean_shutdown),
+    dogfood_recorder=None,
+    dogfood_store=None,
 ) -> UNITIService:
     return UNITIService(
         resource_manager=resources or RecordingResources(),
@@ -121,6 +172,8 @@ def _service(
         session_store=sessions or RecordingSessionStore(),
         recovery_manager=recovery or RecordingRecoveryManager(),
         session_capture=capture,
+        dogfood_recorder=dogfood_recorder,
+        dogfood_store=dogfood_store,
     )
 
 
@@ -352,6 +405,163 @@ def test_last_window_can_close_while_service_remains_running():
     assert service.window_count == 0
     assert service.active_view is None
     assert service.is_running is True
+
+
+def test_last_window_close_keeps_one_service_dogfood_recorder_active():
+    recorder = DogfoodRecorder(DOGFOOD_HOST, day=date(2026, 9, 5))
+    store = RecordingDogfoodStore()
+    service = _service(dogfood_recorder=recorder, dogfood_store=store)
+    first = FakeWindow(name="first")
+    second = FakeWindow(name="second")
+
+    service.register_window("window-a", first)
+    service.register_window("window-b", second)
+    service.unregister_window("window-a")
+    service.unregister_window("window-b")
+
+    assert service.window_count == 0
+    assert service.dogfood_recorder is recorder
+    assert service.dogfood_store is store
+    assert service.dogfood_is_active is True
+    service.shutdown_dogfood()
+
+
+def test_quit_requests_final_low_priority_dogfood_publish_and_ignores_failure():
+    caller_thread = threading.get_ident()
+    resources = ResourceManager(max_workers=1)
+    submitted = []
+    original_submit = resources.tasks.submit
+
+    def submit(spec, work):
+        submitted.append(spec)
+        return original_submit(spec, work)
+
+    resources.tasks.submit = submit
+    store = RecordingDogfoodStore(fail_publish=True)
+    recorder = DogfoodRecorder(DOGFOOD_HOST, day=date(2026, 9, 5))
+    service = _service(
+        resources=resources,
+        dogfood_recorder=recorder,
+        dogfood_store=store,
+    )
+
+    assert service.request_quit(lambda _item: QuitChoice.DISCARD) is True
+
+    dogfood_specs = [
+        spec
+        for spec in submitted
+        if spec.kind is TaskKind.CAPTURE_REPORT and not spec.foreground
+    ]
+    assert len(dogfood_specs) == 1
+    assert dogfood_specs[0].priority is WorkPriority.PREFETCH
+    assert len(store.publications) == 1
+    assert store.worker_threads == [store.worker_threads[0]]
+    assert store.worker_threads[0] != caller_thread
+    assert service.is_running is False
+
+
+def test_export_and_clear_dogfood_evidence_use_workers(tmp_path: Path):
+    caller_thread = threading.get_ident()
+    resources = ResourceManager(max_workers=1)
+    store = RecordingDogfoodStore()
+    recorder = DogfoodRecorder(DOGFOOD_HOST, day=date(2026, 9, 5))
+    service = _service(
+        resources=resources,
+        dogfood_recorder=recorder,
+        dogfood_store=store,
+    )
+    destination = tmp_path / "dogfood-export.json"
+
+    exported = service.export_dogfood_evidence(destination)
+    cleared = service.clear_dogfood_evidence()
+
+    assert exported.future.result(timeout=5) == destination
+    assert cleared.future.result(timeout=5) == ClearReport((), 0, ())
+    assert store.exports == [destination]
+    assert store.clear_count == 1
+    assert store.worker_threads
+    assert set(store.worker_threads) == {store.worker_threads[0]}
+    assert store.worker_threads[0] != caller_thread
+    service.request_quit(lambda _item: QuitChoice.DISCARD)
+
+
+def test_service_merges_same_day_evidence_published_before_process_restart(
+    tmp_path: Path,
+):
+    today = date.today()
+    store = DogfoodStore(tmp_path / "dogfood")
+    first = DogfoodRecorder(DOGFOOD_HOST, day=today)
+    first.observe(Operation.EDIT_TRANSACTION, Outcome.SUCCESS)
+    assert store.publish(first.snapshot()).published is True
+    recorder = DogfoodRecorder(DOGFOOD_HOST, day=today)
+    recorder.observe(Operation.EDIT_TRANSACTION, Outcome.SUCCESS)
+    resources = ResourceManager(max_workers=1)
+    service = _service(
+        resources=resources,
+        dogfood_recorder=recorder,
+        dogfood_store=store,
+    )
+
+    first_handle = service.schedule_dogfood_publication()
+    assert first_handle is not None
+    first_handle.future.result(timeout=5)
+    publish_handle = service.schedule_dogfood_publication()
+    assert publish_handle is not None
+    publish_handle.future.result(timeout=5)
+
+    current = store.load_segments()[-1]
+    assert current.for_operation(Operation.EDIT_TRANSACTION).count == 2
+    service.shutdown_dogfood()
+    resources.shutdown()
+
+
+def test_service_publication_rolls_long_running_process_to_local_day(tmp_path: Path):
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+    store = DogfoodStore(tmp_path / "dogfood")
+    recorder = DogfoodRecorder(DOGFOOD_HOST, day=yesterday)
+    recorder.observe(Operation.EDIT_TRANSACTION, Outcome.SUCCESS)
+    resources = ResourceManager(max_workers=1)
+    service = _service(
+        resources=resources,
+        dogfood_recorder=recorder,
+        dogfood_store=store,
+    )
+
+    first_handle = service.schedule_dogfood_publication()
+    assert first_handle is not None
+    first_handle.future.result(timeout=5)
+    publish_handle = service.schedule_dogfood_publication()
+    assert publish_handle is not None
+    publish_handle.future.result(timeout=5)
+
+    segments = store.load_segments()
+    assert tuple(snapshot.day for snapshot in segments) == (yesterday, today)
+    assert segments[0].for_operation(Operation.EDIT_TRANSACTION).count == 1
+    assert segments[1].for_operation(Operation.EDIT_TRANSACTION).count == 0
+    service.shutdown_dogfood()
+    resources.shutdown()
+
+
+def test_clear_dogfood_evidence_resets_process_counters(tmp_path: Path):
+    today = date.today()
+    store = DogfoodStore(tmp_path / "dogfood")
+    recorder = DogfoodRecorder(DOGFOOD_HOST, day=today)
+    recorder.observe(Operation.SAVE, Outcome.SUCCESS)
+    resources = ResourceManager(max_workers=1)
+    service = _service(
+        resources=resources,
+        dogfood_recorder=recorder,
+        dogfood_store=store,
+    )
+
+    handle = service.clear_dogfood_evidence()
+    handle.future.result(timeout=5)
+
+    assert recorder.snapshot().for_operation(Operation.SAVE).count == 0
+    assert store.load_segments() == ()
+    service.shutdown_dogfood()
+    resources.shutdown()
 
 
 def test_active_view_routes_across_registered_windows(tmp_path: Path):

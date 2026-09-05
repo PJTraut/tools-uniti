@@ -1,8 +1,10 @@
 import json
 import sys
+from datetime import date
 from pathlib import Path
 
 from uniti.app.diagnostics import diagnostics_snapshot
+from uniti.app.dogfood_store import StoreFailureCode, StoreStatus
 from uniti.core.document import Document
 from uniti.resources import MemorySnapshot, ResourceManager
 
@@ -69,3 +71,31 @@ def test_diagnostics_reports_host_resources_cache_workers_and_tasks():
         json.dumps(snapshot)
     finally:
         manager.shutdown()
+
+
+def test_diagnostics_reports_bounded_dogfood_status_without_storage_paths(
+    tmp_path: Path,
+):
+    private_root = tmp_path / "private-dogfood-root"
+    status = StoreStatus(
+        False,
+        3,
+        4096,
+        date(2026, 9, 1),
+        date(2026, 9, 5),
+        StoreFailureCode.WRITE_FAILED,
+    )
+
+    snapshot = diagnostics_snapshot(dogfood_status=status)
+
+    assert snapshot["dogfood"] == {
+        "available": False,
+        "segment_count": 3,
+        "byte_count": 4096,
+        "oldest_day": "2026-09-01",
+        "newest_day": "2026-09-05",
+        "last_failure": "write_failed",
+    }
+    encoded = json.dumps(snapshot)
+    assert str(private_root) not in encoded
+    assert "current.json.gz" not in encoded

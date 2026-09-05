@@ -136,6 +136,99 @@ def test_main_window_accepts_completed_startup_snapshot_for_diagnostics():
     assert "set_startup_snapshot" in source
 
 
+def test_tools_menu_exports_selected_dogfood_path_and_confirms_clear(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from datetime import date
+
+    from PySide6.QtGui import QAction
+    from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
+
+    from uniti.app.dogfood import (
+        CPUClass,
+        RAMClass,
+        DogfoodRecorder,
+        HostFacts,
+        OSFamily,
+    )
+    from uniti.app.dogfood_store import DogfoodStore
+    from uniti.app.service import QuitChoice, UNITIService
+    from uniti.app.session_store import SessionStore
+    from uniti.app.settings import SettingsStore
+    from uniti.resources import ResourceManager
+
+    class Recovery:
+        def shutdown(self):
+            return None
+
+    app = QApplication.instance() or QApplication([])
+    service = UNITIService(
+        resource_manager=ResourceManager(max_workers=1),
+        settings_store=SettingsStore(tmp_path / "settings.json"),
+        session_store=SessionStore(tmp_path / "sessions"),
+        recovery_manager=Recovery(),
+        dogfood_recorder=DogfoodRecorder(
+            HostFacts(
+                "v0.001a21",
+                OSFamily.MACOS,
+                CPUClass.C5_8,
+                RAMClass.GIB_16_31,
+            ),
+            day=date(2026, 9, 5),
+        ),
+        dogfood_store=DogfoodStore(tmp_path / "dogfood"),
+    )
+    window = service.new_window()
+    destination = tmp_path / "selected-dogfood.json"
+    calls = []
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_args, **_kwargs: (str(destination), "JSON (*.json)"),
+    )
+    monkeypatch.setattr(
+        service,
+        "export_dogfood_evidence",
+        lambda path: calls.append(("export", Path(path))),
+    )
+    monkeypatch.setattr(
+        service,
+        "clear_dogfood_evidence",
+        lambda: calls.append(("clear",)),
+    )
+    answers = iter(
+        (
+            QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Yes,
+        )
+    )
+    monkeypatch.setattr(
+        QMessageBox,
+        "question",
+        lambda *_args, **_kwargs: next(answers),
+    )
+    try:
+        action_texts = {
+            action.text() for action in window.findChildren(QAction)
+        }
+        assert "Export Dogfood Evidence…" in action_texts
+        assert "Clear Dogfood Evidence…" in action_texts
+
+        window._export_dogfood_action.trigger()
+        window._clear_dogfood_action.trigger()
+        window._clear_dogfood_action.trigger()
+
+        assert calls == [("export", destination), ("clear",)]
+    finally:
+        monkeypatch.undo()
+        service.request_quit(lambda _entry: QuitChoice.DISCARD)
+        app.processEvents()
+
+
 def test_main_window_applies_and_preserves_editor_view_settings(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

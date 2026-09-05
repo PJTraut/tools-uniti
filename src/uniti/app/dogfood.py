@@ -391,11 +391,38 @@ class DogfoodRecorder:
 
     def snapshot(self) -> DogfoodSnapshot:
         with self._lock:
-            operations = tuple(
-                _freeze(operation, self._operations[operation])
-                for operation in Operation
-            )
+            return self._snapshot_locked()
+
+    def _snapshot_locked(self) -> DogfoodSnapshot:
+        operations = tuple(
+            _freeze(operation, self._operations[operation])
+            for operation in Operation
+        )
         return DogfoodSnapshot(DOGFOOD_SCHEMA, self._day, self._host, operations)
+
+    def rollover(self, day: date) -> DogfoodSnapshot | None:
+        if type(day) is not date:
+            raise TypeError("dogfood day must be a date")
+        with self._lock:
+            if day < self._day:
+                raise ValueError("dogfood day cannot move backwards")
+            if day == self._day:
+                return None
+            completed = self._snapshot_locked()
+            self._day = day
+            self._operations = {
+                operation: _empty_mutable() for operation in Operation
+            }
+            return completed
+
+    def reset(self, *, day: date) -> None:
+        if type(day) is not date:
+            raise TypeError("dogfood day must be a date")
+        with self._lock:
+            self._day = day
+            self._operations = {
+                operation: _empty_mutable() for operation in Operation
+            }
 
 
 def merge_dogfood_snapshots(

@@ -178,6 +178,11 @@ def test_session_startup_uses_one_recovery_center_before_requested_files(
         return 0
 
     monkeypatch.setattr(UNITIService, "run_recovery_center", run_center)
+    monkeypatch.setattr(
+        application,
+        "_create_dogfood_runtime",
+        lambda _context: (None, None, 300),
+    )
     callbacks = application._startup_callbacks(
         application.ApplicationRequest(files=(requested,)),
         tmp_path / "runtime.json",
@@ -294,6 +299,11 @@ def test_startup_passes_scan_repair_authority_to_post_restore_controller(
         UNITIService,
         "run_recovery_center",
         lambda self, parent, **kwargs: events.append("recovery-center"),
+    )
+    monkeypatch.setattr(
+        application,
+        "_create_dogfood_runtime",
+        lambda _context: (None, None, 300),
     )
     callbacks = application._startup_callbacks(
         application.ApplicationRequest(),

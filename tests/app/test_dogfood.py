@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import json
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -119,6 +119,29 @@ def test_counters_saturate_and_snapshots_merge_without_raw_events():
     assert merged_find.outcomes[Outcome.SUCCESS] == 3
     assert merged_find.latencies[LatencyBucket.UNDER_5_MS] == 3
     assert MAX_COUNTER > 3
+
+
+def test_one_recorder_rolls_completed_day_and_starts_new_day_empty():
+    recorder = DogfoodRecorder(HOST, day=DAY)
+    recorder.observe(Operation.EDIT_TRANSACTION, Outcome.SUCCESS)
+
+    completed = recorder.rollover(DAY + timedelta(days=1))
+
+    assert completed is not None
+    assert completed.day == DAY
+    assert completed.for_operation(Operation.EDIT_TRANSACTION).count == 1
+    current = recorder.snapshot()
+    assert current.day == DAY + timedelta(days=1)
+    assert current.for_operation(Operation.EDIT_TRANSACTION).count == 0
+
+
+def test_recorder_reset_discards_current_counts_without_replacing_recorder():
+    recorder = DogfoodRecorder(HOST, day=DAY)
+    recorder.observe(Operation.SAVE, Outcome.SUCCESS)
+
+    recorder.reset(day=DAY)
+
+    assert recorder.snapshot().for_operation(Operation.SAVE).count == 0
 
 
 def test_active_day_requires_open_authoritative_edit_and_lifecycle_outcome():

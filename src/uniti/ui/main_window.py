@@ -882,6 +882,25 @@ class UNITIMainWindow(QMainWindow):
                 self.show_diagnostics,
             )
         )
+        tools_menu.addSeparator()
+        self._export_dogfood_action = self._action(
+            "Export Dogfood Evidence…",
+            None,
+            self.export_dogfood_evidence,
+        )
+        self._clear_dogfood_action = self._action(
+            "Clear Dogfood Evidence…",
+            None,
+            self.clear_dogfood_evidence,
+        )
+        dogfood_available = (
+            self._service is not None
+            and self._service.dogfood_recorder is not None
+        )
+        self._export_dogfood_action.setEnabled(dogfood_available)
+        self._clear_dogfood_action.setEnabled(dogfood_available)
+        tools_menu.addAction(self._export_dogfood_action)
+        tools_menu.addAction(self._clear_dogfood_action)
 
         self._hotkeys_action = self.menuBar().addAction("&Hotkeys")
         self._hotkeys_action.triggered.connect(self.show_hotkeys)
@@ -2000,10 +2019,66 @@ class UNITIMainWindow(QMainWindow):
                 documents,
                 startup_snapshot=self._startup_snapshot,
                 resource_manager=self._resources,
+                dogfood_status=(
+                    None
+                    if self._service is None
+                    else self._service.dogfood_status
+                ),
             ),
             self,
         )
         dialog.exec()
+
+    def export_dogfood_evidence(self):
+        if self._service is None:
+            return None
+        initial = (
+            Path(self._settings.last_directory or "")
+            / "uniti-dogfood-evidence.json"
+        )
+        selected, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Dogfood Evidence",
+            str(initial),
+            "JSON Files (*.json)",
+        )
+        if not selected:
+            return None
+        try:
+            handle = self._service.export_dogfood_evidence(Path(selected))
+        except (RuntimeError, ValueError):
+            QMessageBox.warning(
+                self,
+                "Dogfood Evidence Unavailable",
+                "UNITI could not start the evidence export.",
+            )
+            return None
+        self.statusBar().showMessage("Dogfood evidence export started.", 5000)
+        return handle
+
+    def clear_dogfood_evidence(self):
+        if self._service is None:
+            return None
+        answer = QMessageBox.question(
+            self,
+            "Clear Dogfood Evidence",
+            "Clear all locally stored UNITI dogfood evidence?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return None
+        try:
+            handle = self._service.clear_dogfood_evidence()
+        except RuntimeError:
+            QMessageBox.warning(
+                self,
+                "Dogfood Evidence Unavailable",
+                "UNITI could not start clearing the evidence.",
+            )
+            return None
+        self.statusBar().showMessage("Clearing dogfood evidence…", 5000)
+        return handle
 
     def set_pause_background(self, paused: bool) -> None:
         self._resources.pause_background(bool(paused))
