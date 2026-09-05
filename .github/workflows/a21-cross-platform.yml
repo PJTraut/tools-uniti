@@ -102,3 +102,21 @@ jobs:
           path: ci-results/sanitized
           if-no-files-found: error
           retention-days: 7
+
+      - name: Run A22 hosted sustained gate
+        id: a22_sustained
+        timeout-minutes: 12
+        run: python scripts/a22_ci.py run --family ${{ matrix.family }}
+
+      - name: Sanitize A22 failure evidence
+        if: ${{ failure() && steps.a22_sustained.outcome == 'failure' }}
+        run: python scripts/a22_ci.py sanitize --family ${{ matrix.family }}
+
+      - name: Upload bounded A22 failure evidence
+        if: ${{ failure() && steps.a22_sustained.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: a22-${{ matrix.id }}
+          path: ci-results/sanitized
+          if-no-files-found: error
+          retention-days: 7

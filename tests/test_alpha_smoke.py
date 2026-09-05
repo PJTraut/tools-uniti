@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from uniti.app.smoke import run_alpha_smoke, run_combined_smoke, run_gui_smoke
+from scripts.alpha_smoke import DOGFOOD_SMOKE_FIELDS
 
 
 def test_alpha_smoke_exercises_core_workflow(tmp_path: Path):
@@ -62,7 +63,15 @@ def test_combined_smoke_exercises_service_lifetime_and_session_restart(
     assert result["session_restored"] is True
     assert result["history_restored"] is True
     assert result["explicit_quit"] is True
+    assert result["dogfood_single_owner"] is True
+    assert result["dogfood_remained_active"] is True
+    assert result["dogfood_published"] is True
+    assert result["dogfood_retention_days"] == 7
+    assert result["dogfood_aggregate_max_mib"] == 16
+    assert set(DOGFOOD_SMOKE_FIELDS) <= set(result)
     serialized = json.dumps(result, ensure_ascii=False)
     assert str(tmp_path) not in serialized
     assert "UNITI smoke Привет" not in serialized
     assert "uniti-smoke-instance" not in serialized
+    assert "dogfood_dir" not in serialized
+    assert "operations" not in serialized

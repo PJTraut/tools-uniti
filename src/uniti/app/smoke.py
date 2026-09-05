@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import uuid
+from datetime import date
 from pathlib import Path
 
 from uniti.app.recovery_manager import RecoveryManager
@@ -166,11 +167,19 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         InstanceRequest,
     )
     from uniti.app.instance_service import InstanceRole, InstanceService
+    from uniti.app.dogfood import (
+        OSFamily,
+        DogfoodRecorder,
+        HostFacts,
+        classify_cpu,
+        classify_ram,
+    )
+    from uniti.app.dogfood_store import DogfoodStore
     from uniti.app.platform_policy import classify_platform
     from uniti.app.service import QuitChoice, UNITIService
     from uniti.app.session_store import SessionStore
     from uniti.app.settings import SettingsStore
-    from uniti.resources import ResourceManager
+    from uniti.resources import ResourceManager, load_performance_policy
     from uniti.ui.font_policy import resolve_editor_font
     from uniti.ui.shortcut_policy import build_shortcut_policy
     from uniti.ui.theme import active_theme
@@ -183,6 +192,10 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
     second_service = None
     first_resources = None
     second_resources = None
+    first_recorder = None
+    second_recorder = None
+    first_dogfood_store = None
+    second_dogfood_store = None
     primary_instance = None
     forwarding_instance = None
 
@@ -199,6 +212,31 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
 
     try:
         family = classify_platform(sys.platform).value
+        dogfood_policy = load_performance_policy().dogfood
+
+        def dogfood_runtime(resources, name: str):
+            os_family = {
+                "macos": OSFamily.MACOS,
+                "windows": OSFamily.WINDOWS,
+                "linux": OSFamily.LINUX,
+            }[family]
+            profile = resources.host_profile
+            return (
+                DogfoodRecorder(
+                    HostFacts(
+                        "smoke-build",
+                        os_family,
+                        classify_cpu(profile.logical_cores),
+                        classify_ram(profile.physical_memory),
+                    ),
+                    day=date.today(),
+                ),
+                DogfoodStore(
+                    directory / name,
+                    retention_days=dogfood_policy.retention_days,
+                    aggregate_max_bytes=dogfood_policy.aggregate_max_mib << 20,
+                ),
+            )
         font_resolution = resolve_editor_font()
         font = {
             "requested_family": font_resolution.requested_family[:128],
@@ -269,6 +307,10 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         primary_instance.close()
 
         first_resources = ResourceManager(max_workers=2)
+        first_recorder, first_dogfood_store = dogfood_runtime(
+            first_resources,
+            "first-dogfood",
+        )
         first_service = UNITIService(
             resource_manager=first_resources,
             settings_store=SettingsStore(directory / "first-settings.json"),
@@ -279,6 +321,9 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             ),
             service_id="smoke-first-service",
             build_identity="smoke-build",
+            dogfood_recorder=first_recorder,
+            dogfood_store=first_dogfood_store,
+            dogfood_publish_interval_seconds=dogfood_policy.publish_interval_seconds,
         )
         window = first_service.new_window()
         view = window.open_path(source)
@@ -335,6 +380,7 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         wait_until(lambda: first_service.window_count == 0)
         closed = not window.isVisible()
         service_remained_running = first_service.is_running
+        dogfood_active_without_window = first_service.dogfood_is_active
 
         activation = first_service.new_window()
         activation_view = activation.open_existing_document(original_document)
@@ -344,6 +390,10 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         one_document_authority = (
             first_service.documents.count == 1
             and activation_view.document is original_document
+        )
+        first_recorder_owned = (
+            first_service.dogfood_recorder is first_recorder
+            and first_service.dogfood_store is first_dogfood_store
         )
         activation.set_whitespace_mode(WhitespaceMode.ALL)
         activation.set_theme("Dark")
@@ -362,6 +412,10 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         if loaded.manifest is None:
             raise RuntimeError("GUI smoke session was not published")
         second_resources = ResourceManager(max_workers=2)
+        second_recorder, second_dogfood_store = dogfood_runtime(
+            second_resources,
+            "second-dogfood",
+        )
         second_service = UNITIService(
             resource_manager=second_resources,
             settings_store=SettingsStore(directory / "second-settings.json"),
@@ -372,6 +426,9 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             ),
             service_id="smoke-second-service",
             build_identity="smoke-build",
+            dogfood_recorder=second_recorder,
+            dogfood_store=second_dogfood_store,
+            dogfood_publish_interval_seconds=dogfood_policy.publish_interval_seconds,
         )
         second_service.restore_shell(
             loaded.manifest,
@@ -405,6 +462,29 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             lambda _entry: QuitChoice.DISCARD
         )
         app.processEvents()
+        first_dogfood_status = first_dogfood_store.status()
+        second_dogfood_status = second_dogfood_store.status()
+        dogfood_single_owner = (
+            first_recorder_owned
+            and second_service.dogfood_recorder is second_recorder
+            and second_service.dogfood_store is second_dogfood_store
+            and first_recorder is not second_recorder
+        )
+        dogfood_remained_active = (
+            dogfood_active_without_window
+            and first_service.dogfood_is_active is False
+            and second_service.dogfood_is_active is False
+        )
+        dogfood_published = (
+            first_dogfood_status.available
+            and second_dogfood_status.available
+            and first_dogfood_status.segment_count >= 1
+            and second_dogfood_status.segment_count >= 1
+            and first_dogfood_status.byte_count
+            <= dogfood_policy.aggregate_max_mib << 20
+            and second_dogfood_status.byte_count
+            <= dogfood_policy.aggregate_max_mib << 20
+        )
         durability_result = store.last_durability
         durability = (
             "unsafe"
@@ -445,6 +525,9 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
                 and instance_forwarded
                 and unicode_spaced_path
                 and explicit_quit
+                and dogfood_single_owner
+                and dogfood_remained_active
+                and dogfood_published
             ),
             "window_shown": window_shown,
             "window_closed": closed,
@@ -468,6 +551,11 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             "find_replace_restored": find_replace_restored,
             "display_settings_applied": display_settings_applied,
             "explicit_quit": explicit_quit,
+            "dogfood_single_owner": dogfood_single_owner,
+            "dogfood_remained_active": dogfood_remained_active,
+            "dogfood_published": dogfood_published,
+            "dogfood_retention_days": dogfood_policy.retention_days,
+            "dogfood_aggregate_max_mib": dogfood_policy.aggregate_max_mib,
         }
     except Exception as error:
         return {
@@ -502,6 +590,11 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             "find_replace_restored": False,
             "display_settings_applied": False,
             "explicit_quit": False,
+            "dogfood_single_owner": False,
+            "dogfood_remained_active": False,
+            "dogfood_published": False,
+            "dogfood_retention_days": 7,
+            "dogfood_aggregate_max_mib": 16,
         }
     finally:
         for service in (second_service, first_service):
@@ -546,6 +639,11 @@ def run_combined_smoke(base_dir: str | Path | None = None) -> dict[str, object]:
             "find_replace_restored",
             "display_settings_applied",
             "explicit_quit",
+            "dogfood_single_owner",
+            "dogfood_remained_active",
+            "dogfood_published",
+            "dogfood_retention_days",
+            "dogfood_aggregate_max_mib",
         ):
             combined[name] = gui.get(name)
         return combined
