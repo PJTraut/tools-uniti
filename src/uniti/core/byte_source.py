@@ -4,9 +4,55 @@ from __future__ import annotations
 
 import mmap
 import os
+import sys
 import threading
 from pathlib import Path
 from typing import BinaryIO, Iterator
+
+
+def _open_windows_read_shared_delete(path: Path) -> BinaryIO:
+    """Open one Windows source without blocking atomic path replacement."""
+
+    import ctypes
+    import msvcrt
+    from ctypes import wintypes
+
+    create_file = ctypes.WinDLL("kernel32", use_last_error=True).CreateFileW
+    create_file.argtypes = (
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    )
+    create_file.restype = wintypes.HANDLE
+    handle = create_file(
+        str(path),
+        0x80000000,  # GENERIC_READ
+        0x00000001 | 0x00000002 | 0x00000004,  # SHARE_READ|WRITE|DELETE
+        None,
+        3,  # OPEN_EXISTING
+        0x00000080,  # FILE_ATTRIBUTE_NORMAL
+        None,
+    )
+    invalid_handle = ctypes.c_void_p(-1).value
+    if handle == invalid_handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        descriptor = msvcrt.open_osfhandle(
+            int(handle),
+            os.O_RDONLY | getattr(os, "O_BINARY", 0),
+        )
+    except Exception:
+        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(handle)
+        raise
+    try:
+        return os.fdopen(descriptor, "rb", closefd=True)
+    except Exception:
+        os.close(descriptor)
+        raise
 
 
 class ByteSource:
@@ -40,11 +86,16 @@ class ByteSource:
         prefer_mmap: bool = True,
     ) -> "ByteSource":
         resolved = Path(path)
-        handle = resolved.open("rb")
+        windows = sys.platform.startswith("win")
+        handle = (
+            _open_windows_read_shared_delete(resolved)
+            if windows
+            else resolved.open("rb")
+        )
         try:
             size = os.fstat(handle.fileno()).st_size
             mapping: mmap.mmap | None = None
-            if prefer_mmap and size > 0:
+            if prefer_mmap and size > 0 and not windows:
                 try:
                     mapping = mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ)
                 except (OSError, ValueError, BufferError):

@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+import uniti.core.byte_source as byte_source_module
 from uniti.app.sparse import enable_sparse_file
 from uniti.core.byte_source import ByteSource
 
@@ -32,6 +33,37 @@ def test_empty_file_is_supported(tmp_path: Path):
         assert source.size == 0
         assert source.read(0, 0) == b""
         assert list(source.iter_chunks()) == []
+
+
+def test_windows_source_uses_replace_shareable_handle_without_mmap(
+    tmp_path: Path,
+    monkeypatch,
+):
+    path = tmp_path / "replaceable.txt"
+    path.write_bytes(b"replaceable")
+    opened: list[Path] = []
+
+    def open_shared_delete(candidate: Path):
+        opened.append(candidate)
+        return candidate.open("rb")
+
+    monkeypatch.setattr(byte_source_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        byte_source_module,
+        "_open_windows_read_shared_delete",
+        open_shared_delete,
+    )
+    monkeypatch.setattr(
+        byte_source_module.mmap,
+        "mmap",
+        lambda *_args, **_kwargs: pytest.fail("Windows sources must not be mapped"),
+    )
+
+    with ByteSource.open(path, prefer_mmap=True) as source:
+        assert source.read(0, source.size) == b"replaceable"
+        assert source.uses_mmap is False
+
+    assert opened == [path]
 
 
 @pytest.mark.parametrize("start,length", [(-1, 1), (0, -1), (8, 3)])
