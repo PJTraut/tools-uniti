@@ -20,7 +20,7 @@ from uniti.core.durability import (
     DurabilityResult,
     NativeDurabilityAdapter,
 )
-from uniti.resources import probe_memory
+from uniti.resources import probe_memory, probe_platform_identity
 
 from .paths import AppPaths
 
@@ -106,6 +106,7 @@ def probe_runtime(
     marker_path: Path | None = None,
 ) -> dict[str, CapabilityResult]:
     memory = probe_memory()
+    identity = probe_platform_identity()
     logical_cpu = max(1, os.cpu_count() or 1)
     try:
         disk = shutil.disk_usage(paths.data_dir)
@@ -137,11 +138,11 @@ def probe_runtime(
             executable=str(Path(sys.executable).resolve()),
             version=platform.python_version(),
             implementation=platform.python_implementation(),
-            architecture=platform.architecture()[0],
-            platform=sys.platform,
-            system=platform.system(),
-            release=platform.release(),
-            machine=platform.machine(),
+            architecture=identity.python_architecture,
+            platform=identity.platform,
+            system=identity.system,
+            release=identity.release,
+            machine=identity.machine,
         ),
         "memory": memory_result,
         "cpu": _available("logical CPU count available", logical_count=logical_cpu),

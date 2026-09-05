@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import platform
-import sys
 import tempfile
 from collections.abc import Iterable
 from copy import deepcopy
@@ -20,6 +19,7 @@ from uniti.resources import (
     pressure_state,
     probe_host_profile,
     probe_memory,
+    probe_platform_identity,
 )
 
 
@@ -31,6 +31,7 @@ def diagnostics_snapshot(
     safe_for_export: bool = False,
 ) -> dict[str, object]:
     memory = probe_memory()
+    identity = probe_platform_identity()
     document_items: list[dict[str, object]] = []
     for document in documents:
         item = {
@@ -138,10 +139,10 @@ def diagnostics_snapshot(
         "runtime": {
             "python": platform.python_version(),
             "implementation": platform.python_implementation(),
-            "platform": sys.platform,
-            "system": platform.system(),
-            "release": platform.release(),
-            "machine": platform.machine(),
+            "platform": identity.platform,
+            "system": identity.system,
+            "release": identity.release,
+            "machine": identity.machine,
         },
         "memory": {
             "physical_bytes": memory.physical,

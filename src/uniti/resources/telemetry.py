@@ -6,6 +6,7 @@ import math
 import os
 import platform as platform_module
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -14,6 +15,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .memory import MemorySnapshot, probe_memory
+
+
+@dataclass(frozen=True, slots=True)
+class PlatformIdentity:
+    platform: str
+    system: str
+    release: str
+    machine: str
+    python_architecture: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,9 +157,58 @@ def _windows_cpu_model() -> str | None:
     return selected or None
 
 
+def _bounded_identity(value: object, *, fallback: str = "unknown") -> str:
+    selected = "".join(
+        character if character.isprintable() else "?"
+        for character in str(value)
+    ).strip()[:256]
+    return selected or fallback
+
+
+def _windows_release() -> str:
+    get_version = getattr(sys, "getwindowsversion", None)
+    if get_version is None:
+        return "unknown"
+    try:
+        version = get_version()
+        parts = (
+            int(version.major),
+            int(version.minor),
+            int(version.build),
+        )
+    except (AttributeError, OSError, TypeError, ValueError):
+        return "unknown"
+    return ".".join(str(max(0, part)) for part in parts)
+
+
+def probe_platform_identity() -> PlatformIdentity:
+    """Return bounded platform facts without Windows WMI-backed queries."""
+
+    selected_platform = sys.platform
+    if selected_platform.startswith("win"):
+        machine = _bounded_identity(
+            os.environ.get("PROCESSOR_ARCHITEW6432")
+            or os.environ.get("PROCESSOR_ARCHITECTURE", "")
+        )
+        system = "Windows"
+        release = _windows_release()
+    else:
+        machine = _bounded_identity(platform_module.machine())
+        system = _bounded_identity(platform_module.system())
+        release = _bounded_identity(platform_module.release())
+    return PlatformIdentity(
+        platform=selected_platform,
+        system=system,
+        release=release,
+        machine=machine,
+        python_architecture=f"{struct.calcsize('P') * 8}bit",
+    )
+
+
 def probe_host_profile(temp_root: Path) -> HostResourceProfile:
     """Collect bounded, read-only host facts without making network requests."""
 
+    identity = probe_platform_identity()
     logical = max(1, os.cpu_count() or 1)
     physical = (
         _positive_int(_sysctl("hw.physicalcpu"))
@@ -157,7 +216,7 @@ def probe_host_profile(temp_root: Path) -> HostResourceProfile:
         or logical
     )
     physical = min(logical, max(1, physical))
-    architecture = platform_module.machine().strip() or "unknown"
+    architecture = identity.machine
     cpu_model = (
         _sysctl("machdep.cpu.brand_string")
         or _sysctl("hw.model")
@@ -177,8 +236,8 @@ def probe_host_profile(temp_root: Path) -> HostResourceProfile:
         physical_cores=physical,
         logical_cores=logical,
         physical_memory=memory.physical,
-        platform=sys.platform,
-        platform_release=platform_module.release(),
+        platform=identity.platform,
+        platform_release=identity.release,
         temp_root=temp_root.expanduser().resolve(),
     )
 

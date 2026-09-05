@@ -18,11 +18,13 @@ from .policy import (
 )
 from .telemetry import (
     HostResourceProfile,
+    PlatformIdentity,
     ResourceSampler,
     ResourceSnapshot,
     current_process_rss_bytes,
     peak_process_rss_bytes,
     probe_host_profile,
+    probe_platform_identity,
 )
 from .tasks import (
     LatestTaskSlot,
@@ -47,6 +49,7 @@ __all__ = [
     "GateLimit",
     "HostRequirement",
     "HostResourceProfile",
+    "PlatformIdentity",
     "MemorySnapshot",
     "LatestTaskSlot",
     "PerformancePolicy",
@@ -79,5 +82,6 @@ __all__ = [
     "peak_process_rss_bytes",
     "pressure_state",
     "probe_host_profile",
+    "probe_platform_identity",
     "probe_memory",
 ]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -125,7 +126,7 @@ def test_real_host_probe_is_bounded_and_nonempty(tmp_path: Path):
     assert profile.temp_root == tmp_path.resolve()
 
 
-def test_windows_host_probe_avoids_interruptible_wmi_processor_query(
+def test_windows_host_probe_avoids_interruptible_wmi_platform_queries(
     tmp_path: Path,
     monkeypatch,
 ):
@@ -134,13 +135,16 @@ def test_windows_host_probe_avoids_interruptible_wmi_processor_query(
     monkeypatch.setattr(telemetry.sys, "platform", "win32")
     monkeypatch.setattr(telemetry.os, "cpu_count", lambda: 4)
     monkeypatch.setenv("PROCESSOR_IDENTIFIER", "Hosted Test CPU")
-    monkeypatch.setattr(telemetry.platform_module, "machine", lambda: "AMD64")
-    monkeypatch.setattr(telemetry.platform_module, "release", lambda: "test")
+    monkeypatch.setenv("PROCESSOR_ARCHITECTURE", "AMD64")
     monkeypatch.setattr(
-        telemetry.platform_module,
-        "processor",
-        lambda: (_ for _ in ()).throw(KeyboardInterrupt()),
+        telemetry.sys,
+        "getwindowsversion",
+        lambda: SimpleNamespace(major=10, minor=0, build=26100),
+        raising=False,
     )
+    interrupted = lambda: (_ for _ in ()).throw(KeyboardInterrupt())
+    for name in ("architecture", "machine", "processor", "release", "system"):
+        monkeypatch.setattr(telemetry.platform_module, name, interrupted)
     monkeypatch.setattr(
         telemetry,
         "probe_memory",
@@ -151,6 +155,7 @@ def test_windows_host_probe_avoids_interruptible_wmi_processor_query(
 
     assert profile.cpu_model == "Hosted Test CPU"
     assert profile.architecture == "AMD64"
+    assert profile.platform_release == "10.0.26100"
 
 
 def test_process_rss_probes_are_non_negative():

@@ -175,7 +175,7 @@ def collect_host_preflight(
         process_rss=current_process_rss_bytes(),
         load_per_logical_core=_load_per_core(profile.logical_cores),
         platform=sys.platform,
-        platform_release=platform.release(),
+        platform_release=profile.platform_release,
         python_version=platform.python_version(),
         qt_version=_qt_version(),
         uniti_version=uniti.__version__,
