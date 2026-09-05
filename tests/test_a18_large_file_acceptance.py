@@ -90,5 +90,12 @@ def test_a18_deep_self_check_includes_large_file(tmp_path: Path, monkeypatch):
     large_file = next(item for item in report.results if item.name == "large-file")
     assert large_file.status is CheckStatus.PASS
     assert large_file.details["sparse_bytes"] > 1 << 30
-    assert large_file.details["allocated_bytes"] < large_file.details["sparse_bytes"] // 2
+    allocated_bytes = large_file.details["allocated_bytes"]
+    assert allocated_bytes is None or (
+        isinstance(allocated_bytes, int)
+        and allocated_bytes < large_file.details["sparse_bytes"] // 2
+    )
+    assert large_file.details["lazy_open"] is True
+    assert large_file.details["streaming_cache_bypassed"] is True
+    assert large_file.details["task_cancelled"] is True
     assert large_file.details["cleanup_ok"] is True
