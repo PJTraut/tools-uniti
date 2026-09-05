@@ -6,6 +6,7 @@ import benchmarks.sustained_workloads as sustained_workloads
 from benchmarks.corpus import CorpusKind, CorpusSpec, generate_corpus
 from benchmarks.models import ResultState
 from benchmarks.sustained_workloads import run_sustained_workload
+from uniti.core.durability import NativeDurabilityAdapter
 
 
 def test_lifecycle_uses_a_bounded_alternating_find_replace_vocabulary():
@@ -80,6 +81,36 @@ def test_lifecycle_cycle_restores_one_service_and_cleans_recovery(
     assert result.facts["explicit_quit"] is True
     assert result.facts["integrity_ok"] is True
     assert result.facts["cleanup_ok"] is True
+    assert result.messages == ()
+
+
+def test_lifecycle_accepts_file_synced_recovery_as_safe(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        NativeDurabilityAdapter,
+        "sync_directory",
+        lambda _adapter, _directory: False,
+    )
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.ORDINARY_LINES, size_bytes=32_768, seed=22),
+        tmp_path / "corpus",
+    )
+    application_root = (tmp_path / "application").resolve()
+    application_root.mkdir()
+
+    result = run_sustained_workload(
+        "session_lifecycle",
+        profile="hosted",
+        cycles=1,
+        manifest=manifest,
+        application_root=application_root,
+    )
+
+    assert result.state is ResultState.PASS
+    assert result.facts["recovery_cleanup"] is True
+    assert result.facts["integrity_ok"] is True
     assert result.messages == ()
 
 

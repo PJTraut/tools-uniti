@@ -1392,6 +1392,8 @@ def _run_session_lifecycle(
         raise ValueError("lifecycle corpus digest does not match its manifest")
 
     from PySide6.QtCore import Qt
+    from uniti.app.recovery_manager import RecoveryHealth
+    from uniti.core.durability import DurabilityLevel
     from uniti.ui.recovery_center import RecoveryAction, RecoveryDecision
 
     fixture_root = application_root / "lifecycle-work"
@@ -1809,6 +1811,7 @@ def _run_session_lifecycle(
                 and len(secondary_entry.view_ids) == 2
                 and len(harness.service.windows.ordered_view_ids) == 4
             )
+            recovery_diagnostics = harness.recovery_manager.diagnostics()
             checks["recovery_cleanup"] &= (
                 frozenset(
                     path.resolve()
@@ -1816,12 +1819,22 @@ def _run_session_lifecycle(
                 )
                 == base_recovery_evidence
                 and len(base_recovery_evidence) == 2
-                and len(harness.recovery_manager.diagnostics())
-                == len(base_recovery_diagnostics)
-                == 2
+                and len(recovery_diagnostics) == len(base_recovery_diagnostics) == 2
                 and all(
-                    diagnostic.health.value == "ok"
-                    for diagnostic in harness.recovery_manager.diagnostics()
+                    (
+                        (
+                            diagnostic.health is RecoveryHealth.OK
+                            and diagnostic.durability is DurabilityLevel.FULL
+                        )
+                        or (
+                            diagnostic.health is RecoveryHealth.REDUCED
+                            and diagnostic.durability
+                            is DurabilityLevel.FILE_SYNCED
+                        )
+                    )
+                    and diagnostic.durable_revision
+                    == diagnostic.observed_revision
+                    for diagnostic in recovery_diagnostics
                 )
             )
             checks["service_identity_reused"] &= (
