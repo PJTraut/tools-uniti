@@ -18,6 +18,25 @@ class ResultState(StrEnum):
     NOT_RUN = "NOT RUN"
 
 
+RESULT_STATE_SEVERITY = {
+    ResultState.PASS: 0,
+    ResultState.WARN: 1,
+    ResultState.NOT_RUN: 2,
+    ResultState.INVALID: 3,
+    ResultState.FAIL: 4,
+}
+
+
+def aggregate_result_state(states: tuple[ResultState, ...]) -> ResultState:
+    """Return the worst state, or NOT RUN when no evaluation exists."""
+
+    return (
+        max(states, key=RESULT_STATE_SEVERITY.__getitem__)
+        if states
+        else ResultState.NOT_RUN
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class MetricSample:
     values: tuple[float, ...]
@@ -171,15 +190,9 @@ class SuiteResult:
 
     @property
     def state(self) -> ResultState:
-        severity = {
-            ResultState.PASS: 0,
-            ResultState.WARN: 1,
-            ResultState.NOT_RUN: 2,
-            ResultState.INVALID: 3,
-            ResultState.FAIL: 4,
-        }
-        states = [evaluation.state for evaluation in self.evaluations]
-        return max(states, key=severity.__getitem__) if states else ResultState.NOT_RUN
+        return aggregate_result_state(
+            tuple(evaluation.state for evaluation in self.evaluations)
+        )
 
     def as_dict(self) -> dict[str, object]:
         return {
