@@ -432,9 +432,7 @@ class A21CIDriver:
     def run_pytest(self) -> None:
         self.results.mkdir(parents=True, exist_ok=True)
         environment = dict(self.environ)
-        environment["QT_QPA_PLATFORM"] = (
-            "windows" if self.family == "windows" else "offscreen"
-        )
+        environment["QT_QPA_PLATFORM"] = "offscreen"
         self._run(
             "pytest",
             [

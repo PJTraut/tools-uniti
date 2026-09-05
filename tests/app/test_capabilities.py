@@ -116,8 +116,41 @@ def test_qt_probe_reports_the_same_concrete_font_as_the_editor_policy():
 
     result = probe_qt(app)["font"]
 
-    assert result.status is CapabilityStatus.AVAILABLE
+    expected = (
+        CapabilityStatus.AVAILABLE
+        if resolution.fixed_pitch
+        and resolution.latin_coverage
+        and resolution.cyrillic_coverage
+        else CapabilityStatus.UNAVAILABLE
+    )
+    assert result.status is expected
     assert result.details == resolution.as_dict()
+
+
+def test_qt_probe_accepts_a_fixed_font_with_required_glyph_coverage(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app import capabilities
+    from uniti.ui.font_policy import FontResolution
+
+    app = QApplication.instance() or QApplication([])
+    supported = FontResolution(
+        QFont("Supported"),
+        "Supported",
+        "Supported",
+        True,
+        True,
+        True,
+        False,
+    )
+    monkeypatch.setattr(capabilities, "resolve_editor_font", lambda: supported)
+
+    result = capabilities.probe_qt(app)["font"]
+
+    assert result.status is CapabilityStatus.AVAILABLE
+    assert result.details == supported.as_dict()
 
 
 def test_qt_probe_rejects_a_fixed_font_without_required_glyph_coverage(monkeypatch):

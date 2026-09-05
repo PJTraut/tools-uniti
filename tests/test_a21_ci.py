@@ -286,7 +286,7 @@ def test_driver_runs_complete_pytest_offscreen(tmp_path: Path):
     assert options["shell"] is False
 
 
-def test_driver_runs_windows_pytest_with_native_font_access(tmp_path: Path):
+def test_driver_runs_windows_pytest_offscreen(tmp_path: Path):
     runner = RecordingRunner()
     driver = _driver(
         tmp_path,
@@ -298,7 +298,7 @@ def test_driver_runs_windows_pytest_with_native_font_access(tmp_path: Path):
     driver.run_pytest()
 
     _command, options = runner.calls[0]
-    assert options["env"]["QT_QPA_PLATFORM"] == "windows"
+    assert options["env"]["QT_QPA_PLATFORM"] == "offscreen"
 
 
 def test_linux_native_smoke_requires_xvfb_and_xcb(tmp_path: Path):
