@@ -28,7 +28,7 @@ python3.12 scripts/bootstrap.py --repair --dev
 python3.12 scripts/bootstrap.py --self-check --deep --json
 ```
 
-Root launchers provide the normal double-click path on macOS and Windows while retaining the same bootstrap ownership and validation rules:
+Root launchers provide the normal source-checkout path on macOS, Linux, and Windows while retaining the same bootstrap ownership and validation rules. `uniti.command` is the POSIX launcher for macOS and Linux:
 
 ```bash
 ./uniti.command
@@ -49,7 +49,7 @@ PowerShell:
 .\uniti.bat file.txt
 ```
 
-The launchers preserve the caller's working directory, forward all arguments, and return the bootstrap/application exit code. Their default install is `.[ui]`; pass `--dev` to include the development dependency group.
+The launchers preserve the caller's working directory, honor a nonempty `UNITI_PYTHON`, forward every argument exactly once, and return the bootstrap/application exit code. They invoke only `scripts/bootstrap.py`; that shim rejects unsupported interpreters and selects Python 3.12 or newer. Their default install is `.[ui]`; pass `--dev` to include the development dependency group.
 
 Application-local mode is explicit:
 

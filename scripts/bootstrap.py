@@ -23,6 +23,7 @@ def _candidate_commands(environ, executable, platform_name):
     commands.append(("python3",))
     for minor in range(15, 11, -1):
         commands.append(("python3.%d" % minor,))
+    commands.append(("python",))
     if platform_name.startswith("win"):
         commands.append(("py", "-3"))
     unique = []

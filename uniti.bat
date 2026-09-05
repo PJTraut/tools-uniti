@@ -3,7 +3,7 @@ setlocal EnableExtensions DisableDelayedExpansion
 
 set "UNITI_BOOTSTRAP=%~dp0scripts\bootstrap.py"
 
-if defined UNITI_PYTHON goto run_override
+if not "%UNITI_PYTHON%"=="" goto run_override
 
 "%SystemRoot%\System32\where.exe" py >nul 2>nul
 if %ERRORLEVEL% EQU 0 goto run_py

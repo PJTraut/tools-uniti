@@ -59,7 +59,7 @@ From a source checkout, use an existing Python 3.12 or newer to create or adopt 
 python3.12 scripts/bootstrap.py --dev
 ```
 
-For a normal desktop launch, double-click `uniti.command` on macOS or `uniti.bat` on Windows. The launchers locate this checkout, run the same safe bootstrap flow, and then start UNITI. From a macOS terminal:
+For a normal desktop launch, double-click `uniti.command` on macOS or `uniti.bat` on Windows. The POSIX launcher also supports Linux. Both launchers locate this checkout, preserve the caller's working directory, forward each argument exactly once, run only the same safe bootstrap flow, and return its exit code. From a macOS or Linux terminal:
 
 ```bash
 ./uniti.command ~/Documents/example.txt

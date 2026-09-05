@@ -17,6 +17,20 @@ def test_candidate_commands_put_explicit_override_first():
     assert ("python3.12",) in candidates
 
 
+def test_candidate_commands_keep_generic_python_as_final_posix_fallback():
+    candidates = bootstrap._candidate_commands({}, "/old/python3", "linux")
+
+    assert candidates == (
+        ("/old/python3",),
+        ("python3",),
+        ("python3.15",),
+        ("python3.14",),
+        ("python3.13",),
+        ("python3.12",),
+        ("python",),
+    )
+
+
 def test_shim_selects_first_process_reporting_python_312_or_newer():
     def probe(command):
         return (3, 11, 8) if command == ("old",) else (3, 12, 1)

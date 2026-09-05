@@ -2,7 +2,8 @@
 
 case "$0" in
     /*) launcher_path=$0 ;;
-    *) launcher_path=$PWD/$0 ;;
+    */*) launcher_path=$PWD/$0 ;;
+    *) launcher_path=$(command -v "$0") || exit 1 ;;
 esac
 
 launcher_dir=$(CDPATH= cd -- "${launcher_path%/*}" && pwd -P) || exit 1
