@@ -15,10 +15,6 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from uniti.app.platform_policy import classify_platform
-from uniti.bootstrap.discovery import runtime_python
-
-
 FAMILIES = ("macos", "linux", "windows")
 MAX_INPUT_BYTES = 2 << 20
 MAX_TOTAL_INPUT_BYTES = 8 << 20
@@ -102,6 +98,22 @@ class A21CIError(RuntimeError):
     def __init__(self, message: str, *, exit_code: int = 1) -> None:
         super().__init__(message)
         self.exit_code = max(1, int(exit_code))
+
+
+def _platform_family(platform_name: str) -> str:
+    if platform_name == "darwin":
+        return "macos"
+    if platform_name.startswith("win"):
+        return "windows"
+    if platform_name.startswith("linux"):
+        return "linux"
+    raise A21CIError("host platform is unsupported")
+
+
+def _runtime_python(environment: Path, platform_name: str) -> Path:
+    if platform_name.startswith("win"):
+        return Path(environment) / "Scripts" / "python.exe"
+    return Path(environment) / "bin" / "python"
 
 
 def _reject_constant(value: str):
@@ -307,13 +319,13 @@ class A21CIDriver:
         self.platform_name = sys.platform if platform_name is None else platform_name
         if family not in FAMILIES:
             raise A21CIError("requested CI family is invalid")
-        if classify_platform(self.platform_name).value != family:
+        if _platform_family(self.platform_name) != family:
             raise A21CIError("requested CI family does not match the host")
         self.runner = runner
         self.which = which
         self.environ = dict(os.environ if environ is None else environ)
         self.environment = self.root / ".venv"
-        self.runtime_python = runtime_python(self.environment, self.platform_name)
+        self.runtime_python = _runtime_python(self.environment, self.platform_name)
         self.results = self.root / "ci-results"
         self.launcher_mode = self._validate_owned_runtime()
 

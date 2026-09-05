@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -222,6 +223,26 @@ def test_driver_uses_owned_posix_and_windows_runtime_paths(tmp_path: Path):
     assert windows_runner.calls[0][0][0] == str(
         tmp_path / "windows" / ".venv" / "Scripts" / "python.exe"
     )
+
+
+def test_driver_cli_starts_without_importing_the_project_on_host_python(
+    tmp_path: Path,
+):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-S",
+            str(Path("scripts/a21_ci.py").resolve()),
+            "--help",
+        ],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "Owned-runtime A21 CI phases" in completed.stdout
 
 
 def test_driver_rejects_a_family_that_does_not_match_the_host(tmp_path: Path):
