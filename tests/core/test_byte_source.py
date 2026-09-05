@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import pytest
@@ -108,11 +109,11 @@ def test_fork_retains_open_file_after_path_replacement_and_parent_close(tmp_path
         fork.close()
 
 
-def test_fork_from_mapped_parent_uses_bounded_file_io(tmp_path: Path):
+def test_fork_uses_bounded_file_io_for_each_parent_access_mode(tmp_path: Path):
     path = tmp_path / "mapped-parent.bin"
     path.write_bytes(b"x" * (2 << 20))
     with ByteSource.open(path) as source:
-        assert source.uses_mmap
+        assert source.uses_mmap is (not sys.platform.startswith("win"))
         fork = source.fork()
         try:
             assert not fork.uses_mmap
