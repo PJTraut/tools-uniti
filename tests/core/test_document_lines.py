@@ -135,3 +135,27 @@ def test_document_line_end_returns_content_end_without_eol(tmp_path: Path):
     path.write_bytes(b"aa\r\nbb\ncc\rdd")
     with Document.open(path) as document:
         assert [document.line_end(i) for i in range(4)] == [2, 6, 9, 12]
+
+
+def test_document_line_terminator_never_reads_more_than_two_characters(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from uniti.core.document import Document
+
+    path = tmp_path / "giant-line.txt"
+    path.write_text(("x" * (3 << 20)) + "\r\ntail", encoding="utf-8")
+    with Document.open(path) as document:
+        assert document.line_start(1) == (3 << 20) + 2
+        observed_widths: list[int] = []
+        original_read = document._piece_table.read
+
+        def bounded_read(start, end, *args, **kwargs):
+            observed_widths.append(end - start)
+            return original_read(start, end, *args, **kwargs)
+
+        monkeypatch.setattr(document._piece_table, "read", bounded_read)
+
+        assert document.line_terminator(0) == "\r\n"
+        assert observed_widths
+        assert max(observed_widths) <= 2

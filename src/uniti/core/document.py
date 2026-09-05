@@ -7,7 +7,7 @@ import os
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Hashable
+from typing import TYPE_CHECKING, Hashable, Literal
 
 if TYPE_CHECKING:
     from uniti.resources.manager import ResourceManager
@@ -770,6 +770,23 @@ class Document:
         if tail.endswith(("\r", "\n")):
             return next_start - 1
         return next_start
+
+    def line_terminator(self, line: int) -> Literal["", "\n", "\r\n", "\r"]:
+        """Return the exact logical terminator using only a bounded tail read."""
+
+        self._ensure_open()
+        content_end = self.line_end(line)
+        try:
+            next_start = self._document_line_index.line_start(line + 1)
+        except ValueError:
+            return ""
+        width = next_start - content_end
+        if width not in (0, 1, 2):
+            raise RuntimeError("line index exposed an invalid terminator width")
+        terminator = self._piece_table.read(content_end, next_start)
+        if terminator not in ("", "\n", "\r\n", "\r"):
+            raise RuntimeError("line index exposed an invalid terminator")
+        return terminator
 
     def read_line(self, line: int, *, keep_eol: bool = False) -> str:
         self._ensure_open()

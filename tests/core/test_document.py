@@ -175,6 +175,12 @@ def test_read_line_handles_mixed_eol_and_final_line(tmp_path: Path):
     with Document.open(path) as doc:
         assert doc.read_lines(0, 4) == ["a", "b", "c", "d"]
         assert doc.read_lines(0, 4, keep_eol=True) == ["a\r\n", "b\n", "c\r", "d"]
+        assert [doc.line_terminator(line) for line in range(4)] == [
+            "\r\n",
+            "\n",
+            "\r",
+            "",
+        ]
 
 
 def test_document_save_writes_edits_and_clears_modified(tmp_path: Path):
