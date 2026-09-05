@@ -18,7 +18,7 @@ def test_diagnostics_snapshot_is_json_serializable_and_reports_runtime():
 
 def test_diagnostics_snapshot_reports_open_document_state(tmp_path: Path):
     path = tmp_path / "diag.txt"
-    path.write_text("abc\ndef", encoding="utf-8")
+    path.write_bytes(b"abc\ndef")
     with Document.open(path) as document:
         document.insert(1, "X")
         snapshot = diagnostics_snapshot([document])
