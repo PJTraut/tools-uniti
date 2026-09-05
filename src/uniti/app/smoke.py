@@ -203,7 +203,29 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         panel.replace_input.undo_input()
         panel.regex_checkbox.setChecked(True)
         panel.show()
+        first_service.set_active_view(window.window_id, view.view_id)
+        first_service.attach_find_replace()
         app.processEvents()
+        find_replace_attached = (
+            panel.placement == "attached"
+            and panel.parentWidget() is window
+        )
+
+        follow_window = first_service.new_window()
+        first_service.set_active_view(follow_window.window_id, None)
+        app.processEvents()
+        find_replace_followed_window = (
+            first_service.find_replace is panel
+            and panel.placement == "attached"
+            and panel.parentWidget() is follow_window
+        )
+        first_service.detach_find_replace()
+        app.processEvents()
+        find_replace_detached = (
+            panel.placement == "detached" and panel.isFloating()
+        )
+        follow_window.close()
+        wait_until(lambda: first_service.window_count == 1)
 
         original_document = view.document
         window.close()
@@ -288,6 +310,9 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
                 and one_document_authority
                 and session_restored
                 and history_restored
+                and find_replace_attached
+                and find_replace_followed_window
+                and find_replace_detached
                 and find_replace_restored
                 and explicit_quit
             ),
@@ -302,6 +327,9 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             "one_document_authority": one_document_authority,
             "session_restored": session_restored,
             "history_restored": history_restored,
+            "find_replace_attached": find_replace_attached,
+            "find_replace_followed_window": find_replace_followed_window,
+            "find_replace_detached": find_replace_detached,
             "find_replace_restored": find_replace_restored,
             "explicit_quit": explicit_quit,
         }
@@ -324,6 +352,9 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
             "one_document_authority": False,
             "session_restored": False,
             "history_restored": False,
+            "find_replace_attached": False,
+            "find_replace_followed_window": False,
+            "find_replace_detached": False,
             "find_replace_restored": False,
             "explicit_quit": False,
         }

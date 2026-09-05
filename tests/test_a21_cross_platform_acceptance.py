@@ -73,6 +73,24 @@ def test_a21_editor_docking_preserves_authority_layout_and_bytes(tmp_path: Path)
         assert clone.document.read(0, clone.document.total_chars()) == (
             original_bytes.decode("utf-8")
         )
+
+        panel = service.find_replace
+        panel.find_input.set_text("beta")
+        service.set_active_view(window.window_id, original.view_id)
+        service.attach_find_replace()
+        assert panel.parentWidget() is window
+        assert panel.placement == "attached"
+
+        second = service.new_window()
+        service.set_active_view(second.window_id, None)
+        assert service.find_replace is panel
+        assert panel.parentWidget() is second
+        assert panel.find_input.text() == "beta"
+
+        service.detach_find_replace()
+        assert panel.placement == "detached"
+        assert panel.isFloating() is True
+        assert service.capture_session().manifest.find_replace.placement == "detached"
     finally:
         if service.is_running:
             service.request_quit(lambda _entry: QuitChoice.DISCARD)
