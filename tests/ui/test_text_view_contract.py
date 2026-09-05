@@ -14,6 +14,8 @@ def test_text_view_is_custom_qabstractscrollarea_without_qt_document_store():
     source = SOURCE.read_text()
     assert "QPlainTextEdit" not in source
     assert "QTextDocument" not in source
+    assert "_fixed_pitch_font" not in source
+    assert "resolve_editor_font" in source
     tree = ast.parse(source)
     classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
     target = next(node for node in classes if node.name == "UNITITextView")
@@ -441,6 +443,7 @@ def test_text_view_zoom_changes_metrics_without_changing_document_text(tmp_path:
 
     from uniti.app.editor_state import EditorState
     from uniti.core.document import Document
+    from uniti.ui.font_policy import resolve_editor_font
     from uniti.ui.text_view import UNITITextView
 
     path = tmp_path / "zoom.txt"
@@ -456,6 +459,7 @@ def test_text_view_zoom_changes_metrics_without_changing_document_text(tmp_path:
         assert view.zoom_percent == 130
         assert view.fontMetrics().height() > original_height
         assert document.read(0, document.total_chars()) == original_text
+        assert view.font().family() == resolve_editor_font().resolved_family
         assert view.font().family().casefold() != "monospace"
         assert QFontDatabase.isFixedPitch(view.font().family())
         raw_font = QRawFont.fromFont(view.font())

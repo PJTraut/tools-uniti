@@ -10,14 +10,11 @@ import weakref
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QFont,
-    QFontDatabase,
     QFontMetrics,
-    QGuiApplication,
     QInputMethodEvent,
     QKeyEvent,
     QMouseEvent,
     QPainter,
-    QRawFont,
     QTextCharFormat,
     QTextLayout,
     QWheelEvent,
@@ -29,6 +26,7 @@ from uniti.app.session import DockReturnRecord, ViewRecord
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
 from uniti.ui.theme import EditorThemeTokens, active_theme
+from uniti.ui.font_policy import resolve_editor_font
 from uniti.ui.whitespace import (
     WhitespaceKind,
     WhitespaceMode,
@@ -96,7 +94,8 @@ class UNITITextView(QAbstractScrollArea):
         self.view_id = uuid.uuid4().hex if view_id is None else view_id
         self._disposed = False
         self._document_refresh_queued = False
-        self._base_font = self._fixed_pitch_font()
+        self._font_resolution = resolve_editor_font()
+        self._base_font = QFont(self._font_resolution.font)
         self._base_point_size = self._base_font.pointSizeF()
         if self._base_point_size <= 0:
             self._base_point_size = 12.0
@@ -164,35 +163,6 @@ class UNITITextView(QAbstractScrollArea):
         self.state = state
         self._document_refresh_queued = False
         self._bind_document_listener()
-
-    @staticmethod
-    def _fixed_pitch_font() -> QFont:
-        families = set(QFontDatabase.families())
-        preferred = (
-            "Menlo",
-            "Cascadia Mono",
-            "Consolas",
-            "DejaVu Sans Mono",
-            "Liberation Mono",
-            "Noto Sans Mono",
-            "Courier New",
-            "Monaco",
-            "Andale Mono",
-        )
-        ordered = [family for family in preferred if family in families]
-        ordered.extend(sorted(families.difference(ordered)))
-        for family in ordered:
-            if not QFontDatabase.isFixedPitch(family):
-                continue
-            font = QFont(family)
-            raw_font = QRawFont.fromFont(font)
-            if (
-                raw_font.isValid()
-                and raw_font.supportsCharacter(ord("A"))
-                and raw_font.supportsCharacter(ord("Ж"))
-            ):
-                return font
-        return QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
 
     @property
     def zoom_percent(self) -> int:

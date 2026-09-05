@@ -1,8 +1,10 @@
 import json
+import os
 import sys
 from pathlib import Path
 
 import uniti
+import pytest
 
 from uniti.app.paths import AppPaths
 from uniti.app.self_check import (
@@ -200,3 +202,24 @@ def test_installed_metadata_mismatch_is_dependency_failure(tmp_path: Path, monke
     dependency = next(result for result in report.results if result.name == "dependencies")
     assert dependency.status is CheckStatus.FAIL
     assert dependency.exit_code is ExitCode.DEPENDENCIES
+
+
+def test_deep_qt_check_requires_fixed_font_coverage(tmp_path: Path, monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from uniti.app import capabilities
+    from uniti.app.capabilities import CapabilityResult, CapabilityStatus
+
+    monkeypatch.setattr(
+        capabilities,
+        "probe_qt",
+        lambda _app: {
+            "qt": CapabilityResult(CapabilityStatus.AVAILABLE, "Qt available"),
+            "font": CapabilityResult(
+                CapabilityStatus.UNAVAILABLE,
+                "fixed font coverage is unavailable",
+            ),
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="font coverage"):
+        SelfCheckRunner._deep_qt(tmp_path)

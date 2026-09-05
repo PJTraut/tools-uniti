@@ -59,6 +59,14 @@ def _durability_details(result: DurabilityResult) -> dict[str, object]:
     return details
 
 
+def resolve_editor_font():
+    """Resolve the UI font lazily so capability imports stay Qt-free."""
+
+    from uniti.ui.font_policy import resolve_editor_font as resolve
+
+    return resolve()
+
+
 def _file_handle_result() -> CapabilityResult:
     try:
         import resource
@@ -297,7 +305,7 @@ def probe_qt(app: object | None = None) -> dict[str, CapabilityResult]:
     try:
         import PySide6
         from PySide6.QtCore import QLibraryInfo, qVersion
-        from PySide6.QtGui import QFontDatabase, QGuiApplication
+        from PySide6.QtGui import QGuiApplication
         from PySide6.QtWidgets import QApplication
     except (ImportError, ModuleNotFoundError):
         return {"qt": _unavailable("PySide6 is not installed")}
@@ -307,8 +315,18 @@ def probe_qt(app: object | None = None) -> dict[str, CapabilityResult]:
         return {"qt": _unavailable("QApplication has not been created")}
     gui = QGuiApplication.instance()
     try:
-        font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
-        font_result = _available("fixed-width font resolved", family=font.family())
+        font = resolve_editor_font()
+        details = font.as_dict()
+        if font.fixed_pitch and font.latin_coverage and font.cyrillic_coverage:
+            font_result = _available(
+                "fixed-width font coverage resolved",
+                **details,
+            )
+        else:
+            font_result = _unavailable(
+                "fixed-width font coverage is unavailable",
+                **details,
+            )
     except Exception:
         font_result = _unavailable("fixed-width font resolution failed")
     clipboard = gui.clipboard() if gui is not None else None

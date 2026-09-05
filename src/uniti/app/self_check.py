@@ -984,6 +984,8 @@ class SelfCheckRunner:
             results = probe_qt(app)
             if results["qt"].status is not CapabilityStatus.AVAILABLE:
                 raise RuntimeError("Qt application probe failed")
+            if results["font"].status is not CapabilityStatus.AVAILABLE:
+                raise RuntimeError("required fixed font coverage is unavailable")
             details = {key: value.as_dict() for key, value in results.items()}
         finally:
             view.close()

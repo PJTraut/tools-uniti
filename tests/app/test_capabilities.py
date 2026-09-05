@@ -4,6 +4,7 @@ from pathlib import Path
 from uniti.app.capabilities import (
     CapabilityStatus,
     probe_filesystem,
+    probe_qt,
     probe_runtime,
 )
 from uniti.app.paths import AppPaths
@@ -102,3 +103,45 @@ def test_runtime_probe_reports_unknown_when_memory_cannot_be_measured(
     result = capabilities.probe_runtime(paths)["memory"]
 
     assert result.status is CapabilityStatus.UNKNOWN
+
+
+def test_qt_probe_reports_the_same_concrete_font_as_the_editor_policy():
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.font_policy import resolve_editor_font
+
+    app = QApplication.instance() or QApplication([])
+    resolution = resolve_editor_font()
+
+    result = probe_qt(app)["font"]
+
+    assert result.status is CapabilityStatus.AVAILABLE
+    assert result.details == resolution.as_dict()
+
+
+def test_qt_probe_rejects_a_fixed_font_without_required_glyph_coverage(monkeypatch):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app import capabilities
+    from uniti.ui.font_policy import FontResolution
+
+    app = QApplication.instance() or QApplication([])
+    degraded = FontResolution(
+        QFont("Fallback"),
+        "Fallback",
+        "Fallback",
+        True,
+        True,
+        False,
+        True,
+    )
+    monkeypatch.setattr(capabilities, "resolve_editor_font", lambda: degraded)
+
+    result = capabilities.probe_qt(app)["font"]
+
+    assert result.status is CapabilityStatus.UNAVAILABLE
+    assert "coverage" in result.reason
+    assert result.details == degraded.as_dict()
