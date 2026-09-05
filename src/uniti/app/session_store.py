@@ -35,6 +35,7 @@ from .session import (
     PaneRecord,
     PersistenceNotice,
     SessionManifest,
+    SessionLoadSource,
     SessionProblem,
     SessionSnapshot,
     UnsupportedSessionSchema,
@@ -859,6 +860,13 @@ class SessionStore:
         except (OSError, ValueError):
             pass
 
+    def _preserve_current_pointer(self) -> None:
+        try:
+            data = self.backend.read_bytes(self.current_path)
+        except FileNotFoundError:
+            return
+        self._preserve_invalid(self.current_path, data)
+
     def _load_manifest_path(
         self,
         path: Path,
@@ -1046,6 +1054,7 @@ class SessionStore:
 
     def _load_latest(self, *, load_packs: bool) -> LoadedSession:
         accumulated: list[SessionProblem] = []
+        had_pointer = self.backend.exists(self.current_path)
         pointer_path, pointer_sha, pointer_problems = self._pointer_target()
         accumulated.extend(pointer_problems)
         attempted: set[Path] = set()
@@ -1058,7 +1067,14 @@ class SessionStore:
             )
             accumulated.extend(problems)
             if loaded is not None:
-                return replace(loaded, problems=tuple(accumulated))
+                return replace(
+                    loaded,
+                    problems=tuple(accumulated),
+                    source=SessionLoadSource.POINTER,
+                    inspected_generations=0,
+                    pointer_repair_required=False,
+                )
+            self._preserve_current_pointer()
 
         manifests = sorted(
             (
@@ -1066,21 +1082,52 @@ class SessionStore:
                 for path in self.backend.iterdir(self.manifests_dir)
                 if path.suffix == ".json" and _GENERATION_RE.fullmatch(path.stem)
             ),
-            key=lambda item: item.name,
+            key=lambda item: (
+                int(_GENERATION_RE.fullmatch(item.stem).group("number")),
+                item.name,
+            ),
             reverse=True,
         )[:MAX_GENERATIONS_INSPECTED]
+        inspected = 0
         for path in manifests:
             if path in attempted:
                 continue
+            inspected += 1
             loaded, problems = self._load_manifest_path(
                 path,
                 expected_sha256=None,
-                load_packs=load_packs,
+                load_packs=True,
             )
             accumulated.extend(problems)
             if loaded is not None:
-                return replace(loaded, problems=tuple(accumulated))
-        return LoadedSession(None, (), None, tuple(accumulated))
+                repair_blocked = any(
+                    problem.kind
+                    in {"unsupported_pointer", "unsupported_manifest"}
+                    for problem in accumulated
+                )
+                return replace(
+                    loaded,
+                    problems=tuple(accumulated),
+                    source=SessionLoadSource.GENERATION_SCAN,
+                    inspected_generations=inspected,
+                    pointer_repair_required=not repair_blocked,
+                )
+        if had_pointer or manifests or accumulated:
+            accumulated.append(
+                self._problem(
+                    "no_complete_generation",
+                    self.root,
+                    "No complete saved session generation could be verified.",
+                )
+            )
+        return LoadedSession(
+            None,
+            (),
+            None,
+            tuple(accumulated),
+            source=SessionLoadSource.EMPTY,
+            inspected_generations=inspected,
+        )
 
     def load_latest(self) -> LoadedSession:
         """Load and validate the newest complete manifest and every pack."""
@@ -1091,6 +1138,115 @@ class SessionStore:
         """Load only the newest valid pointer and manifest for shell restore."""
 
         return self._load_latest(load_packs=False)
+
+    def repair_pointer(self, manifest: SessionManifest) -> DurabilityResult:
+        """Durably repoint current state to one fully verified generation."""
+
+        if not isinstance(manifest, SessionManifest):
+            raise TypeError("manifest must be a SessionManifest")
+        if _GENERATION_RE.fullmatch(manifest.generation) is None:
+            raise ValueError("manifest generation is not a published generation")
+
+        manifest_path = self.manifest_path(manifest.generation)
+        manifest_bytes = self.backend.read_bytes(manifest_path)
+        manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+        verified, verification_problems = self._load_manifest_path(
+            manifest_path,
+            expected_sha256=manifest_sha256,
+            load_packs=True,
+        )
+        if verified is None or verified.manifest != manifest:
+            raise ValueError("pointer repair requires a complete verified generation")
+        if any(
+            problem.kind == "unsupported_manifest"
+            for problem in verification_problems
+        ):
+            raise UnsupportedSessionSchema(
+                "refusing to repair from an unsupported session generation"
+            )
+        current_path, current_sha256, current_problems = self._pointer_target()
+        if any(
+            problem.kind == "unsupported_pointer"
+            for problem in current_problems
+        ):
+            raise UnsupportedSessionSchema(
+                "refusing to replace an unsupported session pointer"
+            )
+        if current_path is not None:
+            current, problems = self._load_manifest_path(
+                current_path,
+                expected_sha256=current_sha256,
+                load_packs=True,
+            )
+            if any(
+                problem.kind == "unsupported_manifest"
+                for problem in problems
+            ):
+                raise UnsupportedSessionSchema(
+                    "refusing to replace an unsupported session manifest"
+                )
+            if current is not None:
+                if current.manifest == manifest:
+                    durability = DurabilityResult(
+                        "session_pointer_repair",
+                        DurabilityLevel.FULL,
+                        True,
+                        True,
+                        True,
+                    )
+                    self._last_durability = durability
+                    return durability
+                raise OSError("current session pointer changed during repair")
+
+        pointer = {
+            "generation": manifest.generation,
+            "manifest": f"manifests/{manifest.generation}.json",
+            "schema": 1,
+            "sha256": manifest_sha256,
+        }
+        pointer_path = self.pointers_dir / (
+            f"repair-{manifest.generation}-{uuid.uuid4().hex}.json"
+        )
+        durability_results: list[DurabilityResult] = []
+        try:
+            durability_results.append(
+                self.backend.write_synced(pointer_path, _canonical_json(pointer))
+            )
+            durability_results.append(
+                self.backend.replace(pointer_path, self.current_path)
+            )
+            durability_results.append(self.backend.sync_directory(self.root))
+        except DurabilityError as error:
+            self._last_durability = combine_durability(
+                "session_pointer_repair",
+                (*durability_results, error.result),
+            )
+            raise DurabilityError(self._last_durability, error.cause) from error
+        except OSError as error:
+            unsafe = DurabilityResult(
+                "session_pointer_repair",
+                DurabilityLevel.UNSAFE,
+                False,
+                False,
+                False,
+                f"storage:{type(error).__name__}",
+            )
+            self._last_durability = (
+                combine_durability(
+                    "session_pointer_repair",
+                    (*durability_results, unsafe),
+                )
+                if durability_results
+                else unsafe
+            )
+            raise
+
+        durability = combine_durability(
+            "session_pointer_repair",
+            durability_results,
+        )
+        self._last_durability = durability
+        return durability
 
     def load_document_pack(
         self,

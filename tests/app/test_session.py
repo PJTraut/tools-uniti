@@ -14,11 +14,13 @@ from uniti.app.session import (
     FindReplaceManifestRecord,
     HistoryPack,
     HistoryPackReference,
+    LoadedSession,
     InputHistoryRecord,
     InputStateRecord,
     PaneRecord,
     PersistenceNotice,
     SessionManifest,
+    SessionLoadSource,
     SessionSnapshot,
     UnsupportedSessionSchema,
     ViewRecord,
@@ -591,3 +593,11 @@ def test_session_snapshot_keeps_manifest_current_state_separate_from_histories()
     assert snapshot.manifest.documents[0].canonical_path == "/tmp/document.txt"
     assert snapshot.packs == (history_pack,)
     assert snapshot.find_replace_pack is not None
+
+
+def test_loaded_session_defaults_to_empty_nonrepairable_provenance():
+    loaded = LoadedSession(None, (), None, ())
+
+    assert loaded.source is SessionLoadSource.EMPTY
+    assert loaded.inspected_generations == 0
+    assert loaded.pointer_repair_required is False

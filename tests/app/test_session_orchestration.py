@@ -28,6 +28,7 @@ from uniti.app.session import (
     InputStateRecord,
     PaneRecord,
     SessionManifest,
+    SessionLoadSource,
     SessionSnapshot,
     ViewRecord,
     WindowRecord,
@@ -38,6 +39,7 @@ from uniti.app.session_runtime import merge_find_replace_history
 from uniti.app.service import UNITIService
 from uniti.app.settings import SettingsStore
 from uniti.core.file_identity import FileIdentity, SavedFileStamp
+from uniti.core.durability import DurabilityError, DurabilityLevel, DurabilityResult
 from uniti.resources import ResourceManager, TaskKind, WorkPriority
 
 
@@ -778,6 +780,75 @@ def test_document_packs_are_loaded_active_first_then_lazily_on_workers(
     qapp.processEvents()
 
 
+def test_scanned_session_repairs_pointer_only_after_active_restore_is_usable(
+    qapp,
+    tmp_path: Path,
+):
+    store, _loaded, _paths = _published_session(tmp_path, document_count=1)
+    store.current_path.unlink()
+    scanned = store.load_manifest()
+    assert scanned.manifest is not None
+    assert scanned.source is SessionLoadSource.GENERATION_SCAN
+    assert scanned.pointer_repair_required is True
+    service = _restoring_service(tmp_path, store)
+
+    service.restore_shell(
+        scanned.manifest,
+        packs=scanned.packs,
+        pointer_repair_required=scanned.pointer_repair_required,
+    )
+
+    assert store.current_path.exists() is False
+    assert service.restore_active() is not None
+    assert store.current_path.exists() is True
+    repaired = store.load_manifest()
+    assert repaired.source is SessionLoadSource.POINTER
+    assert service.restore_problems == ()
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
+def test_unsafe_pointer_repair_keeps_recovered_session_and_reports_once(
+    qapp,
+    tmp_path: Path,
+    monkeypatch,
+):
+    store, _loaded, _paths = _published_session(tmp_path, document_count=1)
+    store.current_path.unlink()
+    scanned = store.load_manifest()
+    assert scanned.manifest is not None
+    unsafe = DurabilityResult(
+        "session_pointer_repair",
+        DurabilityLevel.UNSAFE,
+        False,
+        False,
+        False,
+        "injected",
+    )
+
+    def fail_repair(_manifest):
+        raise DurabilityError(unsafe, OSError("injected repair failure"))
+
+    monkeypatch.setattr(store, "repair_pointer", fail_repair)
+    service = _restoring_service(tmp_path, store)
+    service.restore_shell(
+        scanned.manifest,
+        packs=scanned.packs,
+        pointer_repair_required=True,
+    )
+
+    restored = service.restore_active()
+
+    assert restored is not None
+    assert service.is_running is True
+    assert service.documents.count == 1
+    assert tuple(problem.kind for problem in service.restore_problems) == (
+        "pointer_repair_failed",
+    )
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
 def test_restore_hash_accepts_metadata_change_but_preserves_changed_bytes_as_conflict(
     qapp,
     tmp_path: Path,
@@ -1048,6 +1119,7 @@ def test_discard_session_conflict_prunes_durable_evidence_and_placeholder(
 def test_invalid_active_history_pack_preserves_shell_and_reports_problem(
     qapp,
     tmp_path: Path,
+    monkeypatch,
 ):
     store, loaded, _paths = _published_session(tmp_path, document_count=1)
     assert loaded.manifest is not None
@@ -1055,6 +1127,12 @@ def test_invalid_active_history_pack_preserves_shell_and_reports_problem(
     assert manifest is not None
     reference = next(item for item in manifest.packs if item.kind == "document")
     (store.packs_dir / reference.filename).write_bytes(b"invalid pack")
+    repair_calls = []
+    monkeypatch.setattr(
+        store,
+        "repair_pointer",
+        lambda selected: repair_calls.append(selected),
+    )
     service = _restoring_service(tmp_path, store)
     service.restore_shell(
         manifest,
@@ -1062,6 +1140,7 @@ def test_invalid_active_history_pack_preserves_shell_and_reports_problem(
             manifest,
             document_id,
         ),
+        pointer_repair_required=True,
     )
 
     assert service.restore_active() is None
@@ -1070,6 +1149,7 @@ def test_invalid_active_history_pack_preserves_shell_and_reports_problem(
     assert tuple(item.kind for item in service.restore_problems) == (
         "restore_failed",
     )
+    assert repair_calls == []
     service.request_quit(lambda _entry: None)
     qapp.processEvents()
 

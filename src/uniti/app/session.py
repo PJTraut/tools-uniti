@@ -12,6 +12,7 @@ import zlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
@@ -45,6 +46,14 @@ _FIND_REPLACE_PLACEMENTS = frozenset({"attached", "detached"})
 
 class UnsupportedSessionSchema(ValueError):
     """Raised when persisted state uses a newer or unknown schema."""
+
+
+class SessionLoadSource(StrEnum):
+    """Authority used to select a persisted session generation."""
+
+    POINTER = "pointer"
+    GENERATION_SCAN = "generation_scan"
+    EMPTY = "empty"
 
 
 def _require_identifier(value: object, field: str) -> str:
@@ -652,6 +661,27 @@ class LoadedSession:
     packs: tuple[HistoryPack, ...]
     find_replace_pack: FindReplaceHistoryPack | None
     problems: tuple[SessionProblem, ...]
+    source: SessionLoadSource = SessionLoadSource.EMPTY
+    inspected_generations: int = 0
+    pointer_repair_required: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.source, SessionLoadSource):
+            raise TypeError("session load source must be a SessionLoadSource")
+        if (
+            type(self.inspected_generations) is not int
+            or self.inspected_generations < 0
+        ):
+            raise ValueError("inspected generation count must be non-negative")
+        if not isinstance(self.pointer_repair_required, bool):
+            raise TypeError("pointer repair flag must be bool")
+        if self.pointer_repair_required and (
+            self.source is not SessionLoadSource.GENERATION_SCAN
+            or self.manifest is None
+        ):
+            raise ValueError(
+                "pointer repair requires a scanned complete session generation"
+            )
 
 
 def _validate_notices(notices: tuple[PersistenceNotice, ...]) -> None:

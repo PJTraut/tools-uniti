@@ -504,6 +504,9 @@ def _startup_callbacks(
                     loaded_session.manifest,
                     document_id,
                 ),
+                pointer_repair_required=(
+                    loaded_session.pointer_repair_required
+                ),
             )
             service.restore_active()
             window = service.most_recent_window

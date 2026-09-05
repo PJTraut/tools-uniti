@@ -15,13 +15,16 @@ from uniti.app.session import (
     InputStateRecord,
     PaneRecord,
     SessionManifest,
+    SessionLoadSource,
     SessionSnapshot,
     UnsupportedSessionSchema,
     ViewRecord,
     WindowRecord,
     encode_history_pack,
+    manifest_to_payload,
 )
 from uniti.app.session_store import (
+    MAX_GENERATIONS_INSPECTED,
     MIN_FREE_BYTES,
     LocalStorageBackend,
     SessionStore,
@@ -46,6 +49,8 @@ class FakeBackend:
         self.directories = {root}
         self.operations: list[tuple[str, str]] = []
         self.reads: list[Path] = []
+        self.listings: list[Path] = []
+        self.reverse_listings = False
         self.free_bytes_value = 1 << 40
         self.fail_after: int | None = None
         self.unsafe_after: int | None = None
@@ -96,6 +101,7 @@ class FakeBackend:
     ) -> None:
         self.operations.clear()
         self.reads.clear()
+        self.listings.clear()
         self._mutation_count = 0
         self.fail_after = fail_after
         self.unsafe_after = unsafe_after
@@ -133,6 +139,7 @@ class FakeBackend:
         self._mutate("unlink", self._relative(path), lambda: self.files.pop(path, None))
 
     def iterdir(self, path: Path):
+        self.listings.append(path)
         names: set[str] = set()
         for candidate in set(self.files) | self.directories:
             try:
@@ -141,7 +148,10 @@ class FakeBackend:
                 continue
             if relative.parts:
                 names.add(relative.parts[0])
-        return tuple(path / name for name in sorted(names))
+        return tuple(
+            path / name
+            for name in sorted(names, reverse=self.reverse_listings)
+        )
 
     def read_bytes(self, path: Path) -> bytes:
         self.reads.append(path)
@@ -344,6 +354,10 @@ def test_manifest_only_load_defers_history_pack_read_and_decode():
     assert loaded.manifest is not None
     assert loaded.manifest.generation == result.generation
     assert loaded.packs == ()
+    assert loaded.source is SessionLoadSource.POINTER
+    assert loaded.inspected_generations == 0
+    assert loaded.pointer_repair_required is False
+    assert store.manifests_dir not in backend.listings
     assert not any(path.suffix == ".pack" for path in backend.reads)
 
     pack = store.load_document_pack(loaded.manifest, "doc-1")
@@ -386,6 +400,9 @@ def test_incomplete_current_generation_falls_back_to_previous_complete():
     assert loaded.manifest is not None
     assert loaded.manifest.generation == first.generation
     assert loaded.problems
+    assert loaded.source is SessionLoadSource.GENERATION_SCAN
+    assert loaded.inspected_generations == 1
+    assert loaded.pointer_repair_required is True
 
 
 def test_identical_pack_is_content_addressed_and_reused():
@@ -548,6 +565,8 @@ def test_load_preserves_one_copy_of_invalid_pointer_evidence():
 
     assert loaded.manifest is not None
     assert loaded.manifest.generation == first.generation
+    assert loaded.source is SessionLoadSource.GENERATION_SCAN
+    assert loaded.pointer_repair_required is True
     evidence = [path for path in backend.files if path.parent == store.invalid_dir]
     assert len(evidence) == 1
     assert backend.files[evidence[0]] == b"not-json"
@@ -567,6 +586,251 @@ def test_future_schema_pointer_is_preserved_and_blocks_publication():
     assert loaded.manifest is None
     assert loaded.problems[0].kind == "unsupported_pointer"
     assert backend.files[store.current_path] == original
+
+
+def test_future_pointer_can_expose_older_complete_session_but_never_repair_it():
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    published = store.publish(_snapshot(_pack()))
+    original = b'{"schema":2}'
+    backend.files[store.current_path] = original
+
+    loaded = store.load_latest()
+
+    assert loaded.manifest is not None
+    assert loaded.manifest.generation == published.generation
+    assert loaded.source is SessionLoadSource.GENERATION_SCAN
+    assert loaded.pointer_repair_required is False
+    with pytest.raises(UnsupportedSessionSchema, match="unsupported"):
+        store.repair_pointer(loaded.manifest)
+    assert backend.files[store.current_path] == original
+
+
+@pytest.mark.parametrize("pointer", [b"{", b"not-json"])
+def test_truncated_or_invalid_pointer_is_preserved_before_complete_scan(pointer):
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    published = store.publish(_snapshot(_pack()))
+    backend.files[store.current_path] = pointer
+    backend.reset_recording()
+
+    loaded = store.load_latest()
+
+    assert loaded.manifest is not None
+    assert loaded.manifest.generation == published.generation
+    assert loaded.source is SessionLoadSource.GENERATION_SCAN
+    assert loaded.pointer_repair_required is True
+    evidence = [path for path in backend.files if path.parent == store.invalid_dir]
+    assert len(evidence) == 1
+    assert backend.files[evidence[0]] == pointer
+
+
+def test_stale_pointer_is_preserved_and_missing_pointer_scans_complete_generation():
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    published = store.publish(_snapshot(_pack()))
+    stale_generation = f"{999:020d}-{'f' * 32}"
+    stale_pointer = json.dumps(
+        {
+            "generation": stale_generation,
+            "manifest": f"manifests/{stale_generation}.json",
+            "schema": 1,
+            "sha256": "0" * 64,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    backend.files[store.current_path] = stale_pointer
+
+    stale = store.load_latest()
+
+    assert stale.manifest is not None
+    assert stale.manifest.generation == published.generation
+    assert stale.source is SessionLoadSource.GENERATION_SCAN
+    assert stale.pointer_repair_required is True
+    assert any(
+        data == stale_pointer
+        for path, data in backend.files.items()
+        if path.parent == store.invalid_dir
+    )
+
+    backend.files.pop(store.current_path)
+    missing = store.load_latest()
+    assert missing.manifest is not None
+    assert missing.source is SessionLoadSource.GENERATION_SCAN
+    assert missing.pointer_repair_required is True
+
+
+def test_generation_scan_orders_unordered_entries_and_never_opens_invalid_names():
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    first = store.publish(_snapshot(_pack(text="old", generation="history-old")))
+    second = store.publish(_snapshot(_pack(text="new", generation="history-new")))
+    backend.files.pop(store.current_path)
+    invalid_paths = (
+        store.manifests_dir / "99999999999999999999-not-a-uuid.json",
+        store.manifests_dir / "unbounded.json",
+        store.manifests_dir / f"{3:020d}-{'a' * 32}.tmp",
+    )
+    for path in invalid_paths:
+        backend.files[path] = b"not a manifest"
+    backend.reverse_listings = True
+    backend.reset_recording()
+
+    loaded = store.load_latest()
+
+    assert loaded.manifest is not None
+    assert loaded.manifest.generation == second.generation
+    assert loaded.manifest.generation != first.generation
+    assert loaded.inspected_generations == 1
+    assert all(path not in backend.reads for path in invalid_paths)
+
+
+def test_generation_scan_opens_at_most_two_hundred_candidate_manifests():
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    for number in range(MAX_GENERATIONS_INSPECTED + 5):
+        generation = f"{number + 1:020d}-{'a' * 32}"
+        backend.files[store.manifest_path(generation)] = b"invalid"
+
+    loaded = store.load_latest()
+
+    opened = [path for path in backend.reads if path.parent == store.manifests_dir]
+    assert len(opened) == MAX_GENERATIONS_INSPECTED
+    assert loaded.manifest is None
+    assert loaded.source is SessionLoadSource.EMPTY
+    assert loaded.inspected_generations == MAX_GENERATIONS_INSPECTED
+    assert loaded.pointer_repair_required is False
+    assert loaded.problems[-1].kind == "no_complete_generation"
+
+
+def test_scan_validates_complete_pack_set_before_selecting_generation():
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    first = store.publish(_snapshot(_pack(text="old", generation="history-old")))
+    second = store.publish(_snapshot(_pack(text="new", generation="history-new")))
+    backend.files.pop(store.current_path)
+    backend.files[second.pack_paths[0]] = b"invalid pack bytes"
+
+    loaded = store.load_manifest()
+
+    assert loaded.manifest is not None
+    assert loaded.manifest.generation == first.generation
+    assert loaded.packs
+    assert loaded.source is SessionLoadSource.GENERATION_SCAN
+    assert loaded.pointer_repair_required is True
+    assert any(problem.kind == "pack_checksum" for problem in loaded.problems)
+
+
+@pytest.mark.parametrize("corruption", ["schema", "owner"])
+def test_scan_rejects_pack_schema_or_owner_mismatch(corruption):
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    first = store.publish(_snapshot(_pack(text="old", generation="history-old")))
+    second = store.publish(_snapshot(_pack(text="new", generation="history-new")))
+    latest = store.load_latest().manifest
+    assert latest is not None
+    if corruption == "schema":
+        envelope = json.loads(backend.files[second.pack_paths[0]])
+        envelope["schema"] = 2
+        bad_pack = json.dumps(
+            envelope,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        generation = latest.packs[0].generation
+    else:
+        foreign = _pack("foreign", generation="foreign-history")
+        bad_pack = encode_history_pack(foreign)
+        generation = foreign.generation
+    digest = hashlib.sha256(bad_pack).hexdigest()
+    bad_path = store.packs_dir / f"{digest}.pack"
+    backend.files[bad_path] = bad_pack
+    bad_reference = replace(
+        latest.packs[0],
+        generation=generation,
+        filename=bad_path.name,
+        encoded_bytes=len(bad_pack),
+        sha256=digest,
+    )
+    bad_manifest = replace(latest, packs=(bad_reference,))
+    backend.files[second.manifest_path] = json.dumps(
+        manifest_to_payload(bad_manifest),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    backend.files.pop(store.current_path)
+
+    loaded = store.load_latest()
+
+    assert loaded.manifest is not None
+    assert loaded.manifest.generation == first.generation
+    assert loaded.source is SessionLoadSource.GENERATION_SCAN
+    assert any(problem.kind == "invalid_pack" for problem in loaded.problems)
+
+
+@pytest.mark.parametrize(
+    "level",
+    (DurabilityLevel.FULL, DurabilityLevel.FILE_SYNCED),
+)
+def test_repair_pointer_durably_promotes_a_scanned_complete_generation(level):
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    published = store.publish(_snapshot(_pack()))
+    backend.files[store.current_path] = b"invalid pointer"
+    scanned = store.load_latest()
+    assert scanned.manifest is not None
+    backend.durability_level = level
+    backend.reset_recording()
+
+    durability = store.repair_pointer(scanned.manifest)
+
+    assert durability.level is level
+    assert store.last_durability is durability
+    assert backend.operations[0][0] == "write_synced"
+    assert backend.operations[0][1].startswith("pointers/")
+    assert backend.operations[1:] == [
+        ("replace", "current.json"),
+        ("sync_directory", "."),
+    ]
+    repaired = store.load_latest()
+    assert repaired.manifest is not None
+    assert repaired.manifest.generation == published.generation
+    assert repaired.source is SessionLoadSource.POINTER
+    assert repaired.pointer_repair_required is False
+
+
+@pytest.mark.parametrize("unsafe_after", [1, 2])
+def test_unsafe_pointer_repair_boundary_retains_current_evidence(unsafe_after):
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+    store.publish(_snapshot(_pack()))
+    original = b"invalid pointer evidence"
+    backend.files[store.current_path] = original
+    scanned = store.load_latest()
+    assert scanned.manifest is not None
+    backend.reset_recording(unsafe_after=unsafe_after)
+
+    with pytest.raises(DurabilityError):
+        store.repair_pointer(scanned.manifest)
+
+    assert backend.files[store.current_path] == original
+    assert store.last_durability is not None
+    assert store.last_durability.level is DurabilityLevel.UNSAFE
+    assert any(
+        data == original
+        for path, data in backend.files.items()
+        if path.parent == store.invalid_dir
+    )
 
 
 def test_cleanup_retains_current_previous_and_invalid_but_removes_older_orphans():

@@ -61,6 +61,7 @@ class SessionController:
         self._restore_handles: dict[str, object] = {}
         self._promoted_view_ids: dict[str, str] = {}
         self._restore_timer = None
+        self._pointer_repair_required = False
         self._saved_hash_handles: dict[str, tuple[object, object]] = {}
         self._saved_hash_timer = None
         self._document_save_listeners: dict[
@@ -294,6 +295,7 @@ class SessionController:
         packs: tuple[object, ...] = (),
         find_replace_pack: object | None = None,
         pack_loader: Callable[[str], object] | None = None,
+        pointer_repair_required: bool = False,
     ) -> None:
         """Build bounded window/pane placeholders without opening source files."""
 
@@ -316,6 +318,8 @@ class SessionController:
             )
         if pack_loader is not None and not callable(pack_loader):
             raise TypeError("pack_loader must be callable or None")
+        if not isinstance(pointer_repair_required, bool):
+            raise TypeError("pointer_repair_required must be bool")
         if service.window_count or service.documents.count:
             raise RuntimeError("session shell restore requires an empty service")
 
@@ -327,6 +331,7 @@ class SessionController:
         self._problems = []
         self._discarded_document_ids = set()
         self._promoted_view_ids = {}
+        self._pointer_repair_required = pointer_repair_required
         self._service_id = manifest.service_id
         self._build_identity = manifest.build_identity
         self._generation = manifest.generation
@@ -657,7 +662,10 @@ class SessionController:
         if manifest is None:
             raise RuntimeError("no session shell is prepared")
         document_id = self._document_id_for_view(manifest.active_view_id)
-        if document_id is None or document_id in self._discarded_document_ids:
+        if document_id is None:
+            self._repair_pointer_after_usable_restore()
+            return None
+        if document_id in self._discarded_document_ids:
             return None
         try:
             restored = self._run_restore(document_id, foreground=True)
@@ -666,7 +674,50 @@ class SessionController:
             return None
         if restored is not None:
             self._restore_manifest_focus()
+            self._repair_pointer_after_usable_restore()
         return restored
+
+    def _repair_pointer_after_usable_restore(self) -> None:
+        if not self._pointer_repair_required:
+            return
+        self._pointer_repair_required = False
+        manifest = self._manifest
+        repair = getattr(self._service.sessions, "repair_pointer", None)
+        if manifest is None or not callable(repair):
+            self._record_pointer_repair_failure()
+            return
+        try:
+            handle = self._service.resources.tasks.submit(
+                TaskSpec.create(TaskKind.SESSION, foreground=True),
+                lambda _context: repair(manifest),
+            )
+            result = handle.future.result()
+            from uniti.core.durability import DurabilityLevel
+
+            if getattr(result, "level", DurabilityLevel.UNSAFE) is DurabilityLevel.UNSAFE:
+                self._record_pointer_repair_failure()
+        except Exception:
+            self._record_pointer_repair_failure()
+
+    def _record_pointer_repair_failure(self) -> None:
+        from .session import SessionProblem
+
+        if any(
+            problem.kind == "pointer_repair_failed"
+            for problem in self._problems
+        ):
+            return
+        path = getattr(self._service.sessions, "current_path", Path("current.json"))
+        self._problems.append(
+            SessionProblem(
+                "pointer_repair_failed",
+                Path(path),
+                (
+                    "The recovered session is open, but its startup pointer "
+                    "could not be repaired safely."
+                ),
+            )
+        )
 
     def _ensure_restore_timer(self) -> None:
         if self._restore_timer is not None:

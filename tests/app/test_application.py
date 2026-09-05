@@ -1,4 +1,5 @@
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -189,6 +190,124 @@ def test_session_startup_uses_one_recovery_center_before_requested_files(
     assert events[1][1] is window
     assert events[1][2] == (candidate,)
     assert events[2] == ("open", requested)
+
+
+def test_session_surface_never_repairs_a_scanned_pointer_during_discovery(
+    tmp_path: Path,
+):
+    from uniti.app.session import LoadedSession, SessionLoadSource
+
+    manifest = SimpleNamespace(
+        find_replace=SimpleNamespace(history_pack=None),
+        notices=(),
+    )
+    loaded = LoadedSession(
+        manifest,
+        (),
+        None,
+        (),
+        source=SessionLoadSource.GENERATION_SCAN,
+        inspected_generations=1,
+        pointer_repair_required=True,
+    )
+    repair_calls = []
+
+    class Store:
+        root = tmp_path
+        packs_dir = tmp_path / "packs"
+
+        def load_manifest(self):
+            return loaded
+
+        def discover_restore_problems(self, _manifest):
+            return ()
+
+        def repair_pointer(self, selected):
+            repair_calls.append(selected)
+
+    surfaced = application._load_session_surface(Store())
+
+    assert surfaced.pointer_repair_required is True
+    assert repair_calls == []
+
+
+def test_startup_passes_scan_repair_authority_to_post_restore_controller(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from uniti.app.service import UNITIService
+    from uniti.app.session import LoadedSession, SessionLoadSource
+
+    paths = AppPaths(
+        tmp_path / "config",
+        tmp_path / "data",
+        tmp_path / "state",
+        tmp_path / "cache",
+    )
+    paths.ensure()
+    manifest = object()
+    loaded = LoadedSession(
+        manifest,
+        (),
+        None,
+        (),
+        source=SessionLoadSource.GENERATION_SCAN,
+        inspected_generations=1,
+        pointer_repair_required=True,
+    )
+    context = StartupContext.create(paths, session_id="startup-session")
+    context.data.update(
+        resource_manager=object(),
+        settings_store=object(),
+        recovery_manager=object(),
+        session_store=object(),
+        loaded_session=loaded,
+    )
+    events: list[object] = []
+
+    class StartupWindow:
+        def set_startup_snapshot(self, _snapshot):
+            events.append("snapshot")
+
+    window = StartupWindow()
+
+    def restore_shell(self, selected, **kwargs):
+        events.append(("restore-shell", selected, kwargs))
+
+    monkeypatch.setattr(UNITIService, "restore_shell", restore_shell)
+    monkeypatch.setattr(
+        UNITIService,
+        "restore_active",
+        lambda self: events.append("restore-active"),
+    )
+    monkeypatch.setattr(
+        UNITIService,
+        "schedule_lazy_restore",
+        lambda self: events.append("lazy-restore"),
+    )
+    monkeypatch.setattr(
+        UNITIService,
+        "most_recent_window",
+        property(lambda self: window),
+    )
+    monkeypatch.setattr(
+        UNITIService,
+        "run_recovery_center",
+        lambda self, parent, **kwargs: events.append("recovery-center"),
+    )
+    callbacks = application._startup_callbacks(
+        application.ApplicationRequest(),
+        tmp_path / "runtime.json",
+    )
+
+    callbacks[StartupPhase.SESSION_RESTORE](context)
+
+    shell_event = events[0]
+    assert shell_event[0] == "restore-shell"
+    assert shell_event[1] is manifest
+    assert shell_event[2]["pointer_repair_required"] is True
+    assert events[1:4] == ["restore-active", "snapshot", "recovery-center"]
+    assert events[4] == "lazy-restore"
 
 
 def test_startup_callbacks_cover_gui_then_instance_before_every_state_writer(

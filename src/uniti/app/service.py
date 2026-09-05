@@ -1094,12 +1094,14 @@ class UNITIService:
         packs: tuple[object, ...] = (),
         find_replace_pack: object | None = None,
         pack_loader: Callable[[str], object] | None = None,
+        pointer_repair_required: bool = False,
     ) -> None:
         self._session_controller.restore_shell(
             manifest,
             packs=packs,
             find_replace_pack=find_replace_pack,
             pack_loader=pack_loader,
+            pointer_repair_required=pointer_repair_required,
         )
 
     def restore_active(self) -> object | None:
