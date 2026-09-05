@@ -8,14 +8,14 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
 - Canonical branch: `main`
-- Remote baseline: `origin/main` at hosted-proven candidate `8b24f4b`
+- Remote baseline: `origin/main` at hosted-proven A22 evidence commit `847d48b` (application behavior candidate `7373df0`)
 - A20 design/plan commits: `c9cd792`, `06dd906`
 - A20 implementation/acceptance sequence: `fabd036` through `f829d01`, followed by the A20 freeze closure
 - A21 Editor Layout and Visibility design/plan commits: `9477197`, `61c1f19`
 - A21 Editor Layout and Visibility implementation sequence: `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`
 - A21 Cross-Platform design/plan commit: `a3a4d81`
 - A21 Cross-Platform candidate/remediation sequence: `09ad62b` through `8b24f4b`
-- A22 implementation sequence: `f214635` through exact behavior candidate `7373df0`
+- A22 implementation sequence: `f214635` through exact behavior candidate `7373df0`; local evidence and hosted portability remediation `f1b588e` through `847d48b`
 - Latest implemented milestone: `v0.001a21` — Cross-Platform Alpha at hosted-proven commit `8b24f4b`
 - Active milestone: `v0.001a22` — Dogfood / Performance Alpha
 - Queued milestones: `v0.001a23` — Executable Health & Recovery Alpha; `v0.001a24` — Beta Candidate
@@ -23,7 +23,7 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16 through a20 tags: none
 
-A20, the A21 Editor Layout and Visibility workstream, and the A21 Cross-Platform source candidate are implemented on `main`. The required macOS, Windows, Linux/Python 3.12, and Linux/latest-Python jobs passed on identical commit `8b24f4b`. No new tag, release, installer, bundle, or other distributable package was created.
+A20, the A21 Editor Layout and Visibility workstream, and the A21 Cross-Platform source candidate are implemented on `main`. A22 implementation and performance evidence are complete except for the required seven distinct real-use dogfood days. The required macOS, Windows, Linux/Python 3.12, and Linux/latest-Python jobs passed the complete source and A22 sustained gates on identical evidence commit `847d48b`. No new tag, release, installer, bundle, or other distributable package was created.
 
 ## Canonical records
 
@@ -154,18 +154,29 @@ The same-commit hosted matrix is:
 
 Each job also passed compilation, 21/21 deep self-check, offscreen/native smoke, and exact skip verification. Successful jobs uploaded no artifacts, and no distributable package was produced.
 
-## A22 exact candidate and local evidence
+## A22 exact candidate, local, and hosted evidence
 
 A22 source implementation is complete through exact behavior candidate `7373df07de2b32b88bb518efce4587ae338fbc41`. The suite owns one service per family, fixed 5/50 hosted/controlled cycles, bounded evidence, deterministic fault/pressure seams, and one fixed-vocabulary process dogfood recorder with seven-day/16 MiB retention. Resource remediation deletes closed service windows, releases retired document/session bindings, reuses matching empty restore shells, retains only declared stable authorities/views, requests best-effort allocator relief at checkpoints, and separates routine correctness working sets from dedicated large/dense point coverage.
 
-Local verification on that exact source passed 1,428 tests with six policy skips, compileall, 21/21 deep self-check, offscreen and native Cocoa smoke, and all four five-cycle hosted families. Two clean uncontended controlled runs passed 50 cycles per family. Their RSS growth pairs were daily 6.1406/6.4297 MiB, format 0.2266/0.7734 MiB, regex 4.8594/6.8203 MiB, and lifecycle 15.3828/5.8281 MiB.
+Local verification on that exact source passed 1,428 tests with six policy skips, compileall, 21/21 deep self-check, offscreen and native Cocoa smoke, and all four five-cycle hosted families. The expanded post-hosted portability gate passed 1,432 tests with the same six skips. Two clean uncontended controlled runs passed 50 cycles per family. Their RSS growth pairs were daily 6.1406/6.4297 MiB, format 0.2266/0.7734 MiB, regex 4.8594/6.8203 MiB, and lifecycle 15.3828/5.8281 MiB.
 
 The selected first sustained anchor is [`v0.001a22-mac15-8-controlled.json`](../../../benchmarks/baselines/v0.001a22-mac15-8-controlled.json), SHA-256 `ef86a39945664bd098f1fe20ca7ab88a5d9990e824ff2dcee2fd26dae1018aa6`. The reviewed two-run confirmation aggregate remains outside the repository and has SHA-256 `ef530efdef046420bbb686ab4e1def794c0491d3d0713a49bc3e10d333dc6981`. Neither record contains document/path/expression/raw-stream content.
 
-The separate sparse 1 GiB design-target probe and native Cocoa quick suite passed; LOWDISK was injected only and never created on the real filesystem. Remote four-lane hosted evidence remains pending separate push authorization. The seven-day dogfood period has not been claimed from synthetic smoke or benchmark activity.
+The separate sparse 1 GiB design-target probe and native Cocoa quick suite passed; LOWDISK was injected only and never created on the real filesystem.
+
+The authoritative A22 hosted matrix is [run 33971790567](https://github.com/PJTraut/tools-uniti/actions/runs/33971790567) on `847d48bd79acd24f9436414fe3abedb5d0ec2212`:
+
+| Job | Runner / Python | Result |
+|---|---|---|
+| [macos-py312](https://github.com/PJTraut/tools-uniti/actions/runs/33971790567/job/101321483579) | `macos-15` / `3.12` | Complete source gate and A22 sustained gate passed |
+| [windows-py312](https://github.com/PJTraut/tools-uniti/actions/runs/33971790567/job/101321483479) | `windows-2025` / `3.12` | Complete source gate and A22 sustained gate passed |
+| [linux-py312](https://github.com/PJTraut/tools-uniti/actions/runs/33971790567/job/101321483572) | `ubuntu-24.04` / `3.12` | Complete source gate and A22 sustained gate passed |
+| [linux-latest](https://github.com/PJTraut/tools-uniti/actions/runs/33971790567/job/101321483617) | `ubuntu-24.04` / latest stable | Complete source gate and A22 sustained gate passed |
+
+Hosted remediation `e6585d1` through `847d48b` corrected test and benchmark portability without changing UNITI application source after `7373df0`: exact-byte newline fixtures, canonical fake-backend roots, and deterministic `full/success` versus `file_synced/reduced_durability` coverage now fail fast locally. No performance, integrity, cleanup, ownership, or responsiveness limit was weakened. Successful jobs uploaded no artifacts. The seven-day dogfood period has not been claimed from synthetic smoke or benchmark activity.
 
 ## Known boundary and next safe action
 
 No known A20, completed A21 workstream, or A21 candidate correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, launcher, native-path, or inherited text-integrity/regex blocker remains in local or hosted evidence. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive.
 
-Continue A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). The next externally mutating action is a separately authorized push of exact candidate `7373df0`, followed by the four hosted A22 lanes on that commit. The remaining local freeze condition is seven distinct active dogfood days on the same behavior candidate; structural source changes restart that clock, while evidence-only documentation does not. Do not tag, release, install, bundle, or package A22. A23 Executable Health & Recovery Alpha remains queued behind A22 and is not implicit A22 scope.
+Continue A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). Task 19 evidence is complete. The sole remaining freeze condition is seven distinct active dogfood days on behavior candidate `7373df0`; structural UNITI source changes restart that clock, while evidence-only documentation does not. Do not infer or backfill dogfood days from synthetic smoke, benchmark, or hosted activity. Do not tag, release, install, bundle, or package A22. A23 Executable Health & Recovery Alpha remains queued behind A22 and is not implicit A22 scope.
