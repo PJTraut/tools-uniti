@@ -112,11 +112,17 @@ def test_deep_check_exercises_complete_core_matrix(tmp_path: Path, monkeypatch):
         "qt-offscreen",
         "cross-platform",
     } <= names
-    assert [
+    failures = [
         result.name
         for result in report.results
         if result.status is CheckStatus.FAIL
-    ] == []
+    ]
+    font_facts = None
+    if {"qt-offscreen", "cross-platform"}.intersection(failures):
+        from uniti.ui.font_policy import resolve_editor_font
+
+        font_facts = resolve_editor_font().as_dict()
+    assert failures == [], {"failures": failures, "font": font_facts}
 
 
 def test_cross_platform_probe_reports_exact_bounded_safe_facts(

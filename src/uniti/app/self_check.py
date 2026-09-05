@@ -548,7 +548,7 @@ class SelfCheckRunner:
     def _deep_save(root: Path) -> tuple[str, Mapping[str, object]]:
         source = root / "save-source.txt"
         output = root / "save-output.txt"
-        source.write_text("alpha\n", encoding="utf-8")
+        source.write_bytes(b"alpha\n")
         with Document.open(source) as document:
             document.insert(document.total_chars(), "beta\n")
             document.export_copy(output, output_format=document.output_format)
@@ -1048,7 +1048,7 @@ class SelfCheckRunner:
 
         app = QApplication.instance() or QApplication(["uniti-self-check"])
         source = root / "qt-view.txt"
-        source.write_text("UNITI\n", encoding="utf-8")
+        source.write_bytes(b"UNITI\n")
         document = Document.open(source)
         view = UNITITextView(EditorState(document))
         try:
