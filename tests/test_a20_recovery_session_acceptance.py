@@ -46,12 +46,15 @@ _A20_TEST_FILES = (
     Path("tests/ui/test_panes.py"),
     Path("tests/ui/test_resource_status.py"),
     Path("tests/test_a21_cross_platform_acceptance.py"),
+    Path("tests/performance/test_faults.py"),
 )
 _FORBIDDEN_CAPACITY_CALLS = {
     "posix_fallocate",
     "fallocate",
+    "ftruncate",
     "reserve_volume",
     "set_disk_capacity",
+    "truncate",
 }
 _FORBIDDEN_CAPACITY_COMMANDS = {"diskutil", "fallocate", "mkfile"}
 

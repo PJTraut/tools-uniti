@@ -7,6 +7,7 @@ import shutil
 import threading
 import time
 from concurrent.futures import CancelledError
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -78,6 +79,45 @@ def corpus_kind_for_sustained_family(family: str) -> CorpusKind:
         return _CORPUS_KINDS[family]
     except KeyError as exc:
         raise ValueError(f"unknown sustained workload family: {family}") from exc
+
+
+def attach_fault_evidence(
+    family: SustainedFamilyResult,
+    results: tuple[object, ...],
+) -> SustainedFamilyResult:
+    """Make the fixed crash suite part of lifecycle integrity evidence."""
+
+    from benchmarks.faults import FAULT_CASE_ORDER, FaultResult
+
+    if family.family != "session_lifecycle":
+        raise ValueError("fault evidence belongs only to session_lifecycle")
+    if (
+        not isinstance(results, tuple)
+        or not all(isinstance(result, FaultResult) for result in results)
+        or tuple(result.case for result in results) != FAULT_CASE_ORDER
+    ):
+        raise ValueError("fault evidence is incomplete or out of order")
+    passed = all(result.passed for result in results)
+    cleanup_ok = all(result.cleanup_ok for result in results)
+    expected_terminations = sum(
+        result.expected_termination for result in results
+    )
+    facts = dict(family.facts)
+    facts.update(
+        {
+            "cleanup_ok": facts.get("cleanup_ok") is True and cleanup_ok,
+            "crash_recovery_verified": passed,
+            "expected_terminations": expected_terminations,
+            "fault_case_count": len(results),
+            "integrity_ok": facts.get("integrity_ok") is True and passed,
+        }
+    )
+    state = family.state if passed and cleanup_ok else ResultState.FAIL
+    failures = tuple(result.case.value for result in results if not result.passed)
+    messages = family.messages
+    if failures:
+        messages += (f"fault verification failed: {','.join(failures)}",)
+    return replace(family, state=state, facts=facts, messages=messages)
 
 
 def create_application_harness(

@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from benchmarks.corpus import CorpusSpec, generate_corpus
+from benchmarks.faults import FaultResult, run_fault_suite
 from benchmarks.host import collect_host_preflight, host_fingerprints_compatible
 from benchmarks.models import ResultState
 from benchmarks.sustained_evaluate import evaluate_sustained_suite
@@ -28,6 +29,7 @@ from benchmarks.sustained_models import (
 )
 from benchmarks.sustained_workloads import (
     SUSTAINED_FAMILY_ORDER,
+    attach_fault_evidence,
     corpus_kind_for_sustained_family,
 )
 from uniti.resources.policy import PerformancePolicy, load_performance_policy
@@ -36,6 +38,7 @@ from uniti.resources.policy import PerformancePolicy, load_performance_policy
 CommandFactory = Callable[
     [str, ExecutionClass, int, Path, Path, Path], Sequence[str]
 ]
+FaultRunner = Callable[..., tuple[FaultResult, ...]]
 
 
 def _execution_class(profile: str) -> ExecutionClass:
@@ -173,6 +176,7 @@ def _run_family(
     fixture_size_bytes: int,
     policy: PerformancePolicy,
     command_factory: CommandFactory,
+    fault_runner: FaultRunner | None,
     child_timeout_seconds: float,
     repository: Path,
 ) -> SustainedFamilyResult:
@@ -241,6 +245,16 @@ def _run_family(
             cycles=cycles,
             message=f"child exited unexpectedly with status {completed.returncode}",
         )
+    if (
+        family == "session_lifecycle"
+        and fault_runner is not None
+        and result.state in {ResultState.PASS, ResultState.WARN}
+    ):
+        fault_results = fault_runner(
+            application_root / "fault-verification",
+            timeout_seconds=policy.sustained.operation_timeout_seconds,
+        )
+        result = attach_fault_evidence(result, fault_results)
     return result
 
 
@@ -291,6 +305,7 @@ def run_sustained_suite(
     host_fingerprint: Mapping[str, object] | None = None,
     fixture_size_bytes: int | None = None,
     command_factory: CommandFactory = _default_command_factory,
+    fault_runner: FaultRunner | None = None,
     child_timeout_seconds: float | None = None,
 ) -> SustainedSuiteResult:
     """Run every selected family in an isolated, sequential owned root."""
@@ -352,6 +367,9 @@ def run_sustained_suite(
             raise ValueError("candidate source commit is incompatible")
 
     repository = Path(__file__).resolve().parents[1]
+    selected_fault_runner = fault_runner
+    if selected_fault_runner is None and command_factory is _default_command_factory:
+        selected_fault_runner = run_fault_suite
     families: list[SustainedFamilyResult] = []
     with tempfile.TemporaryDirectory(prefix="uniti-sustained-", dir=root) as raw_run:
         run_root = Path(raw_run).resolve()
@@ -367,6 +385,7 @@ def run_sustained_suite(
                     fixture_size_bytes=size_bytes,
                     policy=policy,
                     command_factory=command_factory,
+                    fault_runner=selected_fault_runner,
                     child_timeout_seconds=timeout,
                     repository=repository,
                 )
