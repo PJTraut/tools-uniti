@@ -13,41 +13,9 @@ from typing import BinaryIO, Iterator
 def _open_windows_read_shared_delete(path: Path) -> BinaryIO:
     """Open one Windows source without blocking atomic path replacement."""
 
-    import ctypes
-    import msvcrt
-    from ctypes import wintypes
+    from .windows_io import open_shared_delete_descriptor
 
-    create_file = ctypes.WinDLL("kernel32", use_last_error=True).CreateFileW
-    create_file.argtypes = (
-        wintypes.LPCWSTR,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.LPVOID,
-        wintypes.DWORD,
-        wintypes.DWORD,
-        wintypes.HANDLE,
-    )
-    create_file.restype = wintypes.HANDLE
-    handle = create_file(
-        str(path),
-        0x80000000,  # GENERIC_READ
-        0x00000001 | 0x00000002 | 0x00000004,  # SHARE_READ|WRITE|DELETE
-        None,
-        3,  # OPEN_EXISTING
-        0x00000080,  # FILE_ATTRIBUTE_NORMAL
-        None,
-    )
-    invalid_handle = ctypes.c_void_p(-1).value
-    if handle == invalid_handle:
-        raise ctypes.WinError(ctypes.get_last_error())
-    try:
-        descriptor = msvcrt.open_osfhandle(
-            int(handle),
-            os.O_RDONLY | getattr(os, "O_BINARY", 0),
-        )
-    except Exception:
-        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(handle)
-        raise
+    descriptor = open_shared_delete_descriptor(path, mode="read")
     try:
         return os.fdopen(descriptor, "rb", closefd=True)
     except Exception:

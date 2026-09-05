@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import uniti.core.recovery as recovery_module
 from uniti.core.document import Document
 from uniti.core.history import (
     EditHistory,
@@ -23,6 +24,32 @@ from uniti.core.recovery import (
     load_recovery_candidate,
     replay_recovery,
 )
+
+
+def test_windows_recovery_journal_uses_replace_shareable_handle(
+    tmp_path: Path,
+    monkeypatch,
+):
+    path = tmp_path / "replaceable.uniti-recovery"
+    opened: list[Path] = []
+
+    def open_shared_delete(candidate: Path):
+        opened.append(candidate)
+        return candidate.open("w", encoding="utf-8", newline="\n")
+
+    monkeypatch.setattr(recovery_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        recovery_module,
+        "_open_windows_write_shared_delete",
+        open_shared_delete,
+    )
+
+    handle = RecoveryJournal._open_private(path)
+    handle.write("record\n")
+    handle.close()
+
+    assert opened == [path]
+    assert path.read_bytes() == b"record\n"
 
 
 def test_recovery_journal_round_trips_header_edits_and_clean_marker(tmp_path: Path):

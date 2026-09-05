@@ -7,6 +7,7 @@ import hmac
 import json
 import os
 import re
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -34,6 +35,23 @@ MAX_RECOVERY_EVENTS = 1_000_000
 MAX_TRANSACTION_OPERATIONS = 1_000_000
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _EOL_VALUES = frozenset({None, "LF", "CRLF", "CR"})
+
+
+def _open_windows_write_shared_delete(path: Path) -> TextIO:
+    from .windows_io import open_shared_delete_descriptor
+
+    descriptor = open_shared_delete_descriptor(path, mode="truncate-write")
+    try:
+        return os.fdopen(
+            descriptor,
+            "w",
+            encoding="utf-8",
+            newline="\n",
+            closefd=True,
+        )
+    except Exception:
+        os.close(descriptor)
+        raise
 
 
 class RecoveryEventKind(StrEnum):
@@ -590,6 +608,8 @@ class RecoveryJournal:
 
     @staticmethod
     def _open_private(path: Path) -> TextIO:
+        if sys.platform.startswith("win"):
+            return _open_windows_write_shared_delete(path)
         descriptor = os.open(
             path,
             os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
