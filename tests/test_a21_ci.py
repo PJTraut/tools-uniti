@@ -281,6 +281,7 @@ def test_driver_runs_complete_pytest_offscreen(tmp_path: Path):
 
     command, options = runner.calls[0]
     assert command[1:4] == ["-m", "pytest", "-q"]
+    assert "--full-trace" in command
     assert options["env"]["QT_QPA_PLATFORM"] == "offscreen"
     assert options["shell"] is False
 

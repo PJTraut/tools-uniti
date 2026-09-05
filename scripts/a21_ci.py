@@ -442,6 +442,7 @@ class A21CIDriver:
                 "-m",
                 "pytest",
                 "-q",
+                "--full-trace",
                 f"--junitxml={self.results / 'pytest.xml'}",
             ],
             env=environment,
