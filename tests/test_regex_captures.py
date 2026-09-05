@@ -204,7 +204,7 @@ def test_capture_report_bounds_context_preview_count_width_and_payload(
 def test_capture_report_escapes_and_truncates_repeated_previews(tmp_path: Path):
     path = tmp_path / "previews.txt"
     value = "a\n\t\0\x01" + "x" * 95
-    path.write_text(value * 6, encoding="utf-8")
+    path.write_text(value * 6, encoding="utf-8", newline="")
     pattern = r"(?P<item>[\s\S]{100})+"
     with Document.open(path) as document:
         compiled = compile_pattern(pattern)
