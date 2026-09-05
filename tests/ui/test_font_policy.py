@@ -273,7 +273,7 @@ def test_windows_offscreen_registers_bounded_installed_system_font(
         ),
     )
 
-    assert calls == ["C:/Windows/Fonts/consola.ttf"]
+    assert calls == [os.fspath(Path("C:/Windows/Fonts/consola.ttf"))]
     assert resolved.requested_family == "Consolas"
     assert resolved.fixed_pitch is True
     assert resolved.latin_coverage is True
