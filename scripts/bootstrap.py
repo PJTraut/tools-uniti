@@ -12,6 +12,31 @@ _PROBE = (
     "import json,sys;"
     "print(json.dumps({'version':list(sys.version_info[:3]),'executable':sys.executable}))"
 )
+_BATCH_ARGUMENT_COUNT = "UNITI_INTERNAL_BATCH_ARGUMENT_COUNT"
+_BATCH_ARGUMENT_PREFIX = "UNITI_INTERNAL_BATCH_ARGUMENT_"
+_MAX_BATCH_ARGUMENTS = 4096
+
+
+def _consume_batch_arguments(arguments, environ):
+    """Recover arguments captured by uniti.bat without re-parsing them in cmd.exe."""
+    direct = list(arguments)
+    raw_count = environ.pop(_BATCH_ARGUMENT_COUNT, None)
+    if raw_count is None:
+        return direct
+    try:
+        count = int(raw_count, 10)
+    except (TypeError, ValueError):
+        return direct
+    if str(count) != raw_count or not 0 <= count <= _MAX_BATCH_ARGUMENTS:
+        return direct
+
+    recovered = []
+    for index in range(count):
+        encoded = environ.pop(f"{_BATCH_ARGUMENT_PREFIX}{index}", None)
+        if encoded is None or not encoded.startswith("x"):
+            raise ValueError("invalid Windows launcher argument handoff")
+        recovered.append(encoded[1:])
+    return recovered
 
 
 def _candidate_commands(environ, executable, platform_name):
@@ -71,7 +96,10 @@ def _delegate(arguments):
 
 
 def main(arguments=None):
-    args = list(sys.argv[1:] if arguments is None else arguments)
+    args = _consume_batch_arguments(
+        sys.argv[1:] if arguments is None else arguments,
+        os.environ,
+    )
     if sys.version_info[:3] >= (3, 12, 0):
         return _delegate(args)
     candidates = _candidate_commands(os.environ, sys.executable, platform.system().lower())

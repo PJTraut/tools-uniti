@@ -2,6 +2,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from scripts import bootstrap
 
 
@@ -50,3 +52,47 @@ def test_shim_compiles_and_reports_help_under_supported_python():
 
     assert result.returncode == 0
     assert "--local" in result.stdout
+
+
+def test_batch_argument_handoff_preserves_metacharacters_and_trailing_empty():
+    arguments = (
+        "notes one.txt",
+        "Ω",
+        "Привет",
+        "100%",
+        "a&b",
+        "(group)",
+        "-leading",
+        "",
+    )
+    environ = {
+        bootstrap._BATCH_ARGUMENT_COUNT: str(len(arguments)),
+        **{
+            f"{bootstrap._BATCH_ARGUMENT_PREFIX}{index}": f"x{argument}"
+            for index, argument in enumerate(arguments)
+        },
+        "UNRELATED": "retained",
+    }
+
+    assert bootstrap._consume_batch_arguments(["ignored"], environ) == list(arguments)
+    assert environ == {"UNRELATED": "retained"}
+
+
+@pytest.mark.parametrize("count", ["", "-1", "4097", "not-a-number"])
+def test_batch_argument_handoff_rejects_invalid_bounded_counts(count: str):
+    environ = {bootstrap._BATCH_ARGUMENT_COUNT: count}
+
+    assert bootstrap._consume_batch_arguments(["direct"], environ) == ["direct"]
+    assert bootstrap._BATCH_ARGUMENT_COUNT not in environ
+
+
+def test_batch_argument_handoff_rejects_missing_or_unmarked_values():
+    for environ in (
+        {bootstrap._BATCH_ARGUMENT_COUNT: "1"},
+        {
+            bootstrap._BATCH_ARGUMENT_COUNT: "1",
+            f"{bootstrap._BATCH_ARGUMENT_PREFIX}0": "unmarked",
+        },
+    ):
+        with pytest.raises(ValueError, match="invalid Windows launcher argument handoff"):
+            bootstrap._consume_batch_arguments([], environ)
