@@ -8,7 +8,7 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
 - Canonical branch: `main`
-- Remote baseline: `origin/main` at hosted-proven A22 evidence commit `847d48b` (application behavior candidate `7373df0`)
+- Hosted evidence baseline: `847d48b` (application behavior candidate `7373df0`); `origin/main` includes subsequent evidence-only documentation
 - A20 design/plan commits: `c9cd792`, `06dd906`
 - A20 implementation/acceptance sequence: `fabd036` through `f829d01`, followed by the A20 freeze closure
 - A21 Editor Layout and Visibility design/plan commits: `9477197`, `61c1f19`
