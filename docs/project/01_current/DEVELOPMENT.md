@@ -1,7 +1,7 @@
 # UNITI Current Development Workflow
 
 Date: 2026-09-05
-Version: `v0.001a20` / `0.1a20`
+Version: `v0.001a21` / `0.1a21`
 
 ## Requirements and policy
 
@@ -155,7 +155,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
   tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-The current local gate reports 1,161 passed and six host-inapplicable skips, plus a passing 20-check deep self-check and combined offscreen smoke. The A20 freeze gate adds `recovery-session` to deep self-check and a thirteenth quick/routine `session_restore` scenario while retaining the a17 byte-integrity, a18 large-file, and a19 regex-intelligence gates. A20 freeze runs are evidence in the current status/handover but were not selected as committed JSON baselines; the existing a18/a19 baselines remain inherited evidence. Before remote integration, confirm the working tree is clean and ensure any separately authorized push is normal and fast-forward safe.
+The current local A21 candidate gate reports 1,232 passed and six exact policy-allowed macOS skips, plus a passing 21-check deep self-check, offscreen/native combined smoke, and all thirteen unchanged quick performance scenarios. The A20 `session_restore` scenario and all a17 byte-integrity, a18 large-file, and a19 regex-intelligence gates remain inherited. No new performance baseline was selected. Before authoritative hosted verification, confirm the working tree is clean and ensure any separately authorized push is normal and fast-forward safe.
 
 ## Editor layout and display change discipline
 
@@ -221,6 +221,6 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a20` is implemented without a new tag; `v0.001a21` is active, with Editor Layout and Visibility implemented and Cross-Platform implementation resuming at Task 4.
+Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a20` is implemented without a new tag; `v0.001a21` is the locally verified candidate and remains active pending same-commit hosted evidence and freeze.
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.

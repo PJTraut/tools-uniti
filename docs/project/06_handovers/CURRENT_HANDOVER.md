@@ -13,14 +13,16 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - A20 implementation/acceptance sequence: `fabd036` through `f829d01`, followed by the A20 freeze closure
 - A21 Editor Layout and Visibility design/plan commits: `9477197`, `61c1f19`
 - A21 Editor Layout and Visibility implementation sequence: `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`
+- A21 Cross-Platform design/plan commit: `a3a4d81`
+- A21 Cross-Platform local candidate sequence: `09ad62b`, `56b344f`, `fffe2ac`, then `f78c936` through `03b7545`
 - Latest implemented milestone: `v0.001a20` — Recovery & Session Alpha
-- Latest implemented workstream: A21 Editor Layout and Visibility; the parent A21 milestone remains active
+- Latest local candidate: `v0.001a21` — Cross-Platform Alpha; hosted evidence pending
 - Active milestone: `v0.001a21` — Cross-Platform Alpha
-- Current display/package metadata: `v0.001a20` / `0.1a20`
+- Current display/package metadata: `v0.001a21` / `0.1a21`
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16 through a20 tags: none
 
-A20 and the A21 Editor Layout and Visibility workstream are implemented and verified on local `main`. `origin/main` is intentionally unchanged until a separate push is authorized; no new tag has been created.
+A20, the A21 Editor Layout and Visibility workstream, and the A21 Cross-Platform source candidate are implemented and verified on local `main`. `origin/main` is intentionally unchanged until a separate push is authorized. The hosted lanes have not run on this candidate, and no new tag has been created.
 
 ## Canonical records
 
@@ -93,22 +95,47 @@ dcf04c6 feat: visualize whitespace safely
 fcfd5ea fix: report current persistence schemas
 ```
 
+## A21 Cross-Platform candidate
+
+Shared code now classifies only macOS, Windows, and Linux; selects absolute native application roots; normalizes native identity without hard-coded shared drive/separator rules; and routes durable settings/setup/Save/session/recovery publication through explicit `full`, `file_synced`, or `unsafe` results. Unsafe publication preserves prior complete state. Session discovery scans at most 200 complete generations and repairs a missing/stale pointer only after usable restoration under one-writer authority.
+
+The POSIX and Windows launchers have real native-shell argument/working-directory/exit tests. Qt resolves native standard shortcuts plus bounded portable overrides and selects one concrete fixed-pitch font with Latin/Cyrillic coverage. Deep self-check, export-safe diagnostics, and smoke publish bounded facts rather than roots or document/IPC/session/recovery content; smoke proves Unicode/spaced paths, one primary with a forwarding contender, restored service/session/history state, and explicit Quit.
+
+`scripts/a21_ci.py` validates only the ownership-marked runtime, produces complete JUnit, enforces the exact per-family skip policy, runs compile/self-check/offscreen/native smoke, and sanitizes a fixed parsed artifact set within 2 MiB per-file and 8 MiB aggregate input budgets. `.github/workflows/a21-cross-platform.yml` pins read-only action revisions and four fail-closed macOS/Windows/Linux lanes. This workflow definition is committed locally; no hosted result is claimed.
+
+Implementation commits:
+
+```text
+09ad62b feat: define cross-platform path policy
+56b344f refactor: share native path identity
+fffe2ac feat: report filesystem durability levels
+f78c936 feat: preserve state across durability downgrades
+f029ebb feat: repair sessions from complete generations
+a27ddba test: prove portable source launchers
+bc8cf91 feat: resolve native shortcut policy
+1b73b04 feat: validate the editor fixed font
+f3fc381 test: add cross-platform runtime evidence
+e1a51bf test: enforce exact platform evidence
+03b7545 ci: add a21 cross-platform gate
+```
+
 ## Fresh evidence
 
 ```text
-Editor Layout and Visibility focused app/UI/core slice: 390 passed in 23.18s
-full pytest: 1161 passed, 6 skipped in 47.13s
-git diff --check: pass
-deep self-check: pass, 20 checks including recovery-session
-offscreen combined smoke: pass with pane/F/R docking and display-setting facts
+focused A21 cross-platform slice: 165 passed, 6 skipped in 10.17s
+full pytest: 1232 passed, 6 skipped in 51.82s
+compileall and git diff --check: pass
+deep self-check: pass, 21/21 checks including cross-platform
+offscreen/native combined smoke: pass with full durability, font, shortcut, instance, service/session/history, and explicit-Quit facts; native qt_platform=cocoa
+quick performance: pass, 13/13 unchanged scenarios; no new baseline selected
 ```
 
-The six skips are two Windows native-path cases, three Windows `cmd.exe` launcher cases, and one unavailable xattr capability case on this macOS/Python host.
+The six skips exactly match the macOS policy: one Windows native-path test, three Windows `cmd.exe` tests, one Windows PowerShell test, and one filesystem-backed local-endpoint test. Optional xattr availability is a capability result rather than a skip.
 
-`session_restore` passed all worker-thread, responsiveness, cancellation, cleanup, and RSS gates. Its offscreen/native open-to-usable medians were 6.703/6.709 ms and retained RSS growth was 12.844/13.469 MiB. No A20 JSON baseline was selected; the a18/a19 committed baselines remain inherited evidence. No real LOWDISK state was created.
+The local quick run recorded representative medians of 12.501 ms open-to-usable, 469.549 ms sparse navigation completion, 42.553 ms capture report, 46.430 ms Save completion, and 35.809/47.743 ms session open/completion with 17.562 MiB retained RSS. The a18/a19 committed baselines remain inherited evidence; no A21 baseline was selected and no real LOWDISK state was created.
 
 ## Known boundary and next safe action
 
-No known A20 or completed A21 workstream correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, or inherited text-integrity/regex blocker remains. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive.
+No known A20, completed A21 workstream, or local A21 candidate correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, or inherited text-integrity/regex blocker remains. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive. Authoritative hosted evidence is still pending.
 
-Continue with Task 4 of the active [A21 Cross-Platform implementation plan](../02_plans/v0.001a21-cross-platform-implementation.md) on local `main`, preserving all A17-A20 and completed A21 workstream acceptance/performance gates. Verify platform-specific behavior before changing canonical architecture. Do not tag or push until separately authorized.
+Continue with Task 13 of the active [A21 Cross-Platform implementation plan](../02_plans/v0.001a21-cross-platform-implementation.md): only after explicit authorization, push the exact clean candidate commit and obtain all four hosted job URLs. Remediate any platform defect in shared code test-first and rerun every lane on one commit. Do not tag, release, or freeze A21 before that evidence succeeds.

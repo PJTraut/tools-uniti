@@ -1,13 +1,13 @@
 # UNITI Current Scope
 
 Date: 2026-09-05
-Version: `v0.001a20` / `0.1a20`
+Version: `v0.001a21` / `0.1a21`
 
 ## Product boundary
 
 UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
 
-The a20 Recovery & Session Alpha is implemented and verified. UNITI combines the inherited text-integrity, bounded large-file, and regex-intelligence rules with one process-lifetime service, bounded session/history persistence, semantic crash recovery, and multi-window shared-document continuity. The a21 Editor Layout and Visibility workstream is also implemented; a21 Cross-Platform Alpha remains the active milestone.
+The a20 Recovery & Session Alpha and the a21 Editor Layout and Visibility workstream are implemented and verified. The a21 Cross-Platform Alpha source candidate is also implemented and locally verified across shared/injected platform seams and native macOS; its milestone remains active until the same commit passes the four hosted macOS/Windows/Linux lanes.
 
 ## Included lifecycle capabilities
 
@@ -19,10 +19,12 @@ The a20 Recovery & Session Alpha is implemented and verified. UNITI combines the
 - ordered BOOT→READY startup coordination with per-phase atomic state and bounded JSONL logs;
 - schema-1 setup and schema-3 settings persistence, legacy settings migration, malformed-file preservation, and future-schema refusal;
 - platform application paths, runtime/filesystem/resource/Qt capability reporting, narrow stale cleanup, durable generation sessions, and recovery journals;
+- explicit macOS/Windows/Linux classification, absolute native application roots, case-correct path identity, and capability-driven `full` / `file_synced` / `unsafe` publication without direct-overwrite fallback;
 - one user-scoped service/instance lease with bounded local activation/file forwarding, zero-window lifetime, and explicit service-wide Quit;
 - startup recovery discovery and active-first lazy restoration of admitted windows, panes, views, saved histories, and the global Find/Replace state;
+- bounded complete-generation scan and post-restore pointer repair when the current session pointer is missing or stale;
 - completed startup/setup diagnostics passed into the UI without re-probing; and
-- root macOS and Windows launchers that enter the same bootstrap/application path.
+- POSIX and Windows launchers that preserve Unicode/spaced/metacharacter arguments through real native shells; bounded export-safe self-check/diagnostics/smoke facts; and a pinned read-only four-lane CI definition with exact skip verification and sanitized failure-only artifacts.
 
 ## Included editor capabilities
 
@@ -101,7 +103,7 @@ The a20 Recovery & Session Alpha is implemented and verified. UNITI combines the
 
 ## Approved future scope
 
-`v0.001a21` is active and `v0.001a22`–`v0.001a23` remain queued. Unimplemented portions of those milestones are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a21` is an active locally verified candidate pending authoritative hosted evidence and freeze. `v0.001a22`–`v0.001a23` remain queued; their unimplemented portions are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 

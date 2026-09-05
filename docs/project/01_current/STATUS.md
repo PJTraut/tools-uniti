@@ -10,14 +10,25 @@ Date: 2026-09-05
 | Remote baseline | `origin/main` at `84407e3` |
 | Verified A20 implementation sequence | `fabd036` through `f829d01`, preceded by design/plan commits `c9cd792` and `06dd906`, followed by the A20 freeze closure |
 | Verified A21 Editor Layout and Visibility sequence | `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`; preceded by design/plan commits `9477197` and `61c1f19` |
+| Local A21 Cross-Platform candidate sequence | `09ad62b`, `56b344f`, `fffe2ac`, then `f78c936` through `03b7545`; preceded by plan commit `a3a4d81` |
 | Latest implemented milestone | `v0.001a20` — Recovery & Session Alpha |
-| Latest implemented workstream | A21 Editor Layout and Visibility; A21 remains active |
+| Latest local candidate | `v0.001a21` — Cross-Platform Alpha; hosted evidence pending |
 | Active product milestone | `v0.001a21` — Cross-Platform Alpha |
-| Display/package metadata | `v0.001a20` / `0.1a20` |
+| Display/package metadata | `v0.001a21` / `0.1a21` |
 | Latest immutable release tag | `v0.001a15` at `10f419e` |
 | Queued milestones | `v0.001a22` through `v0.001a23` |
 
-The A20 implementation/freeze and completed A21 workstream are local. `origin/main` remains unchanged until a separate push is authorized; no new tag was created.
+The A20 implementation/freeze, completed A21 workstream, and A21 cross-platform candidate are local. `origin/main` remains unchanged until a separate push is authorized; the four hosted lanes have not run on this candidate and no new tag was created.
+
+## Locally implemented A21 Cross-Platform behavior
+
+- one Qt-free policy classifies only macOS, Windows, and Linux, selects absolute native application roots, and keeps existing-file/native lexical identity consistent without hard-coded shared-code drive or separator assumptions;
+- one durability adapter reports `full`, `file_synced`, or `unsafe`; settings, setup, Save, sessions, recovery, compaction, and pointer repair preserve the last complete state instead of direct-overwrite fallback;
+- session discovery validates at most 200 complete generations and repairs a missing/stale pointer only after a usable scanned generation restores under one-writer authority;
+- real POSIX `sh`, Windows `cmd.exe`, and PowerShell launcher contracts cover Unicode, spaces, metacharacters, working directory, interpreter discovery, and exit propagation;
+- native Qt standard shortcuts, portable bounded overrides, and one concrete fixed-pitch Latin/Cyrillic editor font are resolved only after `QApplication`;
+- deep self-check, diagnostics export, and combined smoke expose bounded categorized/capability facts without raw roots, document/IPC content, or session/recovery paths; smoke includes a Unicode/spaced source and real local-instance forwarding; and
+- a standard-library owned-runtime CI driver enforces exact per-family skip sets, 2 MiB per-file/8 MiB aggregate sanitizer budgets, seven-day metadata, and a fixed parsed artifact allowlist. The pinned read-only workflow defines four fail-closed lanes and failure-only uploads, but hosted results remain pending.
 
 ## Implemented A21 Editor Layout and Visibility behavior
 
@@ -58,24 +69,28 @@ Aggregate pruning removes oldest closed-document history first, then inactive-op
 
 ## Current verification
 
-Fresh verification on the implementation/freeze tree reported:
+Fresh local verification on the A21 candidate tree reported:
 
 ```text
-Editor Layout and Visibility focused app/UI/core slice: 390 passed in 23.18s
-full pytest: 1161 passed, 6 skipped in 47.13s
-git diff --check: pass
-deep self-check: pass, 20 checks including recovery-session
-offscreen combined smoke: pass; pane/F/R docking, display settings, service lifetime, restart, and history restore exercised
+focused A21 cross-platform slice: 165 passed, 6 skipped in 10.17s
+full pytest: 1232 passed, 6 skipped in 51.82s
+compileall and git diff --check: pass
+deep self-check: pass, 21/21 checks including cross-platform
+offscreen combined smoke: pass; full durability, font, shortcuts, instance forwarding, service/session/history, and explicit Quit facts
+native Cocoa combined smoke: pass with the same invariants and qt_platform=cocoa
+quick performance: pass, 13/13 unchanged scenarios; no new baseline selected
 ```
 
-The six skips are two Windows native-path cases, three Windows `cmd.exe` launcher cases, and one unavailable xattr capability case on this macOS/Python host. The acceptance suite retains its AST guard against real low-disk creation and adds reversible view docking, one-panel placement continuity, display-only byte integrity, exact terminator classification, theme contrast, and marker-budget coverage.
+The six skips exactly match `ci/a21-skip-policy.json`: one Windows native-path test, three Windows `cmd.exe` launcher tests, one Windows PowerShell launcher test, and one filesystem-backed local-endpoint test. Optional xattr availability is now a capability fact rather than a skip. The acceptance suite retains its AST guard against real low-disk creation and all reversible docking, one-panel placement, display-only byte integrity, terminator, contrast, and marker-budget coverage.
+
+The local quick run recorded representative medians of 12.501 ms open-to-usable, 469.549 ms sparse navigation completion, 42.553 ms capture report, 46.430 ms Save completion, and 35.809/47.743 ms session open/completion with 17.562 MiB retained RSS. These are evidence only; thresholds and committed baselines were unchanged, and no real LOWDISK state was created.
 
 The new offscreen `session_restore` scenario measured median 6.703 ms open-to-usable, 3.353 ms GUI heartbeat p95, 1.640 ms cancellation, 22.578 MiB peak RSS growth, and 12.844 MiB retained growth. Native Cocoa measured 6.709 ms open-to-usable, 1.767 ms heartbeat p95, 5.974 ms maximum heartbeat, 1.468 ms cancellation, 23.219 MiB peak growth, and 13.469 MiB retained growth. Both runs proved storage/load callbacks ran on worker threads and all thirteen scenarios passed. These A20 runs were not selected as committed JSON baselines; the recorded [a19 routine](../../../benchmarks/baselines/v0.001a19-mac15-8-routine.json), [a19 native quick](../../../benchmarks/baselines/v0.001a19-mac15-8-native-quick.json), and [a18 sparse 1 GiB target](../../../benchmarks/baselines/v0.001a18-mac15-8-design-target.json) remain inherited evidence.
 
 ## Known boundary
 
-No known session-writer race, silent admitted-history loss, external-file overwrite, recovery-evidence loss, unsafe instance takeover, cursor-navigation dependency on Find All, GUI freeze, unbounded allocation, or inherited text-integrity/regex blocker remains.
+No known shared-code session-writer race, silent admitted-history loss, external-file overwrite, recovery-evidence loss, unsafe instance takeover, cursor-navigation dependency on Find All, GUI freeze, unbounded allocation, or inherited text-integrity/regex blocker remains in local evidence. Authoritative Windows/Linux/macOS hosted results are still required before A21 closure.
 
 A20 does not install a permanent OS daemon: the zero-window service exists only while the launched desktop process remains alive and exits on explicit Quit, logout, shutdown, or process termination. Project/workspace semantics, cloud sync, collaboration, plugins, LSP, syntax highlighting, permanent background services, polished installers, user-authored themes, and expanded keyboard-driven Unicode inspection remain outside the implemented boundary.
 
-The A20 milestone and the completed A21 Editor Layout and Visibility records are retained in [Implemented](../03_implemented/README.md). See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
+The A20 milestone and completed A21 Editor Layout and Visibility records are retained in [Implemented](../03_implemented/README.md). The A21 Cross-Platform milestone/design/plan remain active pending same-commit hosted evidence. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
