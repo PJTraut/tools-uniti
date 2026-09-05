@@ -6,13 +6,25 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
+from uniti.core.recovery import RECOVERY_FORMAT_VERSION
+
 from .atomic_json import atomic_write_json, preserve_invalid
+from .session import SESSION_SCHEMA
+from .settings import SETTINGS_SCHEMA
 
 SETUP_STATE_SCHEMA = 1
 
 
 class UnsupportedSetupSchema(ValueError):
     """Raised when state belongs to a newer UNITI schema."""
+
+
+def _supported_schemas() -> dict[str, int]:
+    return {
+        "settings": SETTINGS_SCHEMA,
+        "recovery": RECOVERY_FORMAT_VERSION,
+        "session": SESSION_SCHEMA,
+    }
 
 
 def empty_setup_state() -> dict[str, object]:
@@ -24,7 +36,7 @@ def empty_setup_state() -> dict[str, object]:
         "python": {},
         "platform": {},
         "dependencies": {},
-        "schemas": {"settings": 1, "recovery": 2, "session": 1},
+        "schemas": _supported_schemas(),
         "resources": {},
         "capabilities": {},
         "session_id": None,
@@ -65,6 +77,7 @@ class SetupStateStore:
             return defaults
         merged = empty_setup_state()
         merged.update(payload)
+        merged["schemas"] = _supported_schemas()
         return merged
 
     def save(self, payload: Mapping[str, object]) -> None:

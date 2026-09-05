@@ -16,8 +16,20 @@ def test_setup_state_round_trips_and_fills_schema_sections(tmp_path: Path):
 
     loaded = store.prepare()
     assert loaded["startup"] == {"ok": True, "stage": "READY"}
-    assert loaded["schemas"] == {"settings": 1, "recovery": 2, "session": 1}
+    assert loaded["schemas"] == {"settings": 3, "recovery": 3, "session": 2}
     assert loaded["last_bootstrap"] is None
+
+
+def test_setup_state_refreshes_supported_schema_versions(tmp_path: Path):
+    path = tmp_path / "setup-state.json"
+    path.write_text(
+        '{"schema":1,"schemas":{"settings":1,"recovery":2,"session":1}}',
+        encoding="utf-8",
+    )
+
+    loaded = SetupStateStore(path).prepare()
+
+    assert loaded["schemas"] == {"settings": 3, "recovery": 3, "session": 2}
 
 
 def test_setup_state_preserves_malformed_before_using_defaults(tmp_path: Path):

@@ -52,7 +52,7 @@ from uniti.resources import (
 from .capabilities import CapabilityStatus, probe_filesystem, probe_runtime
 from .paths import AppPaths
 from .recovery_manager import RecoveryManager
-from .settings import SettingsStore
+from .settings import SETTINGS_SCHEMA, SettingsStore
 from .setup_state import SetupStateStore
 from .sparse import deallocate_file_range
 from .startup import ExitCode
@@ -263,7 +263,7 @@ class SelfCheckRunner:
         settings = SettingsStore(self.paths.settings_file).prepare()
         return "setup and settings schemas are readable", {
             "setup": setup["schema"],
-            "settings": 1,
+            "settings": SETTINGS_SCHEMA,
             "settings_migrated": settings.migrated,
         }
 
