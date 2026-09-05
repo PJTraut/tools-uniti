@@ -63,7 +63,7 @@ def test_query_python_uses_subprocess_json_identity():
     result = query_python(("candidate",), runner=runner)
 
     assert result.version == (3, 13, 2)
-    assert result.executable == Path("/real/python")
+    assert result.executable == Path("/real/python").resolve()
     assert observed["command"][0] == "candidate"
     assert observed["kwargs"]["shell"] is False
 
