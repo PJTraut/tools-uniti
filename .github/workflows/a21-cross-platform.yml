@@ -57,11 +57,15 @@ jobs:
 
       - name: Bootstrap owned runtime (POSIX)
         if: runner.os != 'Windows'
+        env:
+          UNITI_PYTHON: '${{ env.pythonLocation }}/bin/python'
         run: ./uniti.command --dev --no-launch
 
       - name: Bootstrap owned runtime (Windows)
         if: runner.os == 'Windows'
         shell: cmd
+        env:
+          UNITI_PYTHON: '${{ env.pythonLocation }}\python.exe'
         run: uniti.bat --dev --no-launch
 
       - name: Validate owned runtime

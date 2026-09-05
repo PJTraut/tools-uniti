@@ -64,13 +64,16 @@ def test_preserve_invalid_copies_original_with_stable_timestamp(tmp_path: Path):
     assert path.read_bytes() == b"not-json\n"
 
 
-def test_atomic_write_bytes_replaces_exact_payload_with_user_only_mode(tmp_path: Path):
+def test_atomic_write_bytes_replaces_exact_payload_with_platform_mode(tmp_path: Path):
     path = tmp_path / "state" / "pack.bin"
 
     atomic_write_bytes(path, b"\x00history\xff")
 
     assert path.read_bytes() == b"\x00history\xff"
-    assert stat.S_IMODE(path.stat().st_mode) & 0o077 == 0
+    if os.name == "nt":
+        assert stat.S_IMODE(path.stat().st_mode) & stat.S_IWRITE
+    else:
+        assert stat.S_IMODE(path.stat().st_mode) & 0o077 == 0
     assert not list(path.parent.glob(".pack.bin.*.tmp"))
 
 

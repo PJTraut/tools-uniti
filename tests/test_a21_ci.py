@@ -285,6 +285,21 @@ def test_driver_runs_complete_pytest_offscreen(tmp_path: Path):
     assert options["shell"] is False
 
 
+def test_driver_runs_windows_pytest_with_native_font_access(tmp_path: Path):
+    runner = RecordingRunner()
+    driver = _driver(
+        tmp_path,
+        family="windows",
+        platform_name="win32",
+        runner=runner,
+    )
+
+    driver.run_pytest()
+
+    _command, options = runner.calls[0]
+    assert options["env"]["QT_QPA_PLATFORM"] == "windows"
+
+
 def test_linux_native_smoke_requires_xvfb_and_xcb(tmp_path: Path):
     payload = {
         "ok": True,

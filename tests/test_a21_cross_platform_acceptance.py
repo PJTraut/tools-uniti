@@ -90,6 +90,9 @@ def test_a21_workflow_is_pinned_read_only_and_runs_every_required_lane():
 
     assert "./uniti.command --dev --no-launch" in source
     assert "uniti.bat --dev --no-launch" in source
+    assert source.count("UNITI_PYTHON:") == 2
+    assert "${{ env.pythonLocation }}/bin/python" in source
+    assert "${{ env.pythonLocation }}\\python.exe" in source
     assert "if: runner.os != 'Windows'" in source
     assert "if: runner.os == 'Windows'" in source
     assert "shell: cmd" in source

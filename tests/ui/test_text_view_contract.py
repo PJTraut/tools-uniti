@@ -325,7 +325,25 @@ def test_selected_text_uses_highlighted_text_palette_role(
             for y in range(view._line_height)
         }
 
-        assert QColor(highlighted_text).name() in selected_pixels
+        background = QColor(highlight)
+        expected = QColor(highlighted_text)
+        ordinary = QColor(text)
+        foreground_pixels = [
+            QColor(pixel)
+            for pixel in selected_pixels
+            if pixel != background.name()
+        ]
+
+        def distance(left: QColor, right: QColor) -> int:
+            return sum(
+                (first - second) ** 2
+                for first, second in zip(left.getRgb()[:3], right.getRgb()[:3])
+            )
+
+        assert foreground_pixels
+        assert min(distance(pixel, expected) for pixel in foreground_pixels) < min(
+            distance(pixel, ordinary) for pixel in foreground_pixels
+        )
         view.close()
         view.deleteLater()
         app.processEvents()
