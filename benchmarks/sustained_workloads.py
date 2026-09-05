@@ -17,7 +17,8 @@ from benchmarks.corpus import (
 )
 from benchmarks.models import ResultState
 from benchmarks.sustained_models import ResourceCheckpoint, SustainedFamilyResult
-from uniti.app.session import HistoryPack
+from uniti.app.service import QuitChoice
+from uniti.app.session import HistoryPack, SessionLoadSource
 from uniti.app.session_runtime import restore_document_pack
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import (
@@ -1158,6 +1159,467 @@ def _run_regex_replacement(
     )
 
 
+def _service_views(service) -> dict[str, object]:
+    return {
+        view_id: view
+        for _window_id, window in service.windows.items
+        for view_id in window.view_ids
+        for view in (window.view_for_id(view_id),)
+        if view is not None
+    }
+
+
+def _one_authority_per_path(service) -> bool:
+    paths = tuple(entry.canonical_path for entry in service.documents.entries)
+    return len(paths) == len(set(paths))
+
+
+def _stage_recovery_candidate(
+    harness: "ApplicationWorkloadHarness",
+    path: Path,
+    suffix: str,
+) -> str:
+    path.write_text("recovery base", encoding="utf-8")
+    document = Document.open(
+        path,
+        profile=encoding_profile("utf-8"),
+        resource_manager=harness.resources,
+    )
+    try:
+        harness.recovery_manager.attach(document)
+        document.insert(document.total_chars(), suffix)
+        harness.recovery_manager.flush(document)
+        harness.recovery_manager.detach(document, clean=False)
+    finally:
+        document.close()
+    return "recovery base" + suffix
+
+
+def _run_session_lifecycle(
+    *,
+    cycles: int,
+    manifest: CorpusManifest,
+    application_root: Path,
+) -> SustainedFamilyResult:
+    if manifest.spec.kind is not CorpusKind.ORDINARY_LINES:
+        raise ValueError("session lifecycle requires an ordinary-lines corpus")
+    source = manifest.path.resolve(strict=True)
+    if source.stat().st_size != manifest.spec.size_bytes:
+        raise ValueError("lifecycle corpus size does not match its manifest")
+    source_digest = _file_digest(source)
+    if manifest.digest != source_digest:
+        raise ValueError("lifecycle corpus digest does not match its manifest")
+
+    from PySide6.QtCore import Qt
+    from uniti.ui.recovery_center import RecoveryAction, RecoveryDecision
+
+    fixture_root = application_root / "lifecycle-work"
+    fixture_root.mkdir()
+    primary_path = fixture_root / "primary.txt"
+    secondary_path = fixture_root / "secondary.txt"
+    shutil.copyfile(source, primary_path)
+    secondary_path.write_bytes(b"secondary lifecycle document\n")
+    secondary_digest = _file_digest(secondary_path)
+
+    harness = create_application_harness(application_root)
+    service_identity = harness.service_identity
+    panel = harness.service.find_replace
+    gui_thread = threading.get_ident()
+    publication_threads: list[int] = []
+    load_threads: list[int] = []
+    publish = harness.session_store.publish
+
+    def observed_publish(snapshot):
+        publication_threads.append(threading.get_ident())
+        return publish(snapshot)
+
+    harness.session_store.publish = observed_publish
+    checks = {
+        "activation_created_window": True,
+        "active_first_restored": True,
+        "find_replace_history_restored": True,
+        "history_undo_redo_exact": True,
+        "independent_view_state": True,
+        "lazy_documents_restored": True,
+        "one_authority_per_path": True,
+        "one_global_panel": True,
+        "panel_attach_detach": True,
+        "recovery_cleanup": True,
+        "recovery_undo_redo_exact": True,
+        "service_identity_reused": True,
+        "service_survived_last_window": True,
+        "session_generation_current": True,
+    }
+    checkpoints: list[ResourceCheckpoint] = []
+    explicit_quit = False
+    try:
+        total_cycles = harness.policy.sustained.warmup_cycles + cycles
+        for sequence in range(total_cycles):
+            measured_cycle = sequence - harness.policy.sustained.warmup_cycles + 1
+            started = time.perf_counter()
+            first = harness.service.most_recent_window
+            if first is None:
+                first = harness.service.new_window()
+            view_a = harness.open_owned_fixture(primary_path)
+            shared_a = first.split_current(Qt.Orientation.Horizontal)
+            if shared_a is None:
+                raise RuntimeError("lifecycle split view was not created")
+            view_b = first.open_path(secondary_path)
+            if view_b is None:
+                raise RuntimeError("secondary lifecycle document did not open")
+            second = harness.service.new_window()
+            shared_b = second.open_existing_document(view_b.document)
+
+            view_a.state.move_to(2)
+            shared_a.state.move_to(17)
+            view_b.state.move_to(5)
+            shared_b.state.move_to(11)
+            view_a.set_zoom_percent(110)
+            shared_a.set_zoom_percent(120)
+            view_b.set_zoom_percent(130)
+            shared_b.set_zoom_percent(140)
+            expected_view_state = {
+                view_a.view_id: (2, 110),
+                shared_a.view_id: (17, 120),
+                view_b.view_id: (5, 130),
+                shared_b.view_id: (11, 140),
+            }
+
+            suffix_a = f" primary-{sequence}"
+            suffix_b = f" secondary-{sequence}"
+            view_a.document.insert(view_a.document.total_chars(), suffix_a)
+            view_a.document.undo()
+            view_b.document.insert(view_b.document.total_chars(), suffix_b)
+            view_b.document.undo()
+
+            find_text = f"lifecycle-find-{sequence}"
+            replace_text = f"lifecycle-replace-{sequence}"
+            panel.find_input.setPlainText(find_text)
+            panel.find_input.setPlainText(find_text + "-next")
+            panel.find_input.undo_input()
+            panel.replace_input.setPlainText(replace_text)
+            panel.replace_input.setPlainText(replace_text + "-next")
+            panel.replace_input.undo_input()
+            panel.regex_checkbox.setChecked(True)
+            panel.show()
+
+            first.panes.activate_view(shared_a.view_id)
+            harness.service.set_active_view(first.window_id, shared_a.view_id)
+            harness.service.attach_find_replace()
+            harness.application.processEvents()
+            attached = panel.placement == "attached" and panel.parentWidget() is first
+            second.panes.activate_view(shared_b.view_id)
+            harness.service.set_active_view(second.window_id, shared_b.view_id)
+            harness.application.processEvents()
+            followed = panel.parentWidget() is second
+            harness.service.detach_find_replace()
+            harness.application.processEvents()
+            detached = panel.placement == "detached" and panel.isFloating()
+            checks["panel_attach_detach"] &= attached and followed and detached
+            checks["one_global_panel"] &= (
+                panel is harness.service.find_replace
+                and first.find_replace is panel
+                and second.find_replace is panel
+            )
+
+            first.panes.activate_view(shared_a.view_id)
+            harness.service.set_active_view(first.window_id, shared_a.view_id)
+            harness.pump_until(
+                lambda: all(
+                    entry.saved_stamp is not None
+                    for entry in harness.service.documents.entries
+                )
+                and _tasks_idle(harness)
+            )
+            checks["one_authority_per_path"] &= (
+                _one_authority_per_path(harness.service)
+                and harness.service.documents.count == 2
+                and view_a.document is shared_a.document
+                and view_b.document is shared_b.document
+            )
+
+            harness.service.schedule_publication(clean_shutdown=False)
+            harness.pump_until(
+                lambda: harness.session_store.current_path.exists()
+                and _tasks_idle(harness)
+            )
+            published = harness.session_store.load_manifest()
+            if published.manifest is None:
+                raise RuntimeError("lifecycle session publication was unavailable")
+            published_manifest = published.manifest
+            active_document_id = next(
+                record.document_id
+                for record in published_manifest.views
+                if record.view_id == published_manifest.active_view_id
+            )
+
+            find_handle = harness.resources.tasks.submit(
+                TaskSpec.create(TaskKind.SESSION, foreground=True),
+                lambda _context: (
+                    load_threads.append(threading.get_ident()),
+                    harness.session_store.load_find_replace_pack(published_manifest),
+                )[1],
+            )
+            find_pack = harness.await_operation(find_handle)
+
+            for _window_id, window in tuple(harness.service.windows.items):
+                window.close()
+            harness.pump_until(
+                lambda: harness.service.window_count == 0 and _tasks_idle(harness)
+            )
+            checks["service_survived_last_window"] &= harness.service.is_running
+            activation = harness.service.new_window()
+            checks["activation_created_window"] &= (
+                harness.service.window_count == 1 and harness.service.is_running
+            )
+            activation.close()
+            harness.pump_until(
+                lambda: harness.service.window_count == 0 and _tasks_idle(harness)
+            )
+            harness.service.documents.close_all()
+
+            loaded_ids: list[str] = []
+
+            def load_pack(document_id: str):
+                loaded_ids.append(document_id)
+                load_threads.append(threading.get_ident())
+                return harness.session_store.load_document_pack(
+                    published_manifest,
+                    document_id,
+                )
+
+            harness.service.restore_shell(
+                published_manifest,
+                find_replace_pack=find_pack,
+                pack_loader=load_pack,
+            )
+            restored_active = harness.service.restore_active()
+            checks["active_first_restored"] &= (
+                restored_active is not None
+                and loaded_ids == [active_document_id]
+                and harness.service.documents.count == 1
+                and harness.service.active_view is not None
+                and harness.service.active_view.view_id
+                == published_manifest.active_view_id
+            )
+            harness.service.schedule_lazy_restore()
+            harness.pump_until(
+                lambda: harness.service.documents.count == 2
+                and _tasks_idle(harness)
+            )
+            checks["lazy_documents_restored"] &= (
+                len(loaded_ids) == 2
+                and set(loaded_ids)
+                == {record.document_id for record in published_manifest.documents}
+            )
+
+            restored_views = _service_views(harness.service)
+            checks["independent_view_state"] &= (
+                set(restored_views) == set(expected_view_state)
+                and all(
+                    (
+                        restored_views[view_id].state.cursor,
+                        restored_views[view_id].zoom_percent,
+                    )
+                    == expected
+                    for view_id, expected in expected_view_state.items()
+                )
+            )
+            primary_entry = harness.service.documents.find_path(primary_path)
+            secondary_entry = harness.service.documents.find_path(secondary_path)
+            if primary_entry is None or secondary_entry is None:
+                raise RuntimeError("restored lifecycle authority was unavailable")
+            primary_entry.document.redo()
+            primary_redo = primary_entry.document.read(
+                primary_entry.document.total_chars() - len(suffix_a),
+                primary_entry.document.total_chars(),
+            ) == suffix_a
+            primary_entry.document.undo()
+            secondary_entry.document.redo()
+            secondary_redo = secondary_entry.document.read(
+                secondary_entry.document.total_chars() - len(suffix_b),
+                secondary_entry.document.total_chars(),
+            ) == suffix_b
+            secondary_entry.document.undo()
+            checks["history_undo_redo_exact"] &= (
+                primary_redo
+                and secondary_redo
+                and _document_utf8_digest(primary_entry.document) == source_digest
+                and _document_utf8_digest(secondary_entry.document)
+                == secondary_digest
+            )
+            checks["find_replace_history_restored"] &= (
+                harness.service.find_replace is panel
+                and panel.find_input.text() == find_text
+                and panel.find_input.can_undo_input
+                and panel.find_input.can_redo_input
+                and panel.replace_input.text() == replace_text
+                and panel.replace_input.can_undo_input
+                and panel.replace_input.can_redo_input
+                and panel.regex_checkbox.isChecked()
+                and panel.placement == "detached"
+            )
+            checks["one_authority_per_path"] &= _one_authority_per_path(
+                harness.service
+            )
+
+            harness.service.schedule_publication(clean_shutdown=False)
+            harness.pump_until(lambda: _tasks_idle(harness))
+            current = harness.session_store.load_manifest()
+            checks["session_generation_current"] &= (
+                current.manifest is not None
+                and current.source is SessionLoadSource.POINTER
+                and current.manifest.generation != published_manifest.generation
+                and len(current.manifest.documents) == 2
+            )
+
+            recover_path = fixture_root / f"recover-{sequence}.txt"
+            discard_path = fixture_root / f"discard-{sequence}.txt"
+            recovered_text = _stage_recovery_candidate(
+                harness,
+                recover_path,
+                f" recovered-{sequence}",
+            )
+            _stage_recovery_candidate(
+                harness,
+                discard_path,
+                f" discarded-{sequence}",
+            )
+            candidates = harness.recovery_manager.discover()
+            by_path = {
+                candidate.session.source_path.resolve(): candidate
+                for candidate in candidates
+                if candidate.session is not None
+            }
+            selected_paths = (recover_path.resolve(), discard_path.resolve())
+            if any(path not in by_path for path in selected_paths):
+                raise RuntimeError("lifecycle recovery candidates were not exact")
+            selected_candidates = tuple(by_path[path] for path in selected_paths)
+            entries = harness.service.recovery_entries(selected_candidates, ())
+            entry_by_path = {entry.path.resolve(): entry for entry in entries}
+            recovered_count = harness.service.apply_recovery_decisions(
+                (
+                    RecoveryDecision(
+                        entry_by_path[recover_path.resolve()].entry_id,
+                        RecoveryAction.RECOVER,
+                    ),
+                    RecoveryDecision(
+                        entry_by_path[discard_path.resolve()].entry_id,
+                        RecoveryAction.DISCARD,
+                    ),
+                ),
+                recovery_candidates=selected_candidates,
+                target=harness.service.most_recent_window,
+            )
+            recovered_entry = harness.service.documents.find_path(recover_path)
+            if recovered_entry is None:
+                raise RuntimeError("recovered lifecycle document was not opened")
+            recovered_document = recovered_entry.document
+            recovered_document.undo()
+            recovered_undo = (
+                recovered_document.read(0, recovered_document.total_chars())
+                == "recovery base"
+            )
+            recovered_document.redo()
+            recovered_redo = (
+                recovered_document.read(0, recovered_document.total_chars())
+                == recovered_text
+            )
+            checks["recovery_undo_redo_exact"] &= (
+                recovered_count == 1 and recovered_undo and recovered_redo
+            )
+            checks["one_authority_per_path"] &= _one_authority_per_path(
+                harness.service
+            )
+
+            for _window_id, window in tuple(harness.service.windows.items):
+                if not window.close_all_documents(force=True):
+                    raise RuntimeError("lifecycle views did not close")
+                window.close()
+            harness.pump_until(
+                lambda: harness.service.window_count == 0 and _tasks_idle(harness)
+            )
+            harness.service.documents.close_all()
+            checks["recovery_cleanup"] &= (
+                harness.recovery_manager.diagnostics() == ()
+                and not tuple(harness.paths.recovery_dir.glob("*.uniti-recovery"))
+            )
+            checks["service_identity_reused"] &= (
+                harness.service_identity == service_identity
+            )
+
+            if sequence >= harness.policy.sustained.warmup_cycles:
+                checkpoint = harness.capture_checkpoint(measured_cycle)
+                if any(
+                    checkpoint.owned_counts[name] != 0
+                    for name in (
+                        "documents",
+                        "views",
+                        "active_tasks",
+                        "queued_tasks",
+                        "result_stores",
+                        "replacement_plans",
+                        "snapshots",
+                    )
+                ):
+                    raise RuntimeError("lifecycle cycle left owned resources")
+                checkpoints.append(
+                    _checkpoint_with_timing(
+                        checkpoint,
+                        "lifecycle_cycle_ms",
+                        (time.perf_counter() - started) * 1000.0,
+                    )
+                )
+
+        explicit_quit = harness.service.request_quit(
+            lambda _entry: QuitChoice.DISCARD
+        )
+        harness.application.processEvents()
+    finally:
+        harness.shutdown()
+
+    background_storage = (
+        bool(publication_threads)
+        and bool(load_threads)
+        and all(thread_id != gui_thread for thread_id in publication_threads)
+        and all(thread_id != gui_thread for thread_id in load_threads)
+    )
+    cleanup_ok = (
+        explicit_quit
+        and not harness.service.is_running
+        and harness.service.documents.count == 0
+        and harness.service.windows.count == 0
+        and _tasks_idle(harness)
+        and harness.recovery_manager.diagnostics() == ()
+        and not tuple(harness.paths.recovery_dir.glob("*.uniti-recovery"))
+    )
+    integrity_ok = all(checks.values()) and background_storage
+    facts = {
+        **checks,
+        "background_storage": background_storage,
+        "cleanup_ok": cleanup_ok,
+        "cycles_completed": total_cycles,
+        "explicit_quit": explicit_quit,
+        "integrity_ok": integrity_ok,
+        "recovery_choices": ("recover", "discard"),
+    }
+    return SustainedFamilyResult(
+        schema=2,
+        family="session_lifecycle",
+        profile="a22-v1",
+        state=(
+            ResultState.PASS
+            if integrity_ok and cleanup_ok
+            else ResultState.FAIL
+        ),
+        warmup_cycles=harness.policy.sustained.warmup_cycles,
+        measured_cycles=cycles,
+        checkpoints=tuple(checkpoints),
+        facts=facts,
+        messages=() if integrity_ok and cleanup_ok else ("lifecycle workflow failed",),
+    )
+
+
 def run_sustained_workload(
     family: str,
     *,
@@ -1191,6 +1653,12 @@ def run_sustained_workload(
         )
     if family == "regex_replacement":
         return _run_regex_replacement(
+            cycles=cycles,
+            manifest=manifest,
+            application_root=application_root,
+        )
+    if family == "session_lifecycle":
+        return _run_session_lifecycle(
             cycles=cycles,
             manifest=manifest,
             application_root=application_root,
