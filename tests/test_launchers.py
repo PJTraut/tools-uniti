@@ -56,7 +56,7 @@ def _launcher_checkout(tmp_path: Path, launcher: Path) -> tuple[Path, Path]:
     shutil.copy2(launcher, copied)
     copied.chmod(0o755)
     bootstrap = scripts / "bootstrap.py"
-    bootstrap.write_text("# launcher target\n", encoding="utf-8")
+    bootstrap.write_text("# launcher target\n", encoding="utf-8", newline="")
     return copied, bootstrap
 
 
@@ -88,7 +88,7 @@ def test_posix_launcher_preserves_working_directory_and_arguments(tmp_path: Path
     path_dir = tmp_path / "ignored PATH candidate"
     path_dir.mkdir()
     ignored = path_dir / "python3"
-    ignored.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    ignored.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8", newline="")
     ignored.chmod(0o755)
     arguments = (
         "notes one.txt",
@@ -151,7 +151,11 @@ def test_posix_launcher_discovers_python_from_path(tmp_path: Path):
     discovered_python = tmp_path / "python3"
     discovered_python.symlink_to(python_stub)
     later_candidate = tmp_path / "python3.15"
-    later_candidate.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+    later_candidate.write_text(
+        "#!/bin/sh\nexit 99\n",
+        encoding="utf-8",
+        newline="",
+    )
     later_candidate.chmod(0o755)
     env = {
         **os.environ,

@@ -8,7 +8,7 @@ from uniti.core.document import Document
 def test_editor_state_open_edit_save_forms_ui_engine_contract(tmp_path: Path):
     source = tmp_path / "alpha.txt"
     target = tmp_path / "alpha-saved.txt"
-    source.write_text("one\r\ntwo\r\n", encoding="utf-8")
+    source.write_text("one\r\ntwo\r\n", encoding="utf-8", newline="")
     with Document.open(source, encoding="utf-8") as document:
         state = EditorState(document)
         state.move_to(3)

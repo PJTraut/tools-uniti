@@ -8,7 +8,7 @@ from uniti.regex.search import SearchOptions
 
 def test_collect_replacements_uses_engine_expand_for_named_groups(tmp_path: Path):
     path = tmp_path / "replace.txt"
-    path.write_text("Smith, Pieter\nJones, Sam", encoding="utf-8")
+    path.write_text("Smith, Pieter\nJones, Sam", encoding="utf-8", newline="")
     pattern = compile_pattern(r"(?P<last>\w+),\s+(?P<first>\w+)")
     with Document.open(path) as doc:
         replacements = collect_replacements(
@@ -70,7 +70,7 @@ def test_stream_replace_to_file_handles_many_matches_without_mutating_document(t
 
     path = tmp_path / "stream-source.txt"
     target = tmp_path / "stream-target.txt"
-    path.write_text(("x1\n" * 20_000) + "end", encoding="utf-8")
+    path.write_text(("x1\n" * 20_000) + "end", encoding="utf-8", newline="")
     with Document.open(path) as doc:
         result = stream_replace_to_file(
             doc,
@@ -96,7 +96,7 @@ def test_stream_replace_to_file_applies_output_encoding_and_eol(tmp_path: Path):
 
     path = tmp_path / "stream-encoding.txt"
     target = tmp_path / "stream-encoding-target.txt"
-    path.write_text("café\nfoo\n", encoding="utf-8")
+    path.write_text("café\nfoo\n", encoding="utf-8", newline="")
     with Document.open(path) as doc:
         stream_replace_to_file(
             doc,

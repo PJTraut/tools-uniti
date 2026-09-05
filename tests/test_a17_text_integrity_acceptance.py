@@ -263,8 +263,8 @@ def test_a17_save_as_replaces_clean_open_target_without_duplicate_tab(
 
     source_path = tmp_path / "source.txt"
     target_path = tmp_path / "target.txt"
-    source_path.write_text("replacement\n", encoding="utf-8")
-    target_path.write_text("old\n", encoding="utf-8")
+    source_path.write_text("replacement\n", encoding="utf-8", newline="")
+    target_path.write_text("old\n", encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow()
     source = window.open_path(source_path)
@@ -309,8 +309,8 @@ def test_a17_dirty_open_target_blocks_replacement_before_write(
 
     source_path = tmp_path / "source.txt"
     target_path = tmp_path / "target.txt"
-    source_path.write_text("replacement\n", encoding="utf-8")
-    target_path.write_text("old\n", encoding="utf-8")
+    source_path.write_text("replacement\n", encoding="utf-8", newline="")
+    target_path.write_text("old\n", encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow()
     source = window.open_path(source_path)

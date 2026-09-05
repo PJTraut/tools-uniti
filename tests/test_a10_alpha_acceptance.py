@@ -44,7 +44,7 @@ def test_a11_offscreen_open_find_edit_save_when_pyside6_available(tmp_path: Path
 
     source = tmp_path / "ui-source.txt"
     target = tmp_path / "ui-target.txt"
-    source.write_text("abc 123\nabc 456\n", encoding="utf-8")
+    source.write_text("abc 123\nabc 456\n", encoding="utf-8", newline="")
     paths = AppPaths.for_platform("linux", home=tmp_path / "home", environ={})
     paths.ensure()
 

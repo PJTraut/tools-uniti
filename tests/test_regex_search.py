@@ -122,7 +122,11 @@ def test_search_timeout_is_wrapped(tmp_path: Path):
 
 def test_first_result_can_arrive_without_indexing_entire_document(tmp_path: Path):
     path = tmp_path / "progressive.txt"
-    path.write_text("hit\n" + ("miss\n" * 100_000), encoding="utf-8")
+    path.write_text(
+        "hit\n" + ("miss\n" * 100_000),
+        encoding="utf-8",
+        newline="",
+    )
     with Document.open(path) as doc:
         results = list(
             search_document(
@@ -175,7 +179,7 @@ def test_partial_pattern_cannot_grow_search_buffer_without_bound(tmp_path: Path)
 
 def test_search_reports_bounded_character_progress(tmp_path: Path):
     path = tmp_path / "progress.txt"
-    path.write_text("line\n" * 100, encoding="utf-8")
+    path.write_text("line\n" * 100, encoding="utf-8", newline="")
     updates: list[tuple[int, int | None]] = []
 
     with Document.open(path) as doc:
