@@ -107,9 +107,11 @@ def test_hotkeys_display_uses_native_notation_but_registry_stays_portable():
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow()
     popup = window.show_hotkeys()
-    popup.select_category(CommandCategory.NAVIGATION)
-    definition = popup.registry.definition("navigation.go_to_line")
-    assert definition.default_shortcut == "Ctrl+L"
+    popup.select_category(CommandCategory.FILE)
+    definition = popup.registry.definition("file.open")
+    assert definition.default_shortcut == QKeySequence(
+        QKeySequence.StandardKey.Open
+    ).toString(QKeySequence.SequenceFormat.PortableText)
     expected = QKeySequence(definition.default_shortcut).toString(
         QKeySequence.SequenceFormat.NativeText
     )
@@ -122,6 +124,44 @@ def test_hotkeys_display_uses_native_notation_but_registry_stays_portable():
     assert popup.table.item(row, 1).text() == expected
     assert popup.table.item(row, 2).text() == expected
     popup.reject()
+    window.close()
+
+
+def test_invalid_persisted_shortcuts_are_reported_and_cleaned_once(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import Settings, SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(
+        Settings(
+            shortcut_overrides={
+                "editor.zoom_in": " ctrl + k ",
+                "editor.zoom_out": "Ctrl+K",
+                "file.save": "not a shortcut",
+                "unknown.command": "Ctrl+U",
+                "find.zoom_out": "",
+            }
+        )
+    )
+
+    window = UNITIMainWindow(settings_store=store)
+
+    assert {(item.command_id, item.reason) for item in window.shortcut_notices} == {
+        ("editor.zoom_out", "conflict"),
+        ("file.save", "invalid"),
+        ("unknown.command", "unknown"),
+    }
+    assert store.load().shortcut_overrides == {
+        "editor.zoom_in": "Ctrl+K",
+        "find.zoom_out": "",
+    }
+    assert window.shortcut_warning_count == 1
     window.close()
 
 

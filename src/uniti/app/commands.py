@@ -31,54 +31,6 @@ class CommandDefinition:
     default_shortcut: str
 
 
-PANE_COMMAND_DEFINITIONS = (
-    CommandDefinition(
-        "window.new",
-        "New Window",
-        CommandCategory.FILE,
-        CommandScope.WINDOW,
-        "Ctrl+Shift+N",
-    ),
-    CommandDefinition(
-        "view.split_right",
-        "Split Right",
-        CommandCategory.EDITOR_VIEW,
-        CommandScope.EDITOR,
-        "",
-    ),
-    CommandDefinition(
-        "view.split_down",
-        "Split Down",
-        CommandCategory.EDITOR_VIEW,
-        CommandScope.EDITOR,
-        "",
-    ),
-    CommandDefinition(
-        "view.close_split",
-        "Close Split",
-        CommandCategory.EDITOR_VIEW,
-        CommandScope.EDITOR,
-        "",
-    ),
-    CommandDefinition(
-        "view.move_new_window",
-        "Move Tab to New Window",
-        CommandCategory.EDITOR_VIEW,
-        CommandScope.EDITOR,
-        "",
-    ),
-)
-
-
-FIND_REPLACE_DOCK_COMMAND_DEFINITION = CommandDefinition(
-    "find.toggle_attachment",
-    "Attach/Detach Find & Replace",
-    CommandCategory.FIND_REPLACE_VIEW,
-    CommandScope.FIND_REPLACE,
-    "",
-)
-
-
 class ShortcutCollision(ValueError):
     def __init__(
         self,

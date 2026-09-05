@@ -5,8 +5,6 @@ from uniti.app.commands import (
     CommandDefinition,
     CommandRegistry,
     CommandScope,
-    FIND_REPLACE_DOCK_COMMAND_DEFINITION,
-    PANE_COMMAND_DEFINITIONS,
     ShortcutCollision,
 )
 
@@ -90,34 +88,10 @@ def test_unknown_command_and_empty_definition_set_are_rejected():
         _registry().assign("missing", "Ctrl+M")
 
 
-def test_pane_and_multi_window_commands_have_stable_ids_and_scopes():
-    assert tuple(item.command_id for item in PANE_COMMAND_DEFINITIONS) == (
-        "window.new",
-        "view.split_right",
-        "view.split_down",
-        "view.close_split",
-        "view.move_new_window",
-    )
-    assert PANE_COMMAND_DEFINITIONS[0] == CommandDefinition(
-        "window.new",
-        "New Window",
-        CommandCategory.FILE,
-        CommandScope.WINDOW,
-        "Ctrl+Shift+N",
-    )
-    assert all(
-        item.category == CommandCategory.EDITOR_VIEW
-        and item.scope == CommandScope.EDITOR
-        and item.default_shortcut == ""
-        for item in PANE_COMMAND_DEFINITIONS[1:]
-    )
+def test_registry_keeps_portable_override_strings_without_qt_presentation():
+    registry = _registry()
 
+    registry.assign("editor.zoom_in", "Meta+K")
 
-def test_find_replace_attachment_command_has_one_stable_definition():
-    assert FIND_REPLACE_DOCK_COMMAND_DEFINITION == CommandDefinition(
-        "find.toggle_attachment",
-        "Attach/Detach Find & Replace",
-        CommandCategory.FIND_REPLACE_VIEW,
-        CommandScope.FIND_REPLACE,
-        "",
-    )
+    assert registry.current("editor.zoom_in") == "Meta+K"
+    assert registry.overrides == {"editor.zoom_in": "Meta+K"}

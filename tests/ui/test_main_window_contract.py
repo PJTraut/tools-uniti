@@ -7,14 +7,17 @@ import pytest
 
 
 MAIN = Path("src/uniti/ui/main_window.py")
+SHORTCUT_POLICY = Path("src/uniti/ui/shortcut_policy.py")
 APPLICATION = Path("src/uniti/app/application.py")
 
 
 def test_main_window_declares_tabs_file_edit_actions_and_status():
     assert MAIN.exists()
     source = MAIN.read_text()
+    shortcut_source = SHORTCUT_POLICY.read_text()
     for required in ("QTabWidget", "Open", "Save", "Save As", "Undo", "Redo", "UNITIStatusBar"):
-        assert required in source
+        assert required in source + shortcut_source
+    assert "build_shortcut_policy" in source
     assert "QPlainTextEdit" not in source
 
 
@@ -122,9 +125,9 @@ def test_main_window_periodically_observes_resource_memory_pressure():
 
 
 def test_pause_background_command_stays_in_existing_editor_view_category():
-    source = MAIN.read_text()
+    source = SHORTCUT_POLICY.read_text()
     assert '"view.pause_background"' in source
-    assert "CommandCategory.EDITOR_VIEW" in source
+    assert "category.EDITOR_VIEW" in source
 
 
 def test_main_window_accepts_completed_startup_snapshot_for_diagnostics():

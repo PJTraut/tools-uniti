@@ -29,11 +29,8 @@ from PySide6.QtWidgets import (
 from uniti.app.diagnostics import diagnostics_snapshot
 from uniti.app.commands import (
     CommandCategory,
-    CommandDefinition,
     CommandRegistry,
     CommandScope,
-    FIND_REPLACE_DOCK_COMMAND_DEFINITION,
-    PANE_COMMAND_DEFINITIONS,
 )
 from uniti.app.editor_state import EditorState
 from uniti.app.platform_policy import native_paths_equal, normalize_native_path
@@ -86,6 +83,7 @@ from uniti.ui.file_operations import FileOperationController, FileOperationHandl
 from uniti.ui.find_replace import FindReplaceWindow
 from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.panes import EditorPaneTree
+from uniti.ui.shortcut_policy import build_shortcut_policy
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
 from uniti.ui.theme import (
@@ -99,51 +97,6 @@ from uniti.ui.whitespace import WhitespaceMode, parse_whitespace_mode
 
 if TYPE_CHECKING:
     from uniti.app.service import UNITIService
-
-
-def _standard_shortcut(key: QKeySequence.StandardKey, fallback: str = "") -> str:
-    shortcut = QKeySequence(key).toString(QKeySequence.SequenceFormat.PortableText)
-    return shortcut or fallback
-
-
-def _command_definitions() -> tuple[CommandDefinition, ...]:
-    # Qt's portable "Ctrl" token maps to the native primary modifier on each
-    # platform (Command on macOS, Control on Windows/Linux).
-    primary = "Ctrl"
-    return (
-        CommandDefinition("file.open", "Open…", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Open)),
-        CommandDefinition("file.save", "Save", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Save)),
-        CommandDefinition("file.save_as", "Save As…", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.SaveAs)),
-        CommandDefinition("file.reload", "Reload/Revert from Disk", CommandCategory.FILE, CommandScope.WINDOW, f"{primary}+Shift+R"),
-        CommandDefinition("file.close", "Close", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Close)),
-        CommandDefinition("file.quit", "Quit", CommandCategory.FILE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Quit, f"{primary}+Q")),
-        CommandDefinition("editing.undo", "Undo", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Undo)),
-        CommandDefinition("editing.redo", "Redo", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Redo)),
-        CommandDefinition("editing.cut", "Cut", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Cut)),
-        CommandDefinition("editing.copy", "Copy", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Copy)),
-        CommandDefinition("editing.paste", "Paste", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Paste)),
-        CommandDefinition("editing.select_all", "Select All", CommandCategory.EDITING, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.SelectAll)),
-        CommandDefinition("navigation.go_to_line", "Go to Line…", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+L"),
-        CommandDefinition("navigation.page_up", "Page Up", CommandCategory.NAVIGATION, CommandScope.EDITOR, "PageUp"),
-        CommandDefinition("navigation.page_down", "Page Down", CommandCategory.NAVIGATION, CommandScope.EDITOR, "PageDown"),
-        CommandDefinition("navigation.document_start", "Document Start", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+Home"),
-        CommandDefinition("navigation.document_end", "Document End", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+End"),
-        CommandDefinition("navigation.word_left", "Word Left", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+Left"),
-        CommandDefinition("navigation.word_right", "Word Right", CommandCategory.NAVIGATION, CommandScope.EDITOR, f"{primary}+Right"),
-        CommandDefinition("find.open", "Find", CommandCategory.FIND_REPLACE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Find)),
-        CommandDefinition("find.replace", "Replace", CommandCategory.FIND_REPLACE, CommandScope.WINDOW, _standard_shortcut(QKeySequence.StandardKey.Replace)),
-        CommandDefinition("find.next", "Find Next", CommandCategory.FIND_REPLACE, CommandScope.WINDOW, "F3"),
-        CommandDefinition("find.previous", "Find Previous", CommandCategory.FIND_REPLACE, CommandScope.WINDOW, "Shift+F3"),
-        CommandDefinition("editor.zoom_in", "Zoom In", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, _standard_shortcut(QKeySequence.StandardKey.ZoomIn)),
-        CommandDefinition("editor.zoom_out", "Zoom Out", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
-        CommandDefinition("editor.zoom_reset", "Reset Zoom", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, f"{primary}+0"),
-        CommandDefinition("editor.wrap", "Soft Line Wrap", CommandCategory.EDITOR_VIEW, CommandScope.EDITOR, f"{primary}+Alt+W"),
-        CommandDefinition("view.pause_background", "Pause Background Work", CommandCategory.EDITOR_VIEW, CommandScope.WINDOW, ""),
-        CommandDefinition("find.zoom_in", "Zoom In", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomIn)),
-        CommandDefinition("find.zoom_out", "Zoom Out", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, _standard_shortcut(QKeySequence.StandardKey.ZoomOut)),
-        CommandDefinition("find.zoom_reset", "Reset Zoom", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+0"),
-        CommandDefinition("find.report_cycle", "Toggle Match Report", CommandCategory.FIND_REPLACE_VIEW, CommandScope.FIND_REPLACE, f"{primary}+Alt+R"),
-    ) + PANE_COMMAND_DEFINITIONS + (FIND_REPLACE_DOCK_COMMAND_DEFINITION,)
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,9 +175,21 @@ class UNITIMainWindow(QMainWindow):
                 self._settings.theme_mode,
                 self._settings.theme_contrast,
             )
+        shortcut_policy = build_shortcut_policy(
+            self._settings.shortcut_overrides
+        )
+        self.shortcut_notices = shortcut_policy.notices
+        self.shortcut_warning_count = 0
+        cleaned_overrides = dict(shortcut_policy.overrides)
+        if cleaned_overrides != self._settings.shortcut_overrides:
+            self._settings = dataclass_replace(
+                self._settings,
+                shortcut_overrides=cleaned_overrides,
+            )
+            self._save_settings()
         self._command_registry = CommandRegistry(
-            _command_definitions(),
-            overrides=self._settings.shortcut_overrides,
+            shortcut_policy.definitions,
+            overrides=shortcut_policy.overrides,
         )
         self._command_actions: dict[str, QAction] = {}
         self._find_replace_shortcuts: dict[str, QShortcut] = {}
@@ -319,8 +284,30 @@ class UNITIMainWindow(QMainWindow):
         self._resource_probe_future: Future[ResourceSnapshot] | None = None
         self._resource_timer.start()
         self._build_menus()
+        if self.shortcut_notices:
+            self._show_shortcut_settings_warning()
         if service is not None:
             service.register_window(self.window_id, self)
+
+    def _show_shortcut_settings_warning(self) -> None:
+        self.shortcut_warning_count += 1
+        count = len(self.shortcut_notices)
+        message = (
+            f"{count} saved shortcut setting"
+            f"{' was' if count == 1 else 's were'} ignored because "
+            f"the saved {'value was' if count == 1 else 'values were'} unknown, "
+            "invalid, or conflicted with another command."
+        )
+        dialog = QMessageBox(
+            QMessageBox.Icon.Warning,
+            "Shortcut Settings Adjusted",
+            message,
+            QMessageBox.StandardButton.Ok,
+            self,
+        )
+        dialog.setModal(False)
+        dialog.open()
+        self._shortcut_warning_dialog = dialog
 
     def _observe_resource_pressure(self) -> None:
         self._apply_recovery_status()
@@ -506,12 +493,16 @@ class UNITIMainWindow(QMainWindow):
         self._save_settings()
 
     def _on_command_binding_changed(self, command_id: str, shortcut: str) -> None:
+        sequence = QKeySequence.fromString(
+            shortcut,
+            QKeySequence.SequenceFormat.PortableText,
+        )
         action = self._command_actions.get(command_id)
         if action is not None:
-            action.setShortcut(QKeySequence(shortcut))
+            action.setShortcut(sequence)
         find_shortcut = self._find_replace_shortcuts.get(command_id)
         if find_shortcut is not None:
-            find_shortcut.setKey(QKeySequence(shortcut))
+            find_shortcut.setKey(sequence)
         self._settings = dataclass_replace(
             self._settings,
             shortcut_overrides=self._command_registry.overrides,
@@ -532,7 +523,11 @@ class UNITIMainWindow(QMainWindow):
                 category=CommandCategory.EDITING
             ):
                 shortcut = self._command_registry.current(definition.command_id)
-                if shortcut and pressed.matches(QKeySequence(shortcut)) == (
+                expected = QKeySequence.fromString(
+                    shortcut,
+                    QKeySequence.SequenceFormat.PortableText,
+                )
+                if shortcut and pressed.matches(expected) == (
                     QKeySequence.SequenceMatch.ExactMatch
                 ):
                     self._command_actions[definition.command_id].trigger()
@@ -627,7 +622,12 @@ class UNITIMainWindow(QMainWindow):
         definition = self._command_registry.definition(command_id)
         action = QAction(definition.label, self)
         action.setCheckable(checkable)
-        action.setShortcut(QKeySequence(self._command_registry.current(command_id)))
+        action.setShortcut(
+            QKeySequence.fromString(
+                self._command_registry.current(command_id),
+                QKeySequence.SequenceFormat.PortableText,
+            )
+        )
         if definition.scope == CommandScope.WINDOW:
             action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         else:

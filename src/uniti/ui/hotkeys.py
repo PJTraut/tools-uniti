@@ -21,7 +21,10 @@ from uniti.app.commands import CommandCategory, CommandRegistry, ShortcutCollisi
 
 
 def _native_shortcut(shortcut: str) -> str:
-    return QKeySequence(shortcut).toString(
+    return QKeySequence.fromString(
+        shortcut,
+        QKeySequence.SequenceFormat.PortableText,
+    ).toString(
         QKeySequence.SequenceFormat.NativeText
     )
 
@@ -139,7 +142,12 @@ class HotkeysPopup(QDialog):
         if command_id is None:
             self.sequence_edit.clear()
             return
-        self.sequence_edit.setKeySequence(QKeySequence(self.registry.current(command_id)))
+        self.sequence_edit.setKeySequence(
+            QKeySequence.fromString(
+                self.registry.current(command_id),
+                QKeySequence.SequenceFormat.PortableText,
+            )
+        )
 
     def select_category(self, category: CommandCategory) -> None:
         self._category = category
@@ -150,7 +158,10 @@ class HotkeysPopup(QDialog):
         self._populate_table()
 
     def assign_sequence(self, command_id: str, shortcut: str) -> bool:
-        portable = QKeySequence(shortcut).toString(
+        portable = QKeySequence.fromString(
+            shortcut,
+            QKeySequence.SequenceFormat.PortableText,
+        ).toString(
             QKeySequence.SequenceFormat.PortableText
         )
         if shortcut and not portable:

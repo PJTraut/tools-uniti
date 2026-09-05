@@ -11,6 +11,7 @@ REGEX_INPUT = Path("src/uniti/ui/regex_input.py")
 PANEL = Path("src/uniti/ui/find_replace.py")
 VIEW = Path("src/uniti/ui/text_view.py")
 MAIN = Path("src/uniti/ui/main_window.py")
+SHORTCUT_POLICY = Path("src/uniti/ui/shortcut_policy.py")
 
 
 def _wait_until(app, predicate, timeout: float = 5.0):
@@ -261,8 +262,10 @@ def test_text_view_paints_compact_match_index_intersections_only():
 
 def test_main_window_integrates_bottom_find_replace_panel_and_shortcuts():
     source = MAIN.read_text()
+    shortcut_source = SHORTCUT_POLICY.read_text()
     assert "FindReplaceWindow" in source
-    assert "QKeySequence.StandardKey.Find" in source
+    assert "build_shortcut_policy" in source
+    assert "standard.Find" in shortcut_source
     assert "show_find" in source
     assert "show_replace" in source
 
