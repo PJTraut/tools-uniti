@@ -24,7 +24,7 @@ def _wait_until(app, predicate, timeout: float = 5.0):
     raise AssertionError("condition did not become true before timeout")
 
 
-def _make_panel(tmp_path: Path, text: str):
+def _make_panel(tmp_path: Path, text: str, *, dogfood_observer=None):
     from PySide6.QtWidgets import QApplication
 
     from uniti.app.editor_state import EditorState
@@ -37,7 +37,10 @@ def _make_panel(tmp_path: Path, text: str):
     app = QApplication.instance() or QApplication([])
     document = Document.open(path, encoding="utf-8")
     view = UNITITextView(EditorState(document))
-    panel = FindReplacePanel(lambda: view)
+    panel = FindReplacePanel(
+        lambda: view,
+        dogfood_observer=dogfood_observer,
+    )
     return app, document, view, panel
 
 
@@ -62,6 +65,78 @@ def _run_regex_search(app, panel, pattern: str, *, expected: int):
     _wait_until(app, lambda: panel.compile_current() is not None)
     panel.find_all()
     _wait_until(app, lambda: panel.result_count == expected and not panel.busy)
+
+
+def test_find_replace_reports_fixed_operations_without_content(tmp_path: Path):
+    from uniti.app.dogfood import Durability, Operation, Outcome
+
+    calls = []
+
+    def observe(operation, outcome, **facts):
+        calls.append((operation, outcome, facts))
+
+    app, document, view, panel = _make_panel(
+        tmp_path,
+        "alpha beta alpha",
+        dogfood_observer=observe,
+    )
+    try:
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+
+        panel.next_match()
+        _wait_until(app, lambda: not panel.busy and panel._current_index is not None)
+        panel.previous_match()
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 2)
+        panel.replace_current()
+        _wait_until(app, lambda: not panel.busy and "replaced" in panel.status_label.text())
+
+        panel.find_input.set_text("alpha")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.replace_all()
+        _wait_until(app, lambda: not panel.busy and "replaced" in panel.status_label.text())
+
+        operations = [call[0] for call in calls]
+        assert Operation.FIND_NEXT in operations
+        assert Operation.FIND_PREVIOUS in operations
+        assert Operation.FIND_ALL in operations
+        assert Operation.REPLACE in operations
+        assert Operation.REPLACE_ALL in operations
+        for operation, outcome, facts in calls:
+            assert isinstance(operation, Operation)
+            assert isinstance(outcome, Outcome)
+            assert set(facts) == {"elapsed_ms", "durability"}
+            assert isinstance(facts["elapsed_ms"], (int, float, type(None)))
+            assert facts["durability"] is Durability.NOT_APPLICABLE
+            assert "alpha" not in repr((operation, outcome, facts))
+            assert "omega" not in repr((operation, outcome, facts))
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_find_replace_recording_failure_does_not_change_search(tmp_path: Path):
+    def fail_observation(*_args, **_kwargs):
+        raise RuntimeError("private observation failure")
+
+    app, document, view, panel = _make_panel(
+        tmp_path,
+        "one two one",
+        dogfood_observer=fail_observation,
+    )
+    try:
+        panel.find_input.set_text("one")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy)
+        assert panel.result_count == 2
+    finally:
+        _close_panel(app, document, view, panel)
 
 
 class _ObservedSnapshot:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
+import time
 import weakref
 
 from PySide6.QtCore import QEvent, QTimer, Qt, Signal
@@ -30,6 +31,7 @@ from uniti.app.session import (
     FindReplaceRecord,
     bound_find_replace_histories,
 )
+from uniti.app.dogfood import Durability, Operation, Outcome
 from uniti.regex.analysis import (
     AnalysisState,
     ExpressionRole,
@@ -131,7 +133,10 @@ class FindReplaceWindow(QDockWidget):
         parent=None,
         *,
         resource_manager: ResourceManager | None = None,
+        dogfood_observer: Callable[..., None] | None = None,
     ) -> None:
+        if dogfood_observer is not None and not callable(dogfood_observer):
+            raise TypeError("dogfood observer must be callable or None")
         super().__init__("Find / Replace", parent)
         self.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
         self.setFeatures(
@@ -149,6 +154,7 @@ class FindReplaceWindow(QDockWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
         self.resize(720, 320)
         self._view_provider = view_provider
+        self._dogfood_observer = dogfood_observer
         self._shutdown = False
         self._owns_resources = resource_manager is None
         self._resource_manager = resource_manager or ResourceManager(max_workers=1)
@@ -156,6 +162,8 @@ class FindReplaceWindow(QDockWidget):
         self._task_handle: TaskHandle | None = None
         self._job_kind: str | None = None
         self._job_context: object | None = None
+        self._job_operation: Operation | None = None
+        self._job_started_at: float | None = None
         self._target_view = None
         self._job_edit_listener_remove = None
         self._results = MatchIndex(())
@@ -367,6 +375,26 @@ class FindReplaceWindow(QDockWidget):
         for widget in self.findChildren(QWidget):
             widget.installEventFilter(self)
         self._position_clear_buttons()
+
+    def _record_dogfood(
+        self,
+        operation: Operation,
+        outcome: Outcome,
+        *,
+        started_at: float,
+    ) -> None:
+        observer = self._dogfood_observer
+        if observer is None:
+            return
+        try:
+            observer(
+                operation,
+                outcome,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                durability=Durability.NOT_APPLICABLE,
+            )
+        except Exception:
+            return
 
     @property
     def placement(self) -> str:
@@ -953,6 +981,8 @@ class FindReplaceWindow(QDockWidget):
         fn,
         *,
         task_kind: TaskKind,
+        dogfood_operation: Operation,
+        started_at: float,
         context=None,
         rejected_cleanup: Callable[[], None] | None = None,
     ) -> bool:
@@ -960,9 +990,16 @@ class FindReplaceWindow(QDockWidget):
             if rejected_cleanup is not None:
                 rejected_cleanup()
             self.status_label.setText("busy — cancel current work first")
+            self._record_dogfood(
+                dogfood_operation,
+                Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
             return False
         self._job_kind = kind
         self._job_context = context
+        self._job_operation = dogfood_operation
+        self._job_started_at = started_at
         self._target_view = view
         self.cancel_button.setEnabled(True)
         self.status_label.setText(
@@ -982,10 +1019,21 @@ class FindReplaceWindow(QDockWidget):
                 rejected_cleanup()
             self._job_kind = None
             self._job_context = None
+            self._job_operation = None
+            self._job_started_at = None
             self._target_view = None
             self.cancel_button.setEnabled(False)
             self.status_label.setText(self._safe_operation_error(exc))
             self._update_actions()
+            self._record_dogfood(
+                dogfood_operation,
+                (
+                    Outcome.UNAVAILABLE
+                    if isinstance(exc, TaskAdmissionError)
+                    else Outcome.FAILED
+                ),
+                started_at=started_at,
+            )
             return False
         self._future = self._task_handle.future
         self._job_edit_listener_remove = view.document.add_edit_listener(
@@ -1005,7 +1053,16 @@ class FindReplaceWindow(QDockWidget):
         self.cancel_search()
         self.status_label.setText("text changed — search again")
 
-    def _start_find(self, view, compiled, *, direction: int, origin: int) -> None:
+    def _start_find(
+        self,
+        view,
+        compiled,
+        *,
+        direction: int,
+        origin: int,
+        dogfood_operation: Operation,
+        started_at: float,
+    ) -> None:
         seal = self._operation_seal(view)
         revision = seal.revision
         snapshot = view.document.snapshot()
@@ -1036,23 +1093,34 @@ class FindReplaceWindow(QDockWidget):
             view,
             work,
             task_kind=TaskKind.SEARCH,
+            dogfood_operation=dogfood_operation,
+            started_at=started_at,
             context=FindRequest(compiled, seal, direction, origin),
             rejected_cleanup=snapshot.close,
         )
 
     def find_all(self) -> None:
+        started_at = time.monotonic()
         view = self._current_view()
         compiled = self.compile_current()
         if view is None or compiled is None:
+            self._record_dogfood(
+                Operation.FIND_ALL,
+                Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
             return
         self._start_find(
             view,
             compiled,
             direction=1,
             origin=view.state.cursor,
+            dogfood_operation=Operation.FIND_ALL,
+            started_at=started_at,
         )
 
     def replace_current(self) -> None:
+        started_at = time.monotonic()
         view = self._current_view()
         compiled = self.compile_current()
         if (
@@ -1060,8 +1128,18 @@ class FindReplaceWindow(QDockWidget):
             or compiled is None
             or not self._replacement_is_current()
         ):
+            self._record_dogfood(
+                Operation.REPLACE,
+                Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
             return
         if self._current_index is None:
+            self._record_dogfood(
+                Operation.REPLACE,
+                Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
             self.find_all()
             return
         self._cancel_capture_report(clear=True)
@@ -1088,11 +1166,14 @@ class FindReplaceWindow(QDockWidget):
             view,
             work,
             task_kind=TaskKind.REPLACE,
+            dogfood_operation=Operation.REPLACE,
+            started_at=started_at,
             context=(target_index, seal),
             rejected_cleanup=snapshot.close,
         )
 
     def replace_all(self) -> None:
+        started_at = time.monotonic()
         view = self._current_view()
         compiled = self.compile_current()
         if (
@@ -1100,6 +1181,11 @@ class FindReplaceWindow(QDockWidget):
             or compiled is None
             or not self._replacement_is_current()
         ):
+            self._record_dogfood(
+                Operation.REPLACE_ALL,
+                Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
             return
         self._cancel_capture_report(clear=True)
         seal = self._operation_seal(view)
@@ -1128,6 +1214,8 @@ class FindReplaceWindow(QDockWidget):
             view,
             work,
             task_kind=TaskKind.REPLACE,
+            dogfood_operation=Operation.REPLACE_ALL,
+            started_at=started_at,
             context=seal,
             rejected_cleanup=snapshot.close,
         )
@@ -1143,12 +1231,16 @@ class FindReplaceWindow(QDockWidget):
             return
         kind = self._job_kind
         context = self._job_context
+        dogfood_operation = self._job_operation
+        started_at = self._job_started_at
         view = self._target_view
         task_handle = self._task_handle
         self._future = None
         self._task_handle = None
         self._job_kind = None
         self._job_context = None
+        self._job_operation = None
+        self._job_started_at = None
         self._target_view = None
         if self._job_edit_listener_remove is not None:
             self._job_edit_listener_remove()
@@ -1161,8 +1253,24 @@ class FindReplaceWindow(QDockWidget):
             if task_handle is not None and task_handle.token.cancelled:
                 if self.status_label.text() != "text changed — search again":
                     self.status_label.setText("cancelled")
+                if dogfood_operation is not None and started_at is not None:
+                    self._record_dogfood(
+                        dogfood_operation,
+                        Outcome.CANCELLED,
+                        started_at=started_at,
+                    )
                 return
             self.status_label.setText(self._safe_operation_error(exc))
+            if dogfood_operation is not None and started_at is not None:
+                self._record_dogfood(
+                    dogfood_operation,
+                    (
+                        Outcome.TIMEOUT
+                        if isinstance(exc, RegexSearchTimeout)
+                        else Outcome.FAILED
+                    ),
+                    started_at=started_at,
+                )
             return
 
         if task_handle is not None and task_handle.token.cancelled:
@@ -1170,16 +1278,44 @@ class FindReplaceWindow(QDockWidget):
                 payload.close()
             if self.status_label.text() != "text changed — search again":
                 self.status_label.setText("cancelled")
+            if dogfood_operation is not None and started_at is not None:
+                self._record_dogfood(
+                    dogfood_operation,
+                    Outcome.CANCELLED,
+                    started_at=started_at,
+                )
             return
 
-        if kind == "find":
-            self._apply_find_results(view, payload, context)
-        elif kind == "replace_current":
-            self._apply_current_replacement(view, payload, context)
-        elif kind == "replace_all":
-            self._apply_replace_all(view, payload, context)
+        try:
+            if kind == "find":
+                matched = self._apply_find_results(view, payload, context)
+                if matched is None:
+                    operation_outcome = Outcome.UNAVAILABLE
+                elif dogfood_operation is Operation.FIND_ALL or matched:
+                    operation_outcome = Outcome.SUCCESS
+                else:
+                    operation_outcome = Outcome.UNAVAILABLE
+            elif kind == "replace_current":
+                operation_outcome = (
+                    Outcome.SUCCESS
+                    if self._apply_current_replacement(view, payload, context)
+                    else Outcome.UNAVAILABLE
+                )
+            elif kind == "replace_all":
+                operation_outcome = self._apply_replace_all(view, payload, context)
+            else:
+                operation_outcome = Outcome.FAILED
+        except Exception:
+            operation_outcome = Outcome.FAILED
+            self.status_label.setText("regex operation failed")
+        if dogfood_operation is not None and started_at is not None:
+            self._record_dogfood(
+                dogfood_operation,
+                operation_outcome,
+                started_at=started_at,
+            )
 
-    def _apply_find_results(self, view, store: MatchStore, context) -> None:
+    def _apply_find_results(self, view, store: MatchStore, context) -> bool | None:
         if (
             not isinstance(context, FindRequest)
             or not self._seal_is_current(context.seal, view)
@@ -1188,7 +1324,7 @@ class FindReplaceWindow(QDockWidget):
             store.close()
             self._clear_results()
             self.status_label.setText("text changed — search again")
-            return
+            return None
         self._clear_results()
         self._results = store
         self._results_view = view
@@ -1208,6 +1344,7 @@ class FindReplaceWindow(QDockWidget):
         else:
             self.capture_model.clear()
         self._update_actions()
+        return self._current_index is not None
 
     def _invalidate_results_for_edit(self, view) -> None:
         if view is not self._results_view:
@@ -1228,7 +1365,7 @@ class FindReplaceWindow(QDockWidget):
         view,
         replacements: list[Replacement],
         context,
-    ) -> None:
+    ) -> bool:
         if (
             not isinstance(context, tuple)
             or len(context) != 2
@@ -1240,7 +1377,7 @@ class FindReplaceWindow(QDockWidget):
         ):
             self.status_label.setText("match changed — search again")
             self._clear_results()
-            return
+            return False
         replacement = replacements[context[0]]
         view.document.replace(replacement.start, replacement.end, replacement.text)
         view.state.move_to(replacement.start + len(replacement.text))
@@ -1248,17 +1385,18 @@ class FindReplaceWindow(QDockWidget):
         view._state_changed()
         self.status_label.setText("1 replaced")
         self._update_actions()
+        return True
 
     def _apply_replace_all(
         self,
         view,
         plan: ReplacementPlan,
         seal: OperationSeal,
-    ) -> None:
+    ) -> Outcome:
         if not isinstance(seal, OperationSeal) or not self._seal_is_current(seal, view):
             plan.close()
             self.status_label.setText("text changed — search again")
-            return
+            return Outcome.UNAVAILABLE
         memory_limit = max(
             1 << 20,
             min(256 << 20, self._resource_manager.status.available_memory // 4),
@@ -1271,13 +1409,14 @@ class FindReplaceWindow(QDockWidget):
             )
         except Exception as exc:
             self.status_label.setText(self._safe_operation_error(exc))
-            return
+            return Outcome.FAILED
         finally:
             plan.close()
         self._clear_results()
         view._state_changed()
         self.status_label.setText(f"{count:,} replaced")
         self._update_actions()
+        return Outcome.SUCCESS
 
     @staticmethod
     def _navigation_origin(view, direction: int) -> int:
@@ -1312,14 +1451,28 @@ class FindReplaceWindow(QDockWidget):
         return self._results.next_index(origin)
 
     def _navigate_match(self, direction: int) -> None:
+        started_at = time.monotonic()
+        dogfood_operation = (
+            Operation.FIND_PREVIOUS if direction < 0 else Operation.FIND_NEXT
+        )
         view = self._current_view()
         compiled = self.compile_current()
         if view is None or compiled is None:
+            self._record_dogfood(
+                dogfood_operation,
+                Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
             return
         if len(self._results) and self._results_are_current(view):
             index = self._navigation_index(view, direction)
             if index is not None:
                 self._navigate_to(index)
+            self._record_dogfood(
+                dogfood_operation,
+                Outcome.SUCCESS if index is not None else Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
             return
         if len(self._results):
             self._clear_results()
@@ -1328,6 +1481,8 @@ class FindReplaceWindow(QDockWidget):
             compiled,
             direction=direction,
             origin=self._navigation_origin(view, direction),
+            dogfood_operation=dogfood_operation,
+            started_at=started_at,
         )
 
     def next_match(self) -> None:

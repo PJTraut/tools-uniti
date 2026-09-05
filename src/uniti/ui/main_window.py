@@ -7,6 +7,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass, replace as dataclass_replace
 from pathlib import Path
 import sys
+import time
 from typing import TYPE_CHECKING
 import uuid
 import weakref
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from uniti.app.diagnostics import diagnostics_snapshot
+from uniti.app.dogfood import Operation, Outcome
 from uniti.app.commands import (
     CommandCategory,
     CommandRegistry,
@@ -201,7 +203,13 @@ class UNITIMainWindow(QMainWindow):
             if service is not None
             else resource_manager or ResourceManager()
         )
-        self._file_operations = FileOperationController(self._resources, self)
+        self._file_operations = FileOperationController(
+            self._resources,
+            self,
+            dogfood_observer=(
+                None if service is None else service.record_dogfood
+            ),
+        )
         self._file_operations.operationFinished.connect(
             self._finish_file_operation,
             Qt.ConnectionType.QueuedConnection,
@@ -1288,6 +1296,7 @@ class UNITIMainWindow(QMainWindow):
         view_id: str | None = None,
         restore_record=None,
         select: bool = True,
+        observe_document_open: bool = True,
     ) -> UNITITextView:
         entry = None
         adopted = False
@@ -1301,7 +1310,10 @@ class UNITIMainWindow(QMainWindow):
             if adopted and attach_recovery and self._recovery_manager is not None:
                 self._recovery_manager.attach(document)
             if adopted:
-                self._service.track_document(entry)
+                self._service.track_document(
+                    entry,
+                    observe_open=observe_document_open,
+                )
         elif attach_recovery and self._recovery_manager is not None:
             self._recovery_manager.attach(document)
         state = EditorState(document)
@@ -1378,32 +1390,72 @@ class UNITIMainWindow(QMainWindow):
         *,
         profile: EncodingProfile | None = None,
     ) -> UNITITextView | None:
+        started_at = time.monotonic()
         if self._service is not None:
             existing = self._service.documents.find_path(Path(path))
             if existing is not None:
                 focused = self._service.focus_document(existing.document_id)
                 if isinstance(focused, UNITITextView):
+                    self._service.record_dogfood(
+                        Operation.DOCUMENT_OPEN,
+                        Outcome.SUCCESS,
+                        elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                    )
                     return focused
-                return self.open_existing_document(existing.document)
+                reopened = self.open_existing_document(existing.document)
+                self._service.record_dogfood(
+                    Operation.DOCUMENT_OPEN,
+                    Outcome.SUCCESS,
+                    elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                )
+                return reopened
         decision = self._inspect_open_path(path, profile=profile)
         if decision is None:
+            if self._service is not None:
+                self._service.record_dogfood(
+                    Operation.DOCUMENT_OPEN,
+                    Outcome.CANCELLED,
+                    elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                )
             return None
         selected, inspection = decision
-        document = Document.open(
-            path,
-            profile=selected,
-            resource_manager=self._resources,
-        )
+        try:
+            document = Document.open(
+                path,
+                profile=selected,
+                resource_manager=self._resources,
+            )
+        except Exception:
+            if self._service is not None:
+                self._service.record_dogfood(
+                    Operation.DOCUMENT_OPEN,
+                    Outcome.FAILED,
+                    elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                )
+            raise
         try:
             view = self._add_document(
                 document,
                 initial_eol_report=inspection.eol,
                 initial_eol_complete=inspection.eol_complete,
+                observe_document_open=False,
             )
         except Exception:
             document.close()
+            if self._service is not None:
+                self._service.record_dogfood(
+                    Operation.DOCUMENT_OPEN,
+                    Outcome.FAILED,
+                    elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                )
             raise
         self._remember_directory(path)
+        if self._service is not None:
+            self._service.record_dogfood(
+                Operation.DOCUMENT_OPEN,
+                Outcome.SUCCESS,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            )
         return view
 
     def _tab_label(self, view: UNITITextView) -> str:
@@ -2435,8 +2487,16 @@ class UNITIMainWindow(QMainWindow):
             prepared = operation.task.future.result()
             if operation.task.token.cancelled:
                 self.statusBar().showMessage("Save cancelled", 3000)
+                self._file_operations.record_completion(
+                    operation,
+                    cancelled=True,
+                )
                 return
             if view is None or view.document is not job.document:
+                self._file_operations.record_completion(
+                    operation,
+                    unavailable=True,
+                )
                 return
             if job.target_view_ref is not None:
                 target_view = job.target_view_ref()
@@ -2455,6 +2515,10 @@ class UNITIMainWindow(QMainWindow):
                         ),
                         QMessageBox.StandardButton.Ok,
                         QMessageBox.StandardButton.Ok,
+                    )
+                    self._file_operations.record_completion(
+                        operation,
+                        unavailable=True,
                     )
                     return
             if operation.request.in_place:
@@ -2477,8 +2541,17 @@ class UNITIMainWindow(QMainWindow):
                 self._remember_directory(result)
                 self._on_view_state_changed(view)
                 self._on_current_changed(self._tabs.currentIndex())
+            self._file_operations.record_completion(
+                operation,
+                durability_result=prepared.staged.commit_durability,
+            )
             self.statusBar().showMessage(f"Saved {result}", 3000)
         except Exception as exc:
+            self._file_operations.record_completion(
+                operation,
+                error=exc,
+                cancelled=operation.task.token.cancelled,
+            )
             if operation.task.token.cancelled:
                 self.statusBar().showMessage("Save cancelled", 3000)
             else:
@@ -2787,6 +2860,16 @@ class UNITIMainWindow(QMainWindow):
                 self._recovery_manager.detach(entry.document, clean=True)
             if discarded:
                 self._service.documents.retire(entry.document_id)
+            if not self._service.is_quitting:
+                if discarded:
+                    self._service.record_dogfood(
+                        Operation.DISCARD,
+                        Outcome.DISCARDED,
+                    )
+                self._service.record_dogfood(
+                    Operation.DOCUMENT_CLOSE,
+                    Outcome.SUCCESS,
+                )
         return True
 
     def _close_view_id(self, view_id: str, *, force: bool = False) -> bool:

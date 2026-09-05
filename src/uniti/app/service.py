@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, is_dataclass, replace
 from enum import StrEnum
@@ -14,6 +15,7 @@ from uniti.core.durability import DurabilityLevel, DurabilityResult
 from uniti.resources.tasks import TaskHandle, TaskKind, TaskSpec
 
 from .document_registry import DocumentEntry, DocumentRegistry
+from .dogfood import Durability, Operation, Outcome, ResourceBand
 from .session import MAX_VIEWS, MAX_WINDOWS, DockReturnRecord
 from .window_manager import ViewLocation, WindowManager
 
@@ -69,6 +71,7 @@ class QuitPlan:
 class _PublicationRequest:
     generation: int
     snapshot: object
+    started_at: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +88,8 @@ class _PublicationQueue:
         self,
         resource_manager: object,
         session_store: object,
-        on_result: Callable[[object, object], None],
+        on_result: Callable[[object, object, float], None],
+        on_failure: Callable[[float], None] | None = None,
     ) -> None:
         coordinator = getattr(resource_manager, "tasks", None)
         if coordinator is None or not callable(getattr(coordinator, "submit", None)):
@@ -94,9 +98,12 @@ class _PublicationQueue:
             raise TypeError("session store must provide publish()")
         if not callable(on_result):
             raise TypeError("publication result callback must be callable")
+        if on_failure is not None and not callable(on_failure):
+            raise TypeError("publication failure callback must be callable or None")
         self._coordinator = coordinator
         self._session_store = session_store
         self._on_result = on_result
+        self._on_failure = on_failure
         self._condition = threading.Condition(threading.RLock())
         self._active: _PublicationRequest | None = None
         self._pending: _PublicationRequest | None = None
@@ -150,6 +157,11 @@ class _PublicationQueue:
                 self._active = next_request
             else:
                 self._condition.notify_all()
+        if self._on_failure is not None:
+            try:
+                self._on_failure(request.started_at)
+            except Exception:
+                pass
         if next_request is not None:
             self._submit(next_request)
 
@@ -167,9 +179,14 @@ class _PublicationQueue:
             error = None
         if error is None:
             try:
-                self._on_result(result, request.snapshot)
+                self._on_result(result, request.snapshot, request.started_at)
             except Exception:
                 # A durable publication must not be reclassified by observers.
+                pass
+        elif self._on_failure is not None:
+            try:
+                self._on_failure(request.started_at)
+            except Exception:
                 pass
         next_request: _PublicationRequest | None = None
         with self._condition:
@@ -253,6 +270,13 @@ class UNITIService:
             dogfood_store,
             publish_interval_seconds=dogfood_publish_interval_seconds,
         )
+        set_recovery_observer = getattr(
+            self.recovery,
+            "set_dogfood_observer",
+            None,
+        )
+        if callable(set_recovery_observer):
+            set_recovery_observer(self.record_dogfood)
         self._last_recovery_errors: tuple[str, ...] = ()
         self._recovery_degraded = False
         self._running = True
@@ -284,6 +308,50 @@ class UNITIService:
     @property
     def dogfood_status(self) -> object:
         return self._dogfood.status
+
+    @staticmethod
+    def _dogfood_durability(
+        result: DurabilityResult | None,
+    ) -> tuple[Outcome, Durability]:
+        if result is None:
+            return Outcome.SUCCESS, Durability.NOT_APPLICABLE
+        if result.level is DurabilityLevel.FULL:
+            return Outcome.SUCCESS, Durability.FULL
+        if result.level is DurabilityLevel.FILE_SYNCED:
+            return Outcome.REDUCED_DURABILITY, Durability.FILE_SYNCED
+        return Outcome.FAILED, Durability.UNSAFE
+
+    def _dogfood_resource_band(self) -> ResourceBand:
+        try:
+            return ResourceBand(self.resources.status.state.value)
+        except (AttributeError, TypeError, ValueError):
+            return ResourceBand.NORMAL
+
+    def record_dogfood(
+        self,
+        operation: Operation,
+        outcome: Outcome,
+        *,
+        elapsed_ms: float | None = None,
+        durability: Durability = Durability.NOT_APPLICABLE,
+    ) -> None:
+        """Accept only fixed aggregate facts and never alter caller results."""
+
+        if (
+            not isinstance(operation, Operation)
+            or not isinstance(outcome, Outcome)
+            or not isinstance(durability, Durability)
+        ):
+            return
+        band = self._dogfood_resource_band()
+        self._dogfood.observe(
+            operation,
+            outcome,
+            elapsed_ms=elapsed_ms,
+            durability=durability,
+            peak_resource=band,
+            retained_resource=band,
+        )
 
     def schedule_dogfood_publication(self) -> TaskHandle[Any] | None:
         return self._dogfood.schedule_publication()
@@ -348,6 +416,7 @@ class UNITIService:
             self._find_replace = FindReplaceWindow(
                 lambda: self.active_view,
                 resource_manager=self.resources,
+                dogfood_observer=self.record_dogfood,
             )
             self._find_replace.placementChanged.connect(
                 self._record_find_replace_placement
@@ -476,7 +545,24 @@ class UNITIService:
             return DurabilityLevel.FILE_SYNCED
         return DurabilityLevel.FULL
 
-    def _publication_finished(self, result: object, snapshot: object) -> None:
+    def _publication_finished(
+        self,
+        result: object,
+        snapshot: object,
+        started_at: float,
+    ) -> None:
+        durability_result = getattr(result, "durability", None)
+        outcome, durability = self._dogfood_durability(
+            durability_result
+            if isinstance(durability_result, DurabilityResult)
+            else None
+        )
+        self.record_dogfood(
+            Operation.SESSION_PUBLISH,
+            outcome,
+            elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            durability=durability,
+        )
         truncations = tuple(getattr(result, "truncations", ()))
         low_space = any(
             getattr(item, "reason", "") == "low_space_history_suppressed"
@@ -649,15 +735,38 @@ class UNITIService:
     def _publish_snapshot_durably(self, snapshot: object) -> object:
         """Run serialization and durable storage away from the GUI thread."""
 
+        started_at = time.monotonic()
         coordinator = getattr(self.resources, "tasks", None)
         submit = getattr(coordinator, "submit", None)
-        if not callable(submit):
-            return self.sessions.publish(snapshot)
-        handle = submit(
-            TaskSpec.create(TaskKind.SESSION, foreground=True),
-            lambda _context: self.sessions.publish(snapshot),
+        try:
+            if not callable(submit):
+                result = self.sessions.publish(snapshot)
+            else:
+                handle = submit(
+                    TaskSpec.create(TaskKind.SESSION, foreground=True),
+                    lambda _context: self.sessions.publish(snapshot),
+                )
+                result = handle.future.result()
+        except Exception:
+            self.record_dogfood(
+                Operation.SESSION_PUBLISH,
+                Outcome.FAILED,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            )
+            raise
+        durability_result = getattr(result, "durability", None)
+        outcome, durability = self._dogfood_durability(
+            durability_result
+            if isinstance(durability_result, DurabilityResult)
+            else None
         )
-        return handle.future.result()
+        self.record_dogfood(
+            Operation.SESSION_PUBLISH,
+            outcome,
+            elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            durability=durability,
+        )
+        return result
 
     def _publish_recovered_state(self, recovered: object) -> None:
         snapshot = self.capture_session(clean_shutdown=False)
@@ -862,11 +971,18 @@ class UNITIService:
             raise RuntimeError("UNITI service is stopped")
 
     def register_window(self, window_id: str, window: object) -> None:
+        started_at = time.monotonic()
         self._ensure_running()
         self.windows.register(window_id, window)
         self._sync_find_replace_host()
+        self.record_dogfood(
+            Operation.WINDOW_OPEN,
+            Outcome.SUCCESS,
+            elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+        )
 
     def unregister_window(self, window_id: str) -> object:
+        started_at = time.monotonic()
         self._ensure_running()
         window = self.windows.unregister(window_id)
         if self._find_replace is not None:
@@ -879,6 +995,11 @@ class UNITIService:
             self._find_replace.target_changed()
             if self.window_count == 0:
                 self._find_replace.hide()
+        self.record_dogfood(
+            Operation.WINDOW_CLOSE,
+            Outcome.SUCCESS,
+            elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+        )
         return window
 
     def set_active_view(self, window_id: str, view_id: str | None) -> None:
@@ -917,8 +1038,21 @@ class UNITIService:
             return resolver(view_id) if callable(resolver) else None
         return None
 
-    def track_document(self, entry: DocumentEntry, *, hash_saved: bool = True) -> None:
+    def track_document(
+        self,
+        entry: DocumentEntry,
+        *,
+        hash_saved: bool = True,
+        observe_open: bool = True,
+    ) -> None:
+        started_at = time.monotonic()
         self._session_controller.track_document(entry, hash_saved=hash_saved)
+        if observe_open:
+            self.record_dogfood(
+                Operation.DOCUMENT_OPEN,
+                Outcome.SUCCESS,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            )
 
     def _complete_saved_hash(self, document_id: str) -> None:
         self._session_controller.complete_saved_hash(document_id)
@@ -1163,9 +1297,18 @@ class UNITIService:
                 self.resources,
                 self.sessions,
                 self._publication_finished,
+                lambda started_at: self.record_dogfood(
+                    Operation.SESSION_PUBLISH,
+                    Outcome.FAILED,
+                    elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                ),
             )
         self._publication_generation += 1
-        request = _PublicationRequest(self._publication_generation, snapshot)
+        request = _PublicationRequest(
+            self._publication_generation,
+            snapshot,
+            time.monotonic(),
+        )
         self._publication_queue.request(request)
         return request.generation
 
@@ -1215,34 +1358,76 @@ class UNITIService:
         plan = self.build_quit_plan(choose)
         if plan is None:
             self._last_quit_error = None
+            self.record_dogfood(
+                Operation.QUIT,
+                Outcome.CANCELLED,
+            )
             return False
+        started_at = time.monotonic()
         try:
             self._execute_quit(plan)
         except _QuitExecutionError as error:
             self._last_quit_error = str(error)
             self._quitting = False
+            self.record_dogfood(
+                Operation.QUIT,
+                Outcome.FAILED,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            )
             return False
         except Exception:
             self._last_quit_error = (
                 "Could not preserve session state; Quit was cancelled."
             )
             self._quitting = False
+            self.record_dogfood(
+                Operation.QUIT,
+                Outcome.FAILED,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            )
             return False
         self._last_quit_error = None
         return True
 
     def _execute_quit(self, plan: QuitPlan) -> None:
+        quit_started_at = time.monotonic()
+        self._quitting = True
+        closed_documents = sum(
+            bool(entry.view_ids) or entry.closed_at is None
+            for entry in self.documents.entries
+        )
         for decision in plan.decisions:
             if decision.choice is QuitChoice.SAVE:
                 entry = self.documents.get(decision.document_id)
+                save_started_at = time.monotonic()
                 try:
                     entry.document.save()
                     if self._session_capture is None:
                         self._complete_saved_hash(decision.document_id)
                 except Exception as error:
+                    from uniti.core.file_identity import ExternalFileChangedError
+
+                    self.record_dogfood(
+                        Operation.SAVE,
+                        (
+                            Outcome.REFUSED_EXTERNAL_CHANGE
+                            if isinstance(error, ExternalFileChangedError)
+                            else Outcome.FAILED
+                        ),
+                        elapsed_ms=(time.monotonic() - save_started_at) * 1000.0,
+                    )
                     raise _QuitExecutionError(
                         f"Could not save {entry.canonical_path.name}; Quit was cancelled."
                     ) from error
+                outcome, durability = self._dogfood_durability(
+                    entry.document.last_save_durability
+                )
+                self.record_dogfood(
+                    Operation.SAVE,
+                    outcome,
+                    elapsed_ms=(time.monotonic() - save_started_at) * 1000.0,
+                    durability=durability,
+                )
 
         discarded_ids = frozenset(
             decision.document_id
@@ -1269,11 +1454,10 @@ class UNITIService:
                 close_view = getattr(window, "_close_view_id", None)
                 if callable(close_view):
                     close_view(view_id, force=True)
+            self.record_dogfood(Operation.DISCARD, Outcome.DISCARDED)
 
         for entry in self.documents.entries:
             self.recovery.detach(entry.document, clean=True)
-
-        self._quitting = True
 
         panel = self._find_replace
         if panel is not None:
@@ -1290,9 +1474,16 @@ class UNITIService:
                 close()
 
         self.documents.close_all()
+        for _index in range(closed_documents):
+            self.record_dogfood(Operation.DOCUMENT_CLOSE, Outcome.SUCCESS)
         self.windows.clear()
         self._session_controller.shutdown()
         self.recovery.shutdown()
+        self.record_dogfood(
+            Operation.QUIT,
+            Outcome.SUCCESS,
+            elapsed_ms=(time.monotonic() - quit_started_at) * 1000.0,
+        )
         self._finalize_dogfood()
         self.resources.shutdown(wait=True)
         if self._instance_service is not None:

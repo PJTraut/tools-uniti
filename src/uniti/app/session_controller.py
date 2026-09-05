@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from dataclasses import replace
@@ -59,12 +60,16 @@ class SessionController:
         self._problems: list[object] = []
         self._discarded_document_ids: set[str] = set()
         self._restore_handles: dict[str, object] = {}
+        self._restore_started_at: dict[str, float] = {}
         self._promoted_view_ids: dict[str, str] = {}
         self._restore_timer = None
         self._pointer_repair_required = False
         self._saved_hash_handles: dict[str, tuple[object, object]] = {}
         self._saved_hash_timer = None
         self._document_save_listeners: dict[
+            str, tuple[object, Callable[[], None]]
+        ] = {}
+        self._document_history_listeners: dict[
             str, tuple[object, Callable[[], None]]
         ] = {}
         self._pending_saved_bases: dict[str, tuple[object, object, int, object]] = {}
@@ -127,6 +132,26 @@ class SessionController:
             self._document_save_listeners[entry.document_id] = (
                 entry.document,
                 remove,
+            )
+        history = self._document_history_listeners.get(entry.document_id)
+        if history is None or history[0] is not entry.document:
+            from uniti.app.dogfood import Operation, Outcome
+            from uniti.core.history import HistoryEventKind
+
+            if history is not None:
+                history[1]()
+
+            def observe_edit(event) -> None:
+                if event.kind is HistoryEventKind.TRANSACTION:
+                    self._service.record_dogfood(
+                        Operation.EDIT_TRANSACTION,
+                        Outcome.SUCCESS,
+                    )
+
+            remove_history = entry.document.add_history_listener(observe_edit)
+            self._document_history_listeners[entry.document_id] = (
+                entry.document,
+                remove_history,
             )
         if hash_saved and entry.saved_stamp is None:
             self._schedule_saved_hash(entry.document_id)
@@ -656,6 +681,9 @@ class SessionController:
     def restore_active(self) -> object | None:
         """Verify and restore the manifest's active document first."""
 
+        from .dogfood import Operation, Outcome
+
+        started_at = time.monotonic()
         service = self._service
         service._ensure_running()
         manifest = self._manifest
@@ -664,17 +692,37 @@ class SessionController:
         document_id = self._document_id_for_view(manifest.active_view_id)
         if document_id is None:
             self._repair_pointer_after_usable_restore()
+            service.record_dogfood(
+                Operation.SESSION_RESTORE,
+                Outcome.UNAVAILABLE,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            )
             return None
         if document_id in self._discarded_document_ids:
+            service.record_dogfood(
+                Operation.SESSION_RESTORE,
+                Outcome.DISCARDED,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            )
             return None
         try:
             restored = self._run_restore(document_id, foreground=True)
         except Exception:
             self._record_restore_failure(document_id)
+            service.record_dogfood(
+                Operation.SESSION_RESTORE,
+                Outcome.FAILED,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            )
             return None
         if restored is not None:
             self._restore_manifest_focus()
             self._repair_pointer_after_usable_restore()
+        service.record_dogfood(
+            Operation.SESSION_RESTORE,
+            Outcome.SUCCESS if restored is not None else Outcome.UNAVAILABLE,
+            elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+        )
         return restored
 
     def _repair_pointer_after_usable_restore(self) -> None:
@@ -731,6 +779,7 @@ class SessionController:
         self._restore_timer = timer
 
     def _poll_restore_tasks(self) -> None:
+        from .dogfood import Operation, Outcome
         from .session_runtime import FreshDocumentResult, RestoreDocumentResult
 
         for document_id, handle in tuple(self._restore_handles.items()):
@@ -739,15 +788,31 @@ class SessionController:
             if self._restore_handles.get(document_id) is not handle:
                 continue
             self._restore_handles.pop(document_id, None)
+            started_at = self._restore_started_at.pop(
+                document_id,
+                time.monotonic(),
+            )
             try:
                 result = handle.future.result()
             except Exception:
                 self._record_restore_failure(document_id)
+                self._service.record_dogfood(
+                    Operation.SESSION_RESTORE,
+                    Outcome.FAILED,
+                    elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                )
                 continue
             if isinstance(result, FreshDocumentResult):
-                self._apply_fresh_result(result)
+                restored = self._apply_fresh_result(result)
             elif isinstance(result, RestoreDocumentResult):
-                self.apply_restore_result(result)
+                restored = self.apply_restore_result(result)
+            else:
+                restored = None
+            self._service.record_dogfood(
+                Operation.SESSION_RESTORE,
+                Outcome.SUCCESS if restored is not None else Outcome.UNAVAILABLE,
+                elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+            )
         if not self._restore_handles and self._restore_timer is not None:
             self._restore_timer.stop()
             self._restore_timer.deleteLater()
@@ -775,6 +840,7 @@ class SessionController:
             handle = self._submit_restore(record.document_id, foreground=False)
             if handle is not None:
                 self._restore_handles[record.document_id] = handle
+                self._restore_started_at[record.document_id] = time.monotonic()
                 scheduled.append(handle)
         if scheduled:
             self._ensure_restore_timer()
@@ -796,6 +862,7 @@ class SessionController:
         if promoted is not None:
             self._promoted_view_ids[document_id] = view_id
             self._restore_handles[document_id] = promoted
+            self._restore_started_at[document_id] = time.monotonic()
             self._ensure_restore_timer()
 
     def discard_document(self, document_id: str) -> None:
@@ -815,8 +882,17 @@ class SessionController:
         if record is None:
             return
         handle = self._restore_handles.pop(document_id, None)
+        started_at = self._restore_started_at.pop(document_id, None)
         if handle is not None:
             handle.cancel()
+            if started_at is not None:
+                from .dogfood import Operation, Outcome
+
+                self._service.record_dogfood(
+                    Operation.SESSION_RESTORE,
+                    Outcome.CANCELLED,
+                    elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                )
         for view_id in record.view_ids:
             window = self._service.windows.window_for_view(view_id)
             remove = getattr(window, "discard_session_placeholder", None)
@@ -945,8 +1021,17 @@ class SessionController:
         for handle, _document in self._saved_hash_handles.values():
             handle.cancel()
         self._saved_hash_handles.clear()
-        for handle in self._restore_handles.values():
+        for document_id, handle in self._restore_handles.items():
             handle.cancel()
+            started_at = self._restore_started_at.pop(document_id, None)
+            if started_at is not None:
+                from .dogfood import Operation, Outcome
+
+                self._service.record_dogfood(
+                    Operation.SESSION_RESTORE,
+                    Outcome.CANCELLED,
+                    elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                )
             try:
                 result = handle.future.result()
             except Exception:
@@ -955,11 +1040,17 @@ class SessionController:
             if document is not None:
                 document.close()
         self._restore_handles.clear()
+        self._restore_started_at.clear()
         for _document_id, (_document, remove) in tuple(
             self._document_save_listeners.items()
         ):
             remove()
         self._document_save_listeners.clear()
+        for _document_id, (_document, remove) in tuple(
+            self._document_history_listeners.items()
+        ):
+            remove()
+        self._document_history_listeners.clear()
         with self._pending_lock:
             self._pending_saved_bases.clear()
         for timer_name in ("_saved_hash_timer", "_restore_timer"):

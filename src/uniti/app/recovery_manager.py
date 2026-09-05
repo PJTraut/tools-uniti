@@ -23,6 +23,7 @@ from .phase_control import (
     PhaseObserver,
     emit_phase,
 )
+from .dogfood import Durability, Operation, Outcome
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.durability import (
@@ -299,8 +300,40 @@ class RecoveryManager:
         self.last_error: Exception | None = None
         self._fsync_interval = float(fsync_interval)
         self._phase_observer = phase_observer
+        self._dogfood_observer: Callable[..., None] | None = None
+        self._recovery_started: dict[int, float] = {}
         self._lock = threading.RLock()
         self._shutdown = False
+
+    def set_dogfood_observer(self, observer: Callable[..., None] | None) -> None:
+        if observer is not None and not callable(observer):
+            raise TypeError("dogfood observer must be callable or None")
+        self._dogfood_observer = observer
+
+    def _record_dogfood(
+        self,
+        outcome: Outcome,
+        *,
+        started_at: float | None,
+        durability: Durability = Durability.NOT_APPLICABLE,
+        operation: Operation = Operation.RECOVERY,
+    ) -> None:
+        observer = self._dogfood_observer
+        if observer is None:
+            return
+        try:
+            observer(
+                operation,
+                outcome,
+                elapsed_ms=(
+                    None
+                    if started_at is None
+                    else (time.monotonic() - started_at) * 1000.0
+                ),
+                durability=durability,
+            )
+        except Exception:
+            return
 
     def _phase(
         self,
@@ -378,6 +411,11 @@ class RecoveryManager:
             binding.reason = f"{stage} failed ({type(error).__name__})"
             self.last_error = error
         self._notify_diagnostic(binding)
+        self._record_dogfood(
+            Outcome.FAILED,
+            started_at=None,
+            durability=Durability.UNSAFE,
+        )
 
     @staticmethod
     def _require_safe(result: DurabilityResult) -> DurabilityResult:
@@ -407,6 +445,12 @@ class RecoveryManager:
                 binding.health = RecoveryHealth.OK
                 binding.reason = ""
         self._notify_diagnostic(binding)
+        if safe.level is DurabilityLevel.FILE_SYNCED:
+            self._record_dogfood(
+                Outcome.REDUCED_DURABILITY,
+                started_at=None,
+                durability=Durability.FILE_SYNCED,
+            )
 
     def _mark_durable(
         self,
@@ -1133,6 +1177,7 @@ class RecoveryManager:
                 binding.journal = None
 
     def detach(self, document: Document, *, clean: bool) -> None:
+        self._recovery_started.pop(id(document), None)
         binding = self._bindings.get(id(document))
         if binding is None:
             return
@@ -1255,11 +1300,17 @@ class RecoveryManager:
         return tuple(candidates)
 
     def discard(self, candidate: RecoveryCandidate) -> None:
+        started_at = time.monotonic()
         path = self._owned_path(candidate.evidence_path)
         try:
             self._backend.unlink(path)
         except FileNotFoundError:
             pass
+        self._record_dogfood(
+            Outcome.DISCARDED,
+            started_at=started_at,
+            operation=Operation.DISCARD,
+        )
 
     @staticmethod
     def _legacy_seed_events(
@@ -1293,6 +1344,7 @@ class RecoveryManager:
         return tuple(events)
 
     def prepare_recovery(self, candidate: RecoveryCandidate) -> RecoveredDocument:
+        started_at = time.monotonic()
         session = candidate.session
         if session is None or session.clean:
             raise ValueError("recovery candidate has no recoverable session")
@@ -1338,29 +1390,60 @@ class RecoveryManager:
                 or diagnostic.durable_revision < diagnostic.observed_revision
             ):
                 raise OSError("fresh recovery journal is not durable")
-            return RecoveredDocument(document, candidate, path)
+            recovered = RecoveredDocument(document, candidate, path)
+            self._recovery_started[id(document)] = started_at
+            return recovered
         except Exception:
             if attached:
                 self.detach(document, clean=False)
             document.close()
+            self._record_dogfood(
+                Outcome.FAILED,
+                started_at=started_at,
+            )
             raise
 
     def commit_recovery(self, recovered: RecoveredDocument) -> None:
         if not isinstance(recovered, RecoveredDocument):
             raise TypeError("recovered must be a RecoveredDocument")
-        self.flush(recovered.document)
-        diagnostic = self.diagnostic(recovered.document)
-        if (
-            diagnostic.health is RecoveryHealth.DEGRADED
-            or diagnostic.durability is DurabilityLevel.UNSAFE
-            or diagnostic.durable_revision < diagnostic.observed_revision
-        ):
-            raise OSError("fresh recovery state is not durable")
-        current = self.journal_path(recovered.document)
-        if current is None or not current.exists():
-            raise OSError("fresh recovery evidence is unavailable")
-        if recovered.original.evidence_path != current:
-            self.discard(recovered.original)
+        started_at = self._recovery_started.pop(
+            id(recovered.document),
+            time.monotonic(),
+        )
+        try:
+            self.flush(recovered.document)
+            diagnostic = self.diagnostic(recovered.document)
+            if (
+                diagnostic.health is RecoveryHealth.DEGRADED
+                or diagnostic.durability is DurabilityLevel.UNSAFE
+                or diagnostic.durable_revision < diagnostic.observed_revision
+            ):
+                raise OSError("fresh recovery state is not durable")
+            current = self.journal_path(recovered.document)
+            if current is None or not current.exists():
+                raise OSError("fresh recovery evidence is unavailable")
+            if recovered.original.evidence_path != current:
+                self.discard(recovered.original)
+        except Exception:
+            self._record_dogfood(
+                Outcome.FAILED,
+                started_at=started_at,
+            )
+            raise
+        durability = (
+            Durability.FULL
+            if diagnostic.durability is DurabilityLevel.FULL
+            else Durability.FILE_SYNCED
+        )
+        self._record_dogfood(
+            (
+                Outcome.RECOVERED
+                if diagnostic.durability is DurabilityLevel.FULL
+                else Outcome.REDUCED_DURABILITY
+            ),
+            started_at=started_at,
+            durability=durability,
+        )
 
     def recover(self, candidate: RecoveryCandidate) -> Document:
         recovered = self.prepare_recovery(candidate)

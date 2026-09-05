@@ -15,7 +15,14 @@ from uniti.resources.tasks import (
     WorkPriority,
 )
 
-from .dogfood import merge_dogfood_snapshots
+from .dogfood import (
+    Durability,
+    Operation,
+    Outcome,
+    ResourceBand,
+    latency_bucket,
+    merge_dogfood_snapshots,
+)
 from .dogfood_store import StoreFailureCode, StoreStatus
 
 
@@ -75,6 +82,49 @@ class DogfoodRuntime:
     def status(self) -> StoreStatus:
         with self._lock:
             return self._status
+
+    def observe(
+        self,
+        operation: Operation,
+        outcome: Outcome,
+        *,
+        elapsed_ms: float | None = None,
+        durability: Durability = Durability.NOT_APPLICABLE,
+        peak_resource: ResourceBand = ResourceBand.NORMAL,
+        retained_resource: ResourceBand = ResourceBand.NORMAL,
+    ) -> None:
+        """Update in-memory aggregates without allowing telemetry to affect work."""
+
+        if (
+            not isinstance(operation, Operation)
+            or not isinstance(outcome, Outcome)
+            or not isinstance(durability, Durability)
+            or not isinstance(peak_resource, ResourceBand)
+            or not isinstance(retained_resource, ResourceBand)
+        ):
+            return
+        if elapsed_ms is not None:
+            try:
+                latency_bucket(elapsed_ms)
+            except (TypeError, ValueError):
+                return
+        with self._lock:
+            recorder = None if self._closed else self._recorder
+        observe = getattr(recorder, "observe", None)
+        if not callable(observe):
+            return
+        try:
+            observe(
+                operation,
+                outcome,
+                elapsed_ms=elapsed_ms,
+                durability=durability,
+                peak_resource=peak_resource,
+                retained_resource=retained_resource,
+            )
+        except Exception:
+            # Aggregate evidence is explicitly subordinate to editor behavior.
+            return
 
     def _start(self) -> None:
         if self._recorder is None:
