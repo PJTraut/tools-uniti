@@ -336,8 +336,8 @@ def test_windows_launcher_invokes_from_powershell(tmp_path: Path):
         "UNITI_LAUNCH_TEST_EXIT": "23",
     }
     command = (
-        "& .\\uniti.bat 'notes one.txt' 'Ω' 'Привет' '100%' "
-        "'a&b' '(group)' '-leading' ''; exit $LASTEXITCODE"
+        '& .\\uniti.bat --% "notes one.txt" Ω Привет 100% '
+        '"a&b" "(group)" -leading ""\nexit $LASTEXITCODE'
     )
 
     completed = subprocess.run(
