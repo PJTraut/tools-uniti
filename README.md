@@ -2,7 +2,7 @@
 
 **Unicode Intelligent Text Interchange** — a focused cross-platform power text editor built around text correctness, explicit encoding/EOL state, large-file editing, and Python `regex`.
 
-UNITI is a private alpha. The current `v0.001a21` / `0.1a21` source candidate is locally verified; the four hosted cross-platform lanes remain pending. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
+UNITI is a private alpha. The implemented `v0.001a21` / `0.1a21` source passed the required macOS, Windows, and Linux hosted matrix; A22 Dogfood / Performance Alpha is active. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
 
 ## Project documentation
 

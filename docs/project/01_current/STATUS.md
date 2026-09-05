@@ -11,12 +11,11 @@ Date: 2026-09-05
 | Verified A20 implementation sequence | `fabd036` through `f829d01`, preceded by design/plan commits `c9cd792` and `06dd906`, followed by the A20 freeze closure |
 | Verified A21 Editor Layout and Visibility sequence | `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`; preceded by design/plan commits `9477197` and `61c1f19` |
 | A21 Cross-Platform candidate/remediation sequence | `09ad62b` through `8b24f4b`; preceded by plan commit `a3a4d81` |
-| Latest implemented milestone | `v0.001a20` — Recovery & Session Alpha |
-| Latest verified candidate | `v0.001a21` — Cross-Platform Alpha at `8b24f4b`; four required hosted lanes passed |
-| Active product milestone | `v0.001a21` — Cross-Platform Alpha |
+| Latest implemented milestone | `v0.001a21` — Cross-Platform Alpha at hosted-proven commit `8b24f4b` |
+| Active product milestone | `v0.001a22` — Dogfood / Performance Alpha |
 | Display/package metadata | `v0.001a21` / `0.1a21` |
 | Latest immutable release tag | `v0.001a15` at `10f419e` |
-| Queued milestones | `v0.001a22` through `v0.001a23` |
+| Queued milestones | `v0.001a23` |
 
 The A20 implementation/freeze, completed A21 workstream, and A21 cross-platform candidate are on `main`. The required macOS, Windows, Linux/Python 3.12, and Linux/latest-Python hosted lanes all passed on identical commit `8b24f4b`. No new tag, release, installer, bundle, or other distributable package was created.
 
@@ -72,7 +71,7 @@ Aggregate pruning removes oldest closed-document history first, then inactive-op
 Fresh local verification on the hosted-proven A21 candidate tree reported:
 
 ```text
-full pytest: 1257 passed, 6 skipped in 52.02s
+full pytest: 1257 passed, 6 skipped in 51.55s
 compileall and git diff --check: pass
 deep self-check: pass, 21/21 checks including cross-platform
 offscreen combined smoke: pass; full durability, font, shortcuts, instance forwarding, service/session/history, and explicit Quit facts
@@ -102,4 +101,4 @@ No known shared-code session-writer race, silent admitted-history loss, external
 
 A20 does not install a permanent OS daemon: the zero-window service exists only while the launched desktop process remains alive and exits on explicit Quit, logout, shutdown, or process termination. Project/workspace semantics, cloud sync, collaboration, plugins, LSP, syntax highlighting, permanent background services, polished installers, user-authored themes, and expanded keyboard-driven Unicode inspection remain outside the implemented boundary.
 
-The A20 milestone and completed A21 Editor Layout and Visibility records are retained in [Implemented](../03_implemented/README.md). The A21 Cross-Platform milestone/design/plan remain active only until the Task 14 documentation freeze. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
+The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). A22 Dogfood / Performance Alpha is active. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).

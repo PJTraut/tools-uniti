@@ -155,7 +155,7 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q \
   tests/test_a16_usable_alpha_acceptance.py tests/app tests/ui
 ```
 
-The current local A21 candidate gate reports 1,232 passed and six exact policy-allowed macOS skips, plus a passing 21-check deep self-check, offscreen/native combined smoke, and all thirteen unchanged quick performance scenarios. The A20 `session_restore` scenario and all a17 byte-integrity, a18 large-file, and a19 regex-intelligence gates remain inherited. No new performance baseline was selected. Before authoritative hosted verification, confirm the working tree is clean and ensure any separately authorized push is normal and fast-forward safe.
+The completed A21 gate reports 1,257 passed and six exact policy-allowed macOS skips locally, plus a passing 21-check deep self-check, offscreen/native combined smoke, and all thirteen unchanged quick performance scenarios. Hosted run `33945017353` passed the same complete gate on macOS 15, Windows 2025, Ubuntu 24.04/Python 3.12, and Ubuntu 24.04/latest stable Python at exact commit `8b24f4b`. The A20 `session_restore` scenario and all a17 byte-integrity, a18 large-file, and a19 regex-intelligence gates remain inherited. No new performance baseline was selected.
 
 ## Editor layout and display change discipline
 
@@ -221,6 +221,6 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a20` is implemented without a new tag; `v0.001a21` is the locally verified candidate and remains active pending same-commit hosted evidence and freeze.
+Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a20` and `v0.001a21` are implemented without new tags; A22 Dogfood / Performance Alpha is active.
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.

@@ -15,9 +15,8 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - A21 Editor Layout and Visibility implementation sequence: `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`
 - A21 Cross-Platform design/plan commit: `a3a4d81`
 - A21 Cross-Platform candidate/remediation sequence: `09ad62b` through `8b24f4b`
-- Latest implemented milestone: `v0.001a20` — Recovery & Session Alpha
-- Latest verified candidate: `v0.001a21` — Cross-Platform Alpha at `8b24f4b`; all required hosted lanes passed
-- Active milestone: `v0.001a21` — Cross-Platform Alpha
+- Latest implemented milestone: `v0.001a21` — Cross-Platform Alpha at hosted-proven commit `8b24f4b`
+- Active milestone: `v0.001a22` — Dogfood / Performance Alpha
 - Current display/package metadata: `v0.001a21` / `0.1a21`
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16 through a20 tags: none
@@ -38,6 +37,9 @@ A20, the A21 Editor Layout and Visibility workstream, and the A21 Cross-Platform
 - [Implemented A21 Editor Pane Docking plan](../03_implemented/milestones/2026-09-05-uniti-v0.001a21-editor-pane-docking-implementation.md)
 - [Implemented A21 Find/Replace Docking plan](../03_implemented/milestones/2026-09-05-uniti-v0.001a21-find-replace-docking-implementation.md)
 - [Implemented A21 Whitespace and Theme plan](../03_implemented/milestones/2026-09-05-uniti-v0.001a21-whitespace-theme-implementation.md)
+- [Implemented A21 Cross-Platform milestone](../03_implemented/milestones/2026-09-05-uniti-v0.001a21-cross-platform-alpha.md)
+- [Implemented A21 Cross-Platform design](../03_implemented/designs/2026-09-05-uniti-v0.001a21-cross-platform-design.md)
+- [Implemented A21 Cross-Platform execution plan](../03_implemented/milestones/2026-09-05-uniti-v0.001a21-cross-platform-implementation.md)
 - [Implemented record index](../03_implemented/README.md)
 - [Parked capabilities](../04_parked/CATALOG.md)
 - [Architecture decisions](../05_decisions/README.md)
@@ -95,7 +97,7 @@ dcf04c6 feat: visualize whitespace safely
 fcfd5ea fix: report current persistence schemas
 ```
 
-## A21 Cross-Platform candidate
+## A21 Cross-Platform closure
 
 Shared code now classifies only macOS, Windows, and Linux; selects absolute native application roots; normalizes native identity without hard-coded shared drive/separator rules; and routes durable settings/setup/Save/session/recovery publication through explicit `full`, `file_synced`, or `unsafe` results. Unsafe publication preserves prior complete state. Session discovery scans at most 200 complete generations and repairs a missing/stale pointer only after usable restoration under one-writer authority.
 
@@ -124,7 +126,7 @@ e1a51bf test: enforce exact platform evidence
 ## Fresh evidence
 
 ```text
-full pytest: 1257 passed, 6 skipped in 52.02s
+full pytest: 1257 passed, 6 skipped in 51.55s
 compileall and git diff --check: pass
 deep self-check: pass, 21/21 checks including cross-platform
 offscreen/native combined smoke: pass with full durability, font, shortcut, instance, service/session/history, and explicit-Quit facts; native qt_platform=cocoa
@@ -149,4 +151,4 @@ Each job also passed compilation, 21/21 deep self-check, offscreen/native smoke,
 
 No known A20, completed A21 workstream, or A21 candidate correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, launcher, native-path, or inherited text-integrity/regex blocker remains in local or hosted evidence. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive.
 
-Commit the Task 13 evidence record, then continue with Task 14 of the active [A21 Cross-Platform implementation plan](../02_plans/v0.001a21-cross-platform-implementation.md): archive the completed A21 records, activate A22, and rerun documentation/static and full no-regression verification. Do not tag or release. The Task 14 closure commit remains local unless separately authorized for push.
+Begin A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). Preserve A21's source-only hosted matrix and the A17–A21 correctness/storage boundaries; do not create a tag, release, installer, package, or new performance baseline without its own approved gate. The A21 closure commit remains local unless separately authorized for push.

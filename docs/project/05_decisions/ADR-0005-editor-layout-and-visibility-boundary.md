@@ -30,7 +30,7 @@ Whitespace visualization was parked until the document/session architecture and 
 ## Affected records
 
 - [Implemented A21 Editor Layout and Visibility design](../03_implemented/designs/2026-09-05-uniti-v0.001a21-editor-layout-visibility-design.md)
-- [A21 Cross-Platform Alpha](../02_plans/v0.001a21-cross-platform-alpha.md)
+- [Implemented A21 Cross-Platform Alpha](../03_implemented/milestones/2026-09-05-uniti-v0.001a21-cross-platform-alpha.md)
 - [Parked Capability Catalog](../04_parked/CATALOG.md)
 - [ADR-0002: UNITI Document Authority and Qt Boundary](ADR-0002-document-authority-boundary.md)
 - [ADR-0004: a16 Usability Boundary and Command Ownership](ADR-0004-a16-usability-boundary.md)

@@ -7,7 +7,7 @@ Version: `v0.001a21` / `0.1a21`
 
 UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
 
-The a20 Recovery & Session Alpha and the a21 Editor Layout and Visibility workstream are implemented and verified. The a21 Cross-Platform Alpha source candidate is also implemented and locally verified across shared/injected platform seams and native macOS; its milestone remains active until the same commit passes the four hosted macOS/Windows/Linux lanes.
+The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, and a21 Cross-Platform Alpha are implemented and verified. A21 passed the required same-commit hosted macOS, Windows, Linux/Python 3.12, and Linux/latest-Python matrix at `8b24f4b`; A22 Dogfood / Performance Alpha is active.
 
 ## Included lifecycle capabilities
 
@@ -103,7 +103,7 @@ The a20 Recovery & Session Alpha and the a21 Editor Layout and Visibility workst
 
 ## Approved future scope
 
-`v0.001a21` is an active locally verified candidate pending authoritative hosted evidence and freeze. `v0.001a22`–`v0.001a23` remain queued; their unimplemented portions are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a21` is implemented and retained in the historical records. `v0.001a22` is active and `v0.001a23` remains queued; their unimplemented portions are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 

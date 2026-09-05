@@ -1,7 +1,7 @@
 # UNITI Current Architecture
 
 Date: 2026-09-05
-Baseline: locally verified `v0.001a21` candidate through the pinned hosted-gate definition on local `main`; hosted evidence remains pending
+Baseline: implemented `v0.001a21` source at hosted-proven commit `8b24f4b`; A22 Dogfood / Performance Alpha active
 
 ## Lifecycle boundary
 
@@ -240,4 +240,4 @@ The pinned read-only workflow defines exactly macOS 15/Python 3.12, Windows 2025
 
 ## Planned-change boundary
 
-The complete a20 Recovery & Session Alpha, A21 Editor Layout and Visibility workstream, and A21 cross-platform source candidate are implemented and locally verified current architecture. Completed workstream records are retained in [`03_implemented`](../03_implemented/README.md), while the A21 design/plan remain active until same-commit hosted evidence succeeds. `v0.001a22` and later milestones remain planned intent rather than current architecture. Expanded keyboard-driven Unicode inspection, extension-sensed file-type profiles, and syntax highlighting remain parked outside the approved roadmap.
+The complete a20 Recovery & Session Alpha, A21 Editor Layout and Visibility workstream, and A21 Cross-Platform Alpha are implemented current architecture. A21 passed the required four-lane hosted gate on exact commit `8b24f4b`, and its records are retained in [`03_implemented`](../03_implemented/README.md). `v0.001a22` is active planned intent rather than current architecture; later milestones remain queued. Expanded keyboard-driven Unicode inspection, extension-sensed file-type profiles, and syntax highlighting remain parked outside the approved roadmap.
