@@ -85,6 +85,181 @@ def test_text_view_paints_invalid_byte_annotations_distinctly():
 
 
 @pytest.mark.parametrize(
+    ("mode", "expected"),
+    (
+        ("off", ()),
+        ("eol", ("CRLF",)),
+        ("spaces_tabs", ("SPACE", "TAB")),
+        ("invisible_unicode", ("NBSP", "ZWSP")),
+        ("all", ("SPACE", "TAB", "NBSP", "ZWSP", "CRLF")),
+    ),
+)
+def test_whitespace_modes_paint_only_their_marker_categories(
+    tmp_path: Path,
+    monkeypatch,
+    mode: str,
+    expected: tuple[str, ...],
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / f"markers-{mode}.txt"
+    path.write_bytes("a b\tc\u00a0\u200b\r\n".encode("utf-8"))
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        painted: list[str] = []
+
+        def observe(_painter, _kind, label, _x1, _x2, _y):
+            painted.append(label)
+
+        monkeypatch.setattr(view, "_paint_whitespace_marker", observe)
+        view.set_whitespace_mode(mode)
+        view.resize(640, 100)
+        view.show()
+        app.processEvents()
+        painted.clear()
+        view.viewport().repaint()
+        app.processEvents()
+
+        assert tuple(painted) == expected
+        view.close()
+
+
+def test_whitespace_off_has_no_marker_pixels_and_spaces_mode_uses_theme_token(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+    from uniti.ui.theme import active_theme
+
+    path = tmp_path / "marker-pixels.txt"
+    path.write_text("a b", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    marker = QColor("#ff00ff")
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        view.set_theme_tokens(
+            replace(active_theme(app).editor, space_marker=marker)
+        )
+        view.resize(320, 80)
+        view.show()
+        view.set_whitespace_mode("spaces_tabs")
+        app.processEvents()
+        visible = view.viewport().grab().toImage()
+        assert any(
+            visible.pixelColor(x, y) == marker
+            for x in range(visible.width())
+            for y in range(visible.height())
+        )
+
+        view.set_whitespace_mode("off")
+        view.viewport().repaint()
+        app.processEvents()
+        hidden = view.viewport().grab().toImage()
+        assert all(
+            hidden.pixelColor(x, y) != marker
+            for x in range(hidden.width())
+            for y in range(hidden.height())
+        )
+        view.close()
+
+
+def test_wrapped_eol_marker_is_painted_only_on_final_visual_row(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "wrapped-eol.txt"
+    path.write_bytes(b"abcdef\r\n")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        painted: list[tuple[str, int]] = []
+
+        def observe(_painter, _kind, label, _x1, _x2, y):
+            painted.append((label, y))
+
+        monkeypatch.setattr(view, "_paint_whitespace_marker", observe)
+        view.resize(view._gutter_width + view._cell_width * 2 + 10, 120)
+        view.set_soft_wrap(True)
+        view.set_whitespace_mode("eol")
+        view.show()
+        app.processEvents()
+        painted.clear()
+        view.viewport().repaint()
+        app.processEvents()
+
+        assert len(painted) == 1
+        assert painted[0][0] == "CRLF"
+        assert painted[0][1] >= view._line_height * 2
+        view.close()
+
+
+def test_whitespace_marker_frame_budget_reserves_one_overflow_aggregate(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import MAX_WHITESPACE_MARKERS_PER_FRAME, UNITITextView
+
+    path = tmp_path / "dense-markers.txt"
+    path.write_text(" " * 6000, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        painted: list[str] = []
+
+        def observe(_painter, _kind, label, _x1, _x2, _y):
+            painted.append(label)
+
+        monkeypatch.setattr(view, "_paint_whitespace_marker", observe)
+        view.set_zoom_percent(50)
+        view.resize(40_000, 60)
+        view.set_whitespace_mode("spaces_tabs")
+        view.show()
+        app.processEvents()
+        painted.clear()
+        view.viewport().repaint()
+        app.processEvents()
+
+        assert len(painted) <= MAX_WHITESPACE_MARKERS_PER_FRAME == 4096
+        aggregates = [label for label in painted if label.startswith("+")]
+        assert len(aggregates) == 1
+        assert int(aggregates[0][1:]) > 0
+        view.close()
+
+
+@pytest.mark.parametrize(
     ("base", "text", "highlight", "highlighted_text"),
     (
         ("#ffffff", "#111827", "#2563eb", "#ffffff"),
@@ -101,6 +276,8 @@ def test_selected_text_uses_highlighted_text_palette_role(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+
     from PySide6.QtGui import QColor, QPalette
     from PySide6.QtWidgets import QApplication
 
@@ -122,6 +299,15 @@ def test_selected_text_uses_highlighted_text_palette_role(
             QColor(highlighted_text),
         )
         view.setPalette(palette)
+        view.set_theme_tokens(
+            replace(
+                view.theme_tokens,
+                base=QColor(base),
+                text=QColor(text),
+                selection=QColor(highlight),
+                selected_text=QColor(highlighted_text),
+            )
+        )
         view.resize(320, 100)
         view.show()
         app.processEvents()

@@ -724,6 +724,42 @@ def test_theme_contrast_toggle_is_independent_and_persisted(tmp_path: Path):
         app.processEvents()
 
 
+def test_whitespace_menu_persists_and_propagates_with_theme_tokens(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import Settings, SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+    from uniti.ui.theme import active_theme
+    from uniti.ui.whitespace import WhitespaceMode
+
+    path = tmp_path / "menu-whitespace.txt"
+    path.write_text("a b", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(Settings(whitespace_mode="all"))
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        assert view is not None
+        assert view.whitespace_mode is WhitespaceMode.ALL
+        assert window._whitespace_actions[WhitespaceMode.ALL].isChecked() is True
+
+        window._whitespace_actions[WhitespaceMode.EOL].trigger()
+        assert view.whitespace_mode is WhitespaceMode.EOL
+        assert store.load().whitespace_mode == "eol"
+
+        window.set_theme("Dark")
+        window.set_theme_contrast("High Contrast")
+        assert view.theme_tokens == active_theme(app).editor
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
 def test_system_theme_refreshes_when_the_platform_palette_changes():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

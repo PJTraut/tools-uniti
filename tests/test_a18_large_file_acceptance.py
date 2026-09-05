@@ -51,6 +51,12 @@ def test_a18_policy_and_architecture_contract():
     )
 
 
+def test_whitespace_viewport_work_has_an_exact_frame_bound():
+    from uniti.ui.text_view import MAX_WHITESPACE_MARKERS_PER_FRAME
+
+    assert MAX_WHITESPACE_MARKERS_PER_FRAME == 4096
+
+
 def test_a18_deep_self_check_includes_large_file(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
     paths = AppPaths(

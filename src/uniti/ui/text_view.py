@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import time
 import uuid
 import weakref
@@ -16,7 +17,6 @@ from PySide6.QtGui import (
     QKeyEvent,
     QMouseEvent,
     QPainter,
-    QPalette,
     QRawFont,
     QTextCharFormat,
     QTextLayout,
@@ -28,7 +28,33 @@ from uniti.app.editor_state import EditorState, EditorStateSnapshot
 from uniti.app.session import DockReturnRecord, ViewRecord
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
+from uniti.ui.theme import EditorThemeTokens, active_theme
+from uniti.ui.whitespace import (
+    WhitespaceKind,
+    WhitespaceMode,
+    iter_character_markers,
+    parse_whitespace_mode,
+    shows_eol,
+)
 from uniti.ui.wrap_index import WrappedRowIndex
+
+
+MAX_WHITESPACE_MARKERS_PER_FRAME = 4096
+
+
+@dataclass(slots=True)
+class _MarkerBudget:
+    remaining: int = MAX_WHITESPACE_MARKERS_PER_FRAME
+    overflow: int = 0
+    last_position: tuple[float, float, int] | None = None
+
+
+def _consume_marker(budget: _MarkerBudget) -> bool:
+    if budget.remaining > 1:
+        budget.remaining -= 1
+        return True
+    budget.overflow += 1
+    return False
 
 
 def _zero_width_visible(
@@ -94,6 +120,11 @@ class UNITITextView(QAbstractScrollArea):
         self._match_index = MatchIndex(())
         self._progressive_navigation = False
         self._dock_return: DockReturnRecord | None = None
+        self._whitespace_mode = WhitespaceMode.OFF
+        app = QApplication.instance()
+        if not isinstance(app, QApplication):
+            raise RuntimeError("UNITITextView requires an existing QApplication")
+        self._theme_tokens = active_theme(app).editor
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
         self.setMouseTracking(True)
@@ -170,6 +201,29 @@ class UNITITextView(QAbstractScrollArea):
     @property
     def soft_wrap(self) -> bool:
         return self._soft_wrap
+
+    @property
+    def whitespace_mode(self) -> WhitespaceMode:
+        return self._whitespace_mode
+
+    @property
+    def theme_tokens(self) -> EditorThemeTokens:
+        return self._theme_tokens
+
+    def set_whitespace_mode(self, mode: WhitespaceMode | str) -> None:
+        selected = parse_whitespace_mode(mode)
+        if selected == self._whitespace_mode:
+            return
+        self._whitespace_mode = selected
+        self.viewport().update()
+
+    def set_theme_tokens(self, tokens: EditorThemeTokens) -> None:
+        if not isinstance(tokens, EditorThemeTokens):
+            raise TypeError("theme tokens must be EditorThemeTokens")
+        if tokens == self._theme_tokens:
+            return
+        self._theme_tokens = tokens
+        self.viewport().update()
 
     @property
     def dock_return(self) -> DockReturnRecord | None:
@@ -439,8 +493,7 @@ class UNITITextView(QAbstractScrollArea):
     ) -> None:
         if not annotated.invalid_bytes:
             return
-        color = self.palette().color(QPalette.ColorRole.BrightText)
-        painter.setPen(color)
+        painter.setPen(self._theme_tokens.invalid_byte)
         for span in annotated.invalid_bytes:
             local = span.start - window_start
             if local < 0 or local >= len(text):
@@ -462,7 +515,7 @@ class UNITITextView(QAbstractScrollArea):
         y: float,
         *,
         selection: tuple[int, int] | None = None,
-    ) -> None:
+    ) -> QTextLayout:
         layout = QTextLayout(text, self.font())
         layout.beginLayout()
         line = layout.createLine()
@@ -475,30 +528,179 @@ class UNITITextView(QAbstractScrollArea):
             start, end = selection
             if 0 <= start < end <= len(text):
                 selected_format = QTextCharFormat()
-                selected_format.setForeground(
-                    self.palette().color(QPalette.ColorRole.HighlightedText)
-                )
+                selected_format.setForeground(self._theme_tokens.selected_text)
                 selected_range = QTextLayout.FormatRange()
                 selected_range.start = start
                 selected_range.length = end - start
                 selected_range.format = selected_format
                 formats.append(selected_range)
         layout.draw(painter, QPointF(x, y), formats)
+        return layout
+
+    @staticmethod
+    def _layout_cursor_x(line, index: int) -> float:
+        value = line.cursorToX(index)
+        return float(value[0] if isinstance(value, tuple) else value)
+
+    def _paint_whitespace_marker(
+        self,
+        painter: QPainter,
+        kind: WhitespaceKind | str,
+        label: str,
+        x1: float,
+        x2: float,
+        y: int,
+    ) -> None:
+        tokens = self._theme_tokens
+        baseline = y + self._metrics.ascent()
+        left = int(round(x1))
+        right = max(left + 1, int(round(x2)))
+        if kind == WhitespaceKind.SPACE:
+            painter.setPen(tokens.space_marker)
+            center = left + max(0, (right - left) // 2)
+            painter.drawPoint(center, y + max(1, self._line_height // 2))
+            painter.drawText(center - 2, baseline, "·")
+            return
+        if kind == WhitespaceKind.TAB:
+            painter.setPen(tokens.tab_marker)
+            mid = y + max(1, self._line_height // 2)
+            arrow_end = max(left + 3, right - 2)
+            painter.drawLine(left + 1, mid, arrow_end, mid)
+            painter.drawLine(arrow_end - 3, mid - 2, arrow_end, mid)
+            painter.drawLine(arrow_end - 3, mid + 2, arrow_end, mid)
+            painter.drawPoint(left, mid)
+            return
+        if kind in {"eol", "overflow"}:
+            painter.setPen(
+                tokens.eol_marker
+                if kind == "eol"
+                else tokens.invisible_marker
+            )
+            painter.drawPoint(left, y + max(1, self._line_height // 2))
+            painter.drawText(left + 3, baseline, label)
+            return
+
+        label_width = self._metrics.horizontalAdvance(label) + 6
+        badge_width = max(8, right - left, label_width)
+        badge = QRectF(
+            float(left),
+            float(y + 1),
+            float(badge_width),
+            float(max(2, self._line_height - 2)),
+        )
+        painter.fillRect(badge, tokens.invisible_background)
+        painter.setPen(tokens.invisible_border)
+        painter.drawRect(badge)
+        painter.setPen(tokens.invisible_marker)
+        painter.drawPoint(left + 1, y + max(1, self._line_height // 2))
+        painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, label)
+
+    def _paint_whitespace_for_row(
+        self,
+        painter: QPainter,
+        layout: QTextLayout,
+        text: str,
+        text_x: int,
+        y: int,
+        line_number: int,
+        *,
+        owns_end: bool,
+        budget: _MarkerBudget,
+    ) -> None:
+        if self._whitespace_mode == WhitespaceMode.OFF or layout.lineCount() == 0:
+            return
+        layout_line = layout.lineAt(0)
+        viewport_right = float(self.viewport().width())
+        viewport_left = float(self._gutter_width)
+        markers = tuple(iter_character_markers(text, self._whitespace_mode))
+        index = 0
+        while index < len(markers):
+            marker = markers[index]
+            x1 = float(text_x) + self._layout_cursor_x(layout_line, marker.index)
+            x2 = float(text_x) + self._layout_cursor_x(
+                layout_line,
+                marker.index + 1,
+            )
+            label = marker.label
+            if marker.kind == WhitespaceKind.INVISIBLE and abs(x2 - x1) < 0.5:
+                group_end = index + 1
+                while group_end < len(markers):
+                    candidate = markers[group_end]
+                    if (
+                        candidate.kind != WhitespaceKind.INVISIBLE
+                        or candidate.index != markers[group_end - 1].index + 1
+                    ):
+                        break
+                    candidate_x1 = float(text_x) + self._layout_cursor_x(
+                        layout_line,
+                        candidate.index,
+                    )
+                    candidate_x2 = float(text_x) + self._layout_cursor_x(
+                        layout_line,
+                        candidate.index + 1,
+                    )
+                    if (
+                        abs(candidate_x2 - candidate_x1) >= 0.5
+                        or abs(candidate_x1 - x1) >= 0.5
+                    ):
+                        break
+                    group_end += 1
+                count = group_end - index
+                if count > 1:
+                    label = f"{label}×{count}"
+                index = group_end
+            else:
+                index += 1
+            if x2 < viewport_left or x1 > viewport_right:
+                continue
+            budget.last_position = (x1, x2, y)
+            if _consume_marker(budget):
+                self._paint_whitespace_marker(
+                    painter,
+                    marker.kind,
+                    label,
+                    x1,
+                    x2,
+                    y,
+                )
+
+        if shows_eol(self._whitespace_mode) and owns_end:
+            terminator = self.document.line_terminator(line_number)
+            label = {"\n": "LF", "\r\n": "CRLF", "\r": "CR"}.get(terminator)
+            if label is not None:
+                x = float(text_x) + self._layout_cursor_x(layout_line, len(text))
+                if viewport_left <= x <= viewport_right:
+                    budget.last_position = (x, x, y)
+                    if _consume_marker(budget):
+                        self._paint_whitespace_marker(
+                            painter,
+                            "eol",
+                            label,
+                            x,
+                            x,
+                            y,
+                        )
 
     def paintEvent(self, event) -> None:
         del event
         painter = QPainter(self.viewport())
-        palette = self.palette()
-        painter.fillRect(self.viewport().rect(), palette.color(QPalette.ColorRole.Base))
+        tokens = self._theme_tokens
+        painter.fillRect(self.viewport().rect(), tokens.base)
         painter.setFont(self.font())
+        marker_budget = _MarkerBudget()
 
         first_line = self.verticalScrollBar().value()
         visible = self._visible_line_capacity()
         selection = self.state.selection
         cursor_line = self.document.line_for_char(self.state.cursor)
 
-        gutter_color = palette.color(QPalette.ColorRole.AlternateBase)
-        painter.fillRect(0, 0, self._gutter_width, self.viewport().height(), gutter_color)
+        painter.fillRect(
+            0,
+            0,
+            self._gutter_width,
+            self.viewport().height(),
+            tokens.gutter_base,
+        )
 
         display_rows: list[tuple[int, int, int, int]] = []
         if self._soft_wrap:
@@ -533,7 +735,7 @@ class UNITITextView(QAbstractScrollArea):
 
             y = row * self._line_height
             baseline = y + self._metrics.ascent()
-            painter.setPen(palette.color(QPalette.ColorRole.PlaceholderText))
+            painter.setPen(tokens.gutter_text)
             if not self._soft_wrap or column_start == 0:
                 painter.drawText(
                     4,
@@ -557,8 +759,7 @@ class UNITITextView(QAbstractScrollArea):
             logical_line_end = self.document.line_end(line_number)
             owns_end = line_end >= logical_line_end
             if len(self._match_index):
-                match_color = palette.color(QPalette.ColorRole.Highlight)
-                match_color.setAlpha(120)
+                match_color = tokens.match
                 for record in self._match_index.intersecting(line_window_start, line_end + 1):
                     if record.start == record.end and not _zero_width_visible(
                         record.start,
@@ -615,20 +816,30 @@ class UNITITextView(QAbstractScrollArea):
                         y,
                         max(1, int(x2 - x1)),
                         self._line_height,
-                        palette.color(QPalette.ColorRole.Highlight),
+                        tokens.selection,
                     )
                     selected_range = (a, b)
 
             self._paint_invalid_byte_annotations(
                 painter, annotated, line_window_start, text, text_x, y
             )
-            painter.setPen(palette.color(QPalette.ColorRole.Text))
-            self._paint_line_text(
+            painter.setPen(tokens.text)
+            layout = self._paint_line_text(
                 painter,
                 text,
                 float(text_x),
                 float(y),
                 selection=selected_range,
+            )
+            self._paint_whitespace_for_row(
+                painter,
+                layout,
+                text,
+                text_x,
+                y,
+                line_number,
+                owns_end=owns_end,
+                budget=marker_budget,
             )
 
             if line_number == cursor_line and self._preedit_text:
@@ -654,6 +865,18 @@ class UNITITextView(QAbstractScrollArea):
                         int(cursor_x),
                         y + self._line_height - 1,
                     )
+
+        if marker_budget.overflow and marker_budget.last_position is not None:
+            x1, x2, y = marker_budget.last_position
+            self._paint_whitespace_marker(
+                painter,
+                "overflow",
+                f"+{marker_budget.overflow}",
+                x1,
+                x2,
+                y,
+            )
+            marker_budget.remaining -= 1
 
         self._refresh_scrollbars(advance_index=False)
 

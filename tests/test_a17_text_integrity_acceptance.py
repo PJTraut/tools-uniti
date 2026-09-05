@@ -99,6 +99,39 @@ def test_a17_mixed_eol_preserve_keeps_each_original_ending(tmp_path: Path):
     assert path.read_bytes() == b"Xone\r\ntwo\nthree\r"
 
 
+def test_whitespace_modes_do_not_change_offsets_clipboard_or_saved_bytes(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.ui.text_view import UNITITextView
+    from uniti.ui.whitespace import WhitespaceMode
+
+    source = tmp_path / "whitespace-exact.txt"
+    original = "a b\t\u00a0\u200b\r\n"
+    encoded = original.encode("utf-8")
+    source.write_bytes(encoded)
+    app = QApplication.instance() or QApplication([])
+    with Document.open(source, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document, cursor=5, anchor=1))
+        before = (document.revision, document.modified, view.state.selection)
+        view.resize(480, 80)
+        view.set_whitespace_mode(WhitespaceMode.ALL)
+        view.show()
+        view.viewport().repaint()
+        app.processEvents()
+
+        assert (document.revision, document.modified, view.state.selection) == before
+        assert view.copy_selection() == document.read(1, 5)
+        assert document.save() == source
+        view.close()
+    assert source.read_bytes() == encoded
+
+
 def test_a17_malformed_utf8_same_profile_preserve_is_byte_exact(tmp_path: Path):
     path = tmp_path / "malformed.txt"
     path.write_bytes(b"A\xffB\r\n")

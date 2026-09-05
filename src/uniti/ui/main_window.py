@@ -87,7 +87,14 @@ from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.panes import EditorPaneTree
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
-from uniti.ui.theme import THEME_CONTRASTS, THEME_MODES, ThemeSpec, apply_theme
+from uniti.ui.theme import (
+    THEME_CONTRASTS,
+    THEME_MODES,
+    ThemeSpec,
+    active_theme,
+    apply_theme,
+)
+from uniti.ui.whitespace import WhitespaceMode, parse_whitespace_mode
 
 if TYPE_CHECKING:
     from uniti.app.service import UNITIService
@@ -452,6 +459,20 @@ class UNITIMainWindow(QMainWindow):
                 if callable(setter):
                     setter(spec.editor)
 
+    def set_whitespace_mode(self, mode: WhitespaceMode | str) -> None:
+        selected = parse_whitespace_mode(mode)
+        for window in self._appearance_windows():
+            action = getattr(window, "_whitespace_actions", {}).get(selected)
+            if action is not None:
+                action.setChecked(True)
+            window._settings = dataclass_replace(
+                window._settings,
+                whitespace_mode=selected.value,
+            )
+            for view in window.views:
+                view.set_whitespace_mode(selected)
+        self._save_settings()
+
     def _on_command_binding_changed(self, command_id: str, shortcut: str) -> None:
         action = self._command_actions.get(command_id)
         if action is not None:
@@ -726,6 +747,31 @@ class UNITIMainWindow(QMainWindow):
         )
         self._wrap_action.setChecked(self._settings.soft_wrap)
         editor_view_menu.addAction(self._wrap_action)
+        whitespace_menu = editor_view_menu.addMenu("Whitespace")
+        whitespace_group = QActionGroup(self)
+        whitespace_group.setExclusive(True)
+        whitespace_labels = {
+            WhitespaceMode.OFF: "Off",
+            WhitespaceMode.EOL: "EOL",
+            WhitespaceMode.SPACES_TABS: "Spaces & Tabs",
+            WhitespaceMode.INVISIBLE_UNICODE: "Invisible Unicode",
+            WhitespaceMode.ALL: "All",
+        }
+        selected_whitespace = parse_whitespace_mode(
+            self._settings.whitespace_mode
+        )
+        self._whitespace_actions: dict[WhitespaceMode, QAction] = {}
+        for mode, label in whitespace_labels.items():
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(mode is selected_whitespace)
+            action.triggered.connect(
+                lambda _checked=False, mode=mode: self.set_whitespace_mode(mode)
+            )
+            whitespace_group.addAction(action)
+            whitespace_menu.addAction(action)
+            self._whitespace_actions[mode] = action
+        self._whitespace_group = whitespace_group
         self._pause_background_action = self._command_action(
             "view.pause_background",
             lambda: self.set_pause_background(
@@ -1211,6 +1257,10 @@ class UNITIMainWindow(QMainWindow):
         view = UNITITextView(state, view_id=view_id)
         view.set_zoom_percent(self._settings.editor_zoom_percent)
         view.set_soft_wrap(self._settings.soft_wrap)
+        view.set_whitespace_mode(self._settings.whitespace_mode)
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            view.set_theme_tokens(active_theme(app).editor)
         self._connect_view(view)
         leaf = self._panes.add_view(view, pane_id=pane_id, select=select)
         self._tabs = leaf.tabs
