@@ -1,4 +1,5 @@
 import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -140,7 +141,7 @@ def test_atomic_write_text_chunks_normalizes_eol_across_chunk_boundaries(tmp_pat
     assert target.read_bytes() == b"a\nb\nc\n"
 
 
-def test_atomic_save_preserves_existing_posix_mode(tmp_path: Path):
+def test_atomic_save_preserves_existing_platform_mode(tmp_path: Path):
     source_path = tmp_path / "mode.txt"
     source, table = table_for(source_path, b"abc", "utf-8")
     source_path.chmod(0o644)
@@ -155,7 +156,11 @@ def test_atomic_save_preserves_existing_posix_mode(tmp_path: Path):
         )
     finally:
         source.close()
-    assert source_path.stat().st_mode & 0o777 == 0o644
+    mode = source_path.stat().st_mode
+    if os.name == "nt":
+        assert mode & stat.S_IWRITE
+    else:
+        assert mode & 0o777 == 0o644
 
 
 def test_atomic_save_preserves_supported_xattrs(tmp_path: Path):
