@@ -567,7 +567,7 @@ def _redactor(
         for root, replacement in roots:
             selected = selected.replace(root, replacement)
             selected = selected.replace(root.replace("/", "\\"), replacement)
-        return selected
+        return selected.replace("\\", "/")
 
     return redact
 
