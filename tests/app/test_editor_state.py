@@ -8,7 +8,7 @@ from uniti.core.document import Document
 
 def _open(tmp_path: Path, text: str) -> Document:
     path = tmp_path / "editor.txt"
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="")
     return Document.open(path, encoding="utf-8")
 
 
