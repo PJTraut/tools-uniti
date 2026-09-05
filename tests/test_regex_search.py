@@ -79,7 +79,7 @@ def test_zero_width_results_are_exact_across_tiny_windows(
     expected: list[tuple[int, int]],
 ):
     path = tmp_path / "zero-boundary.txt"
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="")
     with Document.open(path) as document:
         results = list(
             search_document(
