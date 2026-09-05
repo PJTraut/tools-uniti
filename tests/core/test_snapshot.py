@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from uniti.core.document import Document
+from uniti.core.durability import NativeDurabilityAdapter
 
 
 def _snapshot_text(snapshot) -> str:
@@ -48,7 +49,7 @@ def test_snapshot_fork_keeps_original_bytes_after_path_replacement(tmp_path: Pat
         snapshot = document.snapshot()
         replacement = tmp_path / "replacement.txt"
         replacement.write_text("new", encoding="utf-8")
-        replacement.replace(path)
+        NativeDurabilityAdapter().replace(replacement, path)
         try:
             assert snapshot.read(0, 3) == "old"
             assert snapshot.disk_identity == document.disk_identity

@@ -112,6 +112,7 @@ def test_replaced_path_cannot_publish_stale_full_eol(
     tmp_path: Path,
     monkeypatch,
 ):
+    from uniti.core.durability import NativeDurabilityAdapter
     from uniti.ui.main_window import UNITIMainWindow
 
     path = tmp_path / "identity.txt"
@@ -124,7 +125,7 @@ def test_replaced_path_cannot_publish_stale_full_eol(
         assert started.wait(1.0)
         replacement = tmp_path / "replacement.txt"
         replacement.write_bytes(b"different\r\n")
-        replacement.replace(path)
+        NativeDurabilityAdapter().replace(replacement, path)
         release.set()
         _pump_until(app, lambda: not window._eol_jobs)
 

@@ -4,7 +4,11 @@ from pathlib import Path
 import pytest
 
 from uniti.core.document import Document
-from uniti.core.durability import DurabilityError, DurabilityLevel
+from uniti.core.durability import (
+    DurabilityError,
+    DurabilityLevel,
+    NativeDurabilityAdapter,
+)
 from uniti.core.history import EditOperation, HistoryEventKind
 from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
 
@@ -536,7 +540,7 @@ def test_document_save_as_allowed_after_atomic_external_replacement(tmp_path: Pa
         baseline = doc.disk_identity
         doc.insert(3, "X")
         replacement.write_text("external", encoding="utf-8")
-        replacement.replace(source)
+        NativeDurabilityAdapter().replace(replacement, source)
         result = doc.export_copy(target, output_format=doc.output_format)
         assert result == target
         assert target.read_text(encoding="utf-8") == "abcX"
@@ -723,7 +727,7 @@ def test_assert_safe_overwrite_detects_external_atomic_replacement(tmp_path: Pat
     with Document.open(source) as document:
         document.assert_safe_overwrite()
         replacement.write_text("external", encoding="utf-8")
-        replacement.replace(source)
+        NativeDurabilityAdapter().replace(replacement, source)
         with pytest.raises(ExternalFileChangedError):
             document.assert_safe_overwrite()
 

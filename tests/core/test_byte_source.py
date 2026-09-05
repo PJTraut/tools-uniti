@@ -5,6 +5,7 @@ import pytest
 import uniti.core.byte_source as byte_source_module
 from uniti.app.sparse import enable_sparse_file
 from uniti.core.byte_source import ByteSource
+from uniti.core.durability import NativeDurabilityAdapter
 
 
 def test_byte_source_reads_requested_range(tmp_path: Path):
@@ -98,7 +99,7 @@ def test_fork_retains_open_file_after_path_replacement_and_parent_close(tmp_path
     fork = source.fork()
     replacement = tmp_path / "replacement.bin"
     replacement.write_bytes(b"replaced")
-    replacement.replace(path)
+    NativeDurabilityAdapter().replace(replacement, path)
     source.close()
     try:
         assert fork.read(0, 8) == b"original"

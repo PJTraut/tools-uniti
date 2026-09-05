@@ -308,6 +308,7 @@ def test_confirmed_reload_reopens_disk_with_fresh_history(tmp_path: Path, monkey
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QMessageBox
 
+    from uniti.core.durability import NativeDurabilityAdapter
     from uniti.ui.main_window import UNITIMainWindow
 
     source = tmp_path / "reload.txt"
@@ -320,7 +321,7 @@ def test_confirmed_reload_reopens_disk_with_fresh_history(tmp_path: Path, monkey
     view.state.insert_text(" local")
     original_document = view.document
     replacement.write_text("fresh Привет", encoding="utf-8")
-    replacement.replace(source)
+    NativeDurabilityAdapter().replace(replacement, source)
     monkeypatch.setattr(
         QMessageBox,
         "warning",
