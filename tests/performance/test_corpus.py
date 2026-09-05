@@ -5,6 +5,7 @@ import sys
 
 import pytest
 
+import benchmarks.corpus as corpus
 from benchmarks.corpus import CorpusKind, CorpusSpec, generate_corpus
 
 
@@ -85,3 +86,28 @@ def test_corpus_refuses_nonpositive_size(tmp_path: Path):
         assert "positive" in str(error)
     else:
         raise AssertionError("nonpositive corpus size was accepted")
+
+
+def test_exact_format_fixtures_are_bounded_and_have_known_digests(tmp_path: Path):
+    fixtures = corpus.generate_format_fixtures(tmp_path / "formats")
+
+    assert tuple(item.name for item in fixtures) == (
+        "utf8",
+        "utf8_bom",
+        "utf16_le_bom",
+        "utf16_be_bom",
+        "mixed_eol",
+        "mixed_unicode",
+        "malformed_utf8",
+    )
+    assert {item.name: item.digest for item in fixtures} == {
+        "utf8": "3392c2257db366ca3c938a70ff57220c2c21fc6fe91ed6004faf909a29873087",
+        "utf8_bom": "9ed9e48a7d82df5aef9999b65d827ffd46d5c77fdf12930fdc9e6be5ee8c58a0",
+        "utf16_le_bom": "7670ef62adef66ec940aaade8af6fa7be9b8887ef0abd474b155cddbec2d21f9",
+        "utf16_be_bom": "2a2c14953eaa7a74794345060fb4ae0f1b285bfc79602dfa231ee342255f3ada",
+        "mixed_eol": "c487d23b88fa7291e67805566cdcfb2bfe10aec8755f494562421dd66eb97ad6",
+        "mixed_unicode": "2f054e7756c66e9df1ec0180056eb63efb37d15cd7577ee63b8455cda63f9832",
+        "malformed_utf8": "78339ddb284899d4dd503b4848aa46c2036f677d9dcb829421751327835f5d5a",
+    }
+    assert sum(item.size_bytes for item in fixtures) == 161
+    assert all(item.size_bytes == item.path.stat().st_size for item in fixtures)

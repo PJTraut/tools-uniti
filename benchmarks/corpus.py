@@ -82,6 +82,14 @@ class CorpusManifest:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class FormatFixture:
+    name: str
+    path: Path
+    size_bytes: int
+    digest: str
+
+
 _PATTERNS = {
     CorpusKind.ORDINARY_LINES: b"00000000 alpha beta gamma delta\n",
     CorpusKind.NEWLINE_DENSE: b"x\n",
@@ -95,6 +103,17 @@ _PATTERNS = {
     CorpusKind.MIXED_EOL: b"alpha\nbeta\r\ngamma\r",
     CorpusKind.MALFORMED_UTF8: b"valid\ninvalid:\xff\xfe\n",
 }
+
+
+_FORMAT_PAYLOADS = (
+    ("utf8", "Alpha café Привет\n".encode("utf-8")),
+    ("utf8_bom", b"\xef\xbb\xbf" + "Alpha café Привет\n".encode("utf-8")),
+    ("utf16_le_bom", b"\xff\xfe" + "Alpha Ω\r\n".encode("utf-16-le")),
+    ("utf16_be_bom", b"\xfe\xff" + "Alpha Ω\r\n".encode("utf-16-be")),
+    ("mixed_eol", b"one\r\ntwo\nthree\r"),
+    ("mixed_unicode", "Café Привет Καλημέρα 東京 🙂\n".encode("utf-8")),
+    ("malformed_utf8", b"A\xffB\r\n"),
+)
 
 
 def _write_pattern(path: Path, pattern: bytes, size_bytes: int) -> str:
@@ -194,3 +213,23 @@ def generate_corpus(spec: CorpusSpec, root: Path) -> CorpusManifest:
     if path.stat().st_size != spec.size_bytes:
         raise RuntimeError("generated corpus size mismatch")
     return CorpusManifest(1, spec, path, digest, marker_offsets)
+
+
+def generate_format_fixtures(root: Path) -> tuple[FormatFixture, ...]:
+    """Materialize the fixed, small exact-byte format fixture vocabulary."""
+
+    root.mkdir(parents=True, exist_ok=False)
+    fixtures: list[FormatFixture] = []
+    for name, payload in _FORMAT_PAYLOADS:
+        path = root / f"{name}.txt"
+        with path.open("wb") as handle:
+            handle.write(payload)
+        fixtures.append(
+            FormatFixture(
+                name=name,
+                path=path,
+                size_bytes=len(payload),
+                digest=hashlib.sha256(payload).hexdigest(),
+            )
+        )
+    return tuple(fixtures)
