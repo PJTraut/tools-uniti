@@ -2,7 +2,7 @@
 
 Date: 2026-09-05
 
-This file is the authoritative sequence of approved outstanding product milestones. With Cross-Platform Alpha implemented, UNITI proceeds through sustained dogfood/performance hardening, executable health/recovery delivery, and beta stabilization.
+This file is the authoritative sequence of approved outstanding product milestones. With Cross-Platform Alpha implemented, UNITI proceeds through sustained dogfood/performance hardening, executable health/recovery delivery, beta-candidate stabilization, and bounded real-world beta feedback.
 
 ## Outstanding milestones
 
@@ -11,6 +11,7 @@ This file is the authoritative sequence of approved outstanding product mileston
 | 1 | [`v0.001a22` — Dogfood / Performance Alpha](v0.001a22-dogfood-performance-alpha.md) | **active** | Measure and harden sustained real-world use with minimal new scope. |
 | 2 | [`v0.001a23` — Executable Health & Recovery Alpha](v0.001a23-executable-health-recovery-alpha.md) | queued | Deliver native executable startup with guided offline diagnosis, repair, recovery, and Safe Session behavior. |
 | 3 | [`v0.001a24` — Beta Candidate](v0.001a24-beta-candidate.md) | queued | Freeze features and satisfy the beta stabilization gate. |
+| 4 | [`v0.001b1` — Real-World Feedback Beta](v0.001b1-real-world-feedback-beta.md) | queued | Promote the green A24 candidate and stabilize private executable builds through bounded cross-platform user feedback. |
 
 The complete a21 Cross-Platform Alpha, including its Editor Layout and Visibility workstream, a20 Recovery & Session Alpha, a19 Regex Intelligence Alpha, a18 Large-File Alpha, a17 Text Integrity Alpha, a16 Usable Test Alpha, and earlier verified work are retained in [`03_implemented`](../03_implemented/README.md).
 

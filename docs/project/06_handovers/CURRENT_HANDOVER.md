@@ -18,7 +18,7 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - A22 implementation sequence: `f214635` through exact behavior candidate `7373df0`; local evidence and hosted portability remediation `f1b588e` through `847d48b`
 - Latest implemented milestone: `v0.001a21` — Cross-Platform Alpha at hosted-proven commit `8b24f4b`
 - Active milestone: `v0.001a22` — Dogfood / Performance Alpha
-- Queued milestones: `v0.001a23` — Executable Health & Recovery Alpha; `v0.001a24` — Beta Candidate
+- Queued milestones: `v0.001a23` — Executable Health & Recovery Alpha; `v0.001a24` — Beta Candidate; `v0.001b1` — Real-World Feedback Beta
 - Current display/package metadata: `v0.001a22` / `0.1a22`
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16 through a20 tags: none
@@ -36,6 +36,9 @@ A20, the A21 Editor Layout and Visibility workstream, and the A21 Cross-Platform
 - [A22 implementation plan](../02_plans/v0.001a22-dogfood-performance-implementation.md)
 - [Queued A23 executable health/recovery design](../02_plans/v0.001a23-executable-health-recovery-design.md)
 - [Queued A23 executable health/recovery implementation plan](../02_plans/v0.001a23-executable-health-recovery-implementation.md)
+- [Queued B1 real-world feedback milestone](../02_plans/v0.001b1-real-world-feedback-beta.md)
+- [Approved B1 real-world feedback design](../02_plans/v0.001b1-real-world-feedback-beta-design.md)
+- [B1 real-world feedback implementation plan](../02_plans/v0.001b1-real-world-feedback-beta-implementation.md)
 - [Executable-only product boundary decision](../05_decisions/ADR-0006-executable-health-recovery-boundary.md)
 - [Implemented A20 milestone](../03_implemented/milestones/2026-09-04-uniti-v0.001a20-recovery-session-alpha.md)
 - [Implemented A20 design](../03_implemented/designs/2026-09-04-uniti-v0.001a20-recovery-session-design.md)
@@ -179,4 +182,4 @@ Hosted remediation `e6585d1` through `847d48b` corrected test and benchmark port
 
 No known A20, completed A21 workstream, or A21 candidate correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, launcher, native-path, or inherited text-integrity/regex blocker remains in local or hosted evidence. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive.
 
-Continue A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). Task 19 evidence is complete. The sole remaining freeze condition is seven distinct active dogfood days on behavior candidate `7373df0`; structural UNITI source changes restart that clock, while evidence-only documentation does not. Do not infer or backfill dogfood days from synthetic smoke, benchmark, or hosted activity. Do not tag, release, install, bundle, or package A22. A23 Executable Health & Recovery Alpha remains queued behind A22 and is not implicit A22 scope.
+Continue A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). Task 19 evidence is complete. The sole remaining freeze condition is seven distinct active dogfood days on behavior candidate `7373df0`; structural UNITI source changes restart that clock, while evidence-only documentation does not. Do not infer or backfill dogfood days from synthetic smoke, benchmark, or hosted activity. Do not tag, release, install, bundle, or package A22. A23 Executable Health & Recovery Alpha remains queued behind A22, followed by A24 Beta Candidate and B1 Real-World Feedback Beta; none is implicit A22 scope.

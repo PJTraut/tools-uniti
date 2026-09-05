@@ -103,7 +103,7 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 
 ## Approved future scope
 
-`v0.001a21` is implemented and retained in the historical records. `v0.001a22` is active; `v0.001a23` Executable Health & Recovery Alpha and `v0.001a24` Beta Candidate remain queued. Their unimplemented portions are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a21` is implemented and retained in the historical records. `v0.001a22` is active; `v0.001a23` Executable Health & Recovery Alpha, `v0.001a24` Beta Candidate, and `v0.001b1` Real-World Feedback Beta remain queued. Their unimplemented portions are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 
