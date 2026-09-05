@@ -67,6 +67,36 @@ def _windows_shell_command(executable: Path, arguments: tuple[str, ...]) -> str:
     return f"{executable.name} {quoted_arguments}"
 
 
+def _install_windows_bootstrap_probe(checkout: Path) -> Path:
+    scripts = checkout / "scripts"
+    scripts.mkdir(parents=True)
+    bootstrap = scripts / "bootstrap.py"
+    shutil.copy2(BOOTSTRAP, bootstrap)
+    package = checkout / "src" / "uniti" / "bootstrap"
+    package.mkdir(parents=True)
+    (package.parent / "__init__.py").write_text("", encoding="utf-8", newline="")
+    (package / "__init__.py").write_text("", encoding="utf-8", newline="")
+    (package / "cli.py").write_text(
+        """import json
+import os
+from pathlib import Path
+
+def main(arguments):
+    Path(os.environ["UNITI_LAUNCH_TEST_LOG"]).write_text(
+        json.dumps(
+            {"cwd": os.getcwd(), "arguments": list(arguments)},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return int(os.environ["UNITI_LAUNCH_TEST_EXIT"])
+""",
+        encoding="utf-8",
+        newline="",
+    )
+    return bootstrap
+
+
 def test_required_platform_launchers_are_shipped():
     assert POSIX_LAUNCHER.is_file()
     assert WINDOWS_LAUNCHER.is_file()
@@ -199,26 +229,10 @@ def test_posix_launcher_reports_missing_python(tmp_path: Path):
 @pytest.mark.skipif(os.name != "nt", reason="requires Windows cmd.exe")
 def test_windows_launcher_preserves_context_arguments_and_exit_code(tmp_path: Path):
     checkout = tmp_path / "checkout Ω Привет (100%)"
-    scripts = checkout / "scripts"
-    scripts.mkdir(parents=True)
+    bootstrap = _install_windows_bootstrap_probe(checkout)
     launcher = checkout / WINDOWS_LAUNCHER.name
     shutil.copy2(WINDOWS_LAUNCHER, launcher)
-    bootstrap = scripts / "bootstrap.py"
     log = tmp_path / "launch.json"
-    bootstrap.write_text(
-        """import json
-import os
-import sys
-from pathlib import Path
-
-Path(os.environ["UNITI_LAUNCH_TEST_LOG"]).write_text(
-    json.dumps({"cwd": os.getcwd(), "argv": sys.argv}, ensure_ascii=False),
-    encoding="utf-8",
-)
-raise SystemExit(int(os.environ["UNITI_LAUNCH_TEST_EXIT"]))
-""",
-        encoding="utf-8",
-    )
     env = {
         **os.environ,
         "UNITI_PYTHON": sys.executable,
@@ -249,10 +263,8 @@ raise SystemExit(int(os.environ["UNITI_LAUNCH_TEST_EXIT"]))
     assert completed.returncode == 23
     payload = json.loads(log.read_text(encoding="utf-8"))
     assert Path(payload["cwd"]).resolve() == checkout.resolve()
-    assert [str(Path(payload["argv"][0]).resolve()), *payload["argv"][1:]] == [
-        str(bootstrap.resolve()),
-        *arguments,
-    ]
+    assert payload["arguments"] == list(arguments)
+    assert bootstrap.read_bytes() == BOOTSTRAP.read_bytes()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires Windows cmd.exe")
@@ -313,30 +325,15 @@ def test_windows_launcher_invokes_from_powershell(tmp_path: Path):
     if powershell is None:
         pytest.fail("required Windows PowerShell executable is unavailable")
     checkout = tmp_path / "PowerShell checkout Ω (100%)"
-    scripts = checkout / "scripts"
-    scripts.mkdir(parents=True)
+    bootstrap = _install_windows_bootstrap_probe(checkout)
     launcher = checkout / WINDOWS_LAUNCHER.name
     shutil.copy2(WINDOWS_LAUNCHER, launcher)
-    bootstrap = scripts / "bootstrap.py"
     log = tmp_path / "PowerShell launch.json"
-    bootstrap.write_text(
-        """import json
-import os
-import sys
-from pathlib import Path
-
-Path(os.environ["UNITI_LAUNCH_TEST_LOG"]).write_text(
-    json.dumps({"cwd": os.getcwd(), "argv": sys.argv}, ensure_ascii=False),
-    encoding="utf-8",
-)
-raise SystemExit(23)
-""",
-        encoding="utf-8",
-    )
     env = {
         **os.environ,
         "UNITI_PYTHON": sys.executable,
         "UNITI_LAUNCH_TEST_LOG": str(log),
+        "UNITI_LAUNCH_TEST_EXIT": "23",
     }
     command = (
         "& .\\uniti.bat 'notes one.txt' 'Ω' 'Привет' '100%' "
@@ -355,8 +352,7 @@ raise SystemExit(23)
     payload = json.loads(log.read_text(encoding="utf-8"))
     assert completed.returncode == 23
     assert Path(payload["cwd"]).resolve() == checkout.resolve()
-    assert [str(Path(payload["argv"][0]).resolve()), *payload["argv"][1:]] == [
-        str(bootstrap.resolve()),
+    assert payload["arguments"] == [
         "notes one.txt",
         "Ω",
         "Привет",
@@ -366,3 +362,4 @@ raise SystemExit(23)
         "-leading",
         "",
     ]
+    assert bootstrap.read_bytes() == BOOTSTRAP.read_bytes()
