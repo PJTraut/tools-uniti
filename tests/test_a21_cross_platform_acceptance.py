@@ -9,6 +9,24 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
+def test_a21_ci_policy_and_driver_are_checked_in_with_bounded_contracts():
+    import json
+
+    policy_path = Path("ci/a21-skip-policy.json")
+    driver_path = Path("scripts/a21_ci.py")
+
+    assert policy_path.is_file()
+    assert driver_path.is_file()
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    assert policy["schema"] == 1
+    assert set(policy["families"]) == {"macos", "linux", "windows"}
+    source = driver_path.read_text(encoding="utf-8")
+    assert "shell=False" in source
+    assert "ARTIFACT_RETENTION_DAYS = 7" in source
+    assert "MAX_INPUT_BYTES = 2 << 20" in source
+    assert "ci-results/" in Path(".gitignore").read_text(encoding="utf-8").splitlines()
+
+
 def test_a21_safe_diagnostics_omit_user_paths(tmp_path: Path):
     from uniti.app.diagnostics import diagnostics_snapshot
     from uniti.core.document import Document

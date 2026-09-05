@@ -1,8 +1,15 @@
+import os
 from pathlib import Path
+
+import pytest
 
 from uniti.core.document import Document
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="requires safe native sparse-file creation",
+)
 def test_sparse_source_above_one_gib_stays_lazy_during_early_edit(tmp_path: Path):
     path = tmp_path / "sparse-large.txt"
     tail_offset = (1 << 30) + 12_345
@@ -12,9 +19,7 @@ def test_sparse_source_above_one_gib_stays_lazy_during_early_edit(tmp_path: Path
             handle.seek(tail_offset)
             handle.write(b"TAIL")
     except OSError as exc:
-        import pytest
-
-        pytest.skip(f"filesystem does not support sparse fixture: {exc}")
+        pytest.fail(f"required sparse test fixture is unavailable: {exc}")
 
     with Document.open(path, encoding="utf-8") as doc:
         assert doc.source.size == tail_offset + 4

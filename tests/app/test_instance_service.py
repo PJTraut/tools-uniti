@@ -292,7 +292,7 @@ def test_primary_rejects_malformed_socket_input_before_emitting_request(
 
 
 @pytest.mark.skipif(
-    sys.platform.startswith("win"),
+    sys.platform == "darwin" or sys.platform.startswith("win"),
     reason="requires a filesystem-backed QLocalServer endpoint",
 )
 def test_primary_removes_stale_endpoint_only_after_acquiring_lease(

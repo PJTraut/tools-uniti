@@ -109,12 +109,11 @@ def test_native_paths_use_samefile_for_existing_hard_links(tmp_path: Path):
     try:
         alias.hardlink_to(source)
     except OSError as error:
-        pytest.skip(f"hard links are unavailable: {error}")
+        pytest.fail(f"required hard-link fixture is unavailable: {error}")
 
     assert native_paths_equal(source, alias)
 
 
-@pytest.mark.skipif(os.name == "nt", reason="requires case-sensitive POSIX policy")
 def test_missing_posix_paths_remain_case_sensitive(tmp_path: Path):
     assert not native_paths_equal(
         tmp_path / "Missing.txt",
@@ -132,18 +131,16 @@ def test_missing_windows_paths_use_case_insensitive_lexical_keys(tmp_path: Path)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires Windows native paths")
-@pytest.mark.parametrize(
-    ("first", "second"),
-    (
+def test_windows_native_drive_and_unc_paths():
+    cases = (
         (r"C:\UNITI\Folder\Missing.TXT", r"c:/uniti/folder/missing.txt"),
         (
             r"\\server\share\UNITI\Folder\..\Missing.txt",
             r"\\SERVER\SHARE\uniti\missing.TXT",
         ),
-    ),
-)
-def test_windows_native_drive_and_unc_paths_share_lexical_identity(first, second):
-    assert native_paths_equal(first, second, platform_name="win32")
+    )
+    for first, second in cases:
+        assert native_paths_equal(first, second, platform_name="win32")
 
 
 @pytest.mark.parametrize("path", ("", "bad\0path"))

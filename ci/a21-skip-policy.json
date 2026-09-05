@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "families": {
+    "macos": [
+      [
+        "tests/test_launchers.py::test_windows_launcher_preserves_context_arguments_and_exit_code",
+        "requires Windows cmd.exe"
+      ],
+      [
+        "tests/test_launchers.py::test_windows_launcher_discovers_python_from_path",
+        "requires Windows cmd.exe"
+      ],
+      [
+        "tests/test_launchers.py::test_windows_launcher_reports_missing_python",
+        "requires Windows cmd.exe"
+      ],
+      [
+        "tests/test_launchers.py::test_windows_launcher_invokes_from_powershell",
+        "requires Windows PowerShell"
+      ],
+      [
+        "tests/app/test_platform_policy.py::test_windows_native_drive_and_unc_paths",
+        "requires Windows native paths"
+      ],
+      [
+        "tests/app/test_instance_service.py::test_primary_removes_stale_endpoint_only_after_acquiring_lease",
+        "requires a filesystem-backed QLocalServer endpoint"
+      ]
+    ],
+    "linux": [
+      [
+        "tests/test_launchers.py::test_windows_launcher_preserves_context_arguments_and_exit_code",
+        "requires Windows cmd.exe"
+      ],
+      [
+        "tests/test_launchers.py::test_windows_launcher_discovers_python_from_path",
+        "requires Windows cmd.exe"
+      ],
+      [
+        "tests/test_launchers.py::test_windows_launcher_reports_missing_python",
+        "requires Windows cmd.exe"
+      ],
+      [
+        "tests/test_launchers.py::test_windows_launcher_invokes_from_powershell",
+        "requires Windows PowerShell"
+      ],
+      [
+        "tests/app/test_platform_policy.py::test_windows_native_drive_and_unc_paths",
+        "requires Windows native paths"
+      ],
+      [
+        "tests/performance/test_corpus.py::test_macos_sparse_corpus_retains_holes_around_markers",
+        "APFS-specific hole punching"
+      ],
+      [
+        "tests/performance/test_host.py::test_sparse_probe_uses_macos_hole_deallocation",
+        "APFS-specific hole punching"
+      ]
+    ],
+    "windows": [
+      [
+        "tests/test_launchers.py::test_posix_launcher_preserves_working_directory_and_arguments",
+        "requires a POSIX command launcher"
+      ],
+      [
+        "tests/test_launchers.py::test_posix_launcher_propagates_bootstrap_failure",
+        "requires a POSIX command launcher"
+      ],
+      [
+        "tests/test_launchers.py::test_posix_launcher_discovers_python_from_path",
+        "requires a POSIX command launcher"
+      ],
+      [
+        "tests/test_launchers.py::test_posix_launcher_reports_missing_python",
+        "requires a POSIX command launcher"
+      ],
+      [
+        "tests/performance/test_corpus.py::test_macos_sparse_corpus_retains_holes_around_markers",
+        "APFS-specific hole punching"
+      ],
+      [
+        "tests/performance/test_host.py::test_sparse_probe_uses_macos_hole_deallocation",
+        "APFS-specific hole punching"
+      ],
+      [
+        "tests/app/test_instance_service.py::test_primary_removes_stale_endpoint_only_after_acquiring_lease",
+        "requires a filesystem-backed QLocalServer endpoint"
+      ],
+      [
+        "tests/core/test_byte_source.py::test_sparse_file_supports_offsets_above_one_gib",
+        "requires safe native sparse-file creation"
+      ],
+      [
+        "tests/core/test_phase1b_acceptance.py::test_sparse_source_above_one_gib_stays_lazy_during_early_edit",
+        "requires safe native sparse-file creation"
+      ]
+    ]
+  }
+}

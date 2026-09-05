@@ -41,7 +41,7 @@ def test_registry_detects_an_existing_file_reached_through_a_hard_link(
         alias.hardlink_to(first.path)
     except OSError as exc:
         first.close()
-        pytest.skip(f"hard links are unavailable: {exc}")
+        pytest.fail(f"required hard-link fixture is unavailable: {exc}")
     duplicate = Document.open(alias)
     registry = DocumentRegistry(clock=lambda: NOW)
     try:
@@ -164,7 +164,7 @@ def test_replacing_document_authority_accepts_a_hard_link_to_the_same_file(
         alias.hardlink_to(original.path)
     except OSError as error:
         original.close()
-        pytest.skip(f"hard links are unavailable: {error}")
+        pytest.fail(f"required hard-link fixture is unavailable: {error}")
     replacement = Document.open(alias)
     registry = DocumentRegistry(clock=lambda: NOW)
     replacement_owned = False

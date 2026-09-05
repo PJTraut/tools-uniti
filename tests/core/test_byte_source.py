@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,10 @@ def test_invalid_read_ranges_raise(tmp_path: Path, start: int, length: int):
             source.read(start, length)
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="requires safe native sparse-file creation",
+)
 def test_sparse_file_supports_offsets_above_one_gib(tmp_path: Path):
     path = tmp_path / "large.bin"
     marker_offset = (1 << 30) + 12345
@@ -50,7 +55,7 @@ def test_sparse_file_supports_offsets_above_one_gib(tmp_path: Path):
             handle.seek(marker_offset)
             handle.write(b"UNITI")
     except OSError as exc:
-        pytest.skip(f"filesystem cannot create sparse test file: {exc}")
+        pytest.fail(f"required sparse test fixture is unavailable: {exc}")
 
     with ByteSource.open(path) as source:
         assert source.size == marker_offset + 5

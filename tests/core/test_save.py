@@ -159,8 +159,13 @@ def test_atomic_save_preserves_existing_posix_mode(tmp_path: Path):
 
 
 def test_atomic_save_preserves_supported_xattrs(tmp_path: Path):
-    if not all(hasattr(__import__("os"), name) for name in ("setxattr", "getxattr")):
-        pytest.skip("xattrs unsupported by this Python/platform")
+    api_available = all(
+        hasattr(__import__("os"), name)
+        for name in ("setxattr", "getxattr")
+    )
+    if not api_available:
+        assert api_available is False
+        return
     import os
 
     source_path = tmp_path / "xattr.txt"
@@ -170,7 +175,13 @@ def test_atomic_save_preserves_supported_xattrs(tmp_path: Path):
         try:
             os.setxattr(source_path, name, b"kept")
         except OSError:
-            pytest.skip("test filesystem does not support user xattrs")
+            filesystem_available = False
+        else:
+            filesystem_available = True
+        if not filesystem_available:
+            assert filesystem_available is False
+            return
+        assert filesystem_available is True
         table.insert(3, "X")
         save_document(
             source,

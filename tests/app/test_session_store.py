@@ -868,7 +868,7 @@ def test_local_backend_rejects_paths_outside_owned_root_and_symlink_escape(tmp_p
     link = root / "escape"
     try:
         os.symlink(outside, link)
-    except (OSError, NotImplementedError):
-        pytest.skip("symlinks are unavailable")
+    except (OSError, NotImplementedError) as error:
+        pytest.fail(f"required symlink containment fixture is unavailable: {error}")
     with pytest.raises(ValueError, match="outside"):
         backend.write_synced(link / "pack", b"x")
