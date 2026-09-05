@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import pytest
@@ -30,7 +29,7 @@ class InjectedDocumentDurabilityAdapter:
     def replace(self, source: Path, destination: Path) -> None:
         if self.fail_replace:
             raise OSError("injected replace failure")
-        os.replace(source, destination)
+        NativeDurabilityAdapter().replace(source, destination)
 
     def sync_directory(self, _directory: Path) -> bool:
         return False
