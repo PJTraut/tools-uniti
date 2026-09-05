@@ -12,6 +12,7 @@ from pathlib import Path
 
 from uniti.app.recovery_manager import RecoveryManager
 from uniti.core.document import Document
+from uniti.core.durability import NativeDurabilityAdapter
 from uniti.core.file_identity import ExternalFileChangedError
 from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
 from uniti.regex.engine import compile_pattern
@@ -115,7 +116,7 @@ def _run_in(directory: Path) -> dict[str, object]:
     with Document.open(external_source) as document:
         document.insert(3, "X")
         external_replacement.write_text("changed elsewhere", encoding="utf-8")
-        external_replacement.replace(external_source)
+        NativeDurabilityAdapter().replace(external_replacement, external_source)
         try:
             document.save()
         except ExternalFileChangedError:
