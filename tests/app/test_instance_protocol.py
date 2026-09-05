@@ -54,6 +54,20 @@ def _raw_frame(payload: bytes) -> bytes:
             {"version": 1, "activate": True, "files": [], "command": "unknown"}
         ),
     ],
+    ids=(
+        "empty",
+        "trailing-bytes",
+        "oversized-frame",
+        "invalid-utf8",
+        "unsupported-version",
+        "boolean-version",
+        "invalid-activate",
+        "too-many-files",
+        "oversized-path",
+        "nul-path",
+        "relative-path",
+        "unknown-command",
+    ),
 )
 def test_instance_protocol_rejects_malformed_or_oversized_frames(payload):
     with pytest.raises(InstanceProtocolError):
