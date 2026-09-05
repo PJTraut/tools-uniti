@@ -239,6 +239,48 @@ def test_system_fixed_fallback_reports_degraded_coverage_without_font_payload(qa
     }
 
 
+def test_windows_offscreen_registers_bounded_installed_system_font(
+    qapp,
+    monkeypatch,
+):
+    from uniti.ui import font_policy
+
+    calls: list[str] = []
+
+    class _OffscreenWindowsDatabase(_Database):
+        def addApplicationFont(self, path: str) -> int:
+            calls.append(path)
+            self._families = ("Consolas",)
+            self._fixed = frozenset({"Consolas", "System Fixed"})
+            return 0
+
+    database = _OffscreenWindowsDatabase((), fixed=frozenset())
+    monkeypatch.setattr(
+        font_policy,
+        "_windows_fixed_font_paths",
+        lambda: (Path("C:/Windows/Fonts/consola.ttf"),),
+    )
+
+    resolved = font_policy.resolve_editor_font(
+        family=PlatformFamily.WINDOWS,
+        database=database,
+        raw_font_factory=_factory(
+            {
+                "Consolas": _RawSpec("Consolas"),
+                "System Fixed": _RawSpec("System Fixed"),
+            },
+            [],
+        ),
+    )
+
+    assert calls == ["C:/Windows/Fonts/consola.ttf"]
+    assert resolved.requested_family == "Consolas"
+    assert resolved.fixed_pitch is True
+    assert resolved.latin_coverage is True
+    assert resolved.cyrillic_coverage is True
+    assert resolved.fallback is False
+
+
 def test_real_editor_font_is_concrete_fixed_pitch_with_required_coverage(qapp):
     from uniti.ui.font_policy import resolve_editor_font
 

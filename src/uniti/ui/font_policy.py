@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtGui import (
     QFont,
@@ -31,6 +33,11 @@ _PREFERENCES = {
 }
 _cached_application: QGuiApplication | None = None
 _cached_resolution: FontResolution | None = None
+_WINDOWS_FIXED_FONT_FILES = (
+    "CascadiaMono.ttf",
+    "CascadiaCode.ttf",
+    "consola.ttf",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +109,37 @@ def _concrete_font(font: QFont, resolved_family: str) -> QFont:
     return concrete
 
 
+def _windows_fixed_font_paths() -> tuple[Path, ...]:
+    """Return a bounded list of installed Windows fonts for offscreen Qt."""
+
+    windows_root = os.environ.get("WINDIR")
+    if not windows_root:
+        return ()
+    font_root = Path(windows_root) / "Fonts"
+    if not font_root.is_absolute():
+        return ()
+    return tuple(
+        candidate
+        for name in _WINDOWS_FIXED_FONT_FILES
+        if (candidate := font_root / name).is_file()
+    )
+
+
+def _register_windows_fixed_fonts(database: object) -> bool:
+    """Expose known installed fonts when the Windows offscreen plugin does not."""
+
+    add_font = getattr(database, "addApplicationFont", None)
+    if not callable(add_font):
+        return False
+    registered = False
+    for path in _windows_fixed_font_paths():
+        try:
+            registered = int(add_font(os.fspath(path))) >= 0 or registered
+        except (OSError, RuntimeError, TypeError, ValueError):
+            continue
+    return registered
+
+
 def resolve_editor_font(
     *,
     family: PlatformFamily = classify_platform(sys.platform),
@@ -124,38 +162,50 @@ def resolve_editor_font(
         and _cached_resolution is not None
     ):
         return _cached_resolution
-    installed = tuple(str(item) for item in database.families())
-    installed_set = set(installed)
-    preferred = tuple(
-        candidate
-        for candidate in _PREFERENCES[family]
-        if candidate in installed_set
-    )
-    ordered = preferred + tuple(sorted(installed_set.difference(preferred)))
-
     resolution: FontResolution | None = None
-    for requested_family in ordered:
-        if not bool(database.isFixedPitch(requested_family)):
-            continue
-        font = QFont(requested_family)
-        try:
-            resolved_family, latin, cyrillic = _font_facts(
-                font,
-                raw_font_factory,
-            )
-        except Exception:
-            continue
-        if not (latin and cyrillic):
-            continue
-        resolution = FontResolution(
-            _concrete_font(font, resolved_family),
-            requested_family,
-            resolved_family,
-            True,
-            latin,
-            cyrillic,
-            False,
+    registration_attempted = False
+    while resolution is None:
+        installed = tuple(str(item) for item in database.families())
+        installed_set = set(installed)
+        preferred = tuple(
+            candidate
+            for candidate in _PREFERENCES[family]
+            if candidate in installed_set
         )
+        ordered = preferred + tuple(sorted(installed_set.difference(preferred)))
+
+        for requested_family in ordered:
+            if not bool(database.isFixedPitch(requested_family)):
+                continue
+            font = QFont(requested_family)
+            try:
+                resolved_family, latin, cyrillic = _font_facts(
+                    font,
+                    raw_font_factory,
+                )
+            except Exception:
+                continue
+            if not (latin and cyrillic):
+                continue
+            resolution = FontResolution(
+                _concrete_font(font, resolved_family),
+                requested_family,
+                resolved_family,
+                True,
+                latin,
+                cyrillic,
+                False,
+            )
+            break
+
+        if (
+            resolution is None
+            and family is PlatformFamily.WINDOWS
+            and not registration_attempted
+        ):
+            registration_attempted = True
+            if _register_windows_fixed_fonts(database):
+                continue
         break
 
     if resolution is None:
