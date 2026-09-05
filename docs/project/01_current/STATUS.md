@@ -7,20 +7,20 @@ Date: 2026-09-05
 | Item | Current value |
 |---|---|
 | Repository branch | local `main` |
-| Remote baseline | `origin/main` at `84407e3` |
+| Remote baseline | `origin/main` at hosted-proven candidate `8b24f4b` |
 | Verified A20 implementation sequence | `fabd036` through `f829d01`, preceded by design/plan commits `c9cd792` and `06dd906`, followed by the A20 freeze closure |
 | Verified A21 Editor Layout and Visibility sequence | `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`; preceded by design/plan commits `9477197` and `61c1f19` |
-| Local A21 Cross-Platform candidate sequence | `09ad62b`, `56b344f`, `fffe2ac`, then `f78c936` through `03b7545`; preceded by plan commit `a3a4d81` |
+| A21 Cross-Platform candidate/remediation sequence | `09ad62b` through `8b24f4b`; preceded by plan commit `a3a4d81` |
 | Latest implemented milestone | `v0.001a20` — Recovery & Session Alpha |
-| Latest local candidate | `v0.001a21` — Cross-Platform Alpha; hosted evidence pending |
+| Latest verified candidate | `v0.001a21` — Cross-Platform Alpha at `8b24f4b`; four required hosted lanes passed |
 | Active product milestone | `v0.001a21` — Cross-Platform Alpha |
 | Display/package metadata | `v0.001a21` / `0.1a21` |
 | Latest immutable release tag | `v0.001a15` at `10f419e` |
 | Queued milestones | `v0.001a22` through `v0.001a23` |
 
-The A20 implementation/freeze, completed A21 workstream, and A21 cross-platform candidate are local. `origin/main` remains unchanged until a separate push is authorized; the four hosted lanes have not run on this candidate and no new tag was created.
+The A20 implementation/freeze, completed A21 workstream, and A21 cross-platform candidate are on `main`. The required macOS, Windows, Linux/Python 3.12, and Linux/latest-Python hosted lanes all passed on identical commit `8b24f4b`. No new tag, release, installer, bundle, or other distributable package was created.
 
-## Locally implemented A21 Cross-Platform behavior
+## Implemented A21 Cross-Platform behavior
 
 - one Qt-free policy classifies only macOS, Windows, and Linux, selects absolute native application roots, and keeps existing-file/native lexical identity consistent without hard-coded shared-code drive or separator assumptions;
 - one durability adapter reports `full`, `file_synced`, or `unsafe`; settings, setup, Save, sessions, recovery, compaction, and pointer repair preserve the last complete state instead of direct-overwrite fallback;
@@ -28,7 +28,7 @@ The A20 implementation/freeze, completed A21 workstream, and A21 cross-platform 
 - real POSIX `sh`, Windows `cmd.exe`, and PowerShell launcher contracts cover Unicode, spaces, metacharacters, working directory, interpreter discovery, and exit propagation;
 - native Qt standard shortcuts, portable bounded overrides, and one concrete fixed-pitch Latin/Cyrillic editor font are resolved only after `QApplication`;
 - deep self-check, diagnostics export, and combined smoke expose bounded categorized/capability facts without raw roots, document/IPC content, or session/recovery paths; smoke includes a Unicode/spaced source and real local-instance forwarding; and
-- a standard-library owned-runtime CI driver enforces exact per-family skip sets, 2 MiB per-file/8 MiB aggregate sanitizer budgets, seven-day metadata, and a fixed parsed artifact allowlist. The pinned read-only workflow defines four fail-closed lanes and failure-only uploads, but hosted results remain pending.
+- a standard-library owned-runtime CI driver enforces exact per-family skip sets, 2 MiB per-file/8 MiB aggregate sanitizer budgets, seven-day metadata, and a fixed parsed artifact allowlist. The pinned read-only workflow's four fail-closed lanes passed on the same source commit; successful jobs uploaded no artifacts.
 
 ## Implemented A21 Editor Layout and Visibility behavior
 
@@ -69,16 +69,14 @@ Aggregate pruning removes oldest closed-document history first, then inactive-op
 
 ## Current verification
 
-Fresh local verification on the A21 candidate tree reported:
+Fresh local verification on the hosted-proven A21 candidate tree reported:
 
 ```text
-focused A21 cross-platform slice: 165 passed, 6 skipped in 10.17s
-full pytest: 1232 passed, 6 skipped in 51.82s
+full pytest: 1257 passed, 6 skipped in 52.02s
 compileall and git diff --check: pass
 deep self-check: pass, 21/21 checks including cross-platform
 offscreen combined smoke: pass; full durability, font, shortcuts, instance forwarding, service/session/history, and explicit Quit facts
 native Cocoa combined smoke: pass with the same invariants and qt_platform=cocoa
-quick performance: pass, 13/13 unchanged scenarios; no new baseline selected
 ```
 
 The six skips exactly match `ci/a21-skip-policy.json`: one Windows native-path test, three Windows `cmd.exe` launcher tests, one Windows PowerShell launcher test, and one filesystem-backed local-endpoint test. Optional xattr availability is now a capability fact rather than a skip. The acceptance suite retains its AST guard against real low-disk creation and all reversible docking, one-panel placement, display-only byte integrity, terminator, contrast, and marker-budget coverage.
@@ -87,10 +85,21 @@ The local quick run recorded representative medians of 12.501 ms open-to-usable,
 
 The new offscreen `session_restore` scenario measured median 6.703 ms open-to-usable, 3.353 ms GUI heartbeat p95, 1.640 ms cancellation, 22.578 MiB peak RSS growth, and 12.844 MiB retained growth. Native Cocoa measured 6.709 ms open-to-usable, 1.767 ms heartbeat p95, 5.974 ms maximum heartbeat, 1.468 ms cancellation, 23.219 MiB peak growth, and 13.469 MiB retained growth. Both runs proved storage/load callbacks ran on worker threads and all thirteen scenarios passed. These A20 runs were not selected as committed JSON baselines; the recorded [a19 routine](../../../benchmarks/baselines/v0.001a19-mac15-8-routine.json), [a19 native quick](../../../benchmarks/baselines/v0.001a19-mac15-8-native-quick.json), and [a18 sparse 1 GiB target](../../../benchmarks/baselines/v0.001a18-mac15-8-design-target.json) remain inherited evidence.
 
+Authoritative hosted workflow [run 33945017353](https://github.com/PJTraut/tools-uniti/actions/runs/33945017353) passed on exact commit `8b24f4b1fa16e0491b1d08e6824e40e3c44ceafd`:
+
+| Required job | Runner / runtime | Qt / plugins | Font / durability | Complete pytest |
+|---|---|---|---|---|
+| [macos-py312](https://github.com/PJTraut/tools-uniti/actions/runs/33945017353/job/101249420423) | `macos-15`; CPython `3.12.10` | Qt `6.11.2`; `offscreen` / `cocoa` | Menlo; `full` | 1257 passed, 6 skipped |
+| [windows-py312](https://github.com/PJTraut/tools-uniti/actions/runs/33945017353/job/101249420366) | `windows-2025`; CPython `3.12.10` | Qt `6.11.2`; `offscreen` / `windows` | Cascadia Mono; `file_synced` | 1256 passed, 7 skipped |
+| [linux-py312](https://github.com/PJTraut/tools-uniti/actions/runs/33945017353/job/101249420400) | `ubuntu-24.04`; CPython `3.12.14` | Qt `6.11.2`; `offscreen` / `xcb` | DejaVu Sans Mono; `full` | 1256 passed, 7 skipped |
+| [linux-latest](https://github.com/PJTraut/tools-uniti/actions/runs/33945017353/job/101249420399) | `ubuntu-24.04`; CPython `3.14.7` | Qt `6.11.2`; `offscreen` / `xcb` | DejaVu Sans Mono; `full` | 1256 passed, 7 skipped |
+
+Every job also passed compilation, all 21 deep checks, offscreen and native smoke, and its exact checked-in skip policy. Native smoke proved the expected `cocoa`, `windows`, or `xcb` plugin, full application invariants, and explicit Quit. Windows intentionally reports `file_synced` because its safe replace contract does not claim POSIX directory-fsync semantics. No distributable package was produced.
+
 ## Known boundary
 
-No known shared-code session-writer race, silent admitted-history loss, external-file overwrite, recovery-evidence loss, unsafe instance takeover, cursor-navigation dependency on Find All, GUI freeze, unbounded allocation, or inherited text-integrity/regex blocker remains in local evidence. Authoritative Windows/Linux/macOS hosted results are still required before A21 closure.
+No known shared-code session-writer race, silent admitted-history loss, external-file overwrite, recovery-evidence loss, unsafe instance takeover, cursor-navigation dependency on Find All, GUI freeze, unbounded allocation, platform launcher corruption, native-path defect, or inherited text-integrity/regex blocker remains in local or four-lane hosted evidence.
 
 A20 does not install a permanent OS daemon: the zero-window service exists only while the launched desktop process remains alive and exits on explicit Quit, logout, shutdown, or process termination. Project/workspace semantics, cloud sync, collaboration, plugins, LSP, syntax highlighting, permanent background services, polished installers, user-authored themes, and expanded keyboard-driven Unicode inspection remain outside the implemented boundary.
 
-The A20 milestone and completed A21 Editor Layout and Visibility records are retained in [Implemented](../03_implemented/README.md). The A21 Cross-Platform milestone/design/plan remain active pending same-commit hosted evidence. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
+The A20 milestone and completed A21 Editor Layout and Visibility records are retained in [Implemented](../03_implemented/README.md). The A21 Cross-Platform milestone/design/plan remain active only until the Task 14 documentation freeze. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
