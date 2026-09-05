@@ -20,6 +20,7 @@ jobs:
           - {id: linux-py312, os: ubuntu-24.04, python: "3.12", family: linux}
           - {id: linux-latest, os: ubuntu-24.04, python: "3.x", family: linux}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
 
     steps:
       - name: Check out source

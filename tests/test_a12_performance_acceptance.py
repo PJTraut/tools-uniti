@@ -1,12 +1,14 @@
 from pathlib import Path
 
 from uniti.app.editor_state import EditorState
+from uniti.app.sparse import enable_sparse_file
 from uniti.core.document import Document
 
 
 def test_a12_version_and_large_file_invariants(tmp_path: Path):
     path = tmp_path / "gib.txt"
     with path.open("wb") as handle:
+        assert enable_sparse_file(handle.fileno())
         handle.write(b"abc\n")
         handle.seek((1 << 30) + 31)
         handle.write(b"END")

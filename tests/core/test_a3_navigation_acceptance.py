@@ -1,11 +1,13 @@
 from pathlib import Path
 
+from uniti.app.sparse import enable_sparse_file
 from uniti.core.document import Document
 
 
 def test_over_1gib_source_supports_early_line_navigation_and_edit_without_full_index(tmp_path: Path):
     path = tmp_path / "huge.txt"
     with path.open("wb") as handle:
+        assert enable_sparse_file(handle.fileno())
         handle.write(b"abc\n" * 1024)
         handle.seek((1 << 30) + 12345)
         handle.write(b"Z")

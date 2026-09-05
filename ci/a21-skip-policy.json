@@ -85,14 +85,6 @@
       [
         "tests/app/test_instance_service.py::test_primary_removes_stale_endpoint_only_after_acquiring_lease",
         "requires a filesystem-backed QLocalServer endpoint"
-      ],
-      [
-        "tests/core/test_byte_source.py::test_sparse_file_supports_offsets_above_one_gib",
-        "requires safe native sparse-file creation"
-      ],
-      [
-        "tests/core/test_phase1b_acceptance.py::test_sparse_source_above_one_gib_stays_lazy_during_early_edit",
-        "requires safe native sparse-file creation"
       ]
     ]
   }

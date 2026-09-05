@@ -1,8 +1,8 @@
-import os
 from pathlib import Path
 
 import pytest
 
+from uniti.app.sparse import enable_sparse_file
 from uniti.core.byte_source import ByteSource
 
 
@@ -43,15 +43,12 @@ def test_invalid_read_ranges_raise(tmp_path: Path, start: int, length: int):
             source.read(start, length)
 
 
-@pytest.mark.skipif(
-    os.name == "nt",
-    reason="requires safe native sparse-file creation",
-)
 def test_sparse_file_supports_offsets_above_one_gib(tmp_path: Path):
     path = tmp_path / "large.bin"
     marker_offset = (1 << 30) + 12345
     try:
         with path.open("wb") as handle:
+            assert enable_sparse_file(handle.fileno())
             handle.seek(marker_offset)
             handle.write(b"UNITI")
     except OSError as exc:

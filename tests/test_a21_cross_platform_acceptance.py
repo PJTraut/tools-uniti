@@ -41,6 +41,7 @@ def test_a21_workflow_is_pinned_read_only_and_runs_every_required_lane():
     assert "permissions:\n  contents: read" in source
     assert "contents: write" not in source
     assert "fail-fast: false" in source
+    assert source.count("timeout-minutes: 20") == 1
     for row in (
         '{id: macos-py312, os: macos-15, python: "3.12", family: macos}',
         '{id: windows-py312, os: windows-2025, python: "3.12", family: windows}',

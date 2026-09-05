@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from uniti.app.sparse import enable_sparse_file
 from uniti.app.smoke import run_alpha_smoke
 from uniti.core.document import Document
 
@@ -16,6 +17,7 @@ def test_alpha_headless_smoke_remains_green(tmp_path: Path):
 def test_a11_gib_sparse_file_stays_lazy_during_early_edit(tmp_path: Path):
     path = tmp_path / "gib-sparse.txt"
     with path.open("wb") as handle:
+        assert enable_sparse_file(handle.fileno())
         handle.write(b"abc\n")
         handle.seek((1 << 30) + 123)
         handle.write(b"END")

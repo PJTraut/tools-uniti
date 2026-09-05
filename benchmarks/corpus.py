@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from uniti.app.sparse import deallocate_file_range
+from uniti.app.sparse import deallocate_file_range, enable_sparse_file
 
 
 class CorpusKind(StrEnum):
@@ -136,6 +136,8 @@ def _write_sparse(path: Path, size_bytes: int) -> tuple[int, ...]:
         raise ValueError("sparse corpus size is too small for both markers")
     offsets = (4096, size_bytes - 4096 - len(marker))
     with path.open("wb") as handle:
+        if not enable_sparse_file(handle.fileno()):
+            raise OSError("safe sparse-file creation is unavailable")
         handle.truncate(size_bytes)
         for offset in offsets:
             handle.seek(offset)

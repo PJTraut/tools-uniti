@@ -55,7 +55,7 @@ from .platform_policy import PlatformFamily
 from .recovery_manager import RecoveryManager
 from .settings import SETTINGS_SCHEMA, SettingsStore
 from .setup_state import SetupStateStore
-from .sparse import deallocate_file_range
+from .sparse import deallocate_file_range, enable_sparse_file
 from .startup import ExitCode
 
 
@@ -958,6 +958,8 @@ class SelfCheckRunner:
         cleanup_ok = False
         try:
             with sparse_path.open("wb") as handle:
+                if not enable_sparse_file(handle.fileno()):
+                    raise RuntimeError("safe sparse-file creation is unavailable")
                 handle.write(b"hello\n")
                 handle.seek(tail_offset)
                 handle.write(marker)

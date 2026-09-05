@@ -1,20 +1,17 @@
-import os
 from pathlib import Path
 
 import pytest
 
+from uniti.app.sparse import enable_sparse_file
 from uniti.core.document import Document
 
 
-@pytest.mark.skipif(
-    os.name == "nt",
-    reason="requires safe native sparse-file creation",
-)
 def test_sparse_source_above_one_gib_stays_lazy_during_early_edit(tmp_path: Path):
     path = tmp_path / "sparse-large.txt"
     tail_offset = (1 << 30) + 12_345
     try:
         with path.open("wb") as handle:
+            assert enable_sparse_file(handle.fileno())
             handle.write(b"hello\n")
             handle.seek(tail_offset)
             handle.write(b"TAIL")

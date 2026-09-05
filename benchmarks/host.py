@@ -15,7 +15,7 @@ from typing import Mapping
 import uniti
 
 from benchmarks.models import ResultState
-from uniti.app.sparse import deallocate_file_range
+from uniti.app.sparse import deallocate_file_range, enable_sparse_file
 from uniti.resources import (
     PerformancePolicy,
     current_process_rss_bytes,
@@ -99,6 +99,8 @@ def probe_sparse_file_support(root: Path) -> bool:
     path = Path(raw_path)
     try:
         with os.fdopen(descriptor, "r+b") as handle:
+            if not enable_sparse_file(handle.fileno()):
+                return False
             handle.write(b"start")
             handle.seek((8 << 20) - 1)
             handle.write(b"x")
