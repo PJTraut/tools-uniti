@@ -27,7 +27,7 @@ def qapp():
 @pytest.fixture
 def three_views(qapp, tmp_path: Path):
     path = tmp_path / "shared.txt"
-    path.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    path.write_text("alpha\nbeta\ngamma\n", encoding="utf-8", newline="")
     document = Document.open(path, encoding="utf-8")
     views = tuple(
         UNITITextView(EditorState(document), view_id=f"view-{index}")

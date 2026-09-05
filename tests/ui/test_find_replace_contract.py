@@ -33,7 +33,7 @@ def _make_panel(tmp_path: Path, text: str):
     from uniti.ui.text_view import UNITITextView
 
     path = tmp_path / "analysis.txt"
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     document = Document.open(path, encoding="utf-8")
     view = UNITITextView(EditorState(document))
@@ -542,7 +542,7 @@ def test_find_all_renders_every_visible_match_with_clear_contrast(tmp_path: Path
 
     path = tmp_path / "highlight-all.txt"
     text = "one gap one gap one"
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     with Document.open(path, encoding="utf-8") as document:
         view = UNITITextView(EditorState(document))

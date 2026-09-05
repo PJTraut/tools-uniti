@@ -42,7 +42,7 @@ def test_text_view_offscreen_smoke_when_pyside6_is_available(tmp_path: Path):
     from uniti.ui.text_view import UNITITextView
 
     path = tmp_path / "view.txt"
-    path.write_text("one\ntwo\n", encoding="utf-8")
+    path.write_text("one\ntwo\n", encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     with Document.open(path, encoding="utf-8") as document:
         state = EditorState(document)
@@ -425,7 +425,11 @@ def test_text_view_keys_dispatch_word_document_and_page_navigation(tmp_path: Pat
     from uniti.ui.text_view import UNITITextView
 
     path = tmp_path / "navigation.txt"
-    path.write_text("one два three\n" + "line\n" * 30, encoding="utf-8")
+    path.write_text(
+        "one два three\n" + "line\n" * 30,
+        encoding="utf-8",
+        newline="",
+    )
     app = QApplication.instance() or QApplication([])
     with Document.open(path, encoding="utf-8") as document:
         state = EditorState(document, cursor=13, anchor=13)
@@ -525,7 +529,7 @@ def test_primary_modifier_wheel_changes_editor_zoom_instead_of_scrolling(tmp_pat
     from uniti.ui.text_view import UNITITextView
 
     path = tmp_path / "wheel-zoom.txt"
-    path.write_text("line\n" * 100, encoding="utf-8")
+    path.write_text("line\n" * 100, encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     with Document.open(path, encoding="utf-8") as document:
         view = UNITITextView(EditorState(document))
@@ -563,7 +567,11 @@ def test_multi_click_selects_word_visual_line_and_logical_line(tmp_path: Path):
 
     path = tmp_path / "multi-click.txt"
     first_line = "alpha bravo charlie delta echo foxtrot"
-    path.write_text(first_line + "\nsecond line\n", encoding="utf-8")
+    path.write_text(
+        first_line + "\nsecond line\n",
+        encoding="utf-8",
+        newline="",
+    )
     app = QApplication.instance() or QApplication([])
     with Document.open(path, encoding="utf-8") as document:
         state = EditorState(document)
@@ -615,7 +623,7 @@ def test_native_click_sequence_promotes_word_line_and_line_break_selection(
     from uniti.ui.text_view import UNITITextView
 
     path = tmp_path / "native-multi-click.txt"
-    path.write_text("alpha bravo\nnext\n", encoding="utf-8")
+    path.write_text("alpha bravo\nnext\n", encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     with Document.open(path, encoding="utf-8") as document:
         state = EditorState(document)
@@ -696,7 +704,11 @@ def test_view_state_round_trips_selection_scroll_wrap_row_and_zoom(tmp_path: Pat
     from uniti.ui.text_view import UNITITextView
 
     path = tmp_path / "view-state.txt"
-    path.write_text(("0123456789" * 30 + "\n") * 80, encoding="utf-8")
+    path.write_text(
+        ("0123456789" * 30 + "\n") * 80,
+        encoding="utf-8",
+        newline="",
+    )
     app = QApplication.instance() or QApplication([])
     with Document.open(path, encoding="utf-8") as document:
         original = UNITITextView(EditorState(document), view_id="view-a")
@@ -790,7 +802,11 @@ def test_two_views_share_text_history_but_keep_independent_positions(tmp_path: P
     from uniti.ui.text_view import UNITITextView
 
     path = tmp_path / "shared-view.txt"
-    path.write_text("alpha\nbeta\n" + ("line\n" * 40), encoding="utf-8")
+    path.write_text(
+        "alpha\nbeta\n" + ("line\n" * 40),
+        encoding="utf-8",
+        newline="",
+    )
     app = QApplication.instance() or QApplication([])
     with Document.open(path, encoding="utf-8") as document:
         left = UNITITextView(EditorState(document), view_id="left")

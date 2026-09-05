@@ -108,7 +108,7 @@ def test_move_end_on_giant_line_avoids_full_line_materialization(tmp_path: Path)
 
 def test_vertical_movement_uses_line_length_without_reading_whole_line(tmp_path: Path):
     path = tmp_path / "vertical.txt"
-    path.write_text("abcdef\nxy\n123456", encoding="utf-8")
+    path.write_text("abcdef\nxy\n123456", encoding="utf-8", newline="")
     with Document.open(path) as document:
         state = EditorState(document)
         state.move_to(5)

@@ -171,7 +171,7 @@ def test_existing_closed_target_requires_one_normal_overwrite_confirmation(
 
     source = _open(window, tmp_path / "source.txt", "replacement\n")
     target = tmp_path / "target.txt"
-    target.write_text("old\n", encoding="utf-8")
+    target.write_text("old\n", encoding="utf-8", newline="")
     calls = _warning_responses(monkeypatch, [QMessageBox.StandardButton.Yes])
 
     assert window.save_current_as(target, source.document.output_format) == target
@@ -190,7 +190,7 @@ def test_existing_target_encoding_change_has_exact_separate_warning(
 
     _open(window, tmp_path / "source.txt", "replacement\n")
     target = tmp_path / "target.txt"
-    target.write_text("old\n", encoding="utf-8")
+    target.write_text("old\n", encoding="utf-8", newline="")
     calls = _warning_responses(
         monkeypatch,
         [QMessageBox.StandardButton.Yes, QMessageBox.StandardButton.Yes],
@@ -216,13 +216,17 @@ def test_target_changed_after_confirmation_is_not_overwritten(
 
     source = _open(window, tmp_path / "source.txt", "replacement\n")
     target = tmp_path / "target.txt"
-    target.write_text("old\n", encoding="utf-8")
+    target.write_text("old\n", encoding="utf-8", newline="")
     calls: list[str] = []
 
     def warning(_parent, title, text, *args, **kwargs):
         calls.append(title)
         if title == "Replace Existing File":
-            target.write_text("external change\n", encoding="utf-8")
+            target.write_text(
+                "external change\n",
+                encoding="utf-8",
+                newline="",
+            )
             return QMessageBox.StandardButton.Yes
         return QMessageBox.StandardButton.Ok
 
@@ -244,7 +248,7 @@ def test_refusing_an_existing_target_warning_leaves_disk_and_tabs_unchanged(
 
     source = _open(window, tmp_path / "source.txt", "new\n")
     target = tmp_path / "target.txt"
-    target.write_text("old\n", encoding="utf-8")
+    target.write_text("old\n", encoding="utf-8", newline="")
     before = target.read_bytes()
     responses = [QMessageBox.StandardButton.Yes] * refused_warning
     responses.append(QMessageBox.StandardButton.Cancel)

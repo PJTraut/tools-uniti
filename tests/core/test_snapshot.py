@@ -13,7 +13,7 @@ def _snapshot_text(snapshot) -> str:
 
 def test_snapshot_retains_revision_text_after_live_edit(tmp_path: Path):
     path = tmp_path / "snapshot.txt"
-    path.write_text("alpha\nbeta\n", encoding="utf-8")
+    path.write_text("alpha\nbeta\n", encoding="utf-8", newline="")
     with Document.open(path) as document:
         snapshot = document.snapshot()
         try:

@@ -38,7 +38,7 @@ def test_progressive_save_as_locks_only_source_and_cancel_preserves_target(
     other_path = tmp_path / "other.txt"
     target = tmp_path / "target.txt"
     source_path.write_bytes(b"new text\n" * 100_000)
-    other_path.write_text("other\n", encoding="utf-8")
+    other_path.write_text("other\n", encoding="utf-8", newline="")
     target.write_bytes(b"original")
     window = UNITIMainWindow()
     source = window.open_path(source_path)
@@ -94,7 +94,7 @@ def test_progressive_save_as_commits_and_opens_target_tab(
 
     source_path = tmp_path / "source.txt"
     target = tmp_path / "target.txt"
-    source_path.write_text("exported\n", encoding="utf-8")
+    source_path.write_text("exported\n", encoding="utf-8", newline="")
     window = UNITIMainWindow()
     source = window.open_path(source_path)
     try:
@@ -128,7 +128,7 @@ def test_post_save_format_inspection_is_bounded(monkeypatch, tmp_path: Path):
     import uniti.ui.main_window as main_window
 
     path = tmp_path / "saved.txt"
-    path.write_text("text\n", encoding="utf-8")
+    path.write_text("text\n", encoding="utf-8", newline="")
     seen = {}
 
     def inspect(source, **kwargs):

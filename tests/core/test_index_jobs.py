@@ -28,7 +28,7 @@ class _CancellingContext(_RecordingContext):
 
 def test_line_index_batch_publishes_only_for_expected_revision(tmp_path: Path):
     path = tmp_path / "batch.txt"
-    path.write_text("a\r\nb\nc\rd", encoding="utf-8")
+    path.write_text("a\r\nb\nc\rd", encoding="utf-8", newline="")
 
     with Document.open(path, encoding="utf-8") as document:
         with document.snapshot() as snapshot:
@@ -53,7 +53,7 @@ def test_line_index_batch_publishes_only_for_expected_revision(tmp_path: Path):
 
 def test_line_index_batch_preserves_crlf_across_chunk_boundary(tmp_path: Path):
     path = tmp_path / "split-crlf.txt"
-    path.write_text("x\r\ny", encoding="utf-8")
+    path.write_text("x\r\ny", encoding="utf-8", newline="")
 
     with Document.open(path, encoding="utf-8") as document:
         with document.snapshot() as snapshot:
@@ -74,7 +74,7 @@ def test_line_index_batch_preserves_crlf_across_chunk_boundary(tmp_path: Path):
 
 def test_line_index_batch_checks_cancellation_between_chunks(tmp_path: Path):
     path = tmp_path / "cancel.txt"
-    path.write_text("line\n" * 10_000, encoding="utf-8")
+    path.write_text("line\n" * 10_000, encoding="utf-8", newline="")
 
     with Document.open(path, encoding="utf-8") as document:
         with document.snapshot() as snapshot:

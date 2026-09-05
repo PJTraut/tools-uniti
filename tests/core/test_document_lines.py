@@ -10,7 +10,7 @@ from uniti.resources import MemorySnapshot, ResourceManager
 
 
 def make_table(path: Path, text: str, *, checkpoint_bytes: int = 8):
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="")
     source = ByteSource.open(path)
     mapper = OffsetMapper(source, "utf-8", checkpoint_bytes=checkpoint_bytes)
     table = PieceTable(source, "utf-8", mapper, EditStore())
@@ -144,7 +144,11 @@ def test_document_line_terminator_never_reads_more_than_two_characters(
     from uniti.core.document import Document
 
     path = tmp_path / "giant-line.txt"
-    path.write_text(("x" * (3 << 20)) + "\r\ntail", encoding="utf-8")
+    path.write_text(
+        ("x" * (3 << 20)) + "\r\ntail",
+        encoding="utf-8",
+        newline="",
+    )
     with Document.open(path) as document:
         assert document.line_start(1) == (3 << 20) + 2
         observed_widths: list[int] = []

@@ -39,8 +39,8 @@ class CancellingTaskContext(ImmediateTaskContext):
 def test_prepare_save_verifies_temp_without_replacing_destination(tmp_path: Path):
     source = tmp_path / "source.txt"
     destination = tmp_path / "target.txt"
-    source.write_text("new text\n", encoding="utf-8")
-    destination.write_text("original\n", encoding="utf-8")
+    source.write_text("new text\n", encoding="utf-8", newline="")
+    destination.write_text("original\n", encoding="utf-8", newline="")
 
     with Document.open(source) as document:
         request = document.create_save_request(
@@ -63,7 +63,7 @@ def test_prepare_save_verifies_temp_without_replacing_destination(tmp_path: Path
 
 def test_stale_prepared_save_cannot_replace_destination(tmp_path: Path):
     source = tmp_path / "stale.txt"
-    source.write_text("before\n", encoding="utf-8")
+    source.write_text("before\n", encoding="utf-8", newline="")
 
     with Document.open(source) as document:
         request = document.create_save_request(source, document.output_format)
@@ -100,7 +100,7 @@ def test_cancelled_preparation_removes_temp_and_preserves_target(tmp_path: Path)
 def test_prepared_export_commit_keeps_source_document_identity(tmp_path: Path):
     source = tmp_path / "source.txt"
     destination = tmp_path / "copy.txt"
-    source.write_text("copy me\n", encoding="utf-8")
+    source.write_text("copy me\n", encoding="utf-8", newline="")
 
     with Document.open(source) as document:
         request = document.create_save_request(

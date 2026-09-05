@@ -8,7 +8,7 @@ from uniti.core.recovery import RecoveryJournal, load_recovery, replay_recovery
 def test_history_save_and_recovery_flow(tmp_path: Path):
     source = tmp_path / "alpha.txt"
     journal_path = tmp_path / "alpha.uniti-recovery"
-    source.write_text("one\ntwo\n", encoding="utf-8")
+    source.write_bytes(b"one\ntwo\n")
 
     with Document.open(source) as document:
         document.replace(4, 7, "TWO")
@@ -23,7 +23,7 @@ def test_history_save_and_recovery_flow(tmp_path: Path):
         assert not document.modified
     assert source.read_text(encoding="utf-8") == "one\nTWO\n"
 
-    source.write_text("one\ntwo\n", encoding="utf-8")
+    source.write_bytes(b"one\ntwo\n")
 
     with RecoveryJournal.create(journal_path, source, encoding="utf-8") as journal:
         journal.append(EditOperation(4, "two", "TWO"))

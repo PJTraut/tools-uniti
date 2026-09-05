@@ -143,7 +143,7 @@ def test_empty_edits_do_not_mark_document_modified(tmp_path: Path):
 
 def test_document_line_navigation_tracks_edits(tmp_path: Path):
     path = tmp_path / "lines.txt"
-    path.write_text("aa\nbb\ncc\ndd", encoding="utf-8")
+    path.write_text("aa\nbb\ncc\ndd", encoding="utf-8", newline="")
     with Document.open(path) as doc:
         assert doc.line_start(2) == 6
         assert doc.line_for_char(7) == 2
@@ -185,7 +185,7 @@ def test_read_line_handles_mixed_eol_and_final_line(tmp_path: Path):
 
 def test_document_save_writes_edits_and_clears_modified(tmp_path: Path):
     path = tmp_path / "save.txt"
-    path.write_text("abc\n", encoding="utf-8")
+    path.write_text("abc\n", encoding="utf-8", newline="")
     with Document.open(path) as doc:
         doc.insert(1, "X")
         assert doc.modified
@@ -218,7 +218,7 @@ def test_verified_in_place_save_updates_format_and_save_point(tmp_path: Path):
 def test_export_copy_leaves_source_document_state_unchanged(tmp_path: Path):
     source = tmp_path / "source.txt"
     target = tmp_path / "target.txt"
-    source.write_text("abc\n", encoding="utf-8")
+    source.write_text("abc\n", encoding="utf-8", newline="")
     with Document.open(source) as document:
         document.insert(3, "!")
         before = (
@@ -293,7 +293,7 @@ def test_save_no_longer_accepts_a_destination_argument(tmp_path: Path):
 def test_export_copy_writes_selected_format_without_retargeting_source(tmp_path: Path):
     source = tmp_path / "source.txt"
     target = tmp_path / "target.txt"
-    source.write_text("café\n", encoding="utf-8")
+    source.write_text("café\n", encoding="utf-8", newline="")
     with Document.open(source) as doc:
         selected = OutputFormat(
             encoding_profile("windows-1252"),
@@ -333,7 +333,7 @@ def test_failed_document_save_keeps_modified_state_and_path(tmp_path: Path):
 
 def test_document_undo_redo_insert_delete_replace(tmp_path: Path):
     path = tmp_path / "history.txt"
-    path.write_text("abc\ndef", encoding="utf-8")
+    path.write_text("abc\ndef", encoding="utf-8", newline="")
     with Document.open(path) as doc:
         doc.insert(1, "X")
         doc.delete(3, 4)
@@ -357,7 +357,7 @@ def test_document_undo_redo_insert_delete_replace(tmp_path: Path):
 
 def test_document_undo_redo_updates_line_navigation_and_unicode(tmp_path: Path):
     path = tmp_path / "history-lines.txt"
-    path.write_text("éa\n中b", encoding="utf-8")
+    path.write_text("éa\n中b", encoding="utf-8", newline="")
     with Document.open(path) as doc:
         doc.replace(1, 3, "X\r\nY")
         assert doc.read_lines(0, doc.line_count()) == ["éX", "Y中b"]
@@ -482,7 +482,7 @@ def test_output_encoding_policy_marks_document_modified_until_save(tmp_path: Pat
 
 def test_output_eol_policy_can_be_changed_and_reverted_without_text_edit(tmp_path: Path):
     path = tmp_path / "eol-policy.txt"
-    path.write_text("a\nb\n", encoding="utf-8")
+    path.write_text("a\nb\n", encoding="utf-8", newline="")
     with Document.open(path, encoding="utf-8") as document:
         document.set_output_eol("CRLF")
         assert document.output_eol == "CRLF"

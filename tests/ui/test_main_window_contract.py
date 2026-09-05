@@ -48,7 +48,7 @@ def test_main_window_offscreen_open_edit_save_when_pyside6_available(tmp_path: P
 
     source = tmp_path / "input.txt"
     output = tmp_path / "output.txt"
-    source.write_text("abc\n", encoding="utf-8")
+    source.write_text("abc\n", encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow()
     assert window._tabs is window.panes.active_leaf.tabs
@@ -257,7 +257,7 @@ def test_go_to_line_moves_to_one_based_line_and_rejects_invalid_target(tmp_path:
     from uniti.ui.main_window import UNITIMainWindow
 
     source = tmp_path / "lines.txt"
-    source.write_text("zero\none\ntwo\n", encoding="utf-8")
+    source.write_text("zero\none\ntwo\n", encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow()
     view = window.open_path(source)
@@ -413,7 +413,7 @@ def test_high_confidence_utf8_open_does_not_show_format_confirmation(
     import uniti.ui.main_window as main_window
 
     source = tmp_path / "certain.txt"
-    source.write_text("Hello, Привет\r\n", encoding="utf-8")
+    source.write_text("Hello, Привет\r\n", encoding="utf-8", newline="")
     app = QApplication.instance() or QApplication([])
     window = main_window.UNITIMainWindow()
 
