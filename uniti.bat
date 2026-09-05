@@ -40,33 +40,33 @@ if %ERRORLEVEL% EQU 0 goto run_python312
 exit /b 10
 
 :run_override
-call "%UNITI_PYTHON%" "%UNITI_BOOTSTRAP%"
+"%UNITI_PYTHON%" "%UNITI_BOOTSTRAP%"
 exit /b %ERRORLEVEL%
 
 :run_py
-call py -3 "%UNITI_BOOTSTRAP%"
+py -3 "%UNITI_BOOTSTRAP%"
 exit /b %ERRORLEVEL%
 
 :run_python
-call python "%UNITI_BOOTSTRAP%"
+python "%UNITI_BOOTSTRAP%"
 exit /b %ERRORLEVEL%
 
 :run_python3
-call python3 "%UNITI_BOOTSTRAP%"
+python3 "%UNITI_BOOTSTRAP%"
 exit /b %ERRORLEVEL%
 
 :run_python315
-call python3.15 "%UNITI_BOOTSTRAP%"
+python3.15 "%UNITI_BOOTSTRAP%"
 exit /b %ERRORLEVEL%
 
 :run_python314
-call python3.14 "%UNITI_BOOTSTRAP%"
+python3.14 "%UNITI_BOOTSTRAP%"
 exit /b %ERRORLEVEL%
 
 :run_python313
-call python3.13 "%UNITI_BOOTSTRAP%"
+python3.13 "%UNITI_BOOTSTRAP%"
 exit /b %ERRORLEVEL%
 
 :run_python312
-call python3.12 "%UNITI_BOOTSTRAP%"
+python3.12 "%UNITI_BOOTSTRAP%"
 exit /b %ERRORLEVEL%

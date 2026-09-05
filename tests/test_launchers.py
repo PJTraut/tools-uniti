@@ -60,30 +60,22 @@ def _launcher_checkout(tmp_path: Path, launcher: Path) -> tuple[Path, Path]:
     return copied, bootstrap
 
 
-def _windows_python_stub(tmp_path: Path) -> Path:
-    directory = tmp_path / "Python Stub Ω Привет (100%)"
-    directory.mkdir(parents=True)
-    wrapper = directory / "python.cmd"
-    wrapper.write_text(
-        """@echo off
-"%UNITI_REAL_PYTHON%" %*
-exit /b %ERRORLEVEL%
-""",
-        encoding="utf-8",
-    )
-    return wrapper
-
-
 def _windows_shell_command(executable: Path, arguments: tuple[str, ...]) -> str:
-    values = (str(executable), *arguments)
-    if any('"' in value for value in values):
+    if '"' in executable.name or any('"' in value for value in arguments):
         raise ValueError("Windows launcher test values must not contain quotes")
-    return "call " + " ".join(f'"{value}"' for value in values)
+    quoted_arguments = " ".join(f'"{value}"' for value in arguments)
+    return f"{executable.name} {quoted_arguments}"
 
 
 def test_required_platform_launchers_are_shipped():
     assert POSIX_LAUNCHER.is_file()
     assert WINDOWS_LAUNCHER.is_file()
+
+
+def test_windows_shell_command_quotes_every_argument_without_quoting_launcher():
+    assert _windows_shell_command(Path("uniti.bat"), ("a&b", "100%", "")) == (
+        'uniti.bat "a&b" "100%" ""'
+    )
 
 
 @pytest.mark.skipif(os.name == "nt", reason="requires a POSIX command launcher")
@@ -227,11 +219,9 @@ raise SystemExit(int(os.environ["UNITI_LAUNCH_TEST_EXIT"]))
 """,
         encoding="utf-8",
     )
-    python_stub = _windows_python_stub(tmp_path)
     env = {
         **os.environ,
-        "UNITI_PYTHON": str(python_stub),
-        "UNITI_REAL_PYTHON": sys.executable,
+        "UNITI_PYTHON": sys.executable,
         "UNITI_LAUNCH_TEST_LOG": str(log),
         "UNITI_LAUNCH_TEST_EXIT": "23",
     }
@@ -248,7 +238,7 @@ raise SystemExit(int(os.environ["UNITI_LAUNCH_TEST_EXIT"]))
 
     completed = subprocess.run(
         _windows_shell_command(launcher, arguments),
-        cwd=tmp_path,
+        cwd=checkout,
         env=env,
         text=True,
         capture_output=True,
@@ -256,9 +246,9 @@ raise SystemExit(int(os.environ["UNITI_LAUNCH_TEST_EXIT"]))
         shell=True,
     )
 
-    payload = json.loads(log.read_text(encoding="utf-8"))
     assert completed.returncode == 23
-    assert Path(payload["cwd"]).resolve() == tmp_path.resolve()
+    payload = json.loads(log.read_text(encoding="utf-8"))
+    assert Path(payload["cwd"]).resolve() == checkout.resolve()
     assert [str(Path(payload["argv"][0]).resolve()), *payload["argv"][1:]] == [
         str(bootstrap.resolve()),
         *arguments,
@@ -343,11 +333,9 @@ raise SystemExit(23)
 """,
         encoding="utf-8",
     )
-    python_stub = _windows_python_stub(tmp_path)
     env = {
         **os.environ,
-        "UNITI_PYTHON": str(python_stub),
-        "UNITI_REAL_PYTHON": sys.executable,
+        "UNITI_PYTHON": sys.executable,
         "UNITI_LAUNCH_TEST_LOG": str(log),
     }
     command = (
