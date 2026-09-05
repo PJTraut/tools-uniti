@@ -71,6 +71,7 @@ class DocumentRegistry:
         self._entries: dict[str, DocumentEntry] = {}
         self._documents: dict[int, str] = {}
         self._views: dict[str, str] = {}
+        self._remove_listeners: list[Callable[[DocumentEntry], None]] = []
 
     @property
     def count(self) -> int:
@@ -81,6 +82,24 @@ class DocumentRegistry:
         """Return entries in stable adoption order."""
 
         return tuple(self._entries.values())
+
+    def add_remove_listener(
+        self,
+        listener: Callable[[DocumentEntry], None],
+    ) -> Callable[[], None]:
+        """Observe authority removal so process services can release bindings."""
+
+        if not callable(listener):
+            raise TypeError("document removal listener must be callable")
+        self._remove_listeners.append(listener)
+
+        def remove() -> None:
+            try:
+                self._remove_listeners.remove(listener)
+            except ValueError:
+                pass
+
+        return remove
 
     def find_path(self, path: Path) -> DocumentEntry | None:
         candidate = normalize_native_path(path).path
@@ -196,7 +215,11 @@ class DocumentRegistry:
         for view_id in entry.view_ids:
             self._views.pop(view_id, None)
         self._documents.pop(id(entry.document), None)
-        entry.document.close()
+        try:
+            for listener in tuple(self._remove_listeners):
+                listener(entry)
+        finally:
+            entry.document.close()
         return entry
 
     def retire(self, document_id: str) -> DocumentEntry:

@@ -54,6 +54,36 @@ def current_process_handle_count(
     return None
 
 
+def release_unused_heap_pages(
+    *,
+    platform: str = sys.platform,
+    library: object | None = None,
+) -> bool:
+    """Ask a supported native allocator to return unused pages to the OS."""
+
+    if platform != "darwin" and not platform.startswith("linux"):
+        return False
+    if library is None:
+        try:
+            library = ctypes.CDLL(None)
+        except (OSError, TypeError):
+            return False
+    try:
+        if platform == "darwin":
+            pressure_relief = library.malloc_zone_pressure_relief
+            pressure_relief.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+            pressure_relief.restype = ctypes.c_size_t
+            pressure_relief(None, 0)
+            return True
+        malloc_trim = library.malloc_trim
+        malloc_trim.argtypes = [ctypes.c_size_t]
+        malloc_trim.restype = ctypes.c_int
+        malloc_trim(0)
+        return True
+    except (AttributeError, OSError, TypeError, ValueError):
+        return False
+
+
 class PressureState(Enum):
     GREEN = "green"
     YELLOW = "yellow"

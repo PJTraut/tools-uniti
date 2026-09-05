@@ -19,7 +19,12 @@ from uniti.app.recovery_manager import RecoveryManager
 from uniti.app.service import QuitChoice, UNITIService
 from uniti.app.session_store import SessionStore
 from uniti.app.settings import SettingsStore
-from uniti.resources import PerformancePolicy, ResourceManager, load_performance_policy
+from uniti.resources import (
+    PerformancePolicy,
+    ResourceManager,
+    load_performance_policy,
+    release_unused_heap_pages,
+)
 
 
 _EVENT_FLAGS = (
@@ -221,6 +226,7 @@ class ApplicationWorkloadHarness:
         self.pump_until(resources_idle)
         gc.collect()
         self.pump_until(resources_idle)
+        release_unused_heap_pages()
         return collect_resource_checkpoint(
             cycle,
             service=self.service,

@@ -10,6 +10,7 @@ from .memory import (
     current_process_handle_count,
     pressure_state,
     probe_memory,
+    release_unused_heap_pages,
 )
 from .policy import (
     ComparisonLimits,
@@ -92,4 +93,5 @@ __all__ = [
     "probe_host_profile",
     "probe_platform_identity",
     "probe_memory",
+    "release_unused_heap_pages",
 ]

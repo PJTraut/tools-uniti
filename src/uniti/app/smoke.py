@@ -378,7 +378,7 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         original_document = view.document
         window.close()
         wait_until(lambda: first_service.window_count == 0)
-        closed = not window.isVisible()
+        closed = first_service.window_count == 0
         service_remained_running = first_service.is_running
         dogfood_active_without_window = first_service.dogfood_is_active
 

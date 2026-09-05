@@ -151,6 +151,8 @@ class UNITIMainWindow(QMainWindow):
     ) -> None:
         super().__init__(parent)
         self._service = service
+        if service is not None:
+            self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.window_id = window_id or uuid.uuid4().hex
         if service is not None and any(
             item is not None

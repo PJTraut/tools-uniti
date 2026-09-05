@@ -91,6 +91,20 @@ def test_checkpoint_is_bounded_and_does_not_serialize_owned_paths(tmp_path: Path
         assert checkpoint.owned_counts["snapshots"] == 3
 
 
+def test_checkpoint_requests_best_effort_heap_relief(tmp_path: Path, monkeypatch):
+    root = _root(tmp_path)
+    calls = []
+    monkeypatch.setattr(
+        "benchmarks.application_harness.release_unused_heap_pages",
+        lambda: calls.append(True) or True,
+    )
+
+    with ApplicationWorkloadHarness(root) as harness:
+        harness.capture_checkpoint(1)
+
+    assert calls == [True]
+
+
 def test_checkpoint_settles_deferred_view_deletion(tmp_path: Path):
     root = _root(tmp_path)
     fixture = root / "document.txt"
@@ -105,6 +119,21 @@ def test_checkpoint_settles_deferred_view_deletion(tmp_path: Path):
         harness.capture_checkpoint(1)
 
         assert view_reference() is None
+
+
+def test_checkpoint_releases_a_closed_service_window(tmp_path: Path):
+    root = _root(tmp_path)
+
+    with ApplicationWorkloadHarness(root) as harness:
+        window = harness.service.new_window()
+        window_reference = weakref.ref(window)
+        window.close()
+        harness.pump_until(lambda: harness.service.window_count == 1)
+        del window
+
+        harness.capture_checkpoint(1)
+
+        assert window_reference() is None
 
 
 def test_checkpoint_waits_for_work_scheduled_while_qt_events_settle(tmp_path: Path):

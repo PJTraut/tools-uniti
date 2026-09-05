@@ -73,6 +73,33 @@ _CORPUS_KINDS = {
     "session_lifecycle": CorpusKind.ORDINARY_LINES,
 }
 
+_LIFECYCLE_PANEL_VALUES = (
+    ("lifecycle-find-a", "lifecycle-replace-a"),
+    ("lifecycle-find-b", "lifecycle-replace-b"),
+)
+_LIFECYCLE_PRIMARY_BYTES = 64 << 10
+
+
+def _lifecycle_panel_values(sequence: int) -> tuple[str, str]:
+    """Alternate bounded values without filling the regex engine's native cache."""
+
+    return _LIFECYCLE_PANEL_VALUES[sequence % len(_LIFECYCLE_PANEL_VALUES)]
+
+
+def _copy_bounded_prefix(source: Path, target: Path, *, max_bytes: int) -> int:
+    """Copy at most ``max_bytes`` without materializing the fixture in memory."""
+
+    remaining = min(source.stat().st_size, max_bytes)
+    copied = remaining
+    with source.open("rb") as reader, target.open("xb") as writer:
+        while remaining:
+            chunk = reader.read(min(64 << 10, remaining))
+            if not chunk:
+                raise RuntimeError("source ended before its declared size")
+            writer.write(chunk)
+            remaining -= len(chunk)
+    return copied
+
 
 def corpus_kind_for_sustained_family(family: str) -> CorpusKind:
     try:
@@ -1331,8 +1358,8 @@ def _run_session_lifecycle(
     source = manifest.path.resolve(strict=True)
     if source.stat().st_size != manifest.spec.size_bytes:
         raise ValueError("lifecycle corpus size does not match its manifest")
-    source_digest = _file_digest(source)
-    if manifest.digest != source_digest:
+    manifest_digest = _file_digest(source)
+    if manifest.digest != manifest_digest:
         raise ValueError("lifecycle corpus digest does not match its manifest")
 
     from PySide6.QtCore import Qt
@@ -1342,7 +1369,12 @@ def _run_session_lifecycle(
     fixture_root.mkdir()
     primary_path = fixture_root / "primary.txt"
     secondary_path = fixture_root / "secondary.txt"
-    shutil.copyfile(source, primary_path)
+    primary_fixture_bytes = _copy_bounded_prefix(
+        source,
+        primary_path,
+        max_bytes=_LIFECYCLE_PRIMARY_BYTES,
+    )
+    source_digest = _file_digest(primary_path)
     secondary_path.write_bytes(b"secondary lifecycle document\n")
     secondary_digest = _file_digest(secondary_path)
 
@@ -1378,6 +1410,7 @@ def _run_session_lifecycle(
         "service_identity_reused": True,
         "service_survived_last_window": True,
         "session_generation_current": True,
+        "stable_base_views_retained": True,
     }
     checkpoints: list[ResourceCheckpoint] = []
     explicit_quit = False
@@ -1387,18 +1420,49 @@ def _run_session_lifecycle(
         for sequence in range(total_cycles):
             measured_cycle = sequence - harness.policy.sustained.warmup_cycles + 1
             started = time.perf_counter()
-            first = harness.service.most_recent_window
-            if first is None:
-                first = harness.service.new_window()
-            view_a = harness.open_owned_fixture(primary_path)
-            shared_a = first.split_current(Qt.Orientation.Horizontal)
-            if shared_a is None:
-                raise RuntimeError("lifecycle split view was not created")
-            view_b = first.open_path(secondary_path)
-            if view_b is None:
-                raise RuntimeError("secondary lifecycle document did not open")
-            second = harness.service.new_window()
-            shared_b = second.open_existing_document(view_b.document)
+            if sequence == 0:
+                first = harness.service.most_recent_window
+                if first is None:
+                    first = harness.service.new_window()
+                view_a = harness.open_owned_fixture(primary_path)
+                shared_a = first.split_current(Qt.Orientation.Horizontal)
+                if shared_a is None:
+                    raise RuntimeError("lifecycle split view was not created")
+                view_b = first.open_path(secondary_path)
+                if view_b is None:
+                    raise RuntimeError("secondary lifecycle document did not open")
+                second = next(
+                    (
+                        window
+                        for _window_id, window in harness.service.windows.items
+                        if window is not first
+                    ),
+                    None,
+                )
+                if second is None:
+                    second = harness.service.new_window()
+                shared_b = second.open_existing_document(view_b.document)
+            else:
+                primary_entry = harness.service.documents.find_path(primary_path)
+                secondary_entry = harness.service.documents.find_path(secondary_path)
+                retained_views = _service_views(harness.service)
+                if (
+                    primary_entry is None
+                    or secondary_entry is None
+                    or len(primary_entry.view_ids) != 2
+                    or len(secondary_entry.view_ids) != 2
+                ):
+                    raise RuntimeError("lifecycle stable document views were unavailable")
+                view_a, shared_a = (
+                    retained_views[view_id] for view_id in primary_entry.view_ids
+                )
+                view_b, shared_b = (
+                    retained_views[view_id] for view_id in secondary_entry.view_ids
+                )
+                first = harness.service.windows.window_for_view(view_a.view_id)
+                second = harness.service.windows.window_for_view(shared_b.view_id)
+                if first is None or second is None or first is second:
+                    raise RuntimeError("lifecycle stable window layout was unavailable")
 
             view_a.state.move_to(2)
             shared_a.state.move_to(17)
@@ -1422,8 +1486,7 @@ def _run_session_lifecycle(
             view_b.document.insert(view_b.document.total_chars(), suffix_b)
             view_b.document.undo()
 
-            find_text = f"lifecycle-find-{sequence}"
-            replace_text = f"lifecycle-replace-{sequence}"
+            find_text, replace_text = _lifecycle_panel_values(sequence)
             panel.find_input.setPlainText(find_text)
             panel.find_input.setPlainText(find_text + "-next")
             panel.find_input.undo_input()
@@ -1495,20 +1558,34 @@ def _run_session_lifecycle(
             )
             find_pack = harness.await_operation(find_handle)
 
-            for _window_id, window in tuple(harness.service.windows.items):
-                window.close()
-            harness.pump_until(
-                lambda: harness.service.window_count == 0 and _tasks_idle(harness)
-            )
-            checks["service_survived_last_window"] &= harness.service.is_running
-            activation = harness.service.new_window()
-            checks["activation_created_window"] &= (
-                harness.service.window_count == 1 and harness.service.is_running
-            )
-            activation.close()
-            harness.pump_until(
-                lambda: harness.service.window_count == 0 and _tasks_idle(harness)
-            )
+            if sequence == 0:
+                for _window_id, window in tuple(harness.service.windows.items):
+                    window.close()
+                harness.pump_until(
+                    lambda: harness.service.window_count == 0
+                    and _tasks_idle(harness)
+                )
+                checks["service_survived_last_window"] &= (
+                    harness.service.is_running
+                )
+                activation = harness.service.new_window()
+                checks["activation_created_window"] &= (
+                    harness.service.window_count == 1
+                    and harness.service.is_running
+                )
+                activation.close()
+                harness.pump_until(
+                    lambda: harness.service.window_count == 0
+                    and _tasks_idle(harness)
+                )
+            else:
+                for _window_id, window in tuple(harness.service.windows.items):
+                    if not window.close_all_documents(force=True):
+                        raise RuntimeError("lifecycle views did not close")
+                harness.pump_until(
+                    lambda: not tuple(harness.service.windows.ordered_view_ids)
+                    and _tasks_idle(harness)
+                )
             harness.service.documents.close_all()
 
             loaded_ids: list[str] = []
@@ -1608,6 +1685,11 @@ def _run_session_lifecycle(
                 and len(current.manifest.documents) == 2
             )
 
+            base_recovery_evidence = frozenset(
+                path.resolve()
+                for path in harness.paths.recovery_dir.glob("*.uniti-recovery")
+            )
+            base_recovery_diagnostics = harness.recovery_manager.diagnostics()
             recover_path = fixture_root / "recover.txt"
             discard_path = fixture_root / "discard.txt"
             recovered_text = _stage_recovery_candidate(
@@ -1667,17 +1749,51 @@ def _run_session_lifecycle(
                 harness.service
             )
 
-            for _window_id, window in tuple(harness.service.windows.items):
-                if not window.close_all_documents(force=True):
-                    raise RuntimeError("lifecycle views did not close")
-                window.close()
-            harness.pump_until(
-                lambda: harness.service.window_count == 0 and _tasks_idle(harness)
+            recovered_document.undo()
+            if recovered_document.modified or len(recovered_entry.view_ids) != 1:
+                raise RuntimeError("recovered lifecycle document did not return clean")
+            recovered_view_id = recovered_entry.view_ids[0]
+            recovery_window = harness.service.windows.window_for_view(
+                recovered_view_id
             )
-            harness.service.documents.close_all()
+            if recovery_window is None:
+                raise RuntimeError("recovered lifecycle view had no window")
+            recovery_window.panes.activate_view(recovered_view_id)
+            harness.service.set_active_view(
+                recovery_window.window_id,
+                recovered_view_id,
+            )
+            if not recovery_window.close_current():
+                raise RuntimeError("recovered lifecycle view did not close")
+            harness.service.documents.retire(recovered_entry.document_id)
+            harness.pump_until(
+                lambda: harness.service.documents.find_path(recover_path) is None
+                and _tasks_idle(harness)
+            )
+            primary_entry = harness.service.documents.find_path(primary_path)
+            secondary_entry = harness.service.documents.find_path(secondary_path)
+            checks["stable_base_views_retained"] &= (
+                primary_entry is not None
+                and secondary_entry is not None
+                and harness.service.documents.count == 2
+                and len(primary_entry.view_ids) == 2
+                and len(secondary_entry.view_ids) == 2
+                and len(harness.service.windows.ordered_view_ids) == 4
+            )
             checks["recovery_cleanup"] &= (
-                harness.recovery_manager.diagnostics() == ()
-                and not tuple(harness.paths.recovery_dir.glob("*.uniti-recovery"))
+                frozenset(
+                    path.resolve()
+                    for path in harness.paths.recovery_dir.glob("*.uniti-recovery")
+                )
+                == base_recovery_evidence
+                and len(base_recovery_evidence) == 2
+                and len(harness.recovery_manager.diagnostics())
+                == len(base_recovery_diagnostics)
+                == 2
+                and all(
+                    diagnostic.health.value == "ok"
+                    for diagnostic in harness.recovery_manager.diagnostics()
+                )
             )
             checks["service_identity_reused"] &= (
                 harness.service_identity == service_identity
@@ -1701,16 +1817,18 @@ def _run_session_lifecycle(
 
             if sequence >= harness.policy.sustained.warmup_cycles:
                 checkpoint = harness.capture_checkpoint(measured_cycle)
-                if any(
-                    checkpoint.owned_counts[name] != 0
-                    for name in (
-                        "documents",
-                        "views",
-                        "active_tasks",
-                        "queued_tasks",
-                        "result_stores",
-                        "replacement_plans",
-                        "snapshots",
+                if (
+                    checkpoint.owned_counts["documents"] != 2
+                    or checkpoint.owned_counts["views"] != 4
+                    or any(
+                        checkpoint.owned_counts[name] != 0
+                        for name in (
+                            "active_tasks",
+                            "queued_tasks",
+                            "result_stores",
+                            "replacement_plans",
+                            "snapshots",
+                        )
                     )
                 ):
                     raise RuntimeError("lifecycle cycle left owned resources")
@@ -1754,6 +1872,7 @@ def _run_session_lifecycle(
         "cycles_completed": total_cycles,
         "explicit_quit": explicit_quit,
         "integrity_ok": integrity_ok,
+        "primary_fixture_bytes": primary_fixture_bytes,
         "recovery_choices": ("recover", "discard"),
     }
     return SustainedFamilyResult(

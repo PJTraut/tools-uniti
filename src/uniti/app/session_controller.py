@@ -75,6 +75,13 @@ class SessionController:
         ] = {}
         self._pending_saved_bases: dict[str, tuple[object, object, int, object]] = {}
         self._pending_lock = threading.RLock()
+        documents = getattr(service, "documents", None)
+        add_remove_listener = getattr(documents, "add_remove_listener", None)
+        self._remove_registry_listener = (
+            add_remove_listener(self._untrack_document)
+            if callable(add_remove_listener)
+            else lambda: None
+        )
 
     @property
     def problems(self) -> tuple[object, ...]:
@@ -156,6 +163,30 @@ class SessionController:
             )
         if hash_saved and entry.saved_stamp is None:
             self._schedule_saved_hash(entry.document_id)
+
+    def _untrack_document(self, entry: DocumentEntry) -> None:
+        """Release process bindings when a registry authority is retired."""
+
+        document_id = entry.document_id
+        saved_hash = self._saved_hash_handles.get(document_id)
+        if saved_hash is not None and saved_hash[1] is entry.document:
+            self._saved_hash_handles.pop(document_id, None)
+            saved_hash[0].cancel()
+        for bindings in (
+            self._document_save_listeners,
+            self._document_history_listeners,
+        ):
+            tracked = bindings.get(document_id)
+            if tracked is not None and tracked[0] is entry.document:
+                bindings.pop(document_id, None)
+                tracked[1]()
+        with self._pending_lock:
+            pending = self._pending_saved_bases.get(document_id)
+            if pending is not None and pending[0] is entry.document:
+                self._pending_saved_bases.pop(document_id, None)
+        self._restored_history_generations.pop(document_id, None)
+        self._packs.pop(document_id, None)
+        self._discarded_document_ids.discard(document_id)
 
     def _document_saved(self, document_id: str) -> None:
         try:
@@ -346,8 +377,17 @@ class SessionController:
             raise TypeError("pack_loader must be callable or None")
         if not isinstance(pointer_repair_required, bool):
             raise TypeError("pointer_repair_required must be bool")
-        if service.window_count or service.documents.count:
-            raise RuntimeError("session shell restore requires an empty service")
+        if service.documents.count:
+            raise RuntimeError("session shell restore requires no live documents")
+        existing_windows = dict(service.windows.items)
+        expected_window_ids = {record.window_id for record in manifest.windows}
+        if existing_windows and (
+            set(existing_windows) != expected_window_ids
+            or any(tuple(window.views) for window in existing_windows.values())
+        ):
+            raise RuntimeError(
+                "session shell restore requires matching empty windows"
+            )
 
         self._release_generation_lease()
         supplied_pack_ids = {pack.document_id for pack in packs}
@@ -375,7 +415,11 @@ class SessionController:
         self._created_at = manifest.created_at
         self._updated_at = manifest.updated_at
         for record in manifest.windows:
-            service.new_window(record)
+            window = existing_windows.get(record.window_id)
+            if window is None:
+                service.new_window(record)
+            else:
+                window.restore_window_record(record)
         find_record = merge_find_replace_history(
             manifest.find_replace,
             find_replace_pack,
@@ -1052,6 +1096,8 @@ class SessionController:
 
     def shutdown(self) -> None:
         """Cancel session tasks and release listeners/timers before resources close."""
+
+        self._remove_registry_listener()
 
         for handle, _document in self._saved_hash_handles.values():
             handle.cancel()

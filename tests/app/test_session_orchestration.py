@@ -824,6 +824,24 @@ def test_lazy_restore_leases_its_generation_while_new_publications_are_cleaned(
     qapp.processEvents()
 
 
+def test_restore_shell_reuses_matching_empty_service_windows(qapp, tmp_path: Path):
+    store, loaded, _paths = _published_session(tmp_path, document_count=1)
+    assert loaded.manifest is not None
+    service = _restoring_service(tmp_path, store)
+    existing = service.new_window(loaded.manifest.windows[0])
+
+    service.restore_shell(
+        loaded.manifest,
+        packs=loaded.packs,
+        find_replace_pack=loaded.find_replace_pack,
+    )
+
+    assert service.windows.windows == (existing,)
+    assert existing.panes.export_state() == loaded.manifest.windows[0].root
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
 def test_scanned_session_repairs_pointer_only_after_active_restore_is_usable(
     qapp,
     tmp_path: Path,

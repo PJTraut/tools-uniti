@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import gc
 import hashlib
 import os
 import threading
 import time
+import weakref
 from datetime import date, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -405,6 +407,25 @@ def test_last_window_can_close_while_service_remains_running():
     assert service.window_count == 0
     assert service.active_view is None
     assert service.is_running is True
+
+
+def test_removed_document_releases_session_tracking_while_service_keeps_running(
+    tmp_path: Path,
+):
+    service = _service()
+    document = _document(tmp_path)
+    document_reference = weakref.ref(document)
+    entry = service.documents.adopt(document)
+    service.track_document(entry, hash_saved=False)
+
+    service.documents.close_all()
+    del entry
+    del document
+    gc.collect()
+
+    assert document_reference() is None
+    assert service.is_running is True
+    assert service.request_quit(lambda _entry: QuitChoice.DISCARD) is True
 
 
 def test_last_window_close_keeps_one_service_dogfood_recorder_active():

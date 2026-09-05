@@ -90,6 +90,23 @@ def test_saved_document_history_expires_at_exactly_seven_days(tmp_path: Path):
         document.read(0, 1)
 
 
+def test_registry_notifies_when_document_authority_is_removed(tmp_path: Path):
+    first = _open_document(tmp_path, "first.txt")
+    second = _open_document(tmp_path, "second.txt")
+    registry = DocumentRegistry(clock=lambda: NOW)
+    first_entry = registry.adopt(first)
+    second_entry = registry.adopt(second)
+    removed = []
+    stop_observing = registry.add_remove_listener(removed.append)
+
+    registry.retire(first_entry.document_id)
+    registry.close_all()
+    stop_observing()
+    stop_observing()
+
+    assert removed == [first_entry, second_entry]
+
+
 def test_modified_document_without_views_is_not_expired_as_saved_history(
     tmp_path: Path,
 ):

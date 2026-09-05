@@ -7,6 +7,7 @@ from uniti.resources.memory import (
     current_process_handle_count,
     pressure_state,
     probe_memory,
+    release_unused_heap_pages,
     _parse_macos_memory,
     _probe_with_windows,
 )
@@ -140,3 +141,40 @@ def test_unavailable_handle_probe_returns_none(tmp_path):
         platform="linux",
         proc_fd_root=tmp_path / "missing",
     ) is None
+
+
+class _NativeCall:
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+
+    def __call__(self, *args):
+        self.calls.append(args)
+        return self.result
+
+
+def test_macos_heap_relief_checks_all_malloc_zones():
+    pressure_relief = _NativeCall(4096)
+    library = type(
+        "Library",
+        (),
+        {
+            "malloc_zone_pressure_relief": pressure_relief,
+        },
+    )()
+
+    assert release_unused_heap_pages(platform="darwin", library=library) is True
+    assert pressure_relief.calls == [(None, 0)]
+
+
+def test_linux_heap_relief_uses_bounded_malloc_trim_when_available():
+    malloc_trim = _NativeCall(1)
+    library = type("Library", (), {"malloc_trim": malloc_trim})()
+
+    assert release_unused_heap_pages(platform="linux", library=library) is True
+    assert malloc_trim.calls == [(0,)]
+
+
+def test_heap_relief_is_a_safe_noop_when_platform_api_is_unavailable():
+    assert release_unused_heap_pages(platform="win32", library=object()) is False
+    assert release_unused_heap_pages(platform="darwin", library=object()) is False
