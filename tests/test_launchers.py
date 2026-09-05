@@ -78,7 +78,7 @@ def _windows_shell_command(executable: Path, arguments: tuple[str, ...]) -> str:
     values = (str(executable), *arguments)
     if any('"' in value for value in values):
         raise ValueError("Windows launcher test values must not contain quotes")
-    return " ".join(f'"{value}"' for value in values)
+    return "call " + " ".join(f'"{value}"' for value in values)
 
 
 def test_required_platform_launchers_are_shipped():
