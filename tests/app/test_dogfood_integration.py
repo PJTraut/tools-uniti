@@ -6,6 +6,8 @@ from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from uniti.app.dogfood import (
     CPUClass,
     RAMClass,
@@ -20,10 +22,14 @@ from uniti.app.dogfood import (
 )
 from uniti.app.dogfood_store import ClearReport, StoreStatus
 from uniti.app.service import QuitChoice, UNITIService
-from uniti.app.recovery_manager import RecoveryManager
+from uniti.app.recovery_manager import FileRecoveryIO, RecoveryManager
 from uniti.app.session_controller import SessionController
 from uniti.core.document import Document
-from uniti.core.durability import DurabilityLevel, DurabilityResult
+from uniti.core.durability import (
+    DurabilityLevel,
+    DurabilityResult,
+    NativeDurabilityAdapter,
+)
 from uniti.resources import ResourceManager
 
 
@@ -123,6 +129,21 @@ class _Window:
 
     def close_for_service(self) -> None:
         return None
+
+
+class _DirectorySyncAdapter:
+    def __init__(self, *, directory_synced: bool) -> None:
+        self._native = NativeDurabilityAdapter()
+        self._directory_synced = directory_synced
+
+    def sync_file(self, descriptor: int) -> None:
+        self._native.sync_file(descriptor)
+
+    def replace(self, source: Path, destination: Path) -> None:
+        self._native.replace(source, destination)
+
+    def sync_directory(self, _directory: Path) -> bool:
+        return self._directory_synced
 
 
 def _wait(predicate, timeout: float = 5.0) -> None:
@@ -258,13 +279,34 @@ def test_observation_is_in_memory_and_does_not_run_store_io_on_caller_thread():
     service.request_quit(lambda _entry: QuitChoice.DISCARD)
 
 
-def test_recovery_reports_recovered_without_source_or_evidence_identity(
+@pytest.mark.parametrize(
+    ("directory_synced", "expected_outcome", "expected_durability"),
+    [
+        (True, Outcome.RECOVERED, Durability.FULL),
+        (
+            False,
+            Outcome.REDUCED_DURABILITY,
+            Durability.FILE_SYNCED,
+        ),
+    ],
+)
+def test_recovery_reports_durability_without_source_or_evidence_identity(
     tmp_path: Path,
+    directory_synced: bool,
+    expected_outcome: Outcome,
+    expected_durability: Durability,
 ):
     source = tmp_path / "private-recovery-source.txt"
     source.write_text("private recovery body", encoding="utf-8")
     recovery_root = tmp_path / "recovery"
-    first = RecoveryManager(recovery_root)
+    first = RecoveryManager(
+        recovery_root,
+        backend=FileRecoveryIO(
+            adapter=_DirectorySyncAdapter(
+                directory_synced=directory_synced,
+            )
+        ),
+    )
     original = Document.open(source)
     first.attach(original)
     original.insert(original.total_chars(), " private change")
@@ -273,7 +315,14 @@ def test_recovery_reports_recovered_without_source_or_evidence_identity(
     first.shutdown()
 
     calls = []
-    second = RecoveryManager(recovery_root)
+    second = RecoveryManager(
+        recovery_root,
+        backend=FileRecoveryIO(
+            adapter=_DirectorySyncAdapter(
+                directory_synced=directory_synced,
+            )
+        ),
+    )
     second.set_dogfood_observer(
         lambda operation, outcome, **facts: calls.append(
             (operation, outcome, facts)
@@ -283,8 +332,9 @@ def test_recovery_reports_recovered_without_source_or_evidence_identity(
     try:
         assert recovered.read(0, recovered.total_chars()).endswith(" private change")
         call = next(item for item in calls if item[0] is Operation.RECOVERY)
-        assert call[1] is Outcome.RECOVERED
+        assert call[1] is expected_outcome
         assert set(call[2]) == {"elapsed_ms", "durability"}
+        assert call[2]["durability"] is expected_durability
         assert str(source) not in repr(call)
         assert str(recovery_root) not in repr(call)
         assert "private recovery body" not in repr(call)
