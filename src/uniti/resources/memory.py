@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 import re
 import subprocess
@@ -82,6 +83,54 @@ def _probe_with_sysconf() -> MemorySnapshot | None:
     )
 
 
+class _WindowsMemoryStatus(ctypes.Structure):
+    _fields_ = (
+        ("dwLength", ctypes.c_uint32),
+        ("dwMemoryLoad", ctypes.c_uint32),
+        ("ullTotalPhys", ctypes.c_uint64),
+        ("ullAvailPhys", ctypes.c_uint64),
+        ("ullTotalPageFile", ctypes.c_uint64),
+        ("ullAvailPageFile", ctypes.c_uint64),
+        ("ullTotalVirtual", ctypes.c_uint64),
+        ("ullAvailVirtual", ctypes.c_uint64),
+        ("ullAvailExtendedVirtual", ctypes.c_uint64),
+    )
+
+
+def _probe_with_windows(
+    *,
+    platform: str = sys.platform,
+    kernel32: object | None = None,
+) -> MemorySnapshot | None:
+    """Read Windows memory capacity through one bounded native API call."""
+
+    if platform != "win32":
+        return None
+    if kernel32 is None:
+        loader = getattr(ctypes, "WinDLL", None)
+        if loader is None:
+            return None
+        try:
+            kernel32 = loader("kernel32", use_last_error=True)
+        except (OSError, TypeError):
+            return None
+    try:
+        query = kernel32.GlobalMemoryStatusEx
+        query.argtypes = [ctypes.POINTER(_WindowsMemoryStatus)]
+        query.restype = ctypes.c_int
+        status = _WindowsMemoryStatus()
+        status.dwLength = ctypes.sizeof(status)
+        if not query(ctypes.byref(status)):
+            return None
+        physical = int(status.ullTotalPhys)
+        available = int(status.ullAvailPhys)
+    except (AttributeError, OSError, TypeError, ValueError):
+        return None
+    if physical <= 0 or available > physical:
+        return None
+    return MemorySnapshot(physical=physical, available=available)
+
+
 def _parse_macos_memory(
     physical_output: str,
     vm_stat_output: str,
@@ -136,7 +185,8 @@ def probe_memory(*, reclaimable_cache: int = 0) -> MemorySnapshot:
     """Probe host memory without making psutil a hard runtime dependency."""
 
     snapshot = (
-        _probe_with_psutil()
+        _probe_with_windows()
+        or _probe_with_psutil()
         or _probe_with_macos()
         or _probe_with_sysconf()
         or MemorySnapshot(0, 0)

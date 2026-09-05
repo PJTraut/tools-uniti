@@ -7,6 +7,7 @@ from uniti.resources.memory import (
     pressure_state,
     probe_memory,
     _parse_macos_memory,
+    _probe_with_windows,
 )
 
 
@@ -43,6 +44,38 @@ def test_probe_memory_never_returns_negative_values():
     snapshot = probe_memory()
     assert snapshot.physical >= 0
     assert snapshot.available >= 0
+
+
+def test_windows_native_probe_reports_physical_and_available_bytes():
+    class _GlobalMemoryStatusEx:
+        def __call__(self, pointer):
+            status = pointer._obj
+            status.ullTotalPhys = 16 * GIB
+            status.ullAvailPhys = 7 * GIB
+            return 1
+
+    class _Kernel32:
+        GlobalMemoryStatusEx = _GlobalMemoryStatusEx()
+
+    assert _probe_with_windows(
+        platform="win32",
+        kernel32=_Kernel32(),
+    ) == MemorySnapshot(16 * GIB, 7 * GIB)
+
+
+def test_windows_native_probe_rejects_failed_or_impossible_results():
+    class _FailedGlobalMemoryStatusEx:
+        def __call__(self, _pointer):
+            return 0
+
+    class _FailedKernel32:
+        GlobalMemoryStatusEx = _FailedGlobalMemoryStatusEx()
+
+    assert _probe_with_windows(
+        platform="win32",
+        kernel32=_FailedKernel32(),
+    ) is None
+    assert _probe_with_windows(platform="linux", kernel32=_FailedKernel32()) is None
 
 
 def test_macos_vm_stat_parser_reports_physical_and_available_bytes():
