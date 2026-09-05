@@ -6,6 +6,7 @@ import time
 import threading
 from concurrent.futures import Future
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -776,6 +777,49 @@ def test_document_packs_are_loaded_active_first_then_lazily_on_workers(
 
     assert loaded_ids == ["document-0", "document-1"]
     assert all(worker_id != gui_thread for worker_id in worker_ids)
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
+def test_lazy_restore_leases_its_generation_while_new_publications_are_cleaned(
+    qapp,
+    tmp_path: Path,
+):
+    store, loaded, _paths = _published_session(tmp_path, document_count=2)
+    assert loaded.manifest is not None
+    manifest_only = store.load_manifest()
+    assert manifest_only.manifest is not None
+    snapshot = SessionSnapshot(
+        loaded.manifest,
+        loaded.packs,
+        loaded.find_replace_pack,
+    )
+    service = _restoring_service(tmp_path, store)
+    service.restore_shell(
+        manifest_only.manifest,
+        pack_loader=lambda document_id: store.load_document_pack(
+            manifest_only.manifest,
+            document_id,
+        ),
+    )
+
+    for index in range(3):
+        store.publish(
+            replace(
+                snapshot,
+                packs=tuple(
+                    replace(pack, generation=f"later-{index}-{pack.document_id}")
+                    for pack in snapshot.packs
+                ),
+            )
+        )
+
+    assert service.restore_active() is not None
+    service.schedule_lazy_restore()
+    _wait_until(qapp, lambda: service.documents.count == 2)
+    store.cleanup(now=datetime.now(UTC))
+    assert store.manifest_path(manifest_only.manifest.generation).exists() is False
+
     service.request_quit(lambda _entry: None)
     qapp.processEvents()
 

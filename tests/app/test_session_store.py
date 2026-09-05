@@ -886,8 +886,10 @@ def test_cleanup_retains_current_previous_and_invalid_but_removes_older_orphans(
     backend = FakeBackend(root)
     store = SessionStore(root, backend=backend)
     first = store.publish(_snapshot(_pack(text="one", generation="history-one")))
+    first_manifest = backend.files[first.manifest_path]
     second = store.publish(_snapshot(_pack(text="two", generation="history-two")))
     third = store.publish(_snapshot(_pack(text="three", generation="history-three")))
+    backend.files[first.manifest_path] = first_manifest
     evidence = store.invalid_dir / "pointer.20260904.invalid"
     backend.files[evidence] = b"evidence"
     temporary = store.manifests_dir / ".orphan.abc123.tmp"
@@ -901,6 +903,70 @@ def test_cleanup_retains_current_previous_and_invalid_but_removes_older_orphans(
     assert second.manifest_path in backend.files
     assert third.manifest_path in backend.files
     assert evidence in backend.files
+
+
+def test_publish_automatically_bounds_complete_generations_to_current_and_previous():
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+
+    first = store.publish(_snapshot(_pack(text="one", generation="history-one")))
+    second = store.publish(_snapshot(_pack(text="two", generation="history-two")))
+    third = store.publish(_snapshot(_pack(text="three", generation="history-three")))
+    fourth = store.publish(_snapshot(_pack(text="four", generation="history-four")))
+
+    assert first.manifest_path not in backend.files
+    assert second.manifest_path not in backend.files
+    assert third.manifest_path in backend.files
+    assert fourth.manifest_path in backend.files
+    assert len(
+        [path for path in backend.files if path.parent == store.manifests_dir]
+    ) == 2
+    assert len([path for path in backend.files if path.parent == store.packs_dir]) == 2
+
+
+def test_cleanup_retains_a_leased_generation_until_restore_releases_it():
+    root = Path("/owned/session")
+    backend = FakeBackend(root)
+    store = SessionStore(root, backend=backend)
+
+    first = store.publish(_snapshot(_pack(text="one", generation="history-one")))
+    backend.reset_recording()
+    lease = store.retain_generation(first.generation)
+    assert backend.reads == []
+    store.publish(_snapshot(_pack(text="two", generation="history-two")))
+    store.publish(_snapshot(_pack(text="three", generation="history-three")))
+    store.publish(_snapshot(_pack(text="four", generation="history-four")))
+
+    assert first.manifest_path in backend.files
+    assert first.pack_paths[0] in backend.files
+
+    lease.release()
+    lease.release()
+    store.cleanup(now=NOW)
+
+    assert first.manifest_path not in backend.files
+    assert first.pack_paths[0] not in backend.files
+
+
+def test_automatic_cleanup_keeps_current_packs_when_root_contains_a_symlink(
+    tmp_path: Path,
+):
+    target = tmp_path / "real-session"
+    target.mkdir()
+    linked_root = tmp_path / "linked-session"
+    try:
+        os.symlink(target, linked_root)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlink fixture is unavailable: {error}")
+    store = SessionStore(linked_root)
+
+    published = store.publish(_snapshot(_pack()))
+    loaded = store.load_latest()
+
+    assert loaded.manifest is not None
+    assert loaded.manifest.generation == published.generation
+    assert len(loaded.packs) == 1
 
 
 def test_local_backend_rejects_paths_outside_owned_root_and_symlink_escape(tmp_path: Path):

@@ -13,6 +13,7 @@ def test_a22_policy_owns_bounded_cycles_evidence_and_dogfood_storage():
     assert policy.sustained.hosted_cycles == 5
     assert policy.sustained.controlled_cycles == 50
     assert policy.sustained.warmup_cycles == 1
+    assert policy.sustained.fixture_mib == 1
     assert policy.evidence.family_max_decoded_mib == 2
     assert policy.evidence.suite_max_decoded_mib == 8
     assert policy.evidence.failure_retention_days == 7

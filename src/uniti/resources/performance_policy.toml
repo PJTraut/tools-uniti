@@ -94,6 +94,7 @@ required_failure_confirmations = 2
 warmup_cycles = 1
 hosted_cycles = 5
 controlled_cycles = 50
+fixture_mib = 1
 max_fixture_mib = 10
 rss_growth_warn_mib = 16
 rss_growth_fail_mib = 32

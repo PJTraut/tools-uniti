@@ -1307,7 +1307,7 @@ def _exercise_injected_pressure(
             )
         )
 
-    durability_path = owned_root / f"injected-durability-{sequence}.bin"
+    durability_path = owned_root / "injected-durability.bin"
     durability = atomic_write_bytes(
         durability_path,
         b"bounded",
@@ -1381,6 +1381,7 @@ def _run_session_lifecycle(
     }
     checkpoints: list[ResourceCheckpoint] = []
     explicit_quit = False
+    generation_lease = None
     try:
         total_cycles = harness.policy.sustained.warmup_cycles + cycles
         for sequence in range(total_cycles):
@@ -1476,6 +1477,9 @@ def _run_session_lifecycle(
             if published.manifest is None:
                 raise RuntimeError("lifecycle session publication was unavailable")
             published_manifest = published.manifest
+            generation_lease = harness.session_store.retain_generation(
+                published_manifest.generation
+            )
             active_document_id = next(
                 record.document_id
                 for record in published_manifest.views
@@ -1522,6 +1526,8 @@ def _run_session_lifecycle(
                 find_replace_pack=find_pack,
                 pack_loader=load_pack,
             )
+            generation_lease.release()
+            generation_lease = None
             restored_active = harness.service.restore_active()
             checks["active_first_restored"] &= (
                 restored_active is not None
@@ -1602,8 +1608,8 @@ def _run_session_lifecycle(
                 and len(current.manifest.documents) == 2
             )
 
-            recover_path = fixture_root / f"recover-{sequence}.txt"
-            discard_path = fixture_root / f"discard-{sequence}.txt"
+            recover_path = fixture_root / "recover.txt"
+            discard_path = fixture_root / "discard.txt"
             recovered_text = _stage_recovery_candidate(
                 harness,
                 recover_path,
@@ -1721,6 +1727,8 @@ def _run_session_lifecycle(
         )
         harness.application.processEvents()
     finally:
+        if generation_lease is not None:
+            generation_lease.release()
         harness.shutdown()
 
     background_storage = (

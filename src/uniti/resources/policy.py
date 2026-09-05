@@ -75,6 +75,7 @@ class SustainedLimits:
     warmup_cycles: int
     hosted_cycles: int
     controlled_cycles: int
+    fixture_mib: int
     max_fixture_mib: int
     rss_growth_warn_mib: int
     rss_growth_fail_mib: int
@@ -446,6 +447,7 @@ _SCHEMA_1_SUSTAINED_DEFAULTS = SustainedLimits(
     warmup_cycles=1,
     hosted_cycles=5,
     controlled_cycles=50,
+    fixture_mib=1,
     max_fixture_mib=10,
     rss_growth_warn_mib=16,
     rss_growth_fail_mib=32,
@@ -471,6 +473,7 @@ def _parse_sustained(raw: object) -> SustainedLimits:
         "warmup_cycles",
         "hosted_cycles",
         "controlled_cycles",
+        "fixture_mib",
         "max_fixture_mib",
         "rss_growth_warn_mib",
         "rss_growth_fail_mib",
@@ -488,6 +491,9 @@ def _parse_sustained(raw: object) -> SustainedLimits:
         ),
         controlled_cycles=_integer(
             values["controlled_cycles"], "sustained.controlled_cycles", minimum=1
+        ),
+        fixture_mib=_integer(
+            values["fixture_mib"], "sustained.fixture_mib", minimum=1
         ),
         max_fixture_mib=_integer(
             values["max_fixture_mib"], "sustained.max_fixture_mib", minimum=1
@@ -520,6 +526,8 @@ def _parse_sustained(raw: object) -> SustainedLimits:
     )
     if result.hosted_cycles > result.controlled_cycles:
         raise ValueError("sustained hosted cycles must not exceed controlled cycles")
+    if result.fixture_mib > result.max_fixture_mib:
+        raise ValueError("sustained fixture must not exceed its maximum")
     if result.max_fixture_mib > 10:
         raise ValueError("sustained max fixture must not exceed 10 MiB")
     if result.rss_growth_warn_mib > result.rss_growth_fail_mib:

@@ -163,6 +163,44 @@ def test_sustained_families_run_in_fixed_order_with_one_owned_root(tmp_path: Pat
     assert not tuple(run_parent.iterdir())
 
 
+def test_default_sustained_fixture_is_the_policy_routine_size(tmp_path: Path):
+    log_path = tmp_path / "children.log"
+    run_parent = tmp_path / "runs"
+    run_parent.mkdir()
+    observed_sizes = []
+    child_factory = _command_factory(log_path)
+
+    def command_factory(
+        family: str,
+        execution_class: ExecutionClass,
+        cycles: int,
+        manifest_path: Path,
+        result_path: Path,
+        application_root: Path,
+    ) -> tuple[str, ...]:
+        import json
+
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        observed_sizes.append(manifest["size_bytes"])
+        return child_factory(
+            family,
+            execution_class,
+            cycles,
+            manifest_path,
+            result_path,
+            application_root,
+        )
+
+    run_sustained_suite(
+        "hosted",
+        temp_root=run_parent,
+        host_fingerprint=_host(),
+        command_factory=command_factory,
+    )
+
+    assert observed_sizes == [1 << 20] * len(SUSTAINED_FAMILY_ORDER)
+
+
 def test_failed_and_timed_out_children_do_not_stop_later_families(tmp_path: Path):
     log_path = tmp_path / "children.log"
     run_parent = tmp_path / "runs"

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
+import weakref
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
 from benchmarks.application_harness import ApplicationWorkloadHarness
@@ -85,6 +89,48 @@ def test_checkpoint_is_bounded_and_does_not_serialize_owned_paths(tmp_path: Path
         assert checkpoint.owned_counts["result_stores"] == 1
         assert checkpoint.owned_counts["replacement_plans"] == 2
         assert checkpoint.owned_counts["snapshots"] == 3
+
+
+def test_checkpoint_settles_deferred_view_deletion(tmp_path: Path):
+    root = _root(tmp_path)
+    fixture = root / "document.txt"
+    fixture.write_text("owned\n", encoding="utf-8")
+
+    with ApplicationWorkloadHarness(root) as harness:
+        view = harness.open_owned_fixture(fixture)
+        view_reference = weakref.ref(view)
+        assert harness.close_cycle()
+        del view
+
+        harness.capture_checkpoint(1)
+
+        assert view_reference() is None
+
+
+def test_checkpoint_waits_for_work_scheduled_while_qt_events_settle(tmp_path: Path):
+    root = _root(tmp_path)
+
+    with ApplicationWorkloadHarness(root) as harness:
+        started = threading.Event()
+        release = threading.Event()
+
+        def delayed(_context):
+            started.set()
+            release.wait()
+            time.sleep(0.25)
+
+        handle = harness.resources.tasks.submit(
+            TaskSpec.create(TaskKind.SESSION, foreground=False),
+            delayed,
+        )
+        assert started.wait(timeout=1)
+        QTimer.singleShot(0, release.set)
+
+        checkpoint = harness.capture_checkpoint(1)
+
+        assert handle.done
+        assert checkpoint.owned_counts["active_workers"] == 0
+        assert checkpoint.owned_counts["active_tasks"] == 0
 
 
 def test_pump_and_operation_waits_have_enforced_deadlines(tmp_path: Path):

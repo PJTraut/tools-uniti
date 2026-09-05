@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import gc
 import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEventLoop
+from PySide6.QtCore import QCoreApplication, QEvent, QEventLoop
 from PySide6.QtWidgets import QApplication
 
 from benchmarks.checkpoints import collect_resource_checkpoint
@@ -206,6 +207,20 @@ class ApplicationWorkloadHarness:
         replacement_plans: int = 0,
         snapshots: int = 0,
     ) -> ResourceCheckpoint:
+        def resources_idle() -> bool:
+            tasks = self.resources.tasks.snapshot()
+            return (
+                tasks.active_count == 0
+                and tasks.queued_count == 0
+                and self.resources.workers.active_count == 0
+            )
+
+        for _pass in range(2):
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            self.application.processEvents()
+        self.pump_until(resources_idle)
+        gc.collect()
+        self.pump_until(resources_idle)
         return collect_resource_checkpoint(
             cycle,
             service=self.service,

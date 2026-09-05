@@ -318,7 +318,7 @@ def run_sustained_suite(
         else policy.sustained.controlled_cycles
     )
     size_bytes = (
-        policy.sustained.max_fixture_mib << 20
+        policy.sustained.fixture_mib << 20
         if fixture_size_bytes is None
         else fixture_size_bytes
     )

@@ -63,6 +63,7 @@ class SessionController:
         self._restore_started_at: dict[str, float] = {}
         self._promoted_view_ids: dict[str, str] = {}
         self._restore_timer = None
+        self._generation_lease = None
         self._pointer_repair_required = False
         self._saved_hash_handles: dict[str, tuple[object, object]] = {}
         self._saved_hash_timer = None
@@ -348,6 +349,17 @@ class SessionController:
         if service.window_count or service.documents.count:
             raise RuntimeError("session shell restore requires an empty service")
 
+        self._release_generation_lease()
+        supplied_pack_ids = {pack.document_id for pack in packs}
+        needs_lazy_packs = pack_loader is not None and any(
+            reference.kind == "document"
+            and reference.owner_id not in supplied_pack_ids
+            for reference in manifest.packs
+        )
+        retain = getattr(service.sessions, "retain_generation", None)
+        if needs_lazy_packs and callable(retain):
+            self._generation_lease = retain(manifest.generation)
+
         self._manifest = manifest
         self._packs = {pack.document_id: pack for pack in packs}
         self._pack_loader = pack_loader
@@ -373,6 +385,24 @@ class SessionController:
             service.attach_find_replace()
         else:
             service.detach_find_replace()
+
+    def _release_generation_lease(self) -> None:
+        lease = self._generation_lease
+        self._generation_lease = None
+        release = getattr(lease, "release", None)
+        if callable(release):
+            release()
+
+    def _release_generation_if_hydrated(self) -> None:
+        manifest = self._manifest
+        if manifest is None or self._generation_lease is None:
+            return
+        available = set(self._packs) | self._discarded_document_ids
+        if all(
+            reference.kind != "document" or reference.owner_id in available
+            for reference in manifest.packs
+        ):
+            self._release_generation_lease()
 
     def _document_id_for_view(self, view_id: str | None) -> str | None:
         if view_id is None:
@@ -723,6 +753,7 @@ class SessionController:
             Outcome.SUCCESS if restored is not None else Outcome.UNAVAILABLE,
             elapsed_ms=(time.monotonic() - started_at) * 1000.0,
         )
+        self._release_generation_if_hydrated()
         return restored
 
     def _repair_pointer_after_usable_restore(self) -> None:
@@ -817,6 +848,7 @@ class SessionController:
             self._restore_timer.stop()
             self._restore_timer.deleteLater()
             self._restore_timer = None
+        self._release_generation_if_hydrated()
 
     def schedule_lazy_restore(self) -> tuple[object, ...]:
         """Queue every inactive saved document at background priority."""
@@ -844,6 +876,8 @@ class SessionController:
                 scheduled.append(handle)
         if scheduled:
             self._ensure_restore_timer()
+        else:
+            self._release_generation_if_hydrated()
         return tuple(scheduled)
 
     def promote_restore(self, view_id: str) -> None:
@@ -907,6 +941,7 @@ class SessionController:
             for item in self._problems
             if getattr(item, "document_id", None) != document_id
         ]
+        self._release_generation_if_hydrated()
 
     def resolve_problem(
         self,
@@ -1041,6 +1076,7 @@ class SessionController:
                 document.close()
         self._restore_handles.clear()
         self._restore_started_at.clear()
+        self._release_generation_lease()
         for _document_id, (_document, remove) in tuple(
             self._document_save_listeners.items()
         ):

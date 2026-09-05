@@ -37,6 +37,7 @@ def test_packaged_policy_has_approved_a18_values():
     assert policy.sustained.warmup_cycles == 1
     assert policy.sustained.hosted_cycles == 5
     assert policy.sustained.controlled_cycles == 50
+    assert policy.sustained.fixture_mib == 1
     assert policy.sustained.max_fixture_mib == 10
     assert policy.sustained.rss_growth_warn_mib == 16
     assert policy.sustained.rss_growth_fail_mib == 32
@@ -119,6 +120,7 @@ def test_schema_2_policy_rejects_unknown_section_fields(tmp_path: Path):
     ("old", "new", "message"),
     [
         ("hosted_cycles = 5", "hosted_cycles = 51", "hosted cycles"),
+        ("fixture_mib = 1", "fixture_mib = 11", "fixture must not exceed"),
         ("max_fixture_mib = 10", "max_fixture_mib = 11", "10 MiB"),
         (
             "rss_growth_warn_mib = 16",

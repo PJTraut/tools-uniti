@@ -69,3 +69,28 @@ def test_lifecycle_cycle_restores_one_service_and_cleans_recovery(
     assert result.facts["integrity_ok"] is True
     assert result.facts["cleanup_ok"] is True
     assert result.messages == ()
+
+
+def test_lifecycle_reuses_owned_fixture_paths_across_measured_cycles(
+    tmp_path: Path,
+):
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.ORDINARY_LINES, size_bytes=1_024, seed=19),
+        tmp_path / "corpus",
+    )
+    application_root = (tmp_path / "application").resolve()
+    application_root.mkdir()
+
+    result = run_sustained_workload(
+        "session_lifecycle",
+        profile="hosted",
+        cycles=5,
+        manifest=manifest,
+        application_root=application_root,
+    )
+
+    assert result.state is ResultState.PASS
+    assert len(result.checkpoints) == 5
+    assert len(
+        {checkpoint.owned_counts["temp_paths"] for checkpoint in result.checkpoints}
+    ) == 1

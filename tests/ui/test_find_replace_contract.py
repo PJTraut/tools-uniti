@@ -849,6 +849,36 @@ def test_navigation_buttons_are_ready_before_find_all(tmp_path: Path):
         _close_panel(app, document, view, panel)
 
 
+def test_find_jobs_limit_resident_match_records_to_one_mib(
+    tmp_path: Path,
+    monkeypatch,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import uniti.ui.find_replace as find_replace
+
+    observed_budgets = []
+    real_store = find_replace.MatchStore
+
+    class ObservedStore(real_store):
+        def __init__(self, **options):
+            observed_budgets.append(options.get("memory_budget_bytes"))
+            super().__init__(**options)
+
+    monkeypatch.setattr(find_replace, "MatchStore", ObservedStore)
+    app, document, view, panel = _make_panel(tmp_path, "one two one")
+    try:
+        panel.find_input.set_text("one")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 2)
+
+        assert observed_budgets == [1 << 20]
+    finally:
+        _close_panel(app, document, view, panel)
+
+
 def test_target_change_clears_document_results_but_retains_panel_state(
     tmp_path: Path,
 ):
@@ -946,6 +976,28 @@ def test_navigation_uses_moved_cursor_when_results_are_current(tmp_path: Path):
 
         assert view.state.selection == (12, 15)
         assert panel._current_index == 2
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_find_all_reuses_current_complete_navigation_results(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "one x one x one")
+    try:
+        panel.find_input.set_text("one")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.next_match()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 3)
+        current_results = panel._results
+
+        panel.find_all()
+
+        assert panel._results is current_results
+        assert not panel.busy
+        assert panel.status_label.text() == "3 matches"
     finally:
         _close_panel(app, document, view, panel)
 

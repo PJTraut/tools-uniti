@@ -73,6 +73,9 @@ from uniti.ui.capture_report import CaptureReportModel
 from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 
+_FIND_RESULT_MEMORY_BYTES = 1 << 20
+
+
 @dataclass(frozen=True, slots=True)
 class OperationSeal:
     pattern_generation: int
@@ -1068,7 +1071,10 @@ class FindReplaceWindow(QDockWidget):
         snapshot = view.document.snapshot()
 
         def work(context: TaskContext):
-            store = MatchStore(document_revision=revision)
+            store = MatchStore(
+                memory_budget_bytes=_FIND_RESULT_MEMORY_BYTES,
+                document_revision=revision,
+            )
             try:
                 with snapshot:
                     for record in search_document(
@@ -1107,6 +1113,14 @@ class FindReplaceWindow(QDockWidget):
             self._record_dogfood(
                 Operation.FIND_ALL,
                 Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
+            return
+        if len(self._results) and self._results_are_current(view):
+            self.status_label.setText(f"{len(self._results):,} matches")
+            self._record_dogfood(
+                Operation.FIND_ALL,
+                Outcome.SUCCESS,
                 started_at=started_at,
             )
             return

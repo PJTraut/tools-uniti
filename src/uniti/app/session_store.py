@@ -6,8 +6,9 @@ import hashlib
 import json
 import re
 import shutil
+import threading
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -63,6 +64,27 @@ HISTORY_RETENTION = timedelta(days=7)
 MAX_GENERATIONS_INSPECTED = 200
 
 _GENERATION_RE = re.compile(r"(?P<number>[0-9]{20})-[0-9a-f]{32}\Z")
+
+
+class SessionGenerationLease:
+    """Idempotent in-process lease protecting one restore generation."""
+
+    def __init__(self, release: Callable[[], None]) -> None:
+        self._release = release
+        self._lock = threading.Lock()
+
+    def release(self) -> None:
+        with self._lock:
+            release = self._release
+            self._release = None
+        if release is not None:
+            release()
+
+    def __enter__(self) -> "SessionGenerationLease":
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback) -> None:
+        self.release()
 
 
 class StorageBackend(Protocol):
@@ -578,7 +600,7 @@ class SessionStore:
         backend: StorageBackend | None = None,
         phase_observer: PhaseObserver = NO_OP_PHASE_OBSERVER,
     ) -> None:
-        self.root = Path(root)
+        self.root = Path(root).resolve(strict=False)
         self.backend = backend or LocalStorageBackend(self.root)
         self.manifests_dir = self.root / "manifests"
         self.packs_dir = self.root / "packs"
@@ -586,6 +608,8 @@ class SessionStore:
         self.invalid_dir = self.root / "invalid"
         self._last_durability: DurabilityResult | None = None
         self._phase_observer = phase_observer
+        self._generation_lock = threading.RLock()
+        self._retained_generations: dict[str, int] = {}
         for directory in (
             self.root,
             self.manifests_dir,
@@ -601,6 +625,29 @@ class SessionStore:
 
     def manifest_path(self, generation: str) -> Path:
         return self.manifests_dir / f"{generation}.json"
+
+    def retain_generation(self, generation: str) -> SessionGenerationLease:
+        """Prevent cleanup from retiring a generation during lazy restore."""
+
+        if (
+            not isinstance(generation, str)
+            or _GENERATION_RE.fullmatch(generation) is None
+        ):
+            raise ValueError("session generation is not a published generation")
+        with self._generation_lock:
+            self._retained_generations[generation] = (
+                self._retained_generations.get(generation, 0) + 1
+            )
+
+        def release() -> None:
+            with self._generation_lock:
+                count = self._retained_generations.get(generation, 0)
+                if count <= 1:
+                    self._retained_generations.pop(generation, None)
+                else:
+                    self._retained_generations[generation] = count - 1
+
+        return SessionGenerationLease(release)
 
     @property
     def current_path(self) -> Path:
@@ -878,7 +925,7 @@ class SessionStore:
         self._last_durability = durability
 
         truncations = admitted.manifest.notices[before_notice_count:]
-        return PublicationResult(
+        result = PublicationResult(
             generation,
             manifest_path,
             pack_paths,
@@ -886,6 +933,13 @@ class SessionStore:
             truncations,
             durability,
         )
+        try:
+            self.cleanup(now=datetime.now(UTC))
+        except (OSError, ValueError):
+            # The new generation is already committed. Bounded maintenance is
+            # best-effort and must not reclassify a successful publication.
+            pass
+        return result
 
     def _problem(
         self,
@@ -1489,6 +1543,20 @@ class SessionStore:
         max_inspected: int = 200,
         max_removed: int = 100,
     ) -> CleanupReport:
+        with self._generation_lock:
+            return self._cleanup_locked(
+                now=now,
+                max_inspected=max_inspected,
+                max_removed=max_removed,
+            )
+
+    def _cleanup_locked(
+        self,
+        *,
+        now: datetime,
+        max_inspected: int,
+        max_removed: int,
+    ) -> CleanupReport:
         if max_inspected < 0 or max_removed < 0:
             raise ValueError("cleanup limits must be non-negative")
         _as_utc(now)
@@ -1500,6 +1568,20 @@ class SessionStore:
             keep_packs.update(
                 self.packs_dir / reference.filename
                 for reference in loaded.manifest.packs
+            )
+        for generation in self._retained_generations:
+            path = self.manifest_path(generation)
+            retained, _problems = self._load_manifest_path(
+                path,
+                expected_sha256=None,
+                load_packs=False,
+            )
+            if retained is None:
+                continue
+            keep_manifests.add(path)
+            keep_packs.update(
+                self.packs_dir / reference.filename
+                for reference in retained.manifest.packs
             )
         candidates = sorted(
             (
