@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import shutil
+import threading
 import time
+from concurrent.futures import CancelledError
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,7 +20,11 @@ from benchmarks.sustained_models import ResourceCheckpoint, SustainedFamilyResul
 from uniti.app.session import HistoryPack
 from uniti.app.session_runtime import restore_document_pack
 from uniti.core.byte_source import ByteSource
-from uniti.core.document import Document
+from uniti.core.document import (
+    Document,
+    ReplacementPlanLimitError,
+    StaleDocumentRevisionError,
+)
 from uniti.core.file_identity import (
     ExternalFileChangedError,
     FileIdentity,
@@ -27,7 +33,22 @@ from uniti.core.file_identity import (
 )
 from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
 from uniti.core.text_inspection import inspect_source
-from uniti.resources import PerformancePolicy
+from uniti.regex.analysis import AnalysisState, analyze_pattern
+from uniti.regex.captures import CaptureReportRequest, resolve_capture_report
+from uniti.regex.engine import compile_pattern
+from uniti.regex.match_store import MatchStore
+from uniti.regex.replace import (
+    collect_replacement_plan,
+    collect_replacements,
+    replace_all,
+)
+from uniti.regex.search import RegexSearchTimeout, SearchOptions, search_document
+from uniti.resources import (
+    PerformancePolicy,
+    TaskKind,
+    TaskSpec,
+    WorkCancelled,
+)
 
 if TYPE_CHECKING:
     from benchmarks.application_harness import ApplicationWorkloadHarness
@@ -241,6 +262,48 @@ def _run_daily_editing(
         and harness.service.windows.count == 0
         and _tasks_idle(harness)
         and harness.recovery_manager.diagnostics() == ()
+    )
+    saved_digest = _file_digest(fixture)
+    integrity_ok = (
+        saved_digest == expected_digest
+        and last_next_span == (41, 46)
+        and last_previous_span == (9, 14)
+        and last_result_revision == final_revision
+        and last_match_count == manifest.spec.size_bytes // 32
+        and reopened_same_document
+        and document_authorities == 1
+        and history_cursor == saved_cursor
+    )
+    return SustainedFamilyResult(
+        schema=2,
+        family="daily_editing",
+        profile="a22-v1",
+        state=(
+            ResultState.PASS
+            if integrity_ok and cleanup_ok
+            else ResultState.FAIL
+        ),
+        warmup_cycles=harness.policy.sustained.warmup_cycles,
+        measured_cycles=cycles,
+        checkpoints=tuple(checkpoints),
+        facts={
+            "cleanup_ok": cleanup_ok,
+            "cycles_completed": total_cycles,
+            "document_authorities": document_authorities,
+            "expected_digest": expected_digest,
+            "final_history_cursor": history_cursor,
+            "final_revision": final_revision,
+            "final_saved_cursor": saved_cursor,
+            "integrity_ok": integrity_ok,
+            "match_count": last_match_count,
+            "next_span": last_next_span,
+            "previous_span": last_previous_span,
+            "reopened_same_document": reopened_same_document,
+            "result_revision": last_result_revision,
+            "saved_digest": saved_digest,
+            "service_identity_reused": harness.service_identity == identity,
+        },
+        messages=() if integrity_ok and cleanup_ok else ("daily workflow failed",),
     )
 
 
@@ -536,20 +599,551 @@ def _run_format_integrity(
         },
         messages=() if integrity_ok and cleanup_ok else ("format workflow failed",),
     )
-    saved_digest = _file_digest(fixture)
-    integrity_ok = (
-        saved_digest == expected_digest
-        and last_next_span == (41, 46)
-        and last_previous_span == (9, 14)
-        and last_result_revision == final_revision
-        and last_match_count == manifest.spec.size_bytes // 32
-        and reopened_same_document
-        and document_authorities == 1
-        and history_cursor == saved_cursor
+
+
+def _span_digest(records) -> str:
+    digest = hashlib.sha256()
+    for record in records:
+        digest.update(f"{record.start}:{record.end}\n".encode("ascii"))
+    return digest.hexdigest()
+
+
+def _expected_dense_result(size_bytes: int) -> tuple[int, str]:
+    count = 0 if size_bytes < 11 else ((size_bytes - 11) // 256) + 1
+    count = min(count, 4096)
+    digest = hashlib.sha256()
+    for index in range(count):
+        start = index * 256
+        digest.update(f"{start}:{start + 11}\n".encode("ascii"))
+    return count, digest.hexdigest()
+
+
+def _document_utf8_digest(document: Document) -> str:
+    digest = hashlib.sha256()
+    for _offset, text in document.iter_text(chunk_chars=65_536):
+        digest.update(text.encode("utf-8"))
+    return digest.hexdigest()
+
+
+def _run_regex_replacement(
+    *,
+    cycles: int,
+    manifest: CorpusManifest,
+    application_root: Path,
+) -> SustainedFamilyResult:
+    if manifest.spec.kind is not CorpusKind.SEARCH_DENSE:
+        raise ValueError("regex replacement requires a search-dense corpus")
+    source = manifest.path.resolve(strict=True)
+    if source.stat().st_size != manifest.spec.size_bytes:
+        raise ValueError("regex corpus size does not match its manifest")
+    source_digest = _file_digest(source)
+    if manifest.digest != source_digest:
+        raise ValueError("regex corpus digest does not match its manifest")
+
+    work_root = application_root / "regex-work"
+    work_root.mkdir()
+    harness = create_application_harness(application_root)
+    checkpoints: list[ResourceCheckpoint] = []
+    last_facts: dict[str, object] = {}
+    try:
+        total_cycles = harness.policy.sustained.warmup_cycles + cycles
+        for sequence in range(total_cycles):
+            measured_cycle = sequence - harness.policy.sustained.warmup_cycles + 1
+            started = time.perf_counter()
+            dense_path = work_root / "dense.txt"
+            sparse_path = work_root / "sparse.txt"
+            zero_path = work_root / "zero.txt"
+            capture_path = work_root / "captures.txt"
+            lookaround_path = work_root / "lookaround.txt"
+            pathological_path = work_root / "pathological.txt"
+            stale_path = work_root / "stale.txt"
+            cancel_path = work_root / "cancel.txt"
+            stale_result_path = work_root / "stale-result.txt"
+            shutil.copyfile(source, dense_path)
+            sparse_path.write_bytes(b"head UNITI_MATCH tail no marker")
+            zero_path.write_bytes(b"aa")
+            capture_path.write_bytes(b"aaaaaa")
+            lookaround_path.write_bytes(b"xxa yya")
+            pathological_path.write_bytes((b"a" * 32_768) + b"X")
+            stale_path.write_bytes(b"x x")
+            cancel_path.write_bytes(b"cancel target")
+            stale_result_path.write_bytes(b"x x")
+
+            documents: list[Document] = []
+            snapshots = []
+            stores: list[MatchStore] = []
+            plans = []
+            dense_store = None
+            dense_plan = None
+            try:
+                dense = Document.open(
+                    dense_path,
+                    profile=encoding_profile("utf-8"),
+                    resource_manager=harness.resources,
+                )
+                documents.append(dense)
+                dense_pattern = compile_pattern("UNITI_MATCH")
+                dense_snapshot = dense.snapshot()
+                snapshots.append(dense_snapshot)
+                dense_store = MatchStore(
+                    memory_budget_bytes=1 << 10,
+                    document_revision=dense.revision,
+                )
+                stores.append(dense_store)
+                try:
+                    for record in search_document(
+                        dense_snapshot,
+                        dense_pattern,
+                        options=SearchOptions(
+                            timeout=0.5,
+                            max_matches=4096,
+                            include_captures=False,
+                        ),
+                    ):
+                        dense_store.append(record)
+                finally:
+                    dense_snapshot.close()
+                dense_matches = len(dense_store)
+                dense_result_digest = _span_digest(dense_store)
+                dense_store_spilled = dense_store.spilled
+
+                sparse = Document.open(
+                    sparse_path,
+                    profile=encoding_profile("utf-8"),
+                    resource_manager=harness.resources,
+                )
+                documents.append(sparse)
+                sparse_records = tuple(
+                    search_document(
+                        sparse,
+                        dense_pattern,
+                        options=SearchOptions(include_captures=False),
+                    )
+                )
+                sparse_result_digest = _span_digest(sparse_records)
+                current_replacements = collect_replacements(
+                    sparse,
+                    dense_pattern,
+                    "HIT",
+                    options=SearchOptions(max_matches=1),
+                )
+                for replacement in current_replacements:
+                    sparse.replace(
+                        replacement.start,
+                        replacement.end,
+                        replacement.text,
+                    )
+                replace_current_count = len(current_replacements)
+                replace_current_exact = (
+                    sparse.read(0, sparse.total_chars())
+                    == "head HIT tail no marker"
+                )
+
+                zero = Document.open(
+                    zero_path,
+                    profile=encoding_profile("utf-8"),
+                    resource_manager=harness.resources,
+                )
+                documents.append(zero)
+                zero_pattern = compile_pattern(r"(?=a)|(?<=a)")
+                zero_records = tuple(
+                    search_document(
+                        zero,
+                        zero_pattern,
+                        options=SearchOptions(include_captures=False),
+                    )
+                )
+                zero_store = MatchStore(document_revision=zero.revision)
+                stores.append(zero_store)
+                for record in zero_records:
+                    zero_store.append(record)
+                next_index = zero_store.next_index(1)
+                previous_index = zero_store.previous_index(1)
+                zero_width_replacements = replace_all(
+                    zero,
+                    compile_pattern(r"(?=a)"),
+                    "X",
+                )
+                zero_width_digest = _document_utf8_digest(zero)
+                zero_history = zero.export_history()
+                zero.undo()
+                zero_undo_exact = _document_utf8_digest(zero) == _file_digest(zero_path)
+                zero.redo()
+                zero_redo_exact = _document_utf8_digest(zero) == zero_width_digest
+
+                capture_document = Document.open(
+                    capture_path,
+                    profile=encoding_profile("utf-8"),
+                    resource_manager=harness.resources,
+                )
+                documents.append(capture_document)
+                capture_pattern = compile_pattern(r"(?P<item>a)+")
+                capture_record = next(
+                    search_document(
+                        capture_document,
+                        capture_pattern,
+                        options=SearchOptions(
+                            max_matches=1,
+                            include_captures=False,
+                        ),
+                    )
+                )
+                capture_request = CaptureReportRequest(
+                    pattern_generation=sequence + 1,
+                    pattern_text=capture_pattern.pattern,
+                    document_key=str(id(capture_document)),
+                    revision=capture_document.revision,
+                    store_id=f"capture-{sequence}",
+                    requested_index=0,
+                    match_count=1,
+                    matches=((0, capture_record),),
+                )
+                capture_snapshot = capture_document.snapshot()
+                snapshots.append(capture_snapshot)
+                try:
+                    capture_report = resolve_capture_report(
+                        capture_snapshot,
+                        capture_pattern,
+                        capture_request,
+                    )
+                finally:
+                    capture_snapshot.close()
+                capture_occurrences = (
+                    capture_report.matches[0].groups[0].occurrence_count
+                )
+
+                lookaround = Document.open(
+                    lookaround_path,
+                    profile=encoding_profile("utf-8"),
+                    resource_manager=harness.resources,
+                )
+                documents.append(lookaround)
+                [lookaround_record] = tuple(
+                    search_document(
+                        lookaround,
+                        compile_pattern(r"(?<=xx)a"),
+                        options=SearchOptions(
+                            window_chars=4,
+                            max_context_chars=64,
+                            include_captures=False,
+                        ),
+                    )
+                )
+
+                pathological_analysis = analyze_pattern(r"(a+)+$", sequence + 1)
+                pathological = Document.open(
+                    pathological_path,
+                    profile=encoding_profile("utf-8"),
+                    resource_manager=harness.resources,
+                )
+                documents.append(pathological)
+                pathological_timeout = False
+                try:
+                    tuple(
+                        search_document(
+                            pathological,
+                            compile_pattern(r"(a+)+$"),
+                            options=SearchOptions(
+                                window_chars=32_769,
+                                max_context_chars=65_536,
+                                timeout=0.000_000_001,
+                                include_captures=False,
+                            ),
+                        )
+                    )
+                except RegexSearchTimeout:
+                    pathological_timeout = True
+
+                cancel_document = Document.open(
+                    cancel_path,
+                    profile=encoding_profile("utf-8"),
+                    resource_manager=harness.resources,
+                )
+                documents.append(cancel_document)
+                cancel_started = threading.Event()
+                published: list[MatchStore] = []
+
+                def cancel_work(context):
+                    snapshot = cancel_document.snapshot()
+                    snapshots.append(snapshot)
+                    try:
+                        cancel_started.set()
+                        if not context.token.wait(harness.operation_timeout_seconds):
+                            raise TimeoutError("regex cancellation barrier expired")
+                        context.check_cancelled()
+                        result = MatchStore(document_revision=cancel_document.revision)
+                        published.append(result)
+                        return result
+                    finally:
+                        snapshot.close()
+
+                cancel_handle = harness.resources.tasks.submit(
+                    TaskSpec.create(TaskKind.SEARCH, foreground=True),
+                    cancel_work,
+                )
+                if not cancel_started.wait(harness.operation_timeout_seconds):
+                    cancel_handle.cancel()
+                    raise TimeoutError("regex cancellation task did not start")
+                cancel_handle.cancel()
+                try:
+                    harness.await_operation(cancel_handle)
+                except (CancelledError, WorkCancelled):
+                    cancelled = True
+                else:
+                    cancelled = False
+                cancelled_before_publication = cancelled and not published
+
+                dense_plan = collect_replacement_plan(
+                    dense,
+                    dense_pattern,
+                    "UNITI",
+                    document_revision=dense.revision,
+                    memory_budget_bytes=1 << 10,
+                    options=SearchOptions(
+                        timeout=0.5,
+                        max_matches=4096,
+                        include_captures=False,
+                    ),
+                )
+                plans.append(dense_plan)
+                replacement_plan_count = len(dense_plan)
+                replacement_plan_spilled = dense_plan.spilled
+                before_replace_digest = _document_utf8_digest(dense)
+                try:
+                    dense.apply_replacement_plan(
+                        dense_plan,
+                        expected_revision=dense.revision,
+                        memory_limit_bytes=1,
+                    )
+                except ReplacementPlanLimitError:
+                    replacement_plan_refused = (
+                        _document_utf8_digest(dense) == before_replace_digest
+                    )
+                else:
+                    replacement_plan_refused = False
+                replace_all_count = dense.apply_replacement_plan(
+                    dense_plan,
+                    expected_revision=dense.revision,
+                    memory_limit_bytes=256 << 20,
+                )
+                replacement_digest = _document_utf8_digest(dense)
+                dense_history = dense.export_history()
+                dense.undo()
+                undo_exact = _document_utf8_digest(dense) == source_digest
+                dense.redo()
+                redo_exact = _document_utf8_digest(dense) == replacement_digest
+                atomic_undo_redo = (
+                    len(dense_history.transactions) == 1
+                    and undo_exact
+                    and redo_exact
+                    and len(zero_history.transactions) == 1
+                    and zero_undo_exact
+                    and zero_redo_exact
+                )
+
+                stale_document = Document.open(
+                    stale_path,
+                    profile=encoding_profile("utf-8"),
+                    resource_manager=harness.resources,
+                )
+                documents.append(stale_document)
+                stale_plan = collect_replacement_plan(
+                    stale_document,
+                    compile_pattern("x"),
+                    "y",
+                    document_revision=stale_document.revision,
+                )
+                plans.append(stale_plan)
+                sealed_revision = stale_document.revision
+                stale_document.insert(stale_document.total_chars(), "!")
+                try:
+                    stale_document.apply_replacement_plan(
+                        stale_plan,
+                        expected_revision=sealed_revision,
+                        memory_limit_bytes=1 << 20,
+                    )
+                except StaleDocumentRevisionError:
+                    stale_plan_rejected = (
+                        stale_document.read(0, stale_document.total_chars())
+                        == "x x!"
+                    )
+                else:
+                    stale_plan_rejected = False
+
+                stale_view = harness.open_owned_fixture(stale_result_path)
+                stale_panel = harness.service.find_replace
+                stale_panel.regex_checkbox.setChecked(False)
+                stale_panel.find_input.set_text("")
+                stale_panel.find_input.set_text("x")
+                harness.pump_until(
+                    lambda: stale_panel.compile_current() is not None
+                )
+                stale_panel.find_all()
+                harness.pump_until(
+                    lambda: not stale_panel.busy
+                    and stale_panel.result_count == 2
+                )
+                result_revision = getattr(
+                    stale_panel._results,
+                    "document_revision",
+                    -1,
+                )
+                result_revision_sealed = (
+                    dense_store.document_revision == 0
+                    and result_revision == stale_view.document.revision
+                )
+                stale_view.document.insert(
+                    stale_view.document.total_chars(),
+                    "!",
+                )
+                stale_result_rejected = (
+                    stale_panel.result_count == 0
+                    and stale_panel.status_label.text()
+                    == "text changed — search again"
+                )
+                if not harness.close_cycle():
+                    raise RuntimeError("stale-result view did not close")
+
+                last_facts = {
+                    "atomic_undo_redo": atomic_undo_redo,
+                    "cancelled_before_publication": cancelled_before_publication,
+                    "capture_occurrences": capture_occurrences,
+                    "capture_payload_bytes": capture_report.payload_bytes,
+                    "dense_matches": dense_matches,
+                    "dense_result_digest": dense_result_digest,
+                    "dense_store_spilled": dense_store_spilled,
+                    "lookaround_span": lookaround_record.span,
+                    "pathological_timeout": (
+                        pathological_analysis.state is AnalysisState.VALID
+                        and pathological_timeout
+                    ),
+                    "replace_all_count": replace_all_count,
+                    "replace_current_count": replace_current_count,
+                    "replace_current_exact": replace_current_exact,
+                    "replacement_digest": replacement_digest,
+                    "replacement_plan_count": replacement_plan_count,
+                    "replacement_plan_refused": replacement_plan_refused,
+                    "replacement_plan_spilled": replacement_plan_spilled,
+                    "sparse_matches": len(sparse_records),
+                    "sparse_result_digest": sparse_result_digest,
+                    "stale_plan_rejected": stale_plan_rejected,
+                    "stale_result_rejected": stale_result_rejected,
+                    "result_revision_sealed": result_revision_sealed,
+                    "zero_navigation_indices": (next_index, previous_index),
+                    "zero_width_digest": zero_width_digest,
+                    "zero_width_positions": tuple(
+                        record.start for record in zero_records
+                    ),
+                    "zero_width_replacements": zero_width_replacements,
+                }
+            finally:
+                for plan in plans:
+                    plan.close()
+                for store in stores:
+                    store.close()
+                for snapshot in snapshots:
+                    snapshot.close()
+                for document in reversed(documents):
+                    document.close()
+
+            plan_closed = True
+            for plan in plans:
+                try:
+                    next(iter(plan))
+                except ValueError:
+                    continue
+                plan_closed = False
+            store_closed = True
+            for store in stores:
+                try:
+                    store[0]
+                except ValueError:
+                    continue
+                store_closed = False
+            snapshots_closed = all(snapshot._closed for snapshot in snapshots)
+            harness.pump_until(lambda: _tasks_idle(harness))
+            last_facts.update(
+                {
+                    "plan_closed": plan_closed,
+                    "snapshots_closed": snapshots_closed,
+                    "store_closed": store_closed,
+                }
+            )
+            if sequence >= harness.policy.sustained.warmup_cycles:
+                checkpoint = harness.capture_checkpoint(measured_cycle)
+                if any(
+                    checkpoint.owned_counts[name] != 0
+                    for name in (
+                        "documents",
+                        "views",
+                        "active_tasks",
+                        "queued_tasks",
+                        "result_stores",
+                        "replacement_plans",
+                        "snapshots",
+                    )
+                ):
+                    raise RuntimeError("regex cycle left unexpected owned resources")
+                checkpoints.append(
+                    _checkpoint_with_timing(
+                        checkpoint,
+                        "regex_cycle_ms",
+                        (time.perf_counter() - started) * 1000.0,
+                    )
+                )
+    finally:
+        harness.shutdown()
+
+    expected_dense_count, expected_dense_digest = _expected_dense_result(
+        manifest.spec.size_bytes
     )
+    required = (
+        bool(last_facts.get("atomic_undo_redo")),
+        bool(last_facts.get("cancelled_before_publication")),
+        last_facts.get("capture_occurrences") == 6,
+        last_facts.get("capture_payload_bytes", (1 << 20) + 1) <= 1 << 20,
+        last_facts.get("dense_matches") == expected_dense_count,
+        last_facts.get("dense_result_digest") == expected_dense_digest,
+        bool(last_facts.get("dense_store_spilled")),
+        last_facts.get("lookaround_span") == (2, 3),
+        bool(last_facts.get("pathological_timeout")),
+        bool(last_facts.get("replacement_plan_refused")),
+        bool(last_facts.get("replacement_plan_spilled")),
+        last_facts.get("replacement_plan_count") == expected_dense_count,
+        last_facts.get("replace_all_count") == expected_dense_count,
+        last_facts.get("replace_current_count") == 1,
+        bool(last_facts.get("replace_current_exact")),
+        bool(last_facts.get("result_revision_sealed")),
+        bool(last_facts.get("stale_plan_rejected")),
+        bool(last_facts.get("stale_result_rejected")),
+        last_facts.get("sparse_matches") == 1,
+        last_facts.get("sparse_result_digest")
+        == "0d49377470ad4f311ebeb926f0b3c79da0c520b4529fa06f3f8fd5fc3e1cd016",
+        last_facts.get("zero_navigation_indices") == (1, 0),
+        last_facts.get("zero_width_digest")
+        == "44920c03214ffba1dee0ac0f6ca2537ecbac72148859766df07fe914d4fffa69",
+        last_facts.get("zero_width_replacements") == 2,
+        last_facts.get("zero_width_positions") == (0, 1, 2),
+        bool(last_facts.get("plan_closed")),
+        bool(last_facts.get("snapshots_closed")),
+        bool(last_facts.get("store_closed")),
+    )
+    cleanup_ok = (
+        not harness.service.is_running
+        and harness.service.documents.count == 0
+        and harness.service.windows.count == 0
+        and _tasks_idle(harness)
+    )
+    integrity_ok = all(required)
+    facts = {
+        **last_facts,
+        "cleanup_ok": cleanup_ok,
+        "cycles_completed": total_cycles,
+        "integrity_ok": integrity_ok,
+    }
     return SustainedFamilyResult(
         schema=2,
-        family="daily_editing",
+        family="regex_replacement",
         profile="a22-v1",
         state=(
             ResultState.PASS
@@ -559,24 +1153,8 @@ def _run_format_integrity(
         warmup_cycles=harness.policy.sustained.warmup_cycles,
         measured_cycles=cycles,
         checkpoints=tuple(checkpoints),
-        facts={
-            "cleanup_ok": cleanup_ok,
-            "cycles_completed": total_cycles,
-            "document_authorities": document_authorities,
-            "expected_digest": expected_digest,
-            "final_history_cursor": history_cursor,
-            "final_revision": final_revision,
-            "final_saved_cursor": saved_cursor,
-            "integrity_ok": integrity_ok,
-            "match_count": last_match_count,
-            "next_span": last_next_span,
-            "previous_span": last_previous_span,
-            "reopened_same_document": reopened_same_document,
-            "result_revision": last_result_revision,
-            "saved_digest": saved_digest,
-            "service_identity_reused": harness.service_identity == identity,
-        },
-        messages=() if integrity_ok and cleanup_ok else ("daily workflow failed",),
+        facts=facts,
+        messages=() if integrity_ok and cleanup_ok else ("regex workflow failed",),
     )
 
 
@@ -607,6 +1185,12 @@ def run_sustained_workload(
         )
     if family == "format_integrity":
         return _run_format_integrity(
+            cycles=cycles,
+            manifest=manifest,
+            application_root=application_root,
+        )
+    if family == "regex_replacement":
+        return _run_regex_replacement(
             cycles=cycles,
             manifest=manifest,
             application_root=application_root,
