@@ -129,6 +129,72 @@ def test_paused_background_does_not_occupy_the_only_worker():
         manager.shutdown()
 
 
+def test_foreground_session_publication_runs_while_background_is_paused(
+    resource_manager,
+):
+    resource_manager.pause_background(True)
+    background = resource_manager.tasks.submit(
+        TaskSpec.create(TaskKind.SESSION, foreground=False),
+        lambda _context: "background session",
+    )
+    foreground = resource_manager.tasks.submit(
+        TaskSpec.create(TaskKind.SESSION, foreground=True),
+        lambda _context: "final session",
+    )
+
+    assert foreground.future.result(timeout=1) == "final session"
+    assert not background.done
+    assert resource_manager.tasks.snapshot().background_paused
+
+
+def test_resumed_session_future_cannot_cancel_an_active_write(resource_manager):
+    started = Event()
+    release = Event()
+    resource_manager.pause_background(True)
+    handle = resource_manager.tasks.submit(
+        TaskSpec.create(TaskKind.SESSION, foreground=False),
+        lambda _context: (started.set(), release.wait(5), "published")[-1],
+    )
+    resource_manager.pause_background(False)
+    try:
+        assert started.wait(1)
+        assert not handle.future.cancel(), "an active write must not appear cancelled"
+    finally:
+        release.set()
+    assert handle.future.result(timeout=1) == "published"
+
+
+def test_cancelling_resumed_queued_session_prevents_its_write():
+    resources = ResourceManager(max_workers=1)
+    started = Event()
+    release = Event()
+    writes = []
+    try:
+        resources.tasks.submit(
+            TaskSpec.create(TaskKind.SAVE, foreground=True),
+            lambda _context: (started.set(), release.wait(5)),
+        )
+        assert started.wait(1)
+        resources.pause_background(True)
+        handle = resources.tasks.submit(
+            TaskSpec.create(TaskKind.SESSION, foreground=False),
+            lambda _context: writes.append("superseded"),
+        )
+        resources.pause_background(False)
+        assert handle.future.cancel()
+        release.set()
+        # The only worker must finish the older equal-priority item first.
+        final = resources.tasks.submit(
+            TaskSpec.create(TaskKind.SESSION, foreground=True),
+            lambda _context: writes.append("final"),
+        )
+        final.future.result(timeout=1)
+        assert writes == ["final"]
+    finally:
+        release.set()
+        resources.shutdown()
+
+
 def test_estimated_work_above_available_resources_is_refused(resource_manager):
     invoked = False
 

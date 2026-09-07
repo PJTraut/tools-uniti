@@ -732,6 +732,42 @@ def test_publication_scheduler_keeps_active_and_only_latest_pending_snapshot():
     assert service.request_quit(lambda _item: QuitChoice.DISCARD) is True
 
 
+@pytest.mark.parametrize("queued_publication", [False, True])
+def test_quit_completes_with_background_session_publication_paused(
+    queued_publication: bool,
+):
+    resources = ResourceManager(max_workers=1)
+    sessions = RecordingSessionStore()
+    service = _service(
+        resources=resources,
+        sessions=sessions,
+        capture=lambda clean: ("snapshot", clean),
+    )
+    resources.pause_background(True)
+    if queued_publication:
+        service.schedule_publication()
+    finished = threading.Event()
+    results = []
+
+    def quit_service():
+        try:
+            results.append(service.request_quit(lambda _item: QuitChoice.DISCARD))
+        finally:
+            finished.set()
+
+    thread = threading.Thread(target=quit_service, daemon=True)
+    thread.start()
+    try:
+        assert finished.wait(2), "Quit waited indefinitely for paused session work"
+        assert results == [True]
+        assert sessions.publications == [("snapshot", True)]
+        assert not service.is_running
+    finally:
+        resources.pause_background(False)
+        thread.join(timeout=5)
+        resources.shutdown()
+
+
 def test_low_space_publication_warning_remains_until_later_durable_success():
     from uniti.app.session import PersistenceNotice
 

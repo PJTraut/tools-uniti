@@ -4,6 +4,10 @@ Captured: 2026-09-05
 
 This is a continuation snapshot, not a controlling specification. Resolve conflicts using the authority order in the [Documentation System](../00_governance/DOCUMENTATION_SYSTEM.md).
 
+## BF-002 testing blocker — 2026-09-07
+
+[BF-002](../BETA_FEEDBACK.md) is critical and blocks further user testing. Local commit `fadc36f` fixes startup after a zero-window session; GitHub `main` was checked at `ca75966`, without that fix. The current working changes correct Quit deadlocks with paused session work and preserve ordering when paused writes resume. Regression and native macOS process-exit/relaunch checks pass; distribution, confirmation on the affected Windows/Mac installations, and clarification of the last-window-close policy remain outstanding. Follow the feedback entry for current evidence and closure criteria.
+
 ## Canonical repository state
 
 - Repository: `https://github.com/PJTraut/tools-uniti.git`

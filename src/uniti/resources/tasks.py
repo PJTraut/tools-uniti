@@ -328,7 +328,11 @@ class TaskCoordinator:
         handle: TaskHandle[T] = TaskHandle(spec, token, self._clock, self._notify)
         with self._condition:
             self._handles[spec.task_id] = handle
-            deferred = self._background_paused and spec.kind in _BACKGROUND_KINDS
+            deferred = (
+                self._background_paused
+                and not spec.foreground
+                and spec.kind in _BACKGROUND_KINDS
+            )
             if deferred:
                 public_future: Future[T] = Future()
                 handle._set_future(public_future)
@@ -354,6 +358,7 @@ class TaskCoordinator:
             self._run,
             handle,
             fn,
+            public_future,
         )
         if public_future is None:
             handle._set_future(worker_future)
@@ -391,8 +396,15 @@ class TaskCoordinator:
             self._deferred.pop(handle.spec.task_id, None)
         self._notify()
 
-    def _run(self, handle: TaskHandle[T], fn: Callable[[TaskContext], T]) -> T:
+    def _run(
+        self,
+        handle: TaskHandle[T],
+        fn: Callable[[TaskContext], T],
+        public_future: Future[T] | None = None,
+    ) -> T:
         try:
+            if public_future is not None and not public_future.set_running_or_notify_cancel():
+                raise WorkCancelled("deferred task was cancelled before execution")
             handle.token.raise_if_cancelled()
             handle._set_state(TaskState.RUNNING)
             result = fn(TaskContext(handle, handle.token))

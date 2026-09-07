@@ -106,6 +106,7 @@ class _PublicationQueue:
         self._on_failure = on_failure
         self._condition = threading.Condition(threading.RLock())
         self._active: _PublicationRequest | None = None
+        self._active_handle: TaskHandle[Any] | None = None
         self._pending: _PublicationRequest | None = None
         self._closed = False
         self._last_error: Exception | None = None
@@ -135,9 +136,13 @@ class _PublicationQueue:
         except Exception as exc:
             self._submission_failed(request, exc)
             return
-        handle.future.add_done_callback(
-            lambda _future: self._finished(request, handle)
-        )
+        with self._condition:
+            self._active_handle = handle
+            handle.future.add_done_callback(
+                lambda _future: self._finished(request, handle)
+            )
+            if self._closed:
+                handle.future.cancel()
 
     def _submission_failed(
         self,
@@ -150,6 +155,7 @@ class _PublicationQueue:
                 return
             self._last_error = error
             self._active = None
+            self._active_handle = None
             if not self._closed:
                 next_request = self._pending
             self._pending = None
@@ -194,6 +200,7 @@ class _PublicationQueue:
                 return
             self._last_error = error
             self._active = None
+            self._active_handle = None
             if not self._closed:
                 next_request = self._pending
             self._pending = None
@@ -205,11 +212,15 @@ class _PublicationQueue:
             self._submit(next_request)
 
     def close_before_final_publication(self) -> None:
-        """Drop superseded queued state and wait for an active atomic publish."""
+        """Cancel unstarted state and wait only for an active atomic publish."""
 
         with self._condition:
             self._closed = True
             self._pending = None
+            if self._active_handle is not None:
+                # A deferred/queued snapshot is superseded by the final one.
+                # Future.cancel() leaves an already-running atomic write alone.
+                self._active_handle.future.cancel()
             while self._active is not None:
                 self._condition.wait()
 

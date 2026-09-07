@@ -2,6 +2,8 @@
 
 This directory is the tool-neutral source of truth for UNITI's development state, delivery sequence, historical implementation, scope boundaries, architectural decisions, and development handovers.
 
+[Beta Feedback Log](BETA_FEEDBACK.md) collects summarized user observations awaiting later triage, planning, and action.
+
 ## Reading order
 
 1. [`00_governance`](00_governance/DOCUMENTATION_SYSTEM.md) defines the documentation system and [project grammar](00_governance/GRAMMAR.md).
