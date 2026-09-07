@@ -477,6 +477,8 @@ class RecoveryManager:
             if self._shutdown:
                 raise RuntimeError("recovery manager is shut down")
             previous = binding.last_future
+            completion: Future = Future()
+            binding.last_future = completion
             spec = TaskSpec.create(
                 kind,
                 foreground=False,
@@ -485,23 +487,42 @@ class RecoveryManager:
             )
 
             def work(_context):
-                if previous is not None:
-                    try:
-                        previous.result()
-                    except Exception:
-                        pass
+                if not completion.set_running_or_notify_cancel():
+                    return None
                 return self._run_guarded(binding, stage, fn)
 
-            try:
-                handle = self._resources.tasks.submit(spec, work)
-            except Exception as exc:
-                self._degrade(binding, stage, exc)
-                failed: Future = Future()
-                failed.set_result(None)
-                binding.last_future = failed
-                return failed
-            binding.last_future = handle.future
-            return handle.future
+            def transfer(finished: Future) -> None:
+                if completion.done():
+                    return
+                if finished.cancelled():
+                    completion.cancel()
+                    return
+                try:
+                    result = finished.result()
+                except BaseException as exc:
+                    completion.set_exception(exc)
+                else:
+                    completion.set_result(result)
+
+            def dispatch(_previous=None) -> None:
+                if completion.cancelled():
+                    return
+                try:
+                    handle = self._resources.tasks.submit(spec, work)
+                except Exception as exc:
+                    self._degrade(binding, stage, exc)
+                    if not completion.done():
+                        completion.set_result(None)
+                    return
+                handle.future.add_done_callback(transfer)
+
+            # A waiting successor must not occupy a scarce worker slot: its
+            # predecessor may be queued behind that same admission limit.
+            if previous is None:
+                dispatch()
+            else:
+                previous.add_done_callback(dispatch)
+            return completion
 
     @staticmethod
     def _hash_source(source: ByteSource) -> str:

@@ -1,6 +1,7 @@
 import os
 from concurrent.futures import Future
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -28,8 +29,44 @@ from uniti.core.recovery import (
     RecoverySourceMismatchError,
     replay_recovery,
 )
-from uniti.resources import MemorySnapshot, ResourceManager
+from uniti.resources import MemorySnapshot, ResourceManager, WorkPriority
 from uniti.resources.tasks import TaskKind
+
+
+@pytest.mark.parametrize("outcome", ["success", "error", "cancelled"])
+def test_serial_recovery_waits_for_predecessor_without_occupying_worker(
+    tmp_path, outcome
+):
+    resources = ResourceManager(max_workers=1)
+    manager = RecoveryManager(tmp_path / "recovery", resource_manager=resources)
+    previous = Future()
+    binding = SimpleNamespace(
+        last_future=previous, document_id="serial-test", observed_revision=0
+    )
+    successor = manager._submit_serial(
+        binding, TaskKind.RECOVERY, "test", lambda: "successor"
+    )
+    try:
+        # Other work, including the predecessor, must still be able to enter
+        # the pool while this document's next recovery operation is waiting.
+        available = resources.workers.submit(
+            WorkPriority.PREFETCH, lambda: "worker available"
+        )
+        assert available.result(timeout=1) == "worker available"
+        assert not successor.done()
+        if outcome == "success":
+            previous.set_result(None)
+        elif outcome == "error":
+            previous.set_exception(OSError("earlier work failed"))
+        else:
+            previous.cancel()
+        assert successor.result(timeout=1) == "successor"
+    finally:
+        if not previous.done():
+            previous.set_result(None)
+        successor.result(timeout=2)
+        manager.shutdown()
+        resources.shutdown(wait=True)
 
 
 class InjectedRecoveryIO:
