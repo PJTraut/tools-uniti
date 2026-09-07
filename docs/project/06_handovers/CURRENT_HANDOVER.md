@@ -6,7 +6,7 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 
 ## BF-002 testing blocker — 2026-09-07
 
-[BF-002](../BETA_FEEDBACK.md) is critical and blocks further user testing. Local commit `fadc36f` fixes startup after a zero-window session; GitHub `main` was checked at `ca75966`, without that fix. The current working changes correct Quit deadlocks with paused session work and preserve ordering when paused writes resume. Regression and native macOS process-exit/relaunch checks pass; distribution, confirmation on the affected Windows/Mac installations, and clarification of the last-window-close policy remain outstanding. Follow the feedback entry for current evidence and closure criteria.
+[BF-002](../BETA_FEEDBACK.md) is critical and blocks further user testing. Local commit `fadc36f` fixes startup after a zero-window session; GitHub `main` was checked at `ca75966`, without that fix. Local commit `09fe356` corrects Quit deadlocks with paused session work and preserves ordering when paused writes resume. The user clarified that the display must remain available while the service is alive: ordinary last-window close now retains an empty visible editor window, while explicit Quit ends the service. Distribution and confirmation on the affected Windows/Mac installations remain outstanding. Follow the feedback entry for current evidence and closure criteria.
 
 ## Canonical repository state
 

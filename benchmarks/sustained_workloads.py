@@ -1592,6 +1592,12 @@ def _run_session_lifecycle(
             if sequence == 0:
                 for _window_id, window in tuple(harness.service.windows.items):
                     window.close()
+                remaining = harness.service.most_recent_window
+                if remaining is None or not remaining.isVisible() or remaining.views:
+                    raise RuntimeError("last editor window did not remain available")
+                # Exercise service-owned zero-window restore independently of
+                # the user close action, which now retains an empty window.
+                remaining.close_for_service()
                 harness.pump_until(
                     lambda: harness.service.window_count == 0
                     and _tasks_idle(harness)
@@ -1604,7 +1610,7 @@ def _run_session_lifecycle(
                     harness.service.window_count == 1
                     and harness.service.is_running
                 )
-                activation.close()
+                activation.close_for_service()
                 harness.pump_until(
                     lambda: harness.service.window_count == 0
                     and _tasks_idle(harness)

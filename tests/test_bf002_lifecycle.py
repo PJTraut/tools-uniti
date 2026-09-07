@@ -33,8 +33,14 @@ def new_window(service, record=None):
     window = original_new_window(service, record)
 
     def act():
-        if mode == 'close_then_terminate':
-            assert window.close()
+        if mode in ('close_then_quit', 'close_then_terminate'):
+            window.close()
+            assert window.isVisible()
+            assert service.window_count == 1
+            assert service.is_running
+        if mode == 'legacy_zero_window':
+            window.close_for_service()
+        if mode in ('close_then_terminate', 'legacy_zero_window'):
             wait_for_empty_session()
             return
         if mode == 'paused_quit':
@@ -45,10 +51,15 @@ def new_window(service, record=None):
 
     def wait_for_empty_session():
         loaded = service.sessions.load_manifest()
-        if loaded.manifest is None or loaded.manifest.windows:
+        expected_windows = 0 if mode == 'legacy_zero_window' else 1
+        if (
+            loaded.manifest is None
+            or len(loaded.manifest.windows) != expected_windows
+            or loaded.manifest.views
+        ):
             QTimer.singleShot(10, wait_for_empty_session)
             return
-        assert service.window_count == 0
+        assert service.window_count == expected_windows
         # Model terminal termination: no orderly service cleanup runs.
         os._exit(0)
 
@@ -66,7 +77,10 @@ raise SystemExit(code)
 """
 
 
-@pytest.mark.parametrize("first_exit", ["quit", "paused_quit", "close_then_terminate"])
+@pytest.mark.parametrize(
+    "first_exit",
+    ["quit", "paused_quit", "close_then_quit", "close_then_terminate", "legacy_zero_window"],
+)
 def test_desktop_exit_releases_process_and_relaunches_saved_session(
     tmp_path: Path,
     first_exit: str,
@@ -96,7 +110,7 @@ def test_desktop_exit_releases_process_and_relaunches_saved_session(
         assert result.returncode == 0, result.stdout + result.stderr
         assert "SESSION_RESTORE" not in result.stderr
         assert "Traceback" not in result.stderr
-        if mode != "close_then_terminate":
+        if mode not in ("close_then_terminate", "legacy_zero_window"):
             assert json.loads(result.stdout)["exit_code"] == 0
 
     from uniti.app.session_store import SessionStore

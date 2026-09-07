@@ -2938,6 +2938,21 @@ class UNITIMainWindow(QMainWindow):
             if not accepted:
                 event.ignore()
                 return
+            if (
+                not force
+                and not self._service.is_quitting
+                and self._service.window_count == 1
+            ):
+                # Keep a visible way to open files and Quit while the service
+                # is alive; only explicit Quit tears down the last window.
+                event.ignore()
+                self._service.set_active_view(self.window_id, None)
+                self.show()
+                try:
+                    self._service.schedule_publication(clean_shutdown=False)
+                except RuntimeError:
+                    pass
+                return
             self._navigation_timer.stop()
             self._resource_timer.stop()
             if self._resource_probe_future is not None:
@@ -2971,6 +2986,13 @@ class UNITIMainWindow(QMainWindow):
             event.ignore()
 
     def _close_service_window_views(self) -> bool:
+        if any(self.view_for_id(view_id) is None for view_id in self.view_ids):
+            QMessageBox.information(
+                self,
+                "UNITI Session Restore Pending",
+                "Finish or resolve pending session restoration before closing this window.",
+            )
+            return False
         views = self.views
         if any(not view.isEnabled() for view in views):
             QMessageBox.information(

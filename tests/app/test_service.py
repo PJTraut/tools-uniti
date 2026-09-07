@@ -652,12 +652,13 @@ def test_global_find_replace_attachment_follows_active_window_and_survives_hosts
         first.close()
         app.processEvents()
 
-        assert service.window_count == 0
-        assert panel.parentWidget() is None
-        assert panel.isHidden() is True
+        assert service.window_count == 1
+        assert first.isVisible()
+        assert panel.parentWidget() is first
         assert panel.placement == "attached"
 
         replacement_host = service.new_window()
+        service.set_active_view(replacement_host.window_id, None)
         app.processEvents()
         assert panel.parentWidget() is replacement_host
         assert panel.placement == "attached"
@@ -875,10 +876,86 @@ def test_one_service_owns_two_windows_one_document_and_one_find_panel(
         second.close()
         app.processEvents()
 
-        assert service.window_count == 0
+        assert service.window_count == 1
+        assert service.most_recent_window is second
+        assert second.isVisible()
+        assert second.views == ()
         assert service.is_running is True
         assert app.quitOnLastWindowClosed() is False
     finally:
+        _stop_desktop_service(app, service)
+
+
+def test_last_window_close_keeps_open_available_and_explicit_quit_exits(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from PySide6.QtWidgets import QFileDialog
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "reopen.txt"
+    path.write_text("still available", encoding="utf-8")
+    window = service.new_window()
+    try:
+        window.show()
+        assert window.open_path(path) is not None
+        window.close()
+        app.processEvents()
+
+        assert window.isVisible()
+        assert window.views == ()
+        assert service.most_recent_window is window
+        assert service.is_running
+
+        monkeypatch.setattr(
+            QFileDialog,
+            "getOpenFileName",
+            lambda *_args, **_kwargs: (str(path), ""),
+        )
+        window._command_actions["file.open"].trigger()
+        assert window.current_view is not None
+        assert window.current_view.document.read(0, 15) == "still available"
+
+        window._command_actions["file.quit"].trigger()
+        assert not service.is_running
+        assert service.window_count == 0
+    finally:
+        _stop_desktop_service(app, service)
+
+
+def test_failed_quit_then_window_close_retains_a_usable_window(
+    tmp_path: Path,
+    monkeypatch,
+):
+    app, service, _recovery = _desktop_service(tmp_path)
+    window = service.new_window()
+    publish = service.sessions.publish
+
+    def fail_final(snapshot):
+        if snapshot == ("snapshot", True):
+            raise OSError("injected session write failure")
+        return publish(snapshot)
+
+    try:
+        window.show()
+        service.schedule_publication()
+        monkeypatch.setattr(service.sessions, "publish", fail_final)
+        assert not window.request_quit()
+        assert service.last_quit_error is not None
+
+        window.close()
+        app.processEvents()
+        assert window.isVisible()
+        assert service.most_recent_window is window
+        path = tmp_path / "after-failure.txt"
+        path.write_text("preserved", encoding="utf-8")
+        assert window.open_path(path) is not None
+
+        monkeypatch.setattr(service.sessions, "publish", publish)
+        assert window.request_quit()
+        assert not service.is_running
+    finally:
+        monkeypatch.setattr(service.sessions, "publish", publish)
         _stop_desktop_service(app, service)
 
 
@@ -1295,6 +1372,52 @@ def test_window_close_cancel_preserves_every_view_and_service_binding(
         _stop_desktop_service(app, service)
 
 
+def test_window_close_preserves_live_tabs_while_session_restore_is_pending(
+    tmp_path: Path,
+    monkeypatch,
+):
+    from PySide6.QtWidgets import QMessageBox
+    from uniti.app.session import PaneRecord, WindowRecord
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "live.txt"
+    path.write_text("live", encoding="utf-8")
+    record = WindowRecord(
+        "pending-window",
+        (30, 40, 700, 500),
+        "normal",
+        PaneRecord(
+            "leaf",
+            "pending-pane",
+            view_ids=("pending-view",),
+            selected_view_id="pending-view",
+        ),
+    )
+    window = service.new_window(record)
+    live = window.open_path(path)
+    assert live is not None
+    before = window.view_ids
+    notices = []
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda *_args: notices.append(True),
+    )
+    try:
+        window.show()
+        assert not window.close()
+        assert window.view_ids == before
+        assert window.view_for_id(live.view_id) is live
+        assert window.isVisible()
+        assert notices == [True]
+
+        # Explicit Quit can still preserve the session and stop the service.
+        assert window.request_quit()
+        assert not service.is_running
+    finally:
+        _stop_desktop_service(app, service)
+
+
 def test_new_window_restores_a_bounded_shell_and_quit_action_routes_to_service(
     tmp_path: Path,
     monkeypatch,
@@ -1329,8 +1452,6 @@ def test_new_window_restores_a_bounded_shell_and_quit_action_routes_to_service(
 
         assert calls == [window._quit_choice]
     finally:
-        window.close()
-        app.processEvents()
         monkeypatch.undo()
         _stop_desktop_service(app, service)
 

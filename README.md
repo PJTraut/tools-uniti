@@ -26,7 +26,7 @@ The current development alpha includes:
 - insert/delete/replace, selections, undo/redo, and transaction history;
 - streaming atomic Save / Save As;
 - external-file change protection before overwrite;
-- one user-scoped UNITI service that remains alive with zero windows, forwards secondary launches, and owns multiple windows, detachable tabs, horizontal/vertical splits, and shared-document views;
+- one user-scoped UNITI service that keeps an empty editor window available after the last window-close, exits on explicit Quit, forwards secondary launches, and owns multiple windows, detachable tabs, horizontal/vertical splits, and shared-document views;
 - generation-published startup sessions with active-first lazy restore, SHA-256 external-change choices, seven-day saved-document continuity, and bounded per-document Undo/Redo restoration;
 - semantic crash-recovery journals that preserve transactions, Undo/Redo, save points, and evidence until an explicit recovery choice;
 - third-party `regex` search with engine-reconciled group identities, inline-switch and replacement-reference highlighting, structured diagnostics, and deterministic zero-width results;

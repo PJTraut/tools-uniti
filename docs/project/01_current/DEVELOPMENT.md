@@ -170,7 +170,7 @@ The completed A21 gate reports 1,257 passed and six exact policy-allowed macOS s
 
 ## Recovery/session change discipline
 
-- Keep one `UNITIService` as the sole settings, session, recovery, document-registry, window-manager, and global Find/Replace authority. A window close is not service shutdown.
+- Keep one `UNITIService` as the sole settings, session, recovery, document-registry, window-manager, and global Find/Replace authority. A window close is not service shutdown: the last editor window remains visible and usable after its tabs close. Explicit Quit closes the retained window and ends the service.
 - Capture immutable GUI state quickly, then serialize, compress, hash, write, sync, discover, replay, and clean through worker tasks. Tests record thread identities for the session-restore path.
 - Publish immutable packs before their manifest and the manifest before the current pointer. Retain the previous complete generation until its successor is durably current.
 - Persist editor history to the first of 50 transactions or 32 MiB decoded, Find and Replace to at most 50 states each within 4 MiB decoded, and the physical saved-history union within 256 MiB.

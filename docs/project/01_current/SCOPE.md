@@ -20,7 +20,7 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 - schema-1 setup and schema-3 settings persistence, legacy settings migration, malformed-file preservation, and future-schema refusal;
 - platform application paths, runtime/filesystem/resource/Qt capability reporting, narrow stale cleanup, durable generation sessions, and recovery journals;
 - explicit macOS/Windows/Linux classification, absolute native application roots, case-correct path identity, and capability-driven `full` / `file_synced` / `unsafe` publication without direct-overwrite fallback;
-- one user-scoped service/instance lease with bounded local activation/file forwarding, zero-window lifetime, and explicit service-wide Quit;
+- one user-scoped service/instance lease with bounded local activation/file forwarding, a retained empty editor window after last-window close, and explicit service-wide Quit;
 - startup recovery discovery and active-first lazy restoration of admitted windows, panes, views, saved histories, and the global Find/Replace state;
 - bounded complete-generation scan and post-restore pointer repair when the current session pointer is missing or stale;
 - completed startup/setup diagnostics passed into the UI without re-probing; and

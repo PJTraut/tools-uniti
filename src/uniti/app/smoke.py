@@ -377,6 +377,14 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
 
         original_document = view.document
         window.close()
+        if (
+            first_service.window_count != 1
+            or not window.isVisible()
+            or window.views
+        ):
+            raise RuntimeError("last editor window did not remain available")
+        # Retain coverage for old zero-window sessions and service-owned teardown.
+        window.close_for_service()
         wait_until(lambda: first_service.window_count == 0)
         closed = first_service.window_count == 0
         service_remained_running = first_service.is_running
