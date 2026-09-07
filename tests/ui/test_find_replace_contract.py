@@ -1297,15 +1297,17 @@ def test_find_replace_actions_are_compact_accessible_and_on_one_line():
     app = QApplication.instance() or QApplication([])
     panel = FindReplacePanel(lambda: None)
 
-    def button_labels(widget):
+    def button_names(widget):
         layout = widget.layout()
         return [
-            layout.itemAt(index).widget().text()
+            layout.itemAt(index).widget().accessibleName()
             for index in range(layout.count())
             if layout.itemAt(index).widget() is not None
         ]
 
-    assert button_labels(panel.actions_widget) == ["F+", "R+", "<<", ">>", "R"]
+    assert button_names(panel.actions_widget) == [
+        "Find All", "Replace All", "Previous Match", "Next Match", "Replace Current Match"
+    ]
     expected_names = {
         panel.find_all_button: "Find All",
         panel.replace_all_button: "Replace All",
@@ -1314,6 +1316,7 @@ def test_find_replace_actions_are_compact_accessible_and_on_one_line():
         panel.replace_button: "Replace Current Match",
     }
     for button, name in expected_names.items():
+        assert not button.icon().isNull()
         assert button.accessibleName() == name
         assert button.toolTip() == name
         assert button.width() <= 48
@@ -1350,15 +1353,15 @@ def test_find_replace_report_is_always_right_docked_and_zoom_is_independent(
         assert panel.find_input.minimumHeight() > original_minimum_height
         assert view.zoom_percent == editor_zoom
         assert panel.report_location == "Right"
-        assert panel.report_toggle_button.text() == "║"
+        assert panel.report_toggle_button.accessibleName() == "Hide Match Report"
         assert panel.report_splitter.orientation() == Qt.Orientation.Horizontal
         panel.set_report_location("Hidden")
         assert panel.report_frame.isVisible() is False
-        assert panel.report_toggle_button.text() == ">"
+        assert panel.report_toggle_button.accessibleName() == "Show Match Report"
         panel.set_report_location("Bottom")
         assert panel.report_frame.isHidden() is False
         assert panel.report_location == "Right"
-        assert panel.report_toggle_button.text() == "║"
+        assert panel.report_toggle_button.accessibleName() == "Hide Match Report"
         assert panel.report_splitter.orientation() == Qt.Orientation.Horizontal
         panel.shutdown()
         panel.close()

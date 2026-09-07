@@ -9,7 +9,7 @@ import time
 import weakref
 
 from PySide6.QtCore import QEvent, QTimer, Qt, Signal
-from PySide6.QtGui import QFont, QPainter, QPalette, QPen, QWheelEvent
+from PySide6.QtGui import QFont, QIcon, QPainter, QPalette, QPen, QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QApplication,
@@ -70,6 +70,7 @@ from uniti.resources import (
     TaskSpec,
 )
 from uniti.ui.capture_report import CaptureReportModel
+from uniti.ui.icons import lucide_icon
 from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 
@@ -115,8 +116,11 @@ class _CircularClearButton(QToolButton):
         painter.setBrush(background)
         painter.setPen(QPen(palette.color(group, QPalette.ColorRole.Mid), 1.0))
         painter.drawEllipse(self.rect().adjusted(1, 1, -1, -1))
-        painter.setPen(palette.color(group, QPalette.ColorRole.ButtonText))
-        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())
+        self.icon().paint(
+            painter,
+            self.rect().adjusted(4, 4, -4, -4),
+            mode=QIcon.Mode.Normal if self.isEnabled() else QIcon.Mode.Disabled,
+        )
 
 
 class FindReplaceWindow(QDockWidget):
@@ -274,19 +278,19 @@ class FindReplaceWindow(QDockWidget):
         actions.setContentsMargins(0, 0, 0, 0)
         actions.setSpacing(4)
         self.find_all_button = self._compact_button(
-            "F+", "Find All", self.actions_widget
+            "search-check", "Find All", self.actions_widget
         )
         self.replace_all_button = self._compact_button(
-            "R+", "Replace All", self.actions_widget
+            "replace-all", "Replace All", self.actions_widget
         )
         self.previous_button = self._compact_button(
-            "<<", "Previous Match", self.actions_widget
+            "chevron-left", "Previous Match", self.actions_widget
         )
         self.next_button = self._compact_button(
-            ">>", "Next Match", self.actions_widget
+            "chevron-right", "Next Match", self.actions_widget
         )
         self.replace_button = self._compact_button(
-            "R", "Replace Current Match", self.actions_widget, width=34
+            "replace", "Replace Current Match", self.actions_widget, width=34
         )
         actions.addWidget(self.find_all_button)
         actions.addWidget(self.replace_all_button)
@@ -296,6 +300,7 @@ class FindReplaceWindow(QDockWidget):
         actions.addWidget(self.replace_button)
 
         self.cancel_button = QPushButton("Cancel", content)
+        self.cancel_button.setIcon(lucide_icon("circle-stop"))
         self.cancel_button.setEnabled(False)
 
         footer = QHBoxLayout()
@@ -490,13 +495,14 @@ class FindReplaceWindow(QDockWidget):
 
     @staticmethod
     def _compact_button(
-        label: str,
+        icon_name: str,
         accessible_name: str,
         parent: QWidget,
         *,
         width: int = 40,
     ) -> QPushButton:
-        button = QPushButton(label, parent)
+        button = QPushButton(parent)
+        button.setIcon(lucide_icon(icon_name))
         button.setAccessibleName(accessible_name)
         button.setToolTip(accessible_name)
         button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -506,7 +512,7 @@ class FindReplaceWindow(QDockWidget):
     @staticmethod
     def _clear_button(accessible_name: str, parent: QWidget) -> QToolButton:
         button = _CircularClearButton(parent)
-        button.setText("×")
+        button.setIcon(lucide_icon("x"))
         button.setAccessibleName(accessible_name)
         button.setToolTip(accessible_name)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -607,10 +613,10 @@ class FindReplaceWindow(QDockWidget):
 
     def _update_report_toggle_button(self) -> None:
         if self._report_open:
-            self.report_toggle_button.setText("║")
+            self.report_toggle_button.setIcon(lucide_icon("panel-right-close"))
             label = "Hide Match Report"
         else:
-            self.report_toggle_button.setText(">")
+            self.report_toggle_button.setIcon(lucide_icon("panel-right-open"))
             label = "Show Match Report"
         self.report_toggle_button.setAccessibleName(label)
         self.report_toggle_button.setToolTip(label)
