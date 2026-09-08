@@ -182,7 +182,9 @@ def test_whitespace_positions_after_supplementary_character(app, tmp_path, monke
 
     path = tmp_path / "supplementary.txt"
     text = "\U0001f642 \u00a0"
-    path.write_text(text + "\n", encoding="utf-8")
+    # Keep the synthetic LF fixture byte-exact on Windows, where text mode
+    # writes otherwise translate it to CRLF.
+    path.write_bytes((text + "\n").encode("utf-8"))
     with Document.open(path, encoding="utf-8") as document:
         view = UNITITextView(EditorState(document))
         view.set_whitespace_mode("all")
