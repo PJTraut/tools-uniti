@@ -207,6 +207,47 @@ def test_whitespace_positions_after_supplementary_character(app, tmp_path, monke
             view.close()
 
 
+@pytest.mark.parametrize("font_scale", [0.5, 1.0, 2.0, 3.0])
+@pytest.mark.parametrize("device_scale", [1.0, 2.0])
+def test_space_marker_alpha_centroid_is_centered(app, tmp_path, font_scale, device_scale):
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QImage, QPainter
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+    from uniti.ui.whitespace import WhitespaceKind
+
+    path = tmp_path / "centroid.txt"
+    path.write_bytes(b" ")
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        font = view.font()
+        font.setPointSizeF(10.0 * font_scale)
+        view.setFont(font)
+        width, height = 96, 48
+        image = QImage(int(width * device_scale), int(height * device_scale),
+            QImage.Format.Format_ARGB32)
+        image.setDevicePixelRatio(device_scale)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        view._paint_whitespace_marker(painter, WhitespaceKind.SPACE, "SPACE",
+            21.25, 29.75, 13.25)
+        painter.end()
+        total = 0.0
+        x_moment = 0.0
+        y_moment = 0.0
+        for py in range(image.height()):
+            for px in range(image.width()):
+                alpha = image.pixelColor(px, py).alpha()
+                total += alpha
+                x_moment += alpha * (px + 0.5) / device_scale
+                y_moment += alpha * (py + 0.5) / device_scale
+        assert total > 0
+        assert x_moment / total == pytest.approx((21.25 + 29.75) / 2, abs=0.2)
+        assert y_moment / total == pytest.approx(13.25 + view._line_height / 2, abs=0.2)
+        view.close()
+
+
 def test_custom_hold_binding_is_effective_after_reloading_settings(app, tmp_path):
     from dataclasses import replace
     from PySide6.QtCore import QEvent, Qt

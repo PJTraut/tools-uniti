@@ -553,7 +553,7 @@ class UNITITextView(QAbstractScrollArea):
         label: str,
         x1: float,
         x2: float,
-        y: int,
+        y: float,
     ) -> None:
         tokens = self._theme_tokens
         baseline = y + self._metrics.ascent()
@@ -567,10 +567,17 @@ class UNITITextView(QAbstractScrollArea):
             for item in label.split(" / "):
                 self._inspection_labels[item.partition("×")[0]] = None
         if kind == WhitespaceKind.SPACE:
-            painter.setPen(tokens.space_marker)
-            center = left + max(0, (right - left) // 2)
-            painter.drawPoint(center, y + max(1, self._line_height // 2))
-            painter.drawText(center - 2, baseline, "·")
+            painter.save()
+            try:
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(tokens.space_marker)
+                center = QPointF((x1 + x2) / 2.0, y + self._line_height / 2.0)
+                diameter = min(abs(x2 - x1) * 0.5, self._metrics.height() * 0.25)
+                radius = max(0.5, diameter / 2.0)
+                painter.drawEllipse(center, radius, radius)
+            finally:
+                painter.restore()
             return
         elif kind == WhitespaceKind.TAB:
             painter.setPen(tokens.tab_marker)
