@@ -574,12 +574,28 @@ class UNITITextView(QAbstractScrollArea):
             QTimer.singleShot(0, self.viewport().update)
         return result
 
+    def _window_owns_cursor(self, text: str, window_start: int) -> bool:
+        """Internal seams belong to the following row; logical EOL stays here."""
+        local = self.state.cursor - window_start
+        if 0 <= local < len(text):
+            return True
+        if local != len(text):
+            return False
+        # A one-code-point probe distinguishes EOL/EOF from a bounded window or
+        # soft-wrap seam without discovering/materializing the full line.
+        iterator = self.document.iter_text(self.state.cursor, chunk_chars=1)
+        try:
+            _, following = next(iterator)
+        except StopIteration:
+            return True
+        return following[:1] in {"\r", "\n"}
+
     def _shape(self, text, window_start=None, *, origin=0):
         preedit = None
         if (
             window_start is not None
             and self._preedit_text
-            and 0 <= self.state.cursor - window_start <= len(text)
+            and self._window_owns_cursor(text, window_start)
         ):
             preedit = (self.state.cursor - window_start, self._preedit_text)
         key = (text, self.font().key(), preedit, origin % (self._cell_width * 4))
@@ -1109,7 +1125,7 @@ class UNITITextView(QAbstractScrollArea):
                 and self._preedit_cursor_visible
             ):
                 local_column = self.state.cursor - line_window_start
-                if 0 <= local_column <= len(text):
+                if self._window_owns_cursor(text, line_window_start):
                     cursor_x = text_x + (
                         shaped.preedit_x(self._preedit_cursor)
                         if shaped.preedit

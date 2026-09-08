@@ -568,3 +568,121 @@ def test_long_preedit_keeps_caret_visible_and_cancel_restores_geometry(
             assert doc.read(0, 2) == "AB"
         finally:
             view.close()
+
+
+def test_wrapped_seam_has_one_composition_owner_for_paint_pan_and_hit(
+    qapp, tmp_path, monkeypatch
+):
+    from uniti.ui.text_view import UNITITextView
+
+    original_text = "中文한국어abc" * 30
+    p = tmp_path / "composition-seam"
+    p.write_text(original_text, encoding="utf-8")
+    with Document.open(p, encoding="utf-8") as doc:
+        view = UNITITextView(EditorState(doc))
+        view.resize(300, 220)
+        view.set_soft_wrap(True)
+        view.show()
+        qapp.processEvents()
+        index = view._wrapped_row_index()
+        second = index.row(1)
+        seam = doc.line_start(second.line) + second.column_start
+        view.state.move_to(seam)
+        view._state_changed()
+        before = view._cursor_rectangle()
+        previous_hit = view._char_for_point(
+            view._gutter_width + 10, view._line_height / 2
+        )
+        revision = doc.revision
+        painted = []
+        original_paint = view._paint_line_text
+
+        def observe_paint(painter, text, x, y, **kwargs):
+            shape = kwargs["shaped"]
+            painted.append((x, y, shape))
+            return original_paint(painter, text, x, y, **kwargs)
+
+        monkeypatch.setattr(view, "_paint_line_text", observe_paint)
+        try:
+            view.inputMethodEvent(QInputMethodEvent(" composing 中文한국어" * 5, []))
+            view.viewport().repaint()
+            owners = [
+                (x, y, shape) for x, y, shape in painted if shape.preedit is not None
+            ]
+            assert len(owners) == 1
+            x, y, shape = owners[0]
+            assert y == view._line_height
+            assert x < view._gutter_width  # Only the owning row is panned.
+            assert painted[0][0] == view._gutter_width
+            assert painted[0][2].preedit is None
+            caret = view._cursor_rectangle()
+            assert caret.top() == y
+            assert x + shape.preedit_x(view._preedit_cursor) == pytest.approx(
+                caret.left()
+            )
+            assert view._char_for_point(caret.center().x(), caret.center().y()) == seam
+            assert (
+                view._char_for_point(view._gutter_width + 10, view._line_height / 2)
+                == previous_hit
+            )
+            assert doc.revision == revision
+            view.inputMethodEvent(QInputMethodEvent("", []))
+            painted.clear()
+            view.viewport().repaint()
+            assert all(
+                shape.preedit is None and x == view._gutter_width
+                for x, _, shape in painted
+            )
+            assert view._cursor_rectangle() == before
+            assert doc.revision == revision
+            view.inputMethodEvent(QInputMethodEvent(" composing 中文", []))
+            commit = QInputMethodEvent()
+            commit.setCommitString("中文")
+            view.inputMethodEvent(commit)
+            assert (
+                doc.read(0, len(original_text) + 2)
+                == original_text[:seam] + "中文" + original_text[seam:]
+            )
+            painted.clear()
+            view.viewport().repaint()
+            assert all(
+                shape.preedit is None and x == view._gutter_width
+                for x, _, shape in painted
+            )
+            view.state.undo()
+            assert doc.read(0, len(original_text)) == original_text
+        finally:
+            view.close()
+
+
+@pytest.mark.parametrize("text", ["", "中文", "中文\n"])
+def test_logical_eol_keeps_one_composition_owner(qapp, tmp_path, monkeypatch, text):
+    from uniti.ui.text_view import UNITITextView
+
+    p = tmp_path / "composition-eol"
+    p.write_text(text, encoding="utf-8")
+    with Document.open(p, encoding="utf-8") as doc:
+        view = UNITITextView(EditorState(doc))
+        view.resize(300, 220)
+        view.set_soft_wrap(True)
+        view.show()
+        qapp.processEvents()
+        view.state.move_to(len(text.rstrip("\n")))
+        view._state_changed()
+        owners = []
+        original_paint = view._paint_line_text
+
+        def observe(painter, content, x, y, **kwargs):
+            shape = kwargs["shaped"]
+            if shape.preedit is not None:
+                owners.append((y, x + shape.preedit_x(view._preedit_cursor)))
+            return original_paint(painter, content, x, y, **kwargs)
+
+        monkeypatch.setattr(view, "_paint_line_text", observe)
+        try:
+            view.inputMethodEvent(QInputMethodEvent("한", []))
+            view.viewport().repaint()
+            caret = view._cursor_rectangle()
+            assert owners == pytest.approx([(caret.top(), caret.left())])
+        finally:
+            view.close()
