@@ -9,8 +9,9 @@ Date: 2026-09-08
 | Starting documentation checkpoint | Isolated `work/b2-feedback` at `5724f6cb3081d30b2962ecaefb623be2358331b8`; local `main` pointed to the same commit when Task 1 began |
 | Initial remote ancestry | The first read-only check found `origin/main` at `ca759668ea08f6a254ca6c516c04f39c85bf6a0e`; local `main` was seven commits ahead and zero behind |
 | Complete feedback code candidate | `3e20214`; contains reviewed BF-001–BF-010 implementation, including the native System-preview and wrapped-row-seam IME corrections |
+| Synchronized documentation checkpoint | On 2026-09-08, local `main`, `origin/main`, and `work/b2-feedback` matched `b152f0e`; it contains verified source candidate `3e20214` plus reviewed documentation-only follow-ups |
 | Latest hosted-green feedback checkpoint | `aab3f3c`; run `34253008439` passed all four lanes, including full suite, deep self-check, native/offscreen smoke, and sustained checks |
-| Current hosted constraint | Runs `34253913469` and `34253932056` did not execute because GitHub reported an account billing/payment or spending-limit block; no result exists for their commits |
+| Current hosted constraint | Runs `34253913469`, `34253932056`, and synchronized-checkpoint run `34256598416` did not execute because GitHub reported an account billing/payment or spending-limit block; no code result exists for those attempts |
 | Verified A20 implementation sequence | `fabd036` through `f829d01`, preceded by design/plan commits `c9cd792` and `06dd906`, followed by the A20 freeze closure |
 | Verified A21 Editor Layout and Visibility sequence | `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`; preceded by design/plan commits `9477197` and `61c1f19` |
 | A21 Cross-Platform candidate/remediation sequence | `09ad62b` through `8b24f4b`; preceded by plan commit `a3a4d81` |
@@ -21,6 +22,8 @@ Date: 2026-09-08
 | Queued milestones | `v0.001a23`, `v0.001a24`, `v0.001b1`; proposed successor `v0.001b2` remains behind all predecessor gates |
 
 The retained release policy remains in force. A22 is still active because no qualifying real-use day is recorded; seven distinct days therefore remain `NOT RUN`. A23 executable/health delivery, A24 same-candidate qualification, and the B1 private executable human-feedback gate remain queued and `NOT RUN`. B1 has not been completed or promoted by the source-checkout feedback in [BF-001–BF-010](../BETA_FEEDBACK.md). Proposed B2 scope is recorded in the [B2 Feedback Refinement Beta milestone](../02_plans/v0.001b2-feedback-refinement-beta.md), but it is not active and the product identity remains A22.
+
+The `b152f0e` synchronization is a documentation checkpoint over unchanged verified source `3e20214`. It records integration; it is not new source-test evidence and does not substitute for same-integrated-commit hosted qualification.
 
 The six feedback commits after the initially observed remote `ca75966` are already present and must not be reapplied: `fadc36f` (zero-window restore), `09fe356` (Quit with paused work), `fbeeb0f` (retained last window), `20b1e02` (initial Find/Replace Lucide icons), `fbe1b6e` (recovery scheduling), and `0322939` (compact whitespace and held Unicode inspection). Historical documentation checkpoint `5724f6c` follows them. The reviewed series through candidate `3e20214` adds first-use progress and the durability-warning fix, centered markers and hotkey propagation, EOL truth/all-view refresh, 80% gutter text, complete Find/Replace SVGs and aligned capture rows, packaged/editable theme profiles, bundled Noto fallback, and bounded shaped LTR editing. No version promotion, tag, release, installer, or tester distribution followed from this integration.
 

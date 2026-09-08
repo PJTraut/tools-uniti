@@ -10,7 +10,7 @@
 
 **Spec:** [Beta feedback](../BETA_FEEDBACK.md), [current architecture](../01_current/ARCHITECTURE.md), [B1 governing design](v0.001b1-real-world-feedback-beta-design.md), and the proposed defaults in this plan.
 
-**Status:** Execution in progress on 2026-09-08. Candidate `3e20214` contains the complete reviewed BF-001–BF-010 code series and passed the final local candidate gate. Native IME/affected-host qualification and release gates remain open. Latest hosted-green checkpoint is `aab3f3c` in run `34253008439`; later runs were blocked before execution by GitHub account billing/payment or spending limits. This document does not mark feedback resolved, change the product version, or by itself publish anything.
+**Status:** Execution in progress on 2026-09-08. Candidate `3e20214` contains the complete reviewed BF-001–BF-010 code series and passed the final local candidate gate. Local `main`, `origin/main`, and the work branch synchronized at documentation checkpoint `b152f0e`, which contains unchanged source `3e20214`. Native IME/affected-host qualification and release gates remain open. Latest hosted-green checkpoint is `aab3f3c` in run `34253008439`; synchronized-checkpoint run `34256598416` was blocked before execution by GitHub account billing/payment or spending limits. This document does not mark feedback resolved, change the product version, or by itself publish anything.
 
 **Execution rulings:** Keep the platform-resolved monospace face primary and treat bundled Noto as ordered application fallback. Order Han families from the host locale because plain text carries no per-range SC/TC language metadata. Use extended-grapheme boundaries for user navigation/deletion while preserving exact code-point selection/inspection; Unicode graphemes are not claimed to equal every script syllable. Cold deep variable-width geometry may resolve progressively within fixed materialization bounds rather than publishing approximate positions; inherited logical-line indexing is not newly bounded. Long preedit pans only its virtual row to keep the composition caret visible. These choices cost a possible visible wait for cold deep mixed-script jumps, locale-dependent Han regional forms, and host fallback for emoji. RTL/mixed-direction editing and physical native IME qualification remain outside the implemented claim. Hosted jobs blocked before execution provide no pass/fail evidence and do not alter any gate.
 
@@ -229,7 +229,7 @@ assert group_one_content_x == group_ten_content_x
 **Files:** all accepted feature/fix commits; update `docs/project/BETA_FEEDBACK.md`, current status/scope/architecture/development/handover, and this task checklist.
 
 - [x] Integrate each reviewed in-scope fix or feature commit/series into local canonical `main` through source candidate `3e20214`, preserving separate review boundaries and A22 version/milestone metadata while the [A22 plan](v0.001a22-dogfood-performance-implementation.md), [A23 plan](v0.001a23-executable-health-recovery-implementation.md), [A24 gate](v0.001a24-beta-candidate.md), and [B1 plan](v0.001b1-real-world-feedback-beta-implementation.md) remain open.
-- [ ] Add the final reviewed documentation revision and synchronize the resulting `main` to the remote; record its exact integrated SHA without rewriting history.
+- [x] Add the reviewed documentation revisions and synchronize local `main`, `origin/main`, and the work branch at exact checkpoint `b152f0e`, containing verified source candidate `3e20214`, without rewriting history.
 - [x] Review the coverage table against the actual diff. Every BF implementation is present; physical/native/affected-host checks remain explicit and no item is closed merely because a commit exists.
 - [x] Run one complete candidate gate after focused workstream gates. Candidate `3e20214` passed 1,646 tests with six expected platform skips in 95.63 seconds, compilation, 21/21 deep self-check, native/offscreen combined smoke, and diff checks.
 
@@ -249,8 +249,8 @@ git diff --check
 - [x] Obtain independent review of the final source diff, especially durability/lifecycle, EOL save semantics, theme persistence and multilingual layout. Resolve blocking findings and re-run affected checks; final review on `3e20214` is clean.
 - [x] Validate ancestry and fast-forward the reviewed source series through `3e20214` into local `main` without force-push, merge duplication, or history rewrite.
 - [x] Verify final source candidate `3e20214` locally with the complete suite, compilation, deep self-check, native/offscreen smoke and wheel inspection.
-- [ ] Push the final reviewed `main` revision and require all hosted lanes on that integrated commit. GitHub currently blocks new jobs before execution because of the reported account billing/payment or spending limit; do not represent that as a test failure or pass.
-- [ ] Record the main SHA and evidence per feedback item. Preserve previous-candidate evidence as history.
+- [ ] Require all hosted lanes on the integrated documentation checkpoint. GitHub currently blocks new jobs before execution because of the reported account billing/payment or spending limit; do not represent that as a test failure or pass.
+- [x] Record synchronized checkpoint `b152f0e`, verified source candidate `3e20214`, and evidence per feedback item while preserving previous-candidate evidence as history. This receipt is documentation-only and adds no source-test claim.
 
 ## Task 10: Confirm B1 closure and advance the B2 identity
 
