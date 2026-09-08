@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from uniti.bootstrap.discovery import query_python
+from uniti.bootstrap.discovery import query_python, runtime_python
 from uniti.bootstrap.environment import EnvironmentManager
 from uniti.bootstrap.model import BootstrapError, BootstrapMode
 
@@ -151,7 +151,7 @@ def test_adoption_and_repair_report_the_actual_environment_stage(
 
     assert adoption_progress == ["// adopting existing UNITI runtime"]
 
-    target.joinpath("bin/python").unlink()
+    runtime_python(target, sys.platform).unlink()
     repair_progress: list[str] = []
 
     class BrokenRepairBuilder:
