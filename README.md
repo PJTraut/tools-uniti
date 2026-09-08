@@ -2,7 +2,7 @@
 
 **Unicode Intelligent Text Interchange** — a focused cross-platform power text editor built around text correctness, explicit encoding/EOL state, large-file editing, and Python `regex`.
 
-UNITI is a private alpha. The source and package identity remains `v0.001a22` / `0.1a22`; A22 Dogfood / Performance Alpha is active. Reviewed BF-001–BF-010 code is integrated in candidate `3e20214`, while native input, affected-host, and release gates remain open. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
+UNITI is a private alpha, currently `v0.001a22` (`0.1a22` in Python packaging). All reviewed BF-001–BF-010 feedback changes are committed and integrated on GitHub `main` through source candidate `3e20214`. A22 Dogfood / Performance Alpha remains active; native input, affected-host, and release qualification remain open before B1/B2 promotion. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
 
 ## Project documentation
 
@@ -10,6 +10,7 @@ UNITI is a private alpha. The source and package identity remains `v0.001a22` / 
 - [Current status](docs/project/01_current/STATUS.md) — canonical baseline and verification state.
 - [Ordered roadmap](docs/project/02_plans/ROADMAP.md) — approved outstanding milestones in implementation sequence.
 - [Current handover](docs/project/06_handovers/CURRENT_HANDOVER.md) — concise continuation context and next safe action.
+- [Feedback implementation and remaining checks](docs/project/BETA_FEEDBACK.md) — BF-001–BF-010 changes and qualification status.
 
 ## Alpha capabilities
 
@@ -159,7 +160,7 @@ The read-only `A21 cross-platform` workflow defines four explicit source lanes: 
 
 The driver validates runtime ownership and dependencies, runs the complete suite with exact platform skip accounting, compiles all Python sources, and executes deep self-check plus offscreen and native Qt smoke. CI does not use dependency caches, package builds, deployment credentials, or write permissions. On failure only, parsed and redacted evidence below `ci-results/sanitized` is retained for seven days; raw logs, document paths/content, IPC data, and arbitrary files are excluded.
 
-The checked-in workflow is a gate definition, not evidence that hosted lanes have passed. Running or publishing remote evidence still requires a separately authorized push.
+The latest complete four-lane feedback pass is on `aab3f3c`. The subsequent source candidate `3e20214` passed its complete local gate, but GitHub blocked all jobs for documentation checkpoint `23507ca` before execution because of account payments or spending limits. See [Current status](docs/project/01_current/STATUS.md) for dated run evidence; source integration does not establish hosted qualification.
 
 ## Alpha runtime checklist
 

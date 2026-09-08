@@ -3,6 +3,8 @@
 Date: 2026-09-08
 Baseline: A22 identity retained; complete reviewed feedback code candidate `3e20214`; latest hosted-green checkpoint `aab3f3c`
 
+Display/package version: `v0.001a22` / `0.1a22`. The feedback candidate is integrated on GitHub `main`; [Current Status](STATUS.md) owns synchronization and qualification evidence.
+
 ## Lifecycle boundary
 
 UNITI now has two deliberately separate execution paths:
@@ -234,7 +236,7 @@ Third-party `regex==2026.5.9` remains authoritative. Search is cancellable, time
 
 `uniti.app.self_check` provides stable human and schema-1 JSON reports. Fast mode validates runtime ownership, dependencies, categorized application roots, state/settings, regex, resources, filesystem primitives, and PySide/Qt versions without exposing interpreter or application paths. Deep mode adds temporary encoding/endianness, EOL, mmap/fallback, raw-byte, regex replacement, streaming save/reopen, recovery replay, offscreen Qt/view, `regex-intelligence`, `text-integrity`, `large-file`, `recovery-session`, and `cross-platform`. The cross-platform result contains only family/version/plugin, categorized-root booleans, capability/durability, font, and launcher-mode facts. The recovery/session probe publishes and reloads a bounded session, validates exact hashes, proves external-change discovery preserves disk bytes, and replays semantic transaction/Undo/Redo state. Ordinary tests and measured scenarios cover failure injection, corruption, cancellation, integrity, and cleanup.
 
-The application CLI's `--smoke` mode runs the core alpha probe plus a real service/session workflow below a Unicode/spaced path: pane splitting and reversible docking, one Find/Replace surface through attached/detached/follow-window placement, field Undo/Redo, global whitespace/theme settings, zero-window lifetime, activation/new-window reuse, clean Quit, fresh-service restore, restored document/Find-Replace histories, native shortcut/font resolution, durability, and real primary/forwarded local-instance arbitration. Output contains bounded booleans and capability facts rather than document or IPC content. `QT_QPA_PLATFORM=offscreen` provides the deterministic gate; Cocoa, Windows, and XCB/Xvfb provide native lanes.
+The application CLI's `--smoke` mode runs the core alpha probe plus a real service/session workflow below a Unicode/spaced path: pane splitting and reversible docking, one Find/Replace surface through attached/detached/follow-window placement, field Undo/Redo, global whitespace/theme settings, retained-last-window behavior, legacy zero-window/service-owned teardown, activation/new-window reuse, clean Quit, fresh-service restore, restored document/Find-Replace histories, native shortcut/font resolution, durability, and real primary/forwarded local-instance arbitration. Output contains bounded booleans and capability facts rather than document or IPC content. `QT_QPA_PLATFORM=offscreen` provides the deterministic gate; Cocoa, Windows, and XCB/Xvfb provide native lanes.
 
 The completed startup snapshot is passed into `UNITIMainWindow`. Diagnostics combine it with the authoritative resource manager's CPU generation/core profile, current load/memory/RSS/disk state, cache budget/use, active worker limit, queue, background pause state, and active task progress. In-app diagnostics retain user-facing document paths; export-safe diagnostics omit document/task/runtime roots and startup payloads.
 

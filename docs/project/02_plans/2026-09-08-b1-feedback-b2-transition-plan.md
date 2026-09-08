@@ -10,7 +10,7 @@
 
 **Spec:** [Beta feedback](../BETA_FEEDBACK.md), [current architecture](../01_current/ARCHITECTURE.md), [B1 governing design](v0.001b1-real-world-feedback-beta-design.md), and the proposed defaults in this plan.
 
-**Status:** Execution in progress on 2026-09-08. Candidate `3e20214` contains the complete reviewed BF-001–BF-010 code series and passed the final local candidate gate. Local `main`, `origin/main`, and the work branch synchronized at documentation checkpoint `b152f0e`, which contains unchanged source `3e20214`. Native IME/affected-host qualification and release gates remain open. Latest hosted-green checkpoint is `aab3f3c` in run `34253008439`; synchronized-checkpoint run `34256598416` was blocked before execution by GitHub account billing/payment or spending limits. This document does not mark feedback resolved, change the product version, or by itself publish anything.
+**Status:** Execution in progress on 2026-09-08. Candidate `3e20214` contains the complete reviewed BF-001–BF-010 code series and passed the final local candidate gate. Local `main` and GitHub `origin/main` were verified synchronized at `23507ca` before this documentation refresh, containing unchanged source `3e20214`; the earlier `b152f0e` synchronization remains historical. Native IME/affected-host qualification and release gates remain open. Latest hosted-green checkpoint is `aab3f3c` in run `34253008439`; latest synchronized-checkpoint run `34256794807` on `23507ca` was blocked before execution by GitHub account billing/payment or spending limits. This document does not mark feedback resolved, change the product version, or by itself publish anything.
 
 **Execution rulings:** Keep the platform-resolved monospace face primary and treat bundled Noto as ordered application fallback. Order Han families from the host locale because plain text carries no per-range SC/TC language metadata. Use extended-grapheme boundaries for user navigation/deletion while preserving exact code-point selection/inspection; Unicode graphemes are not claimed to equal every script syllable. Cold deep variable-width geometry may resolve progressively within fixed materialization bounds rather than publishing approximate positions; inherited logical-line indexing is not newly bounded. Long preedit pans only its virtual row to keep the composition caret visible. These choices cost a possible visible wait for cold deep mixed-script jumps, locale-dependent Han regional forms, and host fallback for emoji. RTL/mixed-direction editing and physical native IME qualification remain outside the implemented claim. Hosted jobs blocked before execution provide no pass/fail evidence and do not alter any gate.
 
@@ -202,7 +202,8 @@ assert group_one_content_x == group_ten_content_x
 - [x] Test profile round-trip, invalid schema/color/bounds, atomic-write failure, unknown selected profile, and existing-settings migration before implementing storage.
 - [x] Build the editor from role labels and color controls; selecting a role previews across all service windows and F/R. Cancel restores the exact pre-preview global theme. Apply persists the profile and active id together without altering unrelated settings.
 - [x] Retain High Contrast as a validated overlay; reject edits that violate its existing thresholds rather than silently reducing contrast. In Standard mode, keep explicit contrast feedback visible in the editor.
-- [ ] Automated multi-window/restart/reset/delete, installed-wheel loading, and offscreen Paper/Slate review passed. Native palette and color-dialog qualification remains open; a Cocoa System-preview equality failure is under investigation.
+- [x] Automated multi-window/restart/reset/delete, installed-wheel loading, and offscreen Paper/Slate review passed. The Cocoa System-preview palette correction `e045b0f` is integrated in `3e20214` and passed native regression checks.
+- [ ] Complete broader physical native palette and color-dialog qualification.
 
 **Commit:** `feat: add packaged and editable theme profiles` after the isolated theme tests pass.
 
@@ -219,7 +220,8 @@ assert group_one_content_x == group_ten_content_x
 - [x] Audit code-point versus UTF-16 indices and fixed-cell assumptions in painting, selection, cursor movement, hit testing, horizontal windows, and wrap rows. Preserve code-point document offsets through explicit layout conversion; do not split surrogate pairs or corrupt combining sequences.
 - [x] Add synthetic mixed-script cases covering Indic vowel signs/conjuncts, CJK full-width text, Hangul, Latin, emoji, tabs and zero-width characters. Test typing, selection, copy, deletion, undo/redo, save/reopen, and navigation against the documented code-point/grapheme behavior.
 - [x] Define user cursor/backspace movement at extended-grapheme boundaries while keeping the document's code-point storage. Preserve exact single-code-point Unicode inspection; document where Unicode graphemes do not equal script syllables.
-- [ ] Shaping/layout under zoom, scrolling and wrap passed focused and unchanged point-performance gates; the mixed-script scenario also passed. Native Chinese/Korean IME composition, commit and cancellation on Windows/macOS/Linux remains required.
+- [x] Shaping/layout under zoom, scrolling and wrap passed focused and unchanged point-performance gates; the mixed-script scenario also passed.
+- [ ] Qualify native Chinese/Korean IME composition, commit and cancellation on Windows/macOS/Linux.
 - [x] Re-run theme, gutter, whitespace and Match coverage with final fallback fonts. The complete source suite, native targeted suite, deep self-check and combined smoke passed; physical native IME qualification remains separate.
 
 **Commit series:** font resources/policy; necessary layout corrections with regressions; native input and packaging evidence. Each commit must preserve existing Latin/Cyrillic behavior.
@@ -249,8 +251,10 @@ git diff --check
 - [x] Obtain independent review of the final source diff, especially durability/lifecycle, EOL save semantics, theme persistence and multilingual layout. Resolve blocking findings and re-run affected checks; final review on `3e20214` is clean.
 - [x] Validate ancestry and fast-forward the reviewed source series through `3e20214` into local `main` without force-push, merge duplication, or history rewrite.
 - [x] Verify final source candidate `3e20214` locally with the complete suite, compilation, deep self-check, native/offscreen smoke and wheel inspection.
-- [ ] Require all hosted lanes on the integrated documentation checkpoint. GitHub currently blocks new jobs before execution because of the reported account billing/payment or spending limit; do not represent that as a test failure or pass.
+- [ ] Require all hosted lanes on the integrated documentation checkpoint. The latest checked attempt, run `34256794807` on `23507ca`, had zero executed steps in all four jobs because of the reported account billing/payment or spending limit; do not represent that as an executed test failure or pass.
 - [x] Record synchronized checkpoint `b152f0e`, verified source candidate `3e20214`, and evidence per feedback item while preserving previous-candidate evidence as history. This receipt is documentation-only and adds no source-test claim.
+
+Synchronization recheck, 2026-09-08: local `main` and GitHub `origin/main` matched `23507ca` with no pending changes before this documentation refresh. The complete code candidate remains `3e20214`; later commits changed documentation only.
 
 ## Task 10: Confirm B1 closure and advance the B2 identity
 

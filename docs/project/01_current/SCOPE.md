@@ -7,7 +7,7 @@ Version: `v0.001a22` / `0.1a22`
 
 UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
 
-The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, and a21 Cross-Platform Alpha are implemented and verified. A22 Dogfood / Performance Alpha is active. Reviewed feedback work through `aab3f3c` is integrated without promoting the A22 identity or satisfying later release gates.
+The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, and a21 Cross-Platform Alpha are implemented and verified. A22 Dogfood / Performance Alpha is active. All reviewed BF-001–BF-010 feedback code through `3e20214` is committed and integrated on GitHub `main` without promoting the A22 identity or satisfying later release gates. The earlier `aab3f3c` remains the latest hosted-green feedback checkpoint.
 
 ## Included lifecycle capabilities
 

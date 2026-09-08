@@ -122,7 +122,7 @@ After bootstrap, every lane invokes `python scripts/a21_ci.py` for runtime valid
 .venv/bin/python scripts/a21_ci.py verify-skips --family macos
 ```
 
-On a failed hosted lane, `sanitize` parses only the fixed runtime, self-check, smoke, and JUnit inputs; applies the per-file and aggregate budgets; strips streams/properties and unapproved fields; redacts workspace/home/temp/runner roots; and prepares `ci-results/sanitized` for a seven-day failure-only upload. `ci-results/` is ignored and should be removed after local inspection. A remote run and its resulting URLs require a separately authorized push; the workflow never publishes a package or release.
+On a failed hosted lane, `sanitize` parses only the fixed runtime, self-check, smoke, and JUnit inputs; applies the per-file and aggregate budgets; strips streams/properties and unapproved fields; redacts workspace/home/temp/runner roots; and prepares `ci-results/sanitized` for a seven-day failure-only upload. `ci-results/` is ignored and should be removed after local inspection. The push-triggered workflow never publishes a package or release. Record executed hosted results against their exact commit; a run blocked before its steps start provides no source-test result.
 
 The host-aware A20 user-experience suite uses the packaged policy table in `src/uniti/resources/performance_policy.toml`. Quick and routine tiers include `session_restore`; the design-target tier intentionally remains focused on sparse large-file behavior:
 
@@ -228,6 +228,8 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-Display versions use `v0.001aN` in `VERSION` and `uniti.__display_version__`; package versions use `0.1aN` in `pyproject.toml` and `uniti.__version__`. Tags are immutable historical records. `v0.001a20` and `v0.001a21` are implemented without new tags; A22 Dogfood / Performance Alpha is active.
+The current display version is `v0.001a22` in `VERSION` and `uniti.__display_version__`; the package version is `0.1a22` in `pyproject.toml` and `uniti.__version__`. These values must agree. Tags are immutable historical records. `v0.001a20` and `v0.001a21` are implemented without new tags; A22 Dogfood / Performance Alpha is active.
+
+All reviewed BF-001–BF-010 source changes through `3e20214` are committed and integrated on GitHub `main`. B1/B2 in feedback and plan names identifies the intended release work, not the installed version. Version promotion follows the predecessor gates in the [Roadmap](../02_plans/ROADMAP.md); documentation refreshes do not change release identity. Keep source-test evidence tied to its tested commit and hosted results tied to their exact run SHA; see [Current Status](STATUS.md).
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.

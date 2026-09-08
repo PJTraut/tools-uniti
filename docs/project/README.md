@@ -2,7 +2,9 @@
 
 This directory is the tool-neutral source of truth for UNITI's development state, delivery sequence, historical implementation, scope boundaries, architectural decisions, and development handovers.
 
-[Beta Feedback Log](BETA_FEEDBACK.md) collects summarized user observations awaiting later triage, planning, and action.
+Current product identity: `v0.001a22` / `0.1a22`. Reviewed BF-001–BF-010 code is integrated on `main` through source candidate `3e20214`; B1/B2 release promotion remains gated. See [Current Status](01_current/STATUS.md) for the synchronized baseline and verification evidence.
+
+[Beta Feedback Log](BETA_FEEDBACK.md) records user observations, implemented corrections and features, verification, and remaining host qualification.
 
 ## Reading order
 

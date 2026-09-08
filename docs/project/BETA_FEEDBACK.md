@@ -2,9 +2,11 @@
 
 Started: 2026-09-07
 
-This log collects summarized user observations for later triage, planning, and action. An entry is not an approved implementation commitment. Early source-checkout feedback does not open or satisfy the [B1 feedback gate](02_plans/v0.001b1-real-world-feedback-beta.md).
+This log records summarized user observations, implementation dispositions, verification, and remaining qualification. An entry is not an approved implementation commitment. Early source-checkout feedback does not open or satisfy the [B1 feedback gate](02_plans/v0.001b1-real-world-feedback-beta.md).
 
 Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02_plans/2026-09-08-b1-feedback-b2-transition-plan.md) covers BF-001–BF-010, and its proposed successor scope is recorded in the [B2 Feedback Refinement Beta milestone](02_plans/v0.001b2-feedback-refinement-beta.md). The existing executable release policy is retained. A22 real-use days, A23 executable/health delivery, A24 qualification, and B1 private executable human feedback remain prerequisites; preparing these records does not close an entry, complete B1, or change the A22 release identity.
+
+Current identity: `v0.001a22` / `0.1a22`. All reviewed BF-001–BF-010 source changes through `3e20214` are committed and integrated on GitHub `main`; synchronization was verified at `23507ca` before this documentation refresh. Implementation completion does not close host qualification or promote the release. [Current Status](01_current/STATUS.md) owns the exact baseline and latest hosted evidence.
 
 ## 2026-09-08 execution and evidence map
 
@@ -14,14 +16,14 @@ Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02
 | BF-002 | 3 | Startup, Quit, retained-window, and recovery-scheduling corrections integrated on `main` | Distribute and confirm explicit Quit/relaunch on the affected Windows and Mac hosts |
 | BF-003 | 4 | Compact inspection and centered U+0020 marker reviewed and integrated on `main` | Native Windows and affected-host confirmation |
 | BF-004 | 4 | Hotkey access, persistence, reset/disable, and existing/new-window propagation integrated on `main` | Native Windows/AltGr and affected-host confirmation |
-| BF-005 | 7 | Paper/Slate profiles, custom editor/storage, and the native System-preview palette correction reviewed in the candidate | Broader physical native rendering and color-dialog qualification |
-| BF-006 | 8 | Bundled Noto fallback and bounded shaped LTR editing implemented and reviewed in candidate `3e20214` | Native Windows/macOS/Linux IME qualification and final integrated-candidate gate |
+| BF-005 | 7 | Paper/Slate profiles, custom editor/storage, and the native System-preview palette correction reviewed and integrated on `main` | Broader physical native rendering and color-dialog qualification |
+| BF-006 | 8 | Bundled Noto fallback and bounded shaped LTR editing reviewed and integrated on `main` through `3e20214`; complete local gate passed | Native Windows/macOS/Linux IME qualification and same-commit hosted gate |
 | BF-007 | 6 | Full Find/Replace Lucide control set reviewed and integrated on `main` | Native affected-host visual confirmation |
 | BF-008 | 6 | `\\N :` capture rows with aligned content, preserving `Match N of M`, reviewed and integrated on `main` | Native affected-host visual/accessibility confirmation |
 | BF-009 | 5 | 80% gutter typography and progressive wrapped-row width reviewed and integrated on `main` | Manual affected-host visual confirmation |
 | BF-010 | 5 | Current/on-save EOL wording and all-view post-save refresh reviewed and integrated on `main` | Manual affected-host confirmation |
 
-Historical starting-checkpoint evidence on `5724f6c` is 1,476 passed with six platform-policy skips in 93.01 seconds; native Cocoa combined smoke passed explicit Quit and session restore. Candidate `3e20214` contains the complete reviewed feedback code series, including the native System-preview correction and Task 8's wrapped-row-seam IME fix; its complete local suite passed 1,646 tests with six expected skips. The latest hosted-green checkpoint remains `aab3f3c`: run `34253008439` passed all four macOS, Windows, Linux/Python 3.12, and Linux/latest lanes, including full suite, native/offscreen smoke, deep self-check, and sustained checks. Later runs `34253913469` and `34253932056` did not execute because GitHub reported an account billing/payment or spending-limit block; no gate was weakened. These checks do not replace native IME, affected-host, or predecessor milestone evidence.
+Historical starting-checkpoint evidence on `5724f6c` is 1,476 passed with six platform-policy skips in 93.01 seconds; native Cocoa combined smoke passed explicit Quit and session restore. Candidate `3e20214` contains the complete reviewed feedback code series, including the native System-preview correction and Task 8's wrapped-row-seam IME fix; its complete local suite passed 1,646 tests with six expected skips. The latest hosted-green checkpoint remains `aab3f3c`: run `34253008439` passed all four macOS, Windows, Linux/Python 3.12, and Linux/latest lanes, including full suite, native/offscreen smoke, deep self-check, and sustained checks. Later runs `34253913469`, `34253932056`, `34256598416`, and [run `34256794807`](https://github.com/PJTraut/tools-uniti/actions/runs/34256794807) on `23507ca` did not execute because GitHub reported an account billing/payment or spending-limit block; no gate was weakened. These checks do not replace native IME, affected-host, or predecessor milestone evidence.
 
 Use sequential `BF-NNN` identifiers. Record the report date, environment, observation, impact, evidence limits, and later disposition. Keep personal information, machine identifiers, user paths, and raw reports out of this log. Link any subsequently approved work and verification to its entry.
 
@@ -62,7 +64,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Additional finding during BF-007 verification: window-close smoke stalled when a recovery successor occupied the only admitted worker slot while waiting for its predecessor. The predecessor was waiting for admission on another worker. An isolated baseline reproducer confirmed that this scheduling race predates the Lucide changes.
 - Additional correction verified locally before integration: serial recovery work is submitted only after its predecessor completes, preserving operation order without consuming a worker slot while waiting. The returned future retains running/cancellation/result behavior. Regressions verify worker availability with successful, failed, and cancelled predecessors; independent review also checked a long operation chain and cancellation before execution.
 - Latest validation with BF-007: 1,453 tests passed with six platform-specific skips; native macOS combined smoke completed window-close, explicit Quit, and session restore. This does not replace verification on the affected Windows and Mac hosts.
-- Integration update, 2026-09-08: local `main` and GitHub `origin/main` point to `aab3f3c`. Hosted run `34253008439` succeeded in all four lanes on that checkpoint, including full suite, native/offscreen smoke, deep self-check, and sustained checks. Repository synchronization and hosted automation are not affected-host confirmation.
+- Historical integration update, 2026-09-08: local `main` and GitHub `origin/main` first synchronized at `aab3f3c`; the later complete feedback source candidate is `3e20214`, included in synchronized documentation checkpoint `23507ca`. Hosted run `34253008439` succeeded in all four lanes on `aab3f3c`, including full suite, native/offscreen smoke, deep self-check, and sustained checks. Repository synchronization and hosted automation are not affected-host confirmation.
 - Remaining uncertainty: the Windows commit and underlying exception were not supplied. Paused background work reproduces a Quit hang locally, but has not been confirmed as the trigger on the affected hosts.
 - Next action: distribute the zero-window startup, Quit, and retained-window corrections and verify the user's actual flows on Windows and macOS. Do not clear the blocker solely on local checks.
 - Resolution gate: explicit Quit returns control to the terminal and releases the service; relaunch after terminal closure succeeds with preserved session/recovery state. Verify the reported flows on both Windows and macOS before clearing the testing blocker.
@@ -112,7 +114,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 ## BF-006 — Broader left-to-right font support: Indian scripts, Chinese, and Korean
 
 - Reported: 2026-09-07.
-- Status: bundled fallback and shaped LTR editing implemented and independently reviewed in candidate `3e20214`; native input qualification remains open.
+- Status: bundled fallback and shaped LTR editing implemented, independently reviewed, and integrated on GitHub `main` through `3e20214`; native input qualification remains open.
 - Environment: UNITI desktop on Windows PC and macOS.
 - Request: expand font support beyond Latin and Cyrillic to more left-to-right scripts, particularly those used in India. The user subsequently added Chinese and Korean.
 - Scope constraint: left-to-right support only for this phase. The user explicitly deferred right-to-left support; RTL and mixed-direction editing are outside this planned expansion for now.
@@ -122,7 +124,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Bounds: public windows remain at most 8,192 code points; horizontal work advances one window; shaped wrap emits at most 512 rows per request, caches at most 512 layouts, and retains the existing 2,048-row block bound. Cold deep variable-width positions may remain pending through several event-loop advances instead of publishing approximate geometry. Inherited logical-line indexing can still perform additional work.
 - Verification: 211 expanded focused tests passed; the review-fix covering matrix passed 129 tests, and final rereview passed six targeted plus ten independent EOL-ownership probes. Candidate `3e20214` passed 1,646 tests with six expected skips. The unchanged scroll, typing, and giant-line performance gates passed with p95 medians 6.016, 10.055, and 3.623 ms; the 72-interaction mixed-script scenario passed with 4.428 ms p95 and 26.031 ms maximum. The exact 18.77 MiB font payload, hashes, notices, installed-wheel resources, and real Qt fallback ordering were independently reviewed.
 - Qualification limit: synthetic IME tests do not certify physical Windows/macOS/Linux Chinese or Korean composition, commit, and cancellation. RTL and mixed-direction behavior remains outside scope. See the [LTR text layout contract](../../docs/ltr-text-layout.md).
-- Disposition: implementation is complete in candidate `3e20214`; keep BF-006 open for native IME and final integrated-candidate qualification.
+- Disposition: implementation and the complete local gate are complete on source candidate `3e20214`, integrated on GitHub `main`; keep BF-006 open for native IME and same-commit hosted qualification.
 
 ## BF-007 — Lucide UI icons, starting with Find/Replace
 
