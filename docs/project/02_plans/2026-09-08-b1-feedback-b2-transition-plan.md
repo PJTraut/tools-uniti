@@ -10,7 +10,14 @@
 
 **Spec:** [Beta feedback](../BETA_FEEDBACK.md), [current architecture](../01_current/ARCHITECTURE.md), [B1 governing design](v0.001b1-real-world-feedback-beta-design.md), and the proposed defaults in this plan.
 
-**Status:** Execution in progress on 2026-09-08. Tasks 1, 2, 4, 5, 6, and the automated/reviewed portion of 7 are integrated through `aab3f3c`; Task 8 and final candidate/platform gates remain open. `aab3f3c` passed all four hosted lanes in run `34253008439`. A reviewed native Cocoa theme correction remains to integrate. This document does not mark feedback resolved, change the product version, or by itself publish anything.
+**Status:** Execution in progress on 2026-09-08. Candidate `3e20214` contains the complete reviewed BF-001–BF-010 code series; final local candidate evidence, native IME/affected-host qualification, and release gates remain open. Latest hosted-green checkpoint is `aab3f3c` in run `34253008439`; later runs were blocked before execution by GitHub account billing/payment or spending limits. This document does not mark feedback resolved, change the product version, or by itself publish anything.
+
+**Execution rulings:** Keep the platform-resolved monospace face primary and treat bundled Noto as ordered application fallback. Order Han families from the host locale because plain text carries no per-range SC/TC language metadata. Use extended-grapheme boundaries for user navigation/deletion while preserving exact code-point selection/inspection; Unicode graphemes are not claimed to equal every script syllable. Cold deep variable-width geometry may resolve progressively within fixed materialization bounds rather than publishing approximate positions; inherited logical-line indexing is not newly bounded. Long preedit pans only its virtual row to keep the composition caret visible. These choices cost a possible visible wait for cold deep mixed-script jumps, locale-dependent Han regional forms, and host fallback for emoji. RTL/mixed-direction editing and physical native IME qualification remain outside the implemented claim. Hosted jobs blocked before execution provide no pass/fail evidence and do not alter any gate.
+
+- Ruling: retain the approved A22, A23, A24, and B1 release gates. Source integration does not qualify B1/B2; replacing that policy would require explicit metadata, roadmap, admission, distribution, and cohort-rule rework.
+- Ruling: apply `\1 :`, `\2 :` labels to capture-group rows and preserve whole-match `Match N of M` headers. If the request was intended for whole matches, the presentation must change without reinterpreting regex group identity.
+- Ruling: the user's explicit synchronization direction moves reviewed work onto canonical `main` before version-gate closure while retaining A22 metadata and separate review boundaries. If that integration timing proves wrong, revert the feature commits without rewriting history.
+- Ruling: cold deep variable-width geometry resolves progressively within bounded work. The cost is a visible wait for some mixed-script jumps; unknown-prefix geometry never produces an approximate caret or hit target.
 
 ## Baseline and release interpretation
 
@@ -207,13 +214,13 @@ assert group_one_content_x == group_ten_content_x
 
 **Architecture:** register bundled fonts per application, not into the host OS. Keep Latin fixed-pitch facts separate from fallback coverage. Shape visible text with Qt and derive painting, cursor placement, selection, hit testing and wrapping from compatible layout boundaries; installing more glyphs alone does not establish correct editing.
 
-- [ ] Resolve exact upstream font files from the official Noto repositories during execution; pin revision, SHA-256, family/region, supported script and license in the manifest. Package complete upstream notices. Measure archive size before selecting per-region versus shared collection files; use one regular-weight face per needed family initially, without runtime downloads.
-- [ ] Add clean-environment tests that load only the bundled resources and prove representative glyph coverage for each script. Assert a missing required asset reports a bounded capability failure rather than silently claiming coverage.
-- [ ] Audit code-point versus UTF-16 indices and fixed-cell assumptions in painting, selection, cursor movement, hit testing, horizontal windows, and wrap rows. Preserve code-point document offsets through explicit layout conversion; do not split surrogate pairs or corrupt combining sequences.
-- [ ] Add synthetic mixed-script cases covering Indic vowel signs/conjuncts, CJK full-width text, Hangul, Latin, emoji, tabs and zero-width characters. Test typing, selection, copy, deletion, undo/redo, save/reopen, and navigation against the documented code-point/grapheme behavior.
-- [ ] Define user cursor/backspace movement at grapheme boundaries where needed for these scripts while keeping the document's code-point storage. Preserve single-code-point Unicode inspection; multi-code-point selection is not silently mislabelled as one code point.
-- [ ] Verify native Chinese/Korean IME composition, commit and cancellation on Windows/Mac, plus Linux's existing qualification lane. Confirm shaping/layout under zoom and horizontal scrolling and compare bounded visible-rendering performance with the inherited baseline.
-- [ ] Re-run theme, gutter, whitespace, and Match alignment checks with the final fallback fonts. Do not close BF-006 on a font-install test alone.
+- [x] Resolve exact upstream font files from the official Noto repositories during execution; pin revision, SHA-256, family/region, supported script and license in the manifest. Package complete upstream notices. The 13-face payload is 19,683,928 bytes and uses no runtime downloads.
+- [x] Add clean-environment tests that load only the bundled resources and prove representative glyph coverage for each script. Assert a missing required asset reports a bounded capability failure rather than silently claiming coverage.
+- [x] Audit code-point versus UTF-16 indices and fixed-cell assumptions in painting, selection, cursor movement, hit testing, horizontal windows, and wrap rows. Preserve code-point document offsets through explicit layout conversion; do not split surrogate pairs or corrupt combining sequences.
+- [x] Add synthetic mixed-script cases covering Indic vowel signs/conjuncts, CJK full-width text, Hangul, Latin, emoji, tabs and zero-width characters. Test typing, selection, copy, deletion, undo/redo, save/reopen, and navigation against the documented code-point/grapheme behavior.
+- [x] Define user cursor/backspace movement at extended-grapheme boundaries while keeping the document's code-point storage. Preserve exact single-code-point Unicode inspection; document where Unicode graphemes do not equal script syllables.
+- [ ] Shaping/layout under zoom, scrolling and wrap passed focused and unchanged point-performance gates; the mixed-script scenario also passed. Native Chinese/Korean IME composition, commit and cancellation on Windows/macOS/Linux remains required.
+- [x] Re-run theme, gutter, whitespace and Match coverage with final fallback fonts. The complete source suite, native targeted suite, deep self-check and combined smoke passed; physical native IME qualification remains separate.
 
 **Commit series:** font resources/policy; necessary layout corrections with regressions; native input and packaging evidence. Each commit must preserve existing Latin/Cyrillic behavior.
 
@@ -222,8 +229,8 @@ assert group_one_content_x == group_ten_content_x
 **Files:** all accepted feature/fix commits; update `docs/project/BETA_FEEDBACK.md`, current status/scope/architecture/development/handover, and this task checklist.
 
 - [ ] Integrate each reviewed in-scope fix or feature commit/series into canonical `main` and synchronize the remote promptly, preserving separate review boundaries for B1 fixes and B2 features. Keep A22 version and milestone metadata while the [A22 plan](v0.001a22-dogfood-performance-implementation.md), [A23 plan](v0.001a23-executable-health-recovery-implementation.md), [A24 gate](v0.001a24-beta-candidate.md), and [B1 plan](v0.001b1-real-world-feedback-beta-implementation.md) remain open. Preserve exact candidate identities and evidence as integration changes the source tree.
-- [ ] Review the coverage table against the actual diff. Every BF entry needs implemented behavior plus its stated platform checks; no item becomes closed merely because a commit exists. Any requested deferral requires an explicit scope decision and remains visible.
-- [ ] Run one complete candidate gate after focused workstream gates. Record SHA, platform, runtime, command and result; do not reuse the old 1,476-test claim.
+- [x] Review the coverage table against the actual diff. Every BF implementation is present; physical/native/affected-host checks remain explicit and no item is closed merely because a commit exists.
+- [x] Run one complete candidate gate after focused workstream gates. Candidate `3e20214` passed 1,646 tests with six expected platform skips in 95.63 seconds, compilation, 21/21 deep self-check, native/offscreen combined smoke, and diff checks.
 
 ```bash
 QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q
@@ -234,11 +241,14 @@ QT_QPA_PLATFORM=cocoa .venv/bin/python -m uniti --smoke
 git diff --check
 ```
 
-- [ ] Run existing A22 sustained/performance gates and compare unchanged thresholds. Run the owned-runtime CI driver on Mac, Windows and both Linux lanes, preserving exact allowed skip policy. Run applicable A23/A24/B1 bundle, clean-host, health/recovery, inventory and privacy gates from their governing plans.
-- [ ] Build and inspect the wheel plus qualifying native distributions. Verify all icons, fonts, profiles and notices are packaged, and load resources with no source checkout or network fallback.
-- [ ] Obtain independent review of the final diff, especially durability/lifecycle, EOL save semantics, theme persistence and multilingual layout. Resolve blocking findings and re-run affected checks.
+- [x] Run existing A22 point and hosted-profile sustained gates locally against unchanged thresholds. All point scenarios and all four five-cycle-plus-warmup sustained families passed without contention on `3e20214`.
+- [ ] Run the owned-runtime CI driver on Mac, Windows and both Linux lanes for `3e20214`, preserving exact skip policy. GitHub currently blocks jobs before execution; A23/A24/B1 bundle, clean-host, health/recovery, inventory and privacy gates remain governed by their open plans.
+- [x] Build and inspect the wheel. The isolated install contains 40 exact resources—13 fonts, 11 SVGs, two themes, and 14 manifest/notice files—and renders mixed text and Find/Replace without a source checkout or network fallback.
+- [ ] Build and qualify native distributions after the predecessor executable gates; the wheel inspection is not native distribution evidence.
+- [x] Obtain independent review of the final source diff, especially durability/lifecycle, EOL save semantics, theme persistence and multilingual layout. Resolve blocking findings and re-run affected checks; final review on `3e20214` is clean.
 - [ ] Reconcile remote changes without force-push. Integrate reviewed work into main using a fast-forward when possible, or a reviewed merge if histories diverged. Existing local-main fixes require ancestry validation, not duplicate cherry-picks.
-- [ ] Verify each integrated tree locally; push under the user's 2026-09-08 synchronization direction and require all hosted lanes on the same integrated commit. If integration changes behavior, repeat affected checks and refresh the candidate identity.
+- [x] Verify final source candidate `3e20214` locally with the complete suite, compilation, deep self-check, native/offscreen smoke and wheel inspection.
+- [ ] Synchronize the reviewed series to canonical `main` and require all hosted lanes on the integrated commit. GitHub currently blocks new jobs before execution because of the reported account billing/payment or spending limit; do not represent that as a test failure or pass.
 - [ ] Record the main SHA and evidence per feedback item. Preserve previous-candidate evidence as history.
 
 ## Task 10: Confirm B1 closure and advance the B2 identity
@@ -285,4 +295,4 @@ assert tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"] =
 
 ## Self-review
 
-All ten feedback IDs are mapped above; existing local implementations are retained and validated. The unresolved release-policy and Match-label questions are explicit decisions, with provisional defaults stated rather than hidden. Themes, fonts, report presentation and lifecycle remain separate reviewable workstreams. Executable prerequisites are linked to their governing plans and are not represented as already implemented.
+All ten feedback IDs are mapped above and implemented in the reviewed source candidate. The selected rulings retain the existing release gates and apply backslash-number labels to capture groups while preserving whole-match headers; their costs and reversal paths are explicit. Themes, fonts, report presentation and lifecycle remain separate reviewable workstreams. Physical IME, affected-host, executable, human-time and version-promotion prerequisites remain linked to their governing plans and are not represented as complete.

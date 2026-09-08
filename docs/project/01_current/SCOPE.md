@@ -37,7 +37,8 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 - coalesced typing/backspace/delete plus Unicode-aware word, page, document, line, and Shift-extended navigation;
 - Cut, Copy, Paste, Select All, Go to Line, and protected Reload/Revert;
 - word, visual-line, and logical-line-through-break selection by double, triple, and quadruple click;
-- fixed-pitch Western/Latin and Cyrillic rendering, independent editor zoom, primary-modifier wheel zoom, 80% line-number typography on the document baseline, bounded giant-line windows, and progressive display-only soft wrap with sparse checkpoints and bounded row blocks;
+- platform-monospace-primary rendering with 13 application-bundled Noto fallback faces covering representative Latin/Cyrillic, nine Indic scripts, Simplified/Traditional Chinese, and Korean glyphs; locale-ordered Han fallback; independent editor zoom; and no OS font installation or runtime download;
+- bounded Qt-shaped LTR windows for text/selection/match geometry, hit testing, caret, tabs and wrapping; extended-grapheme navigation/deletion; UTF-16-aware IME queries/replacements; exact code-point inspection; preedit row panning; 80% line-number typography on the shared baseline; bounded giant-line windows; and progressive display-only soft wrap;
 - staged, flushed, verified, and atomic Save/Save As with exact BOM/byte-order/EOL/logical-text checks, external-file identity, and supported metadata protection;
 - application-owned Save As filename/encoding/EOL selection, exact encoding-change warnings, normal/double overwrite confirmation, dirty-open-target blocking, copy/export source-state preservation, and duplicate-tab avoidance;
 - semantic recovery-journal v3 transactions, Undo/Redo, save points, metadata, checkpoints, prefix-safe discovery, v1/v2 compatibility, and validated replay without changing the original file;
@@ -104,10 +105,10 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 
 ## Approved future scope
 
-`v0.001a21` is implemented and retained in the historical records. `v0.001a22` is active; `v0.001a23` Executable Health & Recovery Alpha, `v0.001a24` Beta Candidate, `v0.001b1` Real-World Feedback Beta, and proposed `v0.001b2` remain gated successors. BF-006 bundled Noto fallback and broader left-to-right layout work is in progress and is not current supported behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a21` is implemented and retained in the historical records. `v0.001a22` is active; `v0.001a23` Executable Health & Recovery Alpha, `v0.001a24` Beta Candidate, `v0.001b1` Real-World Feedback Beta, and proposed `v0.001b2` remain gated successors. BF-006 implementation is present in candidate `3e20214`; physical Windows/macOS/Linux Chinese/Korean IME qualification remains open. See the [LTR text layout contract](../../../docs/ltr-text-layout.md) and [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 
-Multi-code-point grapheme inspection, right-to-left/mixed-direction editing, Host-Python installation, signed polished installers, notarization, updater, network repair, accounts, cloud telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, and full programming-language syntax highlighting remain outside the approved roadmap. Embedded native application bundles and local executable health/repair are approved future A23 scope but are not implemented behavior.
+Right-to-left/mixed-direction editing, multi-code-point inspection labels, Host-Python installation, signed polished installers, notarization, updater, network repair, accounts, cloud telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, and full programming-language syntax highlighting remain outside the approved roadmap. Embedded native application bundles and local executable health/repair are approved future A23 scope but are not implemented behavior.
 
 See the [Parked Capability Catalog](../04_parked/CATALOG.md) for rationale and re-evaluation triggers.

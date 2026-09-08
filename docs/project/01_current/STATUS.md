@@ -8,8 +8,9 @@ Date: 2026-09-08
 |---|---|
 | Starting documentation checkpoint | Isolated `work/b2-feedback` at `5724f6cb3081d30b2962ecaefb623be2358331b8`; local `main` pointed to the same commit when Task 1 began |
 | Initial remote ancestry | The first read-only check found `origin/main` at `ca759668ea08f6a254ca6c516c04f39c85bf6a0e`; local `main` was seven commits ahead and zero behind |
-| Current integrated source | Local `main` and `origin/main` are synchronized at `aab3f3c`; reviewed BF-001–BF-005 and BF-007–BF-010 source is present |
+| Complete feedback code candidate | `3e20214`; contains reviewed BF-001–BF-010 implementation, including the native System-preview and wrapped-row-seam IME corrections |
 | Latest hosted-green feedback checkpoint | `aab3f3c`; run `34253008439` passed all four lanes, including full suite, deep self-check, native/offscreen smoke, and sustained checks |
+| Current hosted constraint | Runs `34253913469` and `34253932056` did not execute because GitHub reported an account billing/payment or spending-limit block; no result exists for their commits |
 | Verified A20 implementation sequence | `fabd036` through `f829d01`, preceded by design/plan commits `c9cd792` and `06dd906`, followed by the A20 freeze closure |
 | Verified A21 Editor Layout and Visibility sequence | `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`; preceded by design/plan commits `9477197` and `61c1f19` |
 | A21 Cross-Platform candidate/remediation sequence | `09ad62b` through `8b24f4b`; preceded by plan commit `a3a4d81` |
@@ -21,7 +22,7 @@ Date: 2026-09-08
 
 The retained release policy remains in force. A22 is still active because no qualifying real-use day is recorded; seven distinct days therefore remain `NOT RUN`. A23 executable/health delivery, A24 same-candidate qualification, and the B1 private executable human-feedback gate remain queued and `NOT RUN`. B1 has not been completed or promoted by the source-checkout feedback in [BF-001–BF-010](../BETA_FEEDBACK.md). Proposed B2 scope is recorded in the [B2 Feedback Refinement Beta milestone](../02_plans/v0.001b2-feedback-refinement-beta.md), but it is not active and the product identity remains A22.
 
-The six feedback commits after the initially observed remote `ca75966` are already present and must not be reapplied: `fadc36f` (zero-window restore), `09fe356` (Quit with paused work), `fbeeb0f` (retained last window), `20b1e02` (initial Find/Replace Lucide icons), `fbe1b6e` (recovery scheduling), and `0322939` (compact whitespace and held Unicode inspection). Historical documentation checkpoint `5724f6c` follows them. Later reviewed work through `aab3f3c` adds first-use progress and the durability-warning fix, centered markers and hotkey propagation, EOL truth/all-view refresh, 80% gutter text, complete Find/Replace SVGs and aligned capture rows, and packaged/editable theme profiles. No version promotion, tag, release, installer, or tester distribution followed from this integration.
+The six feedback commits after the initially observed remote `ca75966` are already present and must not be reapplied: `fadc36f` (zero-window restore), `09fe356` (Quit with paused work), `fbeeb0f` (retained last window), `20b1e02` (initial Find/Replace Lucide icons), `fbe1b6e` (recovery scheduling), and `0322939` (compact whitespace and held Unicode inspection). Historical documentation checkpoint `5724f6c` follows them. The reviewed series through candidate `3e20214` adds first-use progress and the durability-warning fix, centered markers and hotkey propagation, EOL truth/all-view refresh, 80% gutter text, complete Find/Replace SVGs and aligned capture rows, packaged/editable theme profiles, bundled Noto fallback, and bounded shaped LTR editing. No version promotion, tag, release, installer, or tester distribution followed from this integration.
 
 ## Integrated feedback behavior
 
@@ -31,9 +32,11 @@ The six feedback commits after the initially observed remote `ca75966` are alrea
 - line numbers use an independent 80% font while preserving the editor baseline/row height, and progressive wrapped-row preparation settles gutter width before paint and hit testing;
 - pending EOL conversion is stated as “on save”; committed markers remain truthful before save, and successful save refreshes every view sharing the document;
 - Find/Replace uses the complete Lucide control set, while capture rows expose `\\N :` labels separately and align every preview to one measured column without changing `Match N of M` headers; and
-- Paper and Slate are complete named profiles. Users can clone and edit profiles, preview across service windows, apply/cancel/reset/delete, and persist custom profiles plus active selection in one bounded atomic file. Packaged profiles are read-only and contrast remains independent.
+- Paper and Slate are complete named profiles. Users can clone and edit profiles, preview across service windows, apply/cancel/reset/delete, and persist custom profiles plus active selection in one bounded atomic file. Packaged profiles are read-only and contrast remains independent;
+- bundled Noto fallback preserves the native monospace primary, orders Han fallback by locale, and covers the selected Indic, Chinese, and Korean samples without OS font installation or runtime download; and
+- bounded shaped windows, grapheme-aware navigation/deletion, UTF-16 IME offsets, exact-width wrapping, and virtual preedit panning share Qt geometry while exact code-point inspection remains available.
 
-BF-006 Noto fallback and wider left-to-right layout work is still in progress. No named Indic/CJK script, grapheme behavior, package, performance result, or native IME flow is claimed complete.
+BF-006 implementation is complete in candidate `3e20214`, but native Windows/macOS/Linux Chinese/Korean IME qualification remains open. RTL and mixed-direction behavior is outside scope. See the [LTR text layout contract](../../../docs/ltr-text-layout.md).
 
 ## Implemented A21 Cross-Platform behavior
 
@@ -92,7 +95,7 @@ deep self-check: pass, 21/21 checks
 native Cocoa combined smoke: pass; explicit Quit and session restore passed
 ```
 
-Later focused workstream gates and independent reviews passed for Tasks 2, 4, 5, 6, and 7. Hosted run `34253008439` passed the complete four-lane gate on current checkpoint `aab3f3c`. A separate native Cocoa theme check exposed a System-preview link-color leak; reviewed correction `e045b0f` passed its 21 native theme, five native window, and 30 offscreen tests but is not yet in the recorded `main` checkpoint. Neither hosted automation nor that follow-up satisfies affected-host confirmation, A22 dogfood days, A23 executable delivery, A24 qualification, or B1 independent human feedback.
+Focused workstream gates and independent reviews passed for Tasks 2, 4, 5, 6, 7, and 8. Task 8 passed 211 expanded focused tests, a 129-test review-fix matrix, and final scoped rereview with six targeted plus ten independent EOL-ownership probes. Candidate `3e20214` passed the complete source suite with 1,646 tests and six expected platform skips in 95.63 seconds, compilation, diff checks, all 21 deep self-checks, 108 native Cocoa targeted tests, and both native Cocoa and offscreen combined smoke including Quit/session restore. Its rebuilt isolated wheel contains 40 exact resources: 13 fonts, 11 SVGs, two themes, and 14 manifest/notice files; mixed text and Find/Replace render from the installed wheel. The uncontended unchanged scroll, typing, and giant-line gates passed with p95 medians 6.016, 10.055, and 3.623 ms, and the 72-action mixed-script scenario passed at 4.428 ms p95/26.031 ms maximum. All four local hosted-profile sustained families passed five measured cycles plus warmup with no contention. These timings and sustained results are local supporting evidence. Hosted run `34253008439` remains the latest complete four-lane gate on earlier checkpoint `aab3f3c`; same-commit hosted automation is externally blocked. Neither local automation nor focused native checks satisfy physical IME, affected-host, A22 dogfood-day, A23, A24, or B1 gates.
 
 ## Historical A21 verification
 

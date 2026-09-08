@@ -168,6 +168,10 @@ The completed A21 gate reports 1,257 passed and six exact policy-allowed macOS s
 - Paint whitespace only from committed visible slices using existing row layout geometry. Keep the 4,096-operation frame budget and reserve visible overflow aggregation.
 - Keep logical terminator classification exact and bounded to at most two direct document characters; do not infer CRLF from normalized display text.
 - Preserve appearance and contrast as independent global settings and update complete application/editor theme tokens together.
+- Follow the [LTR text layout contract](../../../docs/ltr-text-layout.md): keep document positions in code points, convert Qt/IME positions with bounded UTF-16 maps, and use one shaped geometry authority for paint, selection, matches, hit testing, caret, tabs, wrap and preedit.
+- Keep the platform monospace face primary and bundled Noto fonts application-local. Preserve locale-ordered Han fallback, exact manifest/notice bytes, and explicit capability failure when an asset is missing.
+- Keep public shaped windows and grapheme context within 8,192 code points; add at most 512 wrap rows per advance; retain no more than 512 shaped/provider entries and the existing 2,048-row block bound. Cold unknown geometry remains pending instead of approximate.
+- Test exact code-point inspection separately from user grapheme navigation/deletion. Synthetic IME events are regressions, not native Windows/macOS/Linux qualification.
 - Never create, reserve, or fill real LOWDISK state. Inject capacity and write/fsync failures.
 
 ## Recovery/session change discipline

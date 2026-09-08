@@ -2,7 +2,7 @@
 
 **Unicode Intelligent Text Interchange** — a focused cross-platform power text editor built around text correctness, explicit encoding/EOL state, large-file editing, and Python `regex`.
 
-UNITI is a private alpha. The source and package identity remains `v0.001a22` / `0.1a22`; A22 Dogfood / Performance Alpha is active. Reviewed BF-001–BF-005 and BF-007–BF-010 work is integrated on `main`, while multilingual Noto/layout work and the existing release gates remain open. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
+UNITI is a private alpha. The source and package identity remains `v0.001a22` / `0.1a22`; A22 Dogfood / Performance Alpha is active. Reviewed BF-001–BF-010 code is integrated in candidate `3e20214`, while native input, affected-host, and release gates remain open. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
 
 ## Project documentation
 
@@ -38,13 +38,14 @@ The current development alpha includes:
 - separate **Reinterpret As** and **Convert on Save** controls;
 - source-aware inserted-EOL policy, explicit current-versus-on-save status, all-shared-view EOL refresh after save, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics;
 - line numbers at 80% of the document point size with the document baseline and progressive width correction; and
+- application-bundled Noto fallback for nine Indic scripts, Simplified/Traditional Chinese, and Korean; bounded Qt-shaped LTR text, grapheme-safe navigation/deletion, UTF-16-aware IME replacement, and virtual preedit painting that keeps the composition caret visible; and
 - explicit Python 3.12+ bootstrap into a UNITI-owned source or application-local virtual environment;
 - ownership markers, exclusive bootstrap locks, dependency fingerprints, explicit repair, and validation-only normal startup;
 - atomic schema-1 setup/settings state, ordered BOOT→READY startup phases, bounded lifecycle logs, and narrow stale-artifact cleanup; and
 - explicit macOS, Windows, and Linux path/identity policy; capability-driven `full` / `file_synced` / `unsafe` publication results; pointer repair from complete session generations; native shortcut and fixed-font resolution; and
 - fast/deep self-checks for runtime, dependencies, paths, schemas, resources, filesystem primitives, regex intelligence, text fidelity, recovery/session continuity, large-file behavior, offscreen Qt, and bounded cross-platform evidence.
 
-Still unqualified in the current alpha: the planned bundled Noto fallback and broader left-to-right layout work, native Chinese/Korean IME coverage, and affected-host confirmation of the critical shutdown correction. Explicitly deferred: multi-code-point grapheme inspection, right-to-left/mixed-direction editing, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
+Still unqualified in the current alpha: native Chinese/Korean IME composition on Windows, macOS, and Linux, plus affected-host confirmation of the critical shutdown correction. Explicitly deferred: right-to-left/mixed-direction editing, multi-code-point inspection labels, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers. See the [LTR text layout and editing contract](docs/ltr-text-layout.md) for behavior and bounds.
 
 ## Requirements
 
