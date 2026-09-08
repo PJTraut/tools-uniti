@@ -10,38 +10,40 @@ Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02
 
 | Feedback | Planned task | Current evidence state | Remaining gate |
 |---|---:|---|---|
-| BF-001 | 2 | Report recorded; implementation `NOT RUN` | First-use progress, warning correction, focused verification |
-| BF-002 | 3 | Local fixes and macOS source smoke pass | Affected Windows/Mac distribution and confirmation `NOT RUN` |
-| BF-003 | 4 | Compact markers/inspection implemented locally | Centered U+0020 correction and native/affected-host evidence |
+| BF-001 | 2 | Progress and warning corrections implemented, reviewed, and on GitHub `main` | Affected Windows first-use confirmation; hosted qualification still running |
+| BF-002 | 3 | Corrections and platform-fixture follow-ups on GitHub `main`; macOS source checks passed | Affected Windows/Mac distribution and confirmation remain open |
+| BF-003 | 4 | Compact inspection and centered U+0020 marker implemented, reviewed, and on GitHub `main` | Native Windows and affected-host beta confirmation |
 | BF-004 | 4 | Configuration implemented locally | Cross-window/restart and Windows/affected-host evidence |
 | BF-005 | 7 | `NOT RUN` | Editable themes, presets, persistence, contrast qualification |
 | BF-006 | 8 | `NOT RUN` | Selected Noto packaging, shaping, navigation, and IME qualification |
 | BF-007 | 6 | Initial Lucide controls implemented locally | F>/R>, clear/navigation reconciliation and native evidence |
-| BF-008 | 6 | `NOT RUN` | Final label interpretation and aligned report layout |
+| BF-008 | 6 | Capture-group interpretation approved; implementation `NOT RUN` | Preserve `Match N of M`; implement and verify aligned group rows |
 | BF-009 | 5 | `NOT RUN` | 80% gutter typography and zoom/layout qualification |
 | BF-010 | 5 | `NOT RUN` | Pending-versus-current EOL wording and post-save view refresh |
 
-Fresh baseline evidence on checkpoint `5724f6c` is 1,476 passed with six platform-policy skips in 93.01 seconds; native Cocoa combined smoke passed explicit Quit and session restore. These checks do not replace any remaining feedback gate or predecessor milestone evidence.
+Fresh baseline evidence on checkpoint `5724f6c` is 1,476 passed with six platform-policy skips in 93.01 seconds; native Cocoa combined smoke passed explicit Quit and session restore. The reviewed integration checkpoint `c7c1521` is synchronized between local `main` and GitHub `origin/main`; it contains the BF-001 startup work, the BF-003 centering work, and Windows qualification-fixture corrections for UTF-8 source decoding, exact LF bytes, and platform runtime-path selection. Hosted run `34250570707` is still in progress and is not recorded as passing. These checks do not replace any remaining feedback gate or predecessor milestone evidence.
 
 Use sequential `BF-NNN` identifiers. Record the report date, environment, observation, impact, evidence limits, and later disposition. Keep personal information, machine identifiers, user paths, and raw reports out of this log. Link any subsequently approved work and verification to its entry.
 
 ## BF-001 — Slow Windows first launch with limited progress feedback
 
 - Reported: 2026-09-07.
-- Status: awaiting triage; retained for later planning and action.
+- Status: implemented, independently reviewed, and integrated on GitHub `main`; affected Windows first-use confirmation remains open.
 - Environment: remote Windows host; first launch from a source checkout using `uniti.bat`. Exact build, Python version, Windows version, and elapsed time were not recorded.
 - Observation: user reported that the first start was very slow. A Python warning about a return statement inside a finally block appeared during startup.
 - Impact: the initial wait and warning made it unclear whether setup was progressing or startup had failed.
 - Requested behavior: show a visible message during first-use initialization, before lengthy preparation begins. Suggested wording from the user: `// prepping UNITI for first use`.
-- Evidence: user clarified that this was the first start. Repository inspection shows bootstrap captures dependency-installation output instead of streaming progress. The cause of the reported delay has not been measured, and the warning has not been established as its cause.
-- Later review: measure first-run setup and subsequent-launch timing; assess setup progress/status messaging; review the startup warning separately from performance.
-- Disposition: no implementation scheduled; priority and acceptance criteria await triage.
+- Implementation: commit `63dab08` emits the exact flushed stderr line `// prepping UNITI for first use` before runtime creation, source-runtime adoption, or the first dependency installation. Callbacks report only real creation/adoption/repair, installation, validation, and launch boundaries. Explicit repair uses repair wording; healthy launches remain quiet; `--no-launch` output and JSON stdout remain parseable.
+- Warning correction: the durability cleanup no longer returns from `finally`. Expected open/fsync failures and close failures retain their established result behavior, while an unexpected fsync exception still propagates if close also fails.
+- Verification: the focused bootstrap, durability, and launcher gate passed 68 tests with four Windows-only skips. The full source suite passed 1,488 tests with six platform-policy skips; deep self-check passed all 21 checks; native Cocoa combined smoke passed. The durability source compiled with `SyntaxWarning` promoted to an error on the owned Python 3.12 runtime and Python 3.14. Independent review found no remaining blocking issue.
+- Evidence limits: single-machine timing observations were 14.06 seconds for a disposable fresh source bootstrap and 1.32 seconds for a healthy managed JSON self-check launch. These are local macOS observations, not performance thresholds or affected-Windows confirmation. The warning was corrected separately from the unmeasured cause of the user's delay.
+- Disposition: requested progress and warning behavior implemented at `63dab08` and included in synchronized checkpoint `c7c1521`. Keep the affected Windows first-use flow open until confirmed; hosted run `34250570707` remains in progress.
 
 ## BF-002 — Windows and macOS terminals remain occupied after exit
 
 - Reported: 2026-09-07.
 - Severity: critical; blocks further user testing.
-- Status: local corrections verified; distribution and affected-host confirmation pending. Remains a critical testing blocker.
+- Status: corrections integrated on GitHub `main`; distribution and affected-host confirmation pending. Remains a critical testing blocker.
 - Environment: reported on both Windows PC and Mac. The Windows launch used `uniti.bat` on a remote host, as in BF-001; the Mac launch command was not recorded. Exact builds and runtime versions were not recorded.
 - Observation: user reported that on EXIT the terminal still hangs and UNITI does not release it.
 - Exit clarification: both explicit application Quit and window-close cause the reported problem on Mac; explicit application Quit causes it on Windows PC.
@@ -51,15 +53,16 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Additional impact: the next launch can fail after the user closes the occupied terminal.
 - Expected behavior: exiting UNITI completes shutdown and returns control to the launching terminal.
 - Clarified window-close behavior: while the service remains active, retain a visible editor window so users can open documents and see UNITI is running. Closing the last window resolves its tabs and leaves an empty window; explicit Quit ends the service and releases the terminal.
-- Confirmed startup cause on Mac: startup logs identify an assertion when restoring a session with no windows. Local commit `fadc36f` replaces that assertion with a new-window fallback. A read-only remote check found GitHub `main` at `ca75966`, without that fix.
+- Confirmed startup cause on Mac: startup logs identify an assertion when restoring a session with no windows. Commit `fadc36f` replaces that assertion with a new-window fallback. Historical source state from earlier on 2026-09-08: a read-only remote check found GitHub `main` at `ca75966`, before that fix was integrated.
 - Confirmed Quit defect: with background work paused, the scheduler deferred the foreground final session write, and the publication queue could wait indefinitely for an older deferred write. Regression tests reproduced both waits.
-- Local correction: foreground tasks bypass background pause; Quit cancels superseded session writes only before execution and waits for any running atomic write. Resumed tasks mark their public future running at worker entry, preventing cancelled queued work from executing or an active write from being mistaken for cancelled work.
+- Correction verified locally before integration: foreground tasks bypass background pause; Quit cancels superseded session writes only before execution and waits for any running atomic write. Resumed tasks mark their public future running at worker entry, preventing cancelled queued work from executing or an active write from being mistaken for cancelled work.
 - Validation: regression coverage includes foreground session publication during pause, Quit with and without a queued paused write, cancellation before/after resumed execution, and full-process Quit/relaunch plus abrupt termination after a zero-window session. Native macOS checks passed for paused Quit, ordinary Quit, terminal-termination simulation, and relaunch; deep self-check passed all 21 checks. Independent review verified the resumed-write race correction.
 - Full local gate after the retained-window correction: 1,446 tests passed with six platform-specific skips on macOS; source compilation, documentation links, and `git diff --check` passed. Offscreen/native combined smoke and all 21 deep self-checks passed. Native macOS process checks covered retained-window close followed by Quit, paused Quit, abrupt termination and relaunch, and legacy zero-window restoration. The skips include Windows launcher/native-path checks, so this is not Windows verification.
-- Local window-close correction: the last editor window remains visible with Open and Quit available, and its timers and file operations stay active. Ordinary close preserves all tabs while session restoration is pending. A failed Quit followed by window-close cannot delete the retained window through a closed publication-queue error.
+- Window-close correction verified locally before integration: the last editor window remains visible with Open and Quit available, and its timers and file operations stay active. Ordinary close preserves all tabs while session restoration is pending. A failed Quit followed by window-close cannot delete the retained window through a closed publication-queue error.
 - Additional finding during BF-007 verification: window-close smoke stalled when a recovery successor occupied the only admitted worker slot while waiting for its predecessor. The predecessor was waiting for admission on another worker. An isolated baseline reproducer confirmed that this scheduling race predates the Lucide changes.
-- Additional local correction: serial recovery work is submitted only after its predecessor completes, preserving operation order without consuming a worker slot while waiting. The returned future retains running/cancellation/result behavior. Regressions verify worker availability with successful, failed, and cancelled predecessors; independent review also checked a long operation chain and cancellation before execution.
+- Additional correction verified locally before integration: serial recovery work is submitted only after its predecessor completes, preserving operation order without consuming a worker slot while waiting. The returned future retains running/cancellation/result behavior. Regressions verify worker availability with successful, failed, and cancelled predecessors; independent review also checked a long operation chain and cancellation before execution.
 - Latest validation with BF-007: 1,453 tests passed with six platform-specific skips; native macOS combined smoke completed window-close, explicit Quit, and session restore. This does not replace verification on the affected Windows and Mac hosts.
+- Integration update, 2026-09-08: local `main` and GitHub `origin/main` both point to `c7c1521`, which contains these lifecycle corrections and the later Windows qualification-fixture corrections. Hosted run `34250570707` is still in progress; synchronization is not affected-host confirmation or a hosted green result.
 - Remaining uncertainty: the Windows commit and underlying exception were not supplied. Paused background work reproduces a Quit hang locally, but has not been confirmed as the trigger on the affected hosts.
 - Next action: distribute the zero-window startup, Quit, and retained-window corrections and verify the user's actual flows on Windows and macOS. Do not clear the blocker solely on local checks.
 - Resolution gate: explicit Quit returns control to the terminal and releases the service; relaunch after terminal closure succeeds with preserved session/recovery state. Verify the reported flows on both Windows and macOS before clearing the testing blocker.
@@ -67,8 +70,8 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 ## BF-003 — Refine visible whitespace using InDesign as a reference
 
 - Reported: 2026-09-07; implementation approved 2026-09-08 after comparison with the user-provided character table.
-- Status: implemented locally; native Windows and affected-host beta confirmation pending.
-- Follow-up reported 2026-09-08: the normal-space marker for U+0020 is not centered within the whitespace gap. Expected behavior: center the visible marker within the space's actual layout width. Exact host, font, and zoom were not recorded. Retained for later planning and action; the user clarified that this report is feedback only, and no rendering change was made.
+- Status: centered marker correction implemented, independently reviewed, and integrated on GitHub `main`; native Windows and affected-host beta confirmation pending.
+- Follow-up reported 2026-09-08: the normal-space marker for U+0020 is not centered within the whitespace gap. Expected behavior: center the visible marker within the space's actual layout width. Exact host, font, and zoom were not recorded.
 - Environment: Windows PC and macOS; default held combination also specified for Linux.
 - Reference: Adobe's [hidden-character glossary](https://helpx.adobe.com/indesign/desktop/language-and-proofing/glyphs-characters-and-expressions/hidden-character-glossary.html) and the supplied character table informed the compact marks. UNITI keeps physical line-ending identity rather than adopting paragraph/soft-return semantics.
 - Implemented ordinary marks: space `·`, tab `»`, LF `␊`, CR `␍`, CRLF `␍␊`. Automatic visual wrapping has no end-of-line marker.
@@ -80,7 +83,8 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Display-only behavior: inspection preserves document contents, cursor, selection, and layout. Existing visible rendering and marker budgets remain in place. The key limits its rows and summarizes additional types when space is restricted.
 - Scope boundary: screenshot autoreplace commands, font expansion, and RTL editing are not part of this implementation. Symbol-font evaluation remains under the broader font work.
 - Configuration: see BF-004.
-- Verification: full local suite passed 1,476 tests with six platform-specific skips. All 12 inspection tests passed on native macOS, and native combined smoke confirmed explicit Quit and session restore. Coverage includes mode filtering, release/deactivation, short-view and supplementary-character inspection, adjacent invisible identities, marker alignment, and configuration. Source compilation, changed-document local links, and `git diff --check` passed. Independent review found no remaining blocking issues. Windows native modifier/rendering checks and affected-host beta confirmation remain pending.
+- Centering implementation: commit `1c2d25a`, with real-zoom regression correction `1d3660c`, replaces the offset point-plus-glyph rendering with a centered filled antialiased dot. The marker is centered in the actual U+0020 layout gap after the editor rebuilds its font metrics at 50%, 100%, 200%, and 300% zoom, at device-pixel ratios 1 and 2, including fractional bounds.
+- Verification: the prescribed focused UI/settings/hotkey matrix passed all 87 tests. The eight zoom/display-scale centroid cases place both axes within 0.2 logical pixels of the gap midpoint; the prior rendering failed all eight horizontal cases. Existing coverage retains marker categories, inspection behavior, document bytes, cursor/selection behavior, theme tokens, and the 4,096-marker budget. The earlier full local suite passed 1,476 tests with six platform-specific skips, all 12 inspection tests passed on native macOS, and native combined smoke confirmed explicit Quit and session restore. Source compilation, changed-document local links, and `git diff --check` passed. Independent review found no remaining blocking issues. Commits `1c2d25a` and `1d3660c` are included in synchronized checkpoint `c7c1521`; Windows native modifier/rendering checks and affected-host beta confirmation remain pending.
 
 ## BF-004 — Configure the Unicode inspection combination in Hotkeys
 
@@ -135,10 +139,11 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 ## BF-008 — Match window label notation
 
 - Reported: 2026-09-08.
-- Status: recorded for later planning and action; implementation pending.
+- Status: capture-group interpretation approved; implementation pending.
 - Request: in the Match window, use `\1 :` for the first match, `\2 :` for the second, and so on.
+- Approved interpretation, 2026-09-08: apply the backslash-number notation to capture-group rows, where the numbering already denotes regex capture groups. Preserve the existing `Match N of M` whole-match occurrence headers.
 - Alignment: use a shared tab stop after the label so matched content starts in the same column on every row, including labels with multiple digits.
-- Disposition: preserve the requested display notation for review; no UI or matching behavior changes made.
+- Disposition: the default scope is approved for plan execution; aligned report layout and label implementation remain pending. No UI or matching behavior changes have been made for BF-008 yet.
 
 ## BF-009 — Smaller editor line numbers
 
