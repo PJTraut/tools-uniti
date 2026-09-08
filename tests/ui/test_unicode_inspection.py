@@ -221,9 +221,7 @@ def test_space_marker_alpha_centroid_is_centered(app, tmp_path, font_scale, devi
     path.write_bytes(b" ")
     with Document.open(path, encoding="utf-8") as document:
         view = UNITITextView(EditorState(document))
-        font = view.font()
-        font.setPointSizeF(10.0 * font_scale)
-        view.setFont(font)
+        view.set_zoom_percent(int(font_scale * 100))
         width, height = 96, 48
         image = QImage(int(width * device_scale), int(height * device_scale),
             QImage.Format.Format_ARGB32)
