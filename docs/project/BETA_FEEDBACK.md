@@ -209,7 +209,9 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 
 - Reported: 2026-09-08, on B2.
 - Status: recorded; implementation pending.
-- Request: add replacement scope settings, including **Replace to End of Document**.
+- Request: add replacement scope settings, including **Replace to End of Document** and **All Open Documents**.
 - Working interpretation: replace matches from the current editor cursor position through the end of the active document, without wrapping to its beginning or changing earlier text.
-- Scope boundary: this request establishes the cursor-to-end option; other replacement scopes remain to be specified.
+- All Open Documents: apply the current Find/Replace expression to every unique open document across UNITI windows, tabs, and splits. A document shown in multiple views must be processed only once. This scope covers each document in full, independent of individual cursor positions.
+- Working interpretation: replacements update the open documents without automatically saving their files.
 - Acceptance to define during implementation: treatment of an active selection or a match crossing the cursor boundary, and whether a match starting exactly at the cursor is included. Preserve full-document regex anchor/context semantics, cancellation, stale-result protection, and one-step Undo for the replacement operation.
+- Cross-document acceptance to define: completion and replacement counts per document, cancellation or partial failure reporting, handling of documents that change during planning, and clear Undo behavior for the batch. Preserve each document's shared-view ownership and unsaved-change state.
