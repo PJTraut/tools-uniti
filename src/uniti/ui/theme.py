@@ -374,6 +374,18 @@ def install_theme(app: QApplication, spec: ThemeSpec) -> ThemeSpec:
     global _active_mode, _active_contrast, _active_spec
     _active_mode, _active_contrast, _active_spec = spec.mode, spec.contrast, spec
     app.setPalette(spec.palette)
+    if app.palette() != spec.palette:
+        # Cocoa may resolve unset System roles against the previous custom
+        # palette (notably inactive/disabled links). Seed every original brush
+        # explicitly, then restore the original resolve mask so System retains
+        # its platform inheritance instead of becoming a permanent override.
+        resolved = QPalette(spec.palette)
+        for group in (QPalette.Active, QPalette.Inactive, QPalette.Disabled):
+            for role in QPalette.ColorRole:
+                if role not in (QPalette.NoRole, QPalette.NColorRoles):
+                    resolved.setBrush(group, role, spec.palette.brush(group, role))
+        app.setPalette(resolved)
+        app.setPalette(spec.palette)
     for window in app.topLevelWidgets():
         for view in getattr(window, 'views', ()):
             setter = getattr(view, 'set_theme_tokens', None)

@@ -112,3 +112,26 @@ def test_profile_high_contrast_overlay_retains_thresholds():
         spec = build_profile_theme(app.palette(), profile, 'High Contrast')
         assert spec.mode == profile.id
         assert all(ratio >= threshold for _, ratio, threshold in contrast_feedback(spec))
+
+
+def test_system_restores_all_platform_brushes_without_retaining_dark_links():
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication
+    from uniti.ui.theme import apply_theme
+
+    app = QApplication.instance() or QApplication([])
+    platform = apply_theme(app, 'System').palette
+    try:
+        apply_theme(app, 'Dark')
+        restored = apply_theme(app, 'System')
+        actual = app.palette()
+        for group in (QPalette.Active, QPalette.Inactive, QPalette.Disabled):
+            for role in QPalette.ColorRole:
+                if role in (QPalette.NoRole, QPalette.NColorRoles):
+                    continue
+                assert actual.brush(group, role) == platform.brush(group, role), (group, role)
+        assert actual.resolveMask() == platform.resolveMask()
+        assert restored.palette == platform
+    finally:
+        app.setPalette(platform)
+        apply_theme(app, 'System')
