@@ -4,6 +4,8 @@ Started: 2026-09-07
 
 This log collects summarized user observations for later triage, planning, and action. An entry is not an approved implementation commitment. Early source-checkout feedback does not open or satisfy the [B1 feedback gate](02_plans/v0.001b1-real-world-feedback-beta.md).
 
+Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02_plans/2026-09-08-b1-feedback-b2-transition-plan.md) covers BF-001–BF-010, integration into main, and version advancement. Preparing this plan does not close the entries or change the current release identity.
+
 Use sequential `BF-NNN` identifiers. Record the report date, environment, observation, impact, evidence limits, and later disposition. Keep personal information, machine identifiers, user paths, and raw reports out of this log. Link any subsequently approved work and verification to its entry.
 
 ## BF-001 — Slow Windows first launch with limited progress feedback
@@ -49,6 +51,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 
 - Reported: 2026-09-07; implementation approved 2026-09-08 after comparison with the user-provided character table.
 - Status: implemented locally; native Windows and affected-host beta confirmation pending.
+- Follow-up reported 2026-09-08: the normal-space marker for U+0020 is not centered within the whitespace gap. Expected behavior: center the visible marker within the space's actual layout width. Exact host, font, and zoom were not recorded. Retained for later planning and action; the user clarified that this report is feedback only, and no rendering change was made.
 - Environment: Windows PC and macOS; default held combination also specified for Linux.
 - Reference: Adobe's [hidden-character glossary](https://helpx.adobe.com/indesign/desktop/language-and-proofing/glyphs-characters-and-expressions/hidden-character-glossary.html) and the supplied character table informed the compact marks. UNITI keeps physical line-ending identity rather than adopting paragraph/soft-return semantics.
 - Implemented ordinary marks: space `·`, tab `»`, LF `␊`, CR `␍`, CRLF `␍␊`. Automatic visual wrapping has no end-of-line marker.
@@ -105,8 +108,33 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Reported: 2026-09-07.
 - Status: implemented and verified locally; wider UI rollout remains future work.
 - Request: implement Lucide for the UI. The user chose the Find/Replace panel as a good starting point.
+- Follow-up reported 2026-09-08: consider SVG replacements for the F/R panel's `F>` and `R>` indicators, circled `(x)` clear controls, and `[<]` / `[>]` Previous/Next controls. Retain this as beta feedback for later review, using the agreed Lucide direction. Some clear/navigation controls already have SVG implementations locally; compare the running beta build and intended appearance before planning further changes. No UI changes made for this follow-up.
 - Implemented scope: Lucide icons for Find All, Replace All, Previous/Next Match, Replace Current Match, per-field clear controls, Cancel, and the Match Report visibility toggle. Existing handlers, keyboard commands, compact button widths, tooltips, and accessible names remain available. Cancel keeps its text label.
 - Assets: nine SVGs from Lucide 1.42.0, pinned to upstream commit `3859eb20fabe7fd95652fcd4395843b6c0bcdd01`, bundled with complete upstream ISC/MIT notices. Icons require no font installation or runtime download.
 - Appearance: icons follow the application palette, including native disabled-state opacity, and render at the requested device pixel ratio. Independent review identified and verified a correction for translucent macOS palette colors.
 - Validation: the final full suite passed 1,453 tests with six platform-specific skips after the separate BF-002 recovery scheduling correction. Native macOS icon checks and combined smoke passed. A built wheel includes all nine SVGs and upstream notices; wheel-only imports rendered the icons and panel successfully. Light, dark, and high-contrast previews were inspected. Windows native verification remains pending.
 - Follow-up scope: other UI surfaces can adopt the shared icon renderer later. This change does not implement the whitespace visualization or font expansion requests.
+
+## BF-008 — Match window label notation
+
+- Reported: 2026-09-08.
+- Status: recorded for later planning and action; implementation pending.
+- Request: in the Match window, use `\1 :` for the first match, `\2 :` for the second, and so on.
+- Alignment: use a shared tab stop after the label so matched content starts in the same column on every row, including labels with multiple digits.
+- Disposition: preserve the requested display notation for review; no UI or matching behavior changes made.
+
+## BF-009 — Smaller editor line numbers
+
+- Reported: 2026-09-08.
+- Status: recorded for later planning and action; implementation pending.
+- Request: display editor line numbers at a smaller font size than the document text. The exact size or relative scale remains to be chosen.
+- Disposition: retained as beta feedback; no rendering changes made.
+
+## BF-010 — EOL markers unchanged when the status line updates
+
+- Reported: 2026-09-08.
+- Status: recorded for later triage, planning, and action.
+- Observation: after changing EOL, the bottom status/reporting line updates, but the visible EOL characters in the editor view remain unchanged.
+- Expected behavior: make the relationship between the selected EOL setting, the status line, and the displayed line-ending markers consistent and clear.
+- Evidence limits: source/target EOL types, whether the document had been saved, and the affected platform/build were not recorded. Later review should distinguish a pending conversion-on-save setting from the document's current line endings.
+- Disposition: retained as beta feedback; no diagnosis or implementation changes made.

@@ -15,6 +15,10 @@ This file is the authoritative sequence of approved outstanding product mileston
 
 The complete a21 Cross-Platform Alpha, including its Editor Layout and Visibility workstream, a20 Recovery & Session Alpha, a19 Regex Intelligence Alpha, a18 Large-File Alpha, a17 Text Integrity Alpha, a16 Usable Test Alpha, and earlier verified work are retained in [`03_implemented`](../03_implemented/README.md).
 
+## Proposed B2 follow-up
+
+Requested follow-up, 2026-09-08: [B1 feedback closure and B2 transition plan](2026-09-08-b1-feedback-b2-transition-plan.md) covers outstanding BF-001–BF-010 and proposes B2 after verified integration. The checkout remains A22; release-policy reconciliation and predecessor qualification are explicit plan steps. This proposal does not mark the existing milestones complete or activate B2.
+
 ## Queue rules
 
 - Normally exactly one milestone is active; later approved milestones remain queued in the order above.
