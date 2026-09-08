@@ -27,7 +27,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "uniti.resources" = ["performance_policy.toml"]
-"uniti.ui" = ["assets/lucide/*.svg", "assets/lucide/LICENSE", "assets/lucide/README.md", "assets/themes/*.json"]
+"uniti.ui" = ["assets/lucide/*.svg", "assets/lucide/LICENSE", "assets/lucide/README.md", "assets/themes/*.json", "assets/fonts/*.otf", "assets/fonts/manifest.json", "assets/fonts/licenses/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

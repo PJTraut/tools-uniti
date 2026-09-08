@@ -14,3 +14,8 @@ src/uniti/ui/assets/lucide/LICENSE text eol=lf
 
 # UNITI's future byte/EOL/encoding fixtures must never be rewritten by Git.
 tests/fixtures/** -text
+
+# Pinned font payload and upstream notices retain exact SHA-256 on every host.
+src/uniti/ui/assets/fonts/*.otf binary
+src/uniti/ui/assets/fonts/licenses/* -text
+src/uniti/ui/assets/fonts/manifest.json text eol=lf

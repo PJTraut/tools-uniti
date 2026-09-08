@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 1,
+  "fonts": [
+    {
+      "path": "NotoSansMono-Regular.otf",
+      "family": "Noto Sans Mono",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Latin/Cyrillic"
+      ],
+      "sample": "AЖ",
+      "sourceRepository": "https://github.com/notofonts/latin-greek-cyrillic",
+      "sourceTag": "NotoSansMono-v2.014",
+      "sourceRevision": "9b7310b8f99fcd2583c49606e6aefca13a391350",
+      "sourceArchiveURL": "https://github.com/notofonts/latin-greek-cyrillic/releases/download/NotoSansMono-v2.014/NotoSansMono-v2.014.zip",
+      "sourceArchivePath": "NotoSansMono/unhinted/otf/NotoSansMono-Regular.otf",
+      "sourceArchiveSha256": "090cf6c5e03f337a755630ca888b1fef463e64ae7b33ee134e9309c05f978732",
+      "bytes": 281568,
+      "sha256": "74b0ab67a98028ab01fa4f731c1a9b20cdb7428a464a11f27612a3b873537613",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansMono-OFL.txt",
+      "noticeSha256": "cee9892f9f0cc8fe882c9e9537ee6a89621d86ee7ceaf70b02e2b2b1c25c061a"
+    },
+    {
+      "path": "NotoSansDevanagari-Regular.otf",
+      "family": "Noto Sans Devanagari",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Devanagari"
+      ],
+      "sample": "क्षि",
+      "sourceRepository": "https://github.com/notofonts/devanagari",
+      "sourceTag": "NotoSansDevanagari-v2.006",
+      "sourceRevision": "bb8d2566a1708ef2dcc6396ee2eb261a18967f76",
+      "sourceArchiveURL": "https://github.com/notofonts/devanagari/releases/download/NotoSansDevanagari-v2.006/NotoSansDevanagari-v2.006.zip",
+      "sourceArchivePath": "NotoSansDevanagari/unhinted/otf/NotoSansDevanagari-Regular.otf",
+      "sourceArchiveSha256": "4c582c103f0a42836338df07148b23a0aa080cce8393ddc4364af87eb22ebd85",
+      "bytes": 147112,
+      "sha256": "4775b7eeee96cb61c42f66d9136d535a0aa728c2009ad0f4cd2bc970149d9ac7",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansDevanagari-OFL.txt",
+      "noticeSha256": "a216f6f8d85c7228093e0ee5e258d9d377e6671f68acb4db1930b29583d0f331"
+    },
+    {
+      "path": "NotoSansBengali-Regular.otf",
+      "family": "Noto Sans Bengali",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Bengali"
+      ],
+      "sample": "ক্কি",
+      "sourceRepository": "https://github.com/notofonts/bengali",
+      "sourceTag": "NotoSansBengali-v3.011",
+      "sourceRevision": "85d80394cbbbb798ca0a41c983902e6cf77be3a3",
+      "sourceArchiveURL": "https://github.com/notofonts/bengali/releases/download/NotoSansBengali-v3.011/NotoSansBengali-v3.011.zip",
+      "sourceArchivePath": "NotoSansBengali/unhinted/otf/NotoSansBengali-Regular.otf",
+      "sourceArchiveSha256": "2aca24bf71665e66c32e14862ee58857dd8b8b07b6321ec7c96f3121ad6683b1",
+      "bytes": 83920,
+      "sha256": "23c9db67164f5a8f3e15371f13f567eb74932fe58e04fb4b185e9e848c49c12c",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansBengali-OFL.txt",
+      "noticeSha256": "754f0e221aa7d5a915489f3bf1f20fe53ddc35ab2834a4d91656d78f9622de70"
+    },
+    {
+      "path": "NotoSansGujarati-Regular.otf",
+      "family": "Noto Sans Gujarati",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Gujarati"
+      ],
+      "sample": "ક્કિ",
+      "sourceRepository": "https://github.com/notofonts/gujarati",
+      "sourceTag": "NotoSansGujarati-v2.106",
+      "sourceRevision": "17e99472719c29aa46534e4690e84443bcc69eab",
+      "sourceArchiveURL": "https://github.com/notofonts/gujarati/releases/download/NotoSansGujarati-v2.106/NotoSansGujarati-v2.106.zip",
+      "sourceArchivePath": "NotoSansGujarati/unhinted/otf/NotoSansGujarati-Regular.otf",
+      "sourceArchiveSha256": "a4ff1dd03a4998ba08ee7ee43be2aca7594a884982049e48c25ccc48991474ed",
+      "bytes": 99716,
+      "sha256": "40c38b3656adaefaba8122c7e1cb1afc9a8b13e332ac0db1f6ffb77008794e79",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansGujarati-OFL.txt",
+      "noticeSha256": "c0b88977aa18b5e4fd05d646d560da89fde61b6581fa4507cb00dd90bd1bf7d4"
+    },
+    {
+      "path": "NotoSansGurmukhi-Regular.otf",
+      "family": "Noto Sans Gurmukhi",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Gurmukhi"
+      ],
+      "sample": "ਕਿ",
+      "sourceRepository": "https://github.com/notofonts/gurmukhi",
+      "sourceTag": "NotoSansGurmukhi-v2.004",
+      "sourceRevision": "231c5c6e9c622c4ef3792ead7a91045af0ee610a",
+      "sourceArchiveURL": "https://github.com/notofonts/gurmukhi/releases/download/NotoSansGurmukhi-v2.004/NotoSansGurmukhi-v2.004.zip",
+      "sourceArchivePath": "NotoSansGurmukhi/unhinted/otf/NotoSansGurmukhi-Regular.otf",
+      "sourceArchiveSha256": "a55ee5ee831ce3a4bb73bdc46bd0a02db6eb9445c370a0afbc529379ed8cea52",
+      "bytes": 27160,
+      "sha256": "768977af8da4b4697c35467e993972c1ed46ba1809876e0a7923415f7238995c",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansGurmukhi-OFL.txt",
+      "noticeSha256": "3f7451b7e2c8381be0c5712f7b0dd5c2d75fe787ae16a99f18b7fa45627a0fde"
+    },
+    {
+      "path": "NotoSansKannada-Regular.otf",
+      "family": "Noto Sans Kannada",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Kannada"
+      ],
+      "sample": "ಕ್ಕಿ",
+      "sourceRepository": "https://github.com/notofonts/kannada",
+      "sourceTag": "NotoSansKannada-v2.006",
+      "sourceRevision": "7eeac8993f890e3d8568ba909ae67f554113ea92",
+      "sourceArchiveURL": "https://github.com/notofonts/kannada/releases/download/NotoSansKannada-v2.006/NotoSansKannada-v2.006.zip",
+      "sourceArchivePath": "NotoSansKannada/unhinted/otf/NotoSansKannada-Regular.otf",
+      "sourceArchiveSha256": "902b1b92018f7c96862d68d0a39ef03b978203cd4c3f55d6760f597657b51c44",
+      "bytes": 99500,
+      "sha256": "5df46a9dbf0957e51f85cf1db585c3885f84bd5612fb5a5e00f0013c5c38c672",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansKannada-OFL.txt",
+      "noticeSha256": "e01ae2ea75d7bc6fccb13c48a2f442b32e4bc4be46810fb52a4a1a095320801a"
+    },
+    {
+      "path": "NotoSansMalayalam-Regular.otf",
+      "family": "Noto Sans Malayalam",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Malayalam"
+      ],
+      "sample": "ക്കി",
+      "sourceRepository": "https://github.com/notofonts/malayalam",
+      "sourceTag": "NotoSansMalayalam-v2.104",
+      "sourceRevision": "0fd65e553a6af3dc1c09ed39dfe8933e01c17b32",
+      "sourceArchiveURL": "https://github.com/notofonts/malayalam/releases/download/NotoSansMalayalam-v2.104/NotoSansMalayalam-v2.104.zip",
+      "sourceArchivePath": "NotoSansMalayalam/unhinted/otf/NotoSansMalayalam-Regular.otf",
+      "sourceArchiveSha256": "2ebd31e79f2893025d659def7784e0ec3557e7ff9ac105adcc82d35782913bf2",
+      "bytes": 53764,
+      "sha256": "baffcff657697bdc0d063745e281e5eaa6add260553556e401fded22d093648c",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansMalayalam-OFL.txt",
+      "noticeSha256": "1df18163a0bf60f02131401ba1609df90051f40c4047684dda1c8a2e9586f7f2"
+    },
+    {
+      "path": "NotoSansOriya-Regular.otf",
+      "family": "Noto Sans Oriya",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Odia"
+      ],
+      "sample": "କ୍କି",
+      "sourceRepository": "https://github.com/notofonts/oriya",
+      "sourceTag": "NotoSansOriya-v2.007",
+      "sourceRevision": "8540c2079d99db2db98a0c82e9daae71d4740c44",
+      "sourceArchiveURL": "https://github.com/notofonts/oriya/releases/download/NotoSansOriya-v2.007/NotoSansOriya-v2.007.zip",
+      "sourceArchivePath": "NotoSansOriya/unhinted/otf/NotoSansOriya-Regular.otf",
+      "sourceArchiveSha256": "025b637e2d391f422ae12f4eb365876ce3b195283025ababb74ecf6baae35442",
+      "bytes": 89704,
+      "sha256": "0dc68ff84aa73d0fd6a17d25b617fe530fbbba50a72ea4607defc91e583da414",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansOriya-OFL.txt",
+      "noticeSha256": "c90ff15ade263a49148e35af34e9c177c6d56881e81260b29f10123e9e227eca"
+    },
+    {
+      "path": "NotoSansTamil-Regular.otf",
+      "family": "Noto Sans Tamil",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Tamil"
+      ],
+      "sample": "க்கி",
+      "sourceRepository": "https://github.com/notofonts/tamil",
+      "sourceTag": "NotoSansTamil-v2.004",
+      "sourceRevision": "f34a08d1ae3fa810581f63410296d971bdcd62dc",
+      "sourceArchiveURL": "https://github.com/notofonts/tamil/releases/download/NotoSansTamil-v2.004/NotoSansTamil-v2.004.zip",
+      "sourceArchivePath": "NotoSansTamil/unhinted/otf/NotoSansTamil-Regular.otf",
+      "sourceArchiveSha256": "f8284e0f200a7f29a439b4ec88280d864b2b31f8479111c5b658ba6da38b3005",
+      "bytes": 33832,
+      "sha256": "27a125025250a574a021c0615bf9a6fc7118871ac51370e5d35d126b2e57b76f",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansTamil-OFL.txt",
+      "noticeSha256": "f8ff8ce7d0a81bf8d5e121c635ef027250c531f2fd37d5988b8dd6e45f19d7f1"
+    },
+    {
+      "path": "NotoSansTelugu-Regular.otf",
+      "family": "Noto Sans Telugu",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Telugu"
+      ],
+      "sample": "క్కి",
+      "sourceRepository": "https://github.com/notofonts/telugu",
+      "sourceTag": "NotoSansTelugu-v2.005",
+      "sourceRevision": "e97c3409a8347d68cccd06a82a68b418c315ee0c",
+      "sourceArchiveURL": "https://github.com/notofonts/telugu/releases/download/NotoSansTelugu-v2.005/NotoSansTelugu-v2.005.zip",
+      "sourceArchivePath": "NotoSansTelugu/unhinted/otf/NotoSansTelugu-Regular.otf",
+      "sourceArchiveSha256": "3553e00ca341dc06f4a143c604dd93a1342553169b5a06dc8b0ff50ab6eba0a2",
+      "bytes": 108200,
+      "sha256": "23896eb41e6e38db3a6fb1726491c03ee5821d887dbbaf1d10f2c78c81789c73",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansTelugu-OFL.txt",
+      "noticeSha256": "481c72a8f1b4f645a7e6b10326be41b2da2c15cb470ff48a07fab773eed00102"
+    },
+    {
+      "path": "NotoSansSC-Regular.otf",
+      "family": "Noto Sans SC",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Simplified Chinese"
+      ],
+      "sample": "汉字中文",
+      "region": "SC",
+      "sourceRepository": "https://github.com/notofonts/noto-cjk",
+      "sourceTag": "Sans2.004",
+      "sourceRevision": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+      "sourceURL": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+      "bytes": 8331336,
+      "sha256": "faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansCJK-LICENSE",
+      "noticeSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    },
+    {
+      "path": "NotoSansTC-Regular.otf",
+      "family": "Noto Sans TC",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Traditional Chinese"
+      ],
+      "sample": "漢字中文",
+      "region": "TC",
+      "sourceRepository": "https://github.com/notofonts/noto-cjk",
+      "sourceTag": "Sans2.004",
+      "sourceRevision": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+      "sourceURL": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/SubsetOTF/TC/NotoSansTC-Regular.otf",
+      "bytes": 5683368,
+      "sha256": "5bab0cb3c1cf89dde07c4a95a4054b195afbcfe784d69d75c340780712237537",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansCJK-LICENSE",
+      "noticeSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    },
+    {
+      "path": "NotoSansKR-Regular.otf",
+      "family": "Noto Sans KR",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Korean"
+      ],
+      "sample": "한국어",
+      "region": "KR",
+      "sourceRepository": "https://github.com/notofonts/noto-cjk",
+      "sourceTag": "Sans2.004",
+      "sourceRevision": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+      "sourceURL": "https://raw.githubusercontent.com/notofonts/noto-cjk/523d033d6cb47f4a80c58a35753646f5c3608a78/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf",
+      "bytes": 4644748,
+      "sha256": "69975a0ac8472717870aefeab0a4d52739308d90856b9955313b2ad5e0148d68",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansCJK-LICENSE",
+      "noticeSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    }
+  ]
+}

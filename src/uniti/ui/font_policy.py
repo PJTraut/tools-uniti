@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from PySide6.QtGui import (
@@ -15,6 +15,8 @@ from PySide6.QtGui import (
     QFontMetrics,
     QGuiApplication,
 )
+
+from uniti.ui.bundled_fonts import register_bundled_fonts, ordered_families
 
 from uniti.app.platform_policy import (
     PlatformFamily,
@@ -162,6 +164,7 @@ def resolve_editor_font(
         and _cached_resolution is not None
     ):
         return _cached_resolution
+    capability = register_bundled_fonts() if use_cache else None
     resolution: FontResolution | None = None
     registration_attempted = False
     while resolution is None:
@@ -231,6 +234,9 @@ def resolve_editor_font(
         )
 
     if use_cache:
+        font = QFont(resolution.font)
+        font.setFamilies(ordered_families(resolution.resolved_family, capability))
+        resolution = replace(resolution, font=font)
         _cached_application = application
         _cached_resolution = resolution
     return resolution

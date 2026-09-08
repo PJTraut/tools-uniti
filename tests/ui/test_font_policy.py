@@ -294,3 +294,37 @@ def test_real_editor_font_is_concrete_fixed_pitch_with_required_coverage(qapp):
     assert resolution.fixed_pitch is True
     assert resolution.latin_coverage is True
     assert resolution.cyrillic_coverage is True
+
+
+def test_bundled_faces_cover_each_declared_sample_without_system_fallback(qapp):
+    import hashlib
+    import json
+    from PySide6.QtGui import QRawFont
+    root = Path('src/uniti/ui/assets/fonts')
+    assert (root / 'manifest.json').is_file()
+    manifest = json.loads((root / 'manifest.json').read_text())
+    assert len(manifest['fonts']) == 13
+    for entry in manifest['fonts']:
+        path = root / entry['path']
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == entry['sha256']
+        assert path.stat().st_size == entry['bytes']
+        assert hashlib.sha256((root / entry['noticePath']).read_bytes()).hexdigest() == entry['noticeSha256']
+        raw = QRawFont(str(path), 18)
+        assert raw.isValid()
+        assert raw.familyName() == entry['family']
+        assert all(raw.supportsCharacter(ord(ch)) for ch in entry['sample']), entry['family']
+
+
+def test_missing_bundle_is_explicit_bounded_capability_failure(qapp, tmp_path):
+    from uniti.ui import font_policy
+    assert hasattr(font_policy, 'register_bundled_fonts')
+    capability = font_policy.register_bundled_fonts(root=tmp_path)
+    assert not capability.complete
+    assert capability.failures == ('manifest.json: unavailable',)
+
+
+def test_real_font_requests_registered_fallbacks(qapp):
+    from uniti.ui.font_policy import resolve_editor_font
+    families = resolve_editor_font().font.families()
+    assert 'Noto Sans Devanagari' in families
+    assert {'Noto Sans SC', 'Noto Sans TC', 'Noto Sans KR'} <= set(families)
