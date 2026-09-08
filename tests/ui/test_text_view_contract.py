@@ -901,3 +901,119 @@ def test_view_focus_publishes_its_stable_identifier(tmp_path: Path):
         view.dispose()
         view.close()
         app.processEvents()
+
+
+@pytest.mark.parametrize("zoom", [50, 100, 200, 300])
+def test_gutter_ink_is_smaller_with_text_baselines_and_six_digit_hit_testing(
+    tmp_path, monkeypatch, zoom,
+):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QFont, QFontMetrics, QPainter
+    from PySide6.QtWidgets import QApplication
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    import uniti.ui.text_view as text_view
+
+    app = QApplication.instance() or QApplication([])
+    path = tmp_path / "six-digit.txt"
+    path.write_bytes(b"123456\n" * 100_020)
+    painted = []
+
+    class ObservedPainter(QPainter):
+        def drawText(self, *args):
+            if len(args) == 3 and isinstance(args[2], str) and args[2].strip().isdigit():
+                painted.append((args, QFont(self.font())))
+            return super().drawText(*args)
+
+    monkeypatch.setattr(text_view, "QPainter", ObservedPainter)
+    with Document.open(path, encoding="utf-8") as document:
+        view = text_view.UNITITextView(EditorState(document))
+        view.set_zoom_percent(zoom)
+        view.resize(640, 140)
+        document.line_count()
+        view._refresh_scrollbars(advance_index=False)
+        view.show()
+        view.verticalScrollBar().setValue(99_999)
+        app.processEvents()
+        painted.clear()
+        view.viewport().repaint()
+        numbers = [(args, font) for args, font in painted if args[0] < view._gutter_width]
+        assert numbers
+        (x, baseline, label), font = numbers[0]
+        assert label.strip() == "100000"
+        assert font.pointSizeF() == pytest.approx(view.font().pointSizeF() * 0.8)
+        assert baseline == view._metrics.ascent()
+        ink = QFontMetrics(font).tightBoundingRect(label.strip())
+        ordinary_ink = QFontMetrics(view.font()).tightBoundingRect(label.strip())
+        assert ink.height() < ordinary_ink.height()
+        assert x >= 4
+        assert x + QFontMetrics(font).horizontalAdvance(label) <= view._gutter_width - 4
+        assert view._gutter_width >= 48
+        assert view._gutter_width == max(48, QFontMetrics(font).horizontalAdvance("100021") + 12)
+        assert [args[1] for args, _ in numbers[:2]] == [baseline, baseline + view._line_height]
+        assert view.verticalScrollBar().singleStep() == 1
+        assert view.horizontalScrollBar().singleStep() == view._cell_width
+        view._select_click_unit(view._gutter_width + view._cell_width * 2, view._line_height // 2, 2)
+        assert view.state.selected_text() == "123456"
+        view.verticalScrollBar().setValue(100_000)
+        assert view._char_for_point(view._gutter_width, view._line_height // 2) == document.line_start(100_000)
+        view.dispose()
+        view.close()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("zoom", [50, 100, 200, 300])
+def test_small_gutter_font_does_not_leak_into_wrapped_text_or_markers(tmp_path, monkeypatch, zoom):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QFont, QPainter
+    from PySide6.QtWidgets import QApplication
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    import uniti.ui.text_view as text_view
+
+    app = QApplication.instance() or QApplication([])
+    path = tmp_path / "gutter-wrap.txt"
+    path.write_bytes(b"abcdef\nghijkl\n")
+    numbers, content_fonts, marker_fonts = [], [], []
+
+    class ObservedPainter(QPainter):
+        def drawText(self, *args):
+            if len(args) == 3 and isinstance(args[2], str) and args[2].strip().isdigit():
+                numbers.append((args, QFont(self.font())))
+            return super().drawText(*args)
+
+    monkeypatch.setattr(text_view, "QPainter", ObservedPainter)
+    with Document.open(path, encoding="utf-8") as document:
+        view = text_view.UNITITextView(EditorState(document))
+        view.set_zoom_percent(zoom)
+        view.resize(view._gutter_width + view._cell_width * 2 + 10, view._line_height * 9)
+        view.set_soft_wrap(True)
+        view.set_whitespace_mode("eol")
+        original_text = view._paint_line_text
+        original_marker = view._paint_whitespace_marker
+
+        def observe_text(painter, *args, **kwargs):
+            content_fonts.append(QFont(painter.font()))
+            return original_text(painter, *args, **kwargs)
+
+        def observe_marker(painter, *args):
+            marker_fonts.append(QFont(painter.font()))
+            return original_marker(painter, *args)
+
+        monkeypatch.setattr(view, "_paint_line_text", observe_text)
+        monkeypatch.setattr(view, "_paint_whitespace_marker", observe_marker)
+        view.show()
+        app.processEvents()
+        numbers.clear()
+        content_fonts.clear()
+        marker_fonts.clear()
+        view.viewport().repaint()
+        assert [args[2].strip() for args, _ in numbers] == ["1", "2", "3"]
+        assert all(font.pointSizeF() == pytest.approx(view.font().pointSizeF() * 0.8) for _, font in numbers)
+        assert len(content_fonts) > len(numbers)
+        assert content_fonts and marker_fonts
+        assert all(font == view.font() for font in content_fonts + marker_fonts)
+        assert numbers[1][0][1] - numbers[0][0][1] >= 3 * view._line_height
+        view.dispose()
+        view.close()
+        app.processEvents()

@@ -113,7 +113,10 @@ class UNITITextView(QAbstractScrollArea):
         self.setFont(self._base_font)
         self._metrics = QFontMetrics(self.font())
         self._line_height = max(1, self._metrics.height())
-        self._gutter_width = max(48, self._metrics.horizontalAdvance("00000000") + 12)
+        self._gutter_font = QFont(self.font())
+        self._gutter_font.setPointSizeF(self.font().pointSizeF() * 0.8)
+        self._gutter_metrics = QFontMetrics(self._gutter_font)
+        self._gutter_width = 48
         self._max_visible_chars = 8192
         self._cell_width = max(1, self._metrics.horizontalAdvance("M"))
         self._max_seen_line_width = 0
@@ -260,10 +263,9 @@ class UNITITextView(QAbstractScrollArea):
     def _rebuild_metrics(self) -> None:
         self._metrics = QFontMetrics(self.font())
         self._line_height = max(1, self._metrics.height())
-        self._gutter_width = max(
-            48,
-            self._metrics.horizontalAdvance("00000000") + 12,
-        )
+        self._gutter_font = QFont(self.font())
+        self._gutter_font.setPointSizeF(self.font().pointSizeF() * 0.8)
+        self._gutter_metrics = QFontMetrics(self._gutter_font)
         self._cell_width = max(1, self._metrics.horizontalAdvance("M"))
         self._max_seen_line_width = 0
         self._wrap_index = None
@@ -426,7 +428,16 @@ class UNITITextView(QAbstractScrollArea):
         self._refresh_scrollbars(advance_index=True)
         self.viewport().update()
 
+    def _update_gutter_width(self) -> None:
+        # Use the indexed range without forcing a scan of a large document.
+        largest = max(1, self.document.document_line_index.indexed_line_count)
+        width = max(48, self._gutter_metrics.horizontalAdvance(str(largest)) + 12)
+        if width != self._gutter_width:
+            self._gutter_width = width
+            self.viewport().update()
+
     def _refresh_scrollbars(self, *, advance_index: bool) -> None:
+        self._update_gutter_width()
         visible = self._visible_line_capacity()
         if self._soft_wrap:
             index = self._wrapped_row_index()
@@ -449,6 +460,7 @@ class UNITITextView(QAbstractScrollArea):
                 index.ensure_char(target)
             except ValueError:
                 pass
+        self._update_gutter_width()
         known_lines = index.indexed_line_count
         if index.complete:
             maximum = max(0, known_lines - visible)
@@ -747,11 +759,14 @@ class UNITITextView(QAbstractScrollArea):
             baseline = y + self._metrics.ascent()
             painter.setPen(tokens.gutter_text)
             if not self._soft_wrap or column_start == 0:
+                label = str(line_number + 1)
+                painter.setFont(self._gutter_font)
                 painter.drawText(
-                    4,
+                    self._gutter_width - 8 - self._gutter_metrics.horizontalAdvance(label),
                     baseline,
-                    f"{line_number + 1:>{max(1, (self._gutter_width - 12) // max(1, self._metrics.horizontalAdvance('0')))}}",
+                    label,
                 )
+                painter.setFont(self.font())
 
             width = self._metrics.horizontalAdvance(text)
             known_columns = column_start + len(text)
