@@ -144,6 +144,12 @@ class SettingsStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
 
+    @property
+    def theme_profiles(self):
+        """The separate atomic authority for profile definitions and selection."""
+        from .theme_profiles import ThemeProfileStore
+        return ThemeProfileStore(self.path.with_name("theme-profiles.json"))
+
     def load(self) -> Settings:
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))

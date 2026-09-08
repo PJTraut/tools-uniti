@@ -271,3 +271,14 @@ def test_future_settings_schema_never_invokes_the_writer(tmp_path: Path, monkeyp
 
     assert writes == []
     assert path.read_text(encoding="utf-8") == original
+
+
+def test_theme_profiles_migrate_using_existing_mode_without_changing_settings(tmp_path):
+    from uniti.app.settings import Settings, SettingsStore
+    store = SettingsStore(tmp_path / 'settings.json')
+    store.save(Settings(theme_mode='Dark', soft_wrap=True))
+    before = store.path.read_bytes()
+    state = store.theme_profiles.load(store.load().theme_mode)
+    assert state.active_id == 'Dark'
+    assert store.theme_profiles.path.parent == store.path.parent
+    assert store.path.read_bytes() == before

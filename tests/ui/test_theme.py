@@ -85,3 +85,30 @@ def test_apply_and_active_theme_retain_both_independent_axes():
     finally:
         app.setPalette(original)
         apply_theme(app, "System")
+
+
+def test_profile_applies_every_palette_editor_and_disabled_role():
+    from dataclasses import replace
+    from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QPalette
+    from uniti.app.theme_profiles import packaged_profiles
+    from uniti.ui.theme import build_profile_theme
+    app = QApplication.instance() or QApplication([])
+    profile = packaged_profiles()[0]
+    colors = dict(profile.colors, **{'editor.text': '#123456', 'disabled.Text': '#456789'})
+    spec = build_profile_theme(app.palette(), replace(profile, colors=colors), 'Standard')
+    assert spec.palette.color(QPalette.ColorRole.Base).name() == '#fbf7ef'
+    assert spec.editor.text.name() == '#123456'
+    assert spec.editor.match.alpha() == 120
+    assert spec.palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text).name() == '#456789'
+
+
+def test_profile_high_contrast_overlay_retains_thresholds():
+    from PySide6.QtWidgets import QApplication
+    from uniti.app.theme_profiles import packaged_profiles
+    from uniti.ui.theme import build_profile_theme, contrast_feedback
+    app = QApplication.instance() or QApplication([])
+    for profile in packaged_profiles():
+        spec = build_profile_theme(app.palette(), profile, 'High Contrast')
+        assert spec.mode == profile.id
+        assert all(ratio >= threshold for _, ratio, threshold in contrast_feedback(spec))

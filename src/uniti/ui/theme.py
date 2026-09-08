@@ -300,11 +300,7 @@ def apply_theme(
     global _active_mode, _active_contrast, _active_spec
     system_palette = _remember_system_palette(app)
     spec = build_theme(system_palette, mode, contrast)
-    app.setPalette(spec.palette)
-    _active_mode = spec.mode
-    _active_contrast = spec.contrast
-    _active_spec = spec
-    return spec
+    return install_theme(app, spec)
 
 
 def active_theme(app: QApplication) -> ThemeSpec:
@@ -323,3 +319,77 @@ __all__ = [
     "apply_theme",
     "build_theme",
 ]
+
+
+def contrast_feedback(spec: ThemeSpec) -> tuple[tuple[str, float, float], ...]:
+    """Ratios for text, selections, controls, and meaningful editor markers."""
+    def ratio(a, b):
+        hi, lo = sorted((_relative_luminance(a), _relative_luminance(b)), reverse=True)
+        return (hi + .05) / (lo + .05)
+    e = spec.editor
+    text_threshold = 7.0 if spec.contrast == 'High Contrast' else 4.5
+    marker_threshold = 4.5 if spec.contrast == 'High Contrast' else 3.0
+    pairs = [('Editor text', e.text, e.base, text_threshold),
+             ('Selected text', e.selected_text, e.selection, 4.5),
+             ('Gutter text', e.gutter_text, e.gutter_base, marker_threshold)]
+    for label, fg, bg in [('Window text', 'WindowText', 'Window'), ('Control text', 'ButtonText', 'Button'),
+                          ('Input text', 'Text', 'Base'), ('Tooltip text', 'ToolTipText', 'ToolTipBase'),
+                          ('Selection text', 'HighlightedText', 'Highlight')]:
+        pairs.append((label, spec.palette.color(getattr(QPalette.ColorRole, fg)),
+                      spec.palette.color(getattr(QPalette.ColorRole, bg)), 4.5))
+    for role in ('space_marker', 'tab_marker', 'eol_marker', 'invisible_marker', 'invisible_border', 'invalid_byte', 'current_match'):
+        pairs.append((role.replace('_', ' ').capitalize(), getattr(e, role), e.base, marker_threshold))
+    return tuple((label, ratio(fg, bg), threshold) for label, fg, bg, threshold in pairs)
+
+
+def profile_from_spec(spec: ThemeSpec, profile_id: str, name: str, base_mode: str):
+    from uniti.app.theme_profiles import ThemeProfile, PALETTE_ROLES, EDITOR_ROLES
+    colors = {'palette.' + r: spec.palette.color(getattr(QPalette.ColorRole, r)).name() for r in PALETTE_ROLES}
+    colors.update({'disabled.' + r: spec.palette.color(QPalette.ColorGroup.Disabled, getattr(QPalette.ColorRole, r)).name()
+                   for r in ('Text', 'WindowText', 'ButtonText')})
+    colors.update({'editor.' + r: getattr(spec.editor, r).name() for r in EDITOR_ROLES})
+    return ThemeProfile(profile_id, name, base_mode, colors)
+
+
+def build_profile_theme(system_palette: QPalette, profile, contrast='Standard', *, overlay=True) -> ThemeSpec:
+    from uniti.app.theme_profiles import PALETTE_ROLES, EDITOR_ROLES
+    palette = QPalette(system_palette)
+    for role in PALETTE_ROLES:
+        palette.setColor(getattr(QPalette.ColorRole, role), QColor(profile.colors['palette.' + role]))
+    for role in ('Text', 'WindowText', 'ButtonText'):
+        palette.setColor(QPalette.ColorGroup.Disabled, getattr(QPalette.ColorRole, role), QColor(profile.colors['disabled.' + role]))
+    tokens = {r: QColor(profile.colors['editor.' + r]) for r in EDITOR_ROLES}
+    tokens['match'].setAlpha(120)
+    spec = ThemeSpec(profile.id, contrast, palette, EditorThemeTokens(**tokens))
+    if contrast == 'High Contrast' and overlay and any(r < t for _, r, t in contrast_feedback(spec)):
+        # Preserve the independently selected profile while supplying the validated
+        # accessibility colors. Cloning in this mode starts from these visible colors.
+        hc = build_theme(system_palette, profile.base_mode, contrast)
+        spec = ThemeSpec(profile.id, contrast, hc.palette, hc.editor)
+    return spec
+
+
+def install_theme(app: QApplication, spec: ThemeSpec) -> ThemeSpec:
+    """Publish tokens before palette-change events and update every open editor."""
+    global _active_mode, _active_contrast, _active_spec
+    _active_mode, _active_contrast, _active_spec = spec.mode, spec.contrast, spec
+    app.setPalette(spec.palette)
+    for window in app.topLevelWidgets():
+        for view in getattr(window, 'views', ()):
+            setter = getattr(view, 'set_theme_tokens', None)
+            if callable(setter):
+                setter(spec.editor)
+    return spec
+
+
+def apply_profile(app: QApplication, profile, contrast='Standard') -> ThemeSpec:
+    return install_theme(app, build_profile_theme(_remember_system_palette(app), profile, contrast))
+
+
+def preview_active(app: QApplication) -> bool:
+    return getattr(app, '_uniti_theme_editor', None) is not None
+
+
+def system_theme_palette(app: QApplication) -> QPalette:
+    """Capture the platform palette before any editor preview begins."""
+    return _remember_system_palette(app)

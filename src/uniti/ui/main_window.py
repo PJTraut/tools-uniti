@@ -94,6 +94,8 @@ from uniti.ui.theme import (
     ThemeSpec,
     active_theme,
     apply_theme,
+    apply_profile,
+    preview_active,
 )
 from uniti.ui.whitespace import WhitespaceMode, parse_whitespace_mode
 from uniti.ui.unicode_inspection import unicode_inspection
@@ -173,13 +175,17 @@ class UNITIMainWindow(QMainWindow):
             if self._settings_store is not None
             else Settings()
         )
+        from uniti.app.theme_profiles import ThemeProfileState
+        self._theme_store = self._settings_store.theme_profiles if self._settings_store is not None else None
+        self._theme_state = (self._theme_store.load(self._settings.theme_mode)
+                             if self._theme_store is not None else ThemeProfileState(active_id=self._settings.theme_mode))
         app = QApplication.instance()
-        if isinstance(app, QApplication):
-            apply_theme(
-                app,
-                self._settings.theme_mode,
-                self._settings.theme_contrast,
-            )
+        if isinstance(app, QApplication) and not preview_active(app):
+            profile = self._theme_state.resolve()
+            if profile is not None:
+                apply_profile(app, profile, self._settings.theme_contrast)
+            else:
+                apply_theme(app, self._theme_state.active_id, self._settings.theme_contrast)
         shortcut_policy = build_shortcut_policy(
             self._settings.shortcut_overrides
         )
@@ -436,24 +442,74 @@ class UNITIMainWindow(QMainWindow):
             except OSError:
                 pass
 
+    def commit_theme_state(self, state) -> object:
+        """Persist first; callers see errors and keep their draft on failure."""
+        result = None
+        if self._theme_store is not None:
+            result = self._theme_store.save(state.profiles, state.active_id)
+            if not result.replaced or not result.file_synced:
+                raise OSError("Theme write did not reach durable publication")
+        app = QApplication.instance()
+        for window in app.topLevelWidgets() if isinstance(app, QApplication) else self._appearance_windows():
+            if isinstance(window, UNITIMainWindow):
+                window._theme_state = state
+                window._refresh_theme_menu()
+        if isinstance(app, QApplication):
+            profile = state.resolve()
+            if profile is not None:
+                apply_profile(app, profile, self._settings.theme_contrast)
+            else:
+                apply_theme(app, state.active_id, self._settings.theme_contrast)
+        return result
+
     def set_theme(self, mode: str) -> None:
-        if mode not in THEME_MODES:
+        from uniti.app.theme_profiles import BUILTIN_IDS, ThemeProfileState
+        if mode not in (*BUILTIN_IDS, *(p.id for p in self._theme_state.profiles)):
             return
         app = QApplication.instance()
-        spec = None
-        if isinstance(app, QApplication):
-            spec = apply_theme(app, mode, self._settings.theme_contrast)
-        for window in self._appearance_windows():
-            action = getattr(window, "_theme_actions", {}).get(mode)
-            if action is not None:
-                action.setChecked(True)
-            window._settings = dataclass_replace(
-                window._settings,
-                theme_mode=mode,
-            )
-        if spec is not None:
-            self._propagate_theme_tokens(spec)
-        self._save_settings()
+        editor = getattr(app, '_uniti_theme_editor', None)
+        if editor is not None:
+            editor.reject()
+        try:
+            self.commit_theme_state(ThemeProfileState(self._theme_state.profiles, mode))
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Theme could not be saved", str(exc))
+            self._refresh_theme_menu()
+            return
+        if mode in THEME_MODES:
+            for window in self._appearance_windows():
+                window._settings = dataclass_replace(window._settings, theme_mode=mode)
+            self._save_settings()
+
+    def show_theme_editor(self) -> None:
+        from uniti.ui.theme_editor import ThemeEditor
+        app = QApplication.instance()
+        editor = getattr(app, '_uniti_theme_editor', None)
+        if editor is None:
+            editor = ThemeEditor(self)
+        editor.show()
+        editor.raise_()
+        editor.activateWindow()
+
+    def _refresh_theme_menu(self) -> None:
+        from uniti.app.theme_profiles import BUILTIN_IDS
+        if not hasattr(self, '_theme_menu'):
+            return
+        for action in self._theme_actions.values():
+            self._theme_menu.removeAction(action)
+            self._theme_group.removeAction(action)
+            action.deleteLater()
+        self._theme_actions.clear()
+        entries = [(name, name) for name in BUILTIN_IDS]
+        entries.extend((p.id, p.name) for p in self._theme_state.profiles)
+        for profile_id, name in entries:
+            action = QAction(name, self)
+            action.setCheckable(True)
+            action.setChecked(profile_id == self._theme_state.active_id)
+            action.triggered.connect(lambda _checked=False, mode=profile_id: self.set_theme(mode))
+            self._theme_group.addAction(action)
+            self._theme_menu.insertAction(self._theme_separator, action)
+            self._theme_actions[profile_id] = action
 
     def set_theme_contrast(self, contrast: str) -> None:
         if contrast not in THEME_CONTRASTS:
@@ -461,7 +517,12 @@ class UNITIMainWindow(QMainWindow):
         app = QApplication.instance()
         spec = None
         if isinstance(app, QApplication):
-            spec = apply_theme(app, self._settings.theme_mode, contrast)
+            editor = getattr(app, '_uniti_theme_editor', None)
+            if editor is not None:
+                editor.reject()
+            profile = self._theme_state.resolve()
+            spec = (apply_profile(app, profile, contrast) if profile is not None
+                    else apply_theme(app, self._theme_state.active_id, contrast))
         for window in self._appearance_windows():
             action = getattr(window, "_high_contrast_action", None)
             if action is not None:
@@ -763,18 +824,11 @@ class UNITIMainWindow(QMainWindow):
         theme_group = QActionGroup(self)
         theme_group.setExclusive(True)
         self._theme_actions: dict[str, QAction] = {}
-        for mode in THEME_MODES:
-            action = QAction(mode, self)
-            action.setCheckable(True)
-            action.setChecked(mode == self._settings.theme_mode)
-            action.triggered.connect(
-                lambda _checked=False, mode=mode: self.set_theme(mode)
-            )
-            theme_group.addAction(action)
-            theme_menu.addAction(action)
-            self._theme_actions[mode] = action
         self._theme_group = theme_group
-        theme_menu.addSeparator()
+        self._theme_menu = theme_menu
+        self._theme_separator = theme_menu.addSeparator()
+        self._refresh_theme_menu()
+        theme_menu.addAction("Edit Themes…", self.show_theme_editor)
         self._high_contrast_action = QAction("High Contrast", self)
         self._high_contrast_action.setCheckable(True)
         self._high_contrast_action.setChecked(
@@ -2954,6 +3008,9 @@ class UNITIMainWindow(QMainWindow):
         panel.release_from(self)
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        editor = getattr(QApplication.instance(), '_uniti_theme_editor', None)
+        if editor is not None and editor.owner is self:
+            editor.reject()
         if self._service is not None:
             force = bool(getattr(self, "_service_close_requested", False))
             if force:
