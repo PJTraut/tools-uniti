@@ -1,13 +1,13 @@
 # UNITI Current Scope
 
-Date: 2026-09-05
-Version: `v0.001a21` / `0.1a21`
+Date: 2026-09-08
+Version: `v0.001a22` / `0.1a22`
 
 ## Product boundary
 
 UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
 
-The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, and a21 Cross-Platform Alpha are implemented and verified. A21 passed the required same-commit hosted macOS, Windows, Linux/Python 3.12, and Linux/latest-Python matrix at `8b24f4b`; A22 Dogfood / Performance Alpha is active.
+The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, and a21 Cross-Platform Alpha are implemented and verified. A22 Dogfood / Performance Alpha is active. Reviewed feedback work through `aab3f3c` is integrated without promoting the A22 identity or satisfying later release gates.
 
 ## Included lifecycle capabilities
 
@@ -16,7 +16,7 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 - ownership marker, deterministic environment identity, partial-state retention, source adoption, local-target refusal, exclusive locks, and explicit repair;
 - canonical `pyproject.toml` dependency selection, managed-Python pip invocation, import/metadata validation, `pip check`, and fingerprints;
 - pre-Qt application CLI, version output, fast/deep self-check including `regex-intelligence`, `text-integrity`, and `large-file`, combined `--smoke`, human/JSON reporting, and lifecycle exit codes;
-- ordered BOOT→READY startup coordination with per-phase atomic state and bounded JSONL logs;
+- ordered BOOT→READY startup coordination with per-phase atomic state, bounded JSONL logs, flushed first-use setup progress, quiet healthy launches, and warning-free durability cleanup;
 - schema-1 setup and schema-3 settings persistence, legacy settings migration, malformed-file preservation, and future-schema refusal;
 - platform application paths, runtime/filesystem/resource/Qt capability reporting, narrow stale cleanup, durable generation sessions, and recovery journals;
 - explicit macOS/Windows/Linux classification, absolute native application roots, case-correct path identity, and capability-driven `full` / `file_synced` / `unsafe` publication without direct-overwrite fallback;
@@ -31,23 +31,23 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 - mmap-preferred immutable byte sources with bounded fallback reads;
 - exact UTF-8, Windows-1252, UTF-16 LE/BE, and UTF-32 LE/BE profiles, with BOM/no-BOM as part of the profile;
 - bounded confidence/evidence inspection, serious exact-profile confirmation, explicit reinterpretation versus convert-on-save, and annotated malformed-byte preservation;
-- separate CR, LF, CRLF, mixed-EOL analysis/reporting, source-aware insertion, modeless mixed-EOL choices, and explicit output conversion;
+- separate CR, LF, CRLF, mixed-EOL analysis/reporting, source-aware insertion, modeless mixed-EOL choices, explicit output conversion, truthful current/on-save wording, and post-save refresh across all shared views;
 - compact progressive byte/character and line indexes with bounded detail caches and no whole-file opening decode;
 - hybrid source/edit piece table, selections, atomic transactions, and a document Undo/Redo history persisted to the first of 50 transactions or 32 MiB decoded;
 - coalesced typing/backspace/delete plus Unicode-aware word, page, document, line, and Shift-extended navigation;
 - Cut, Copy, Paste, Select All, Go to Line, and protected Reload/Revert;
 - word, visual-line, and logical-line-through-break selection by double, triple, and quadruple click;
-- fixed-pitch Western/Latin and Cyrillic rendering, independent editor zoom, primary-modifier wheel zoom, bounded giant-line windows, and progressive display-only soft wrap with sparse checkpoints and bounded row blocks;
+- fixed-pitch Western/Latin and Cyrillic rendering, independent editor zoom, primary-modifier wheel zoom, 80% line-number typography on the document baseline, bounded giant-line windows, and progressive display-only soft wrap with sparse checkpoints and bounded row blocks;
 - staged, flushed, verified, and atomic Save/Save As with exact BOM/byte-order/EOL/logical-text checks, external-file identity, and supported metadata protection;
 - application-owned Save As filename/encoding/EOL selection, exact encoding-change warnings, normal/double overwrite confirmation, dirty-open-target blocking, copy/export source-state preservation, and duplicate-tab avoidance;
 - semantic recovery-journal v3 transactions, Undo/Redo, save points, metadata, checkpoints, prefix-safe discovery, v1/v2 compatibility, and validated replay without changing the original file;
 - authoritative `regex==2026.5.9`, immutable pattern/replacement analysis, engine-reconciled group identities, inline-switch and reference highlighting, structured diagnostics, and a 65,536-code-point interactive expression bound;
 - snapshot-based cancellable search, compact spillable revision-bound match storage, deterministic zero-width navigation/rendering/replacement, spillable replacement plans, safe apply admission, and one-transaction replacement;
-- one service-owned Find/Replace surface that is either a full-width bottom dock following the active window or one modeless topmost detached tool, with Regex/Case/Whole-word checkboxes, per-field clear controls, persisted field state and Undo/Redo, 150 ms off-thread latest-generation analysis, equal-height inputs above one compact Lucide icon action row with tooltips and accessible names, cursor-relative Previous/Next that do not require Find All, clear visible-only result highlighting, a toggleable right-docked Match Report, bounded asynchronous current/next capture-only reports, and independent zoom/geometry/report state;
+- one service-owned Find/Replace surface that is either a full-width bottom dock following the active window or one modeless topmost detached tool, with Regex/Case/Whole-word checkboxes, complete Lucide field/action controls, persisted field state and Undo/Redo, 150 ms off-thread latest-generation analysis, cursor-relative Previous/Next that do not require Find All, clear visible-only result highlighting, and a toggleable right-docked Match Report with bounded asynchronous current/next capture reports and aligned `\\N :` label/content columns;
 - one-step undoable Replace All with no disk-rewrite history bypass;
 - held Unicode inspection through a bounded visible-marker key and single-selected-code-point readout, with a persisted modifier combination in Hotkeys → Editor View;
 - a scoped shared command registry and persisted Hotkeys popup for window, editor, and Find/Replace commands;
-- a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with independently persisted application-wide System/Light/Dark and Standard/High Contrast theme axes, native shortcut display, and no duplicate pre-Cot top-level command groupings;
+- a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with application-wide System/Light/Dark/Paper/Slate and custom theme profiles, editable complete color roles, independent Standard/High Contrast, native shortcut display, and no duplicate pre-Cot top-level command groupings;
 - PySide6 multi-window shells, binary horizontal/vertical split panes, per-pane assign/split/dock controls, reversible view transfers with persisted return anchors, detachable tabs, independent synchronized views of one authoritative document, custom virtual viewport, clipboard, IME, menus, compact status, inspections, diagnostics, and one Recovery Center;
 - display-only Off, EOL, Spaces & Tabs, Invisible Unicode, and All whitespace modes with distinct special-space/zero-width symbols and LF `␊`, CR `␍`, CRLF `␍␊` markers, bounded terminator reads, and at most 4,096 marker operations per frame including visible overflow aggregation;
 - progressive Open, background full EOL analysis, cancellable far navigation, Find All, Replace All planning, and verified Save/Save As without GUI-thread long work;
@@ -104,10 +104,10 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 
 ## Approved future scope
 
-`v0.001a21` is implemented and retained in the historical records. `v0.001a22` is active; `v0.001a23` Executable Health & Recovery Alpha, `v0.001a24` Beta Candidate, and `v0.001b1` Real-World Feedback Beta remain queued. Their unimplemented portions are approved future changes, not current behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a21` is implemented and retained in the historical records. `v0.001a22` is active; `v0.001a23` Executable Health & Recovery Alpha, `v0.001a24` Beta Candidate, `v0.001b1` Real-World Feedback Beta, and proposed `v0.001b2` remain gated successors. BF-006 bundled Noto fallback and broader left-to-right layout work is in progress and is not current supported behavior. See the [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 
-Expanded keyboard-driven Unicode inspection, Host-Python installation, signed polished installers, notarization, updater, network repair, accounts, cloud telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, CJK typography specialization, and elaborate preferences remain outside the approved roadmap. Embedded native application bundles and local executable health/repair are approved future A23 scope but are not implemented behavior.
+Multi-code-point grapheme inspection, right-to-left/mixed-direction editing, Host-Python installation, signed polished installers, notarization, updater, network repair, accounts, cloud telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, and full programming-language syntax highlighting remain outside the approved roadmap. Embedded native application bundles and local executable health/repair are approved future A23 scope but are not implemented behavior.
 
 See the [Parked Capability Catalog](../04_parked/CATALOG.md) for rationale and re-evaluation triggers.

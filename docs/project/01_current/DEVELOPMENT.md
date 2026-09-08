@@ -1,7 +1,7 @@
 # UNITI Current Development Workflow
 
-Date: 2026-09-05
-Version: `v0.001a21` / `0.1a21`
+Date: 2026-09-08
+Version: `v0.001a22` / `0.1a22`
 
 ## Requirements and policy
 
@@ -21,6 +21,8 @@ python3.12 scripts/bootstrap.py --dev
 ```
 
 This creates or safely adopts exactly `.venv`, installs `.[ui,dev]` through `.venv/bin/python -m pip`, validates imports and `pip check`, writes ownership/setup state, and launches UNITI. Explicit alternatives:
+
+Initial setup emits flushed first-use progress before environment creation/adoption or dependency installation. A healthy validated launch remains quiet. Treat the progress stream as stderr diagnostics; machine-readable JSON remains on stdout.
 
 ```bash
 python3.12 scripts/bootstrap.py --no-launch --dev
@@ -211,6 +213,7 @@ The completed A21 gate reports 1,257 passed and six exact policy-allowed macOS s
 - Runtime ownership: `<managed-environment>/.uniti-runtime.json`
 - Setup/startup state: `AppPaths.setup_state_file`
 - Settings: `AppPaths.settings_file`
+- Custom theme definitions and active profile: bounded atomic `theme-profiles.json` beside settings
 - Startup log: `AppPaths.startup_log_file`, rotated at 5 MiB with ten rotations
 - Cache process-session records: `AppPaths.session_dir/<session-id>/session.json`
 - Durable generation sessions/history packs: `AppPaths.durable_session_dir`

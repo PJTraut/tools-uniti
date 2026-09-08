@@ -2,7 +2,7 @@
 
 **Unicode Intelligent Text Interchange** — a focused cross-platform power text editor built around text correctness, explicit encoding/EOL state, large-file editing, and Python `regex`.
 
-UNITI is a private alpha. The implemented `v0.001a21` / `0.1a21` source passed the required macOS, Windows, and Linux hosted matrix; A22 Dogfood / Performance Alpha is active. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
+UNITI is a private alpha. The source and package identity remains `v0.001a22` / `0.1a22`; A22 Dogfood / Performance Alpha is active. Reviewed BF-001–BF-005 and BF-007–BF-010 work is integrated on `main`, while multilingual Noto/layout work and the existing release gates remain open. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
 
 ## Project documentation
 
@@ -32,18 +32,19 @@ The current development alpha includes:
 - third-party `regex` search with engine-reconciled group identities, inline-switch and replacement-reference highlighting, structured diagnostics, and deterministic zero-width results;
 - integrated application ResourceManager with cache pressure, active/inactive document priorities, and shared background scheduling;
 - custom PySide6 `QAbstractScrollArea` editor viewport — Qt never owns the document;
-- tabs, native menus, persisted System/Light/Dark application themes, Cut/Copy/Paste, IME composition support, and operational status bar;
-- one service-owned topmost asynchronous regex-aware Find/Replace panel with persisted field state and Undo/Redo, per-field clear controls, theme-aware Lucide action icons, cursor-relative Previous/Next independent of Find All, a right-docked Match Report, visible-only normal/zero-width overlays, and bounded model-backed current/next capture reports;
+- tabs, native menus, persisted System/Light/Dark plus named Paper/Slate application themes, editable custom theme profiles, Cut/Copy/Paste, IME composition support, and an operational status bar;
+- one service-owned topmost asynchronous regex-aware Find/Replace panel with persisted field state and Undo/Redo, complete theme-aware Lucide controls, cursor-relative Previous/Next independent of Find All, and a right-docked Match Report whose `\\N :` capture labels share an aligned content column;
 - compact whitespace markers with distinct special-space and zero-width symbols, plus held Unicode inspection (`Ctrl+Alt` on Windows/Linux, `Cmd+Option` on macOS), configurable through **Hotkeys → Editor View**;
 - separate **Reinterpret As** and **Convert on Save** controls;
-- source-aware inserted-EOL policy, EOL controls, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics.
+- source-aware inserted-EOL policy, explicit current-versus-on-save status, all-shared-view EOL refresh after save, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics;
+- line numbers at 80% of the document point size with the document baseline and progressive width correction; and
 - explicit Python 3.12+ bootstrap into a UNITI-owned source or application-local virtual environment;
 - ownership markers, exclusive bootstrap locks, dependency fingerprints, explicit repair, and validation-only normal startup;
 - atomic schema-1 setup/settings state, ordered BOOT→READY startup phases, bounded lifecycle logs, and narrow stale-artifact cleanup; and
 - explicit macOS, Windows, and Linux path/identity policy; capability-driven `full` / `file_synced` / `unsafe` publication results; pointer repair from complete session generations; native shortcut and fixed-font resolution; and
 - fast/deep self-checks for runtime, dependencies, paths, schemas, resources, filesystem primitives, regex intelligence, text fidelity, recovery/session continuity, large-file behavior, offscreen Qt, and bounded cross-platform evidence.
 
-Explicitly deferred beyond this alpha: multi-code-point grapheme inspection, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
+Still unqualified in the current alpha: the planned bundled Noto fallback and broader left-to-right layout work, native Chinese/Korean IME coverage, and affected-host confirmation of the critical shutdown correction. Explicitly deferred: multi-code-point grapheme inspection, right-to-left/mixed-direction editing, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
 
 ## Requirements
 
@@ -79,7 +80,7 @@ From PowerShell:
 .\uniti.bat "$HOME\Documents\example.txt"
 ```
 
-The first launch creates `.venv` and installs the UI dependencies. Pass `--dev` when the managed environment should also include development dependencies.
+The first launch prints `// prepping UNITI for first use` before creating or adopting `.venv` and installing the UI dependencies, then reports the real setup stages as they begin. Healthy launches stay quiet. Pass `--dev` when the managed environment should also include development dependencies.
 
 Bootstrap never installs into the host Python. Source mode owns exactly `<checkout>/.venv`; explicit application-local mode uses the OS application-data runtime:
 

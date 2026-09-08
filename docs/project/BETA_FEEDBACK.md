@@ -10,18 +10,18 @@ Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02
 
 | Feedback | Planned task | Current evidence state | Remaining gate |
 |---|---:|---|---|
-| BF-001 | 2 | Progress and warning corrections implemented, reviewed, and on GitHub `main`; checkpoint `c7c1521` hosted green | Affected Windows first-use confirmation; latest-candidate hosted qualification pending |
-| BF-002 | 3 | Corrections and platform-fixture follow-ups on GitHub `main`; macOS source checks passed | Affected Windows/Mac distribution and confirmation remain open |
-| BF-003 | 4 | Compact inspection and centered U+0020 marker implemented, reviewed, and on GitHub `main` | Native Windows and affected-host beta confirmation |
-| BF-004 | 4 | Configuration implemented locally | Cross-window/restart and Windows/affected-host evidence |
-| BF-005 | 7 | `NOT RUN` | Editable themes, presets, persistence, contrast qualification |
-| BF-006 | 8 | `NOT RUN` | Selected Noto packaging, shaping, navigation, and IME qualification |
-| BF-007 | 6 | Initial Lucide controls implemented locally | F>/R>, clear/navigation reconciliation and native evidence |
-| BF-008 | 6 | Capture-group interpretation approved; implementation `NOT RUN` | Preserve `Match N of M`; implement and verify aligned group rows |
-| BF-009 | 5 | 80% gutter typography and progressive wrapped-row width implemented, reviewed, and on GitHub `main` | Manual affected-host visual confirmation |
-| BF-010 | 5 | Pending/current EOL wording and shared post-save refresh implemented, reviewed, and on GitHub `main` | Manual affected-host confirmation |
+| BF-001 | 2 | Flushed first-use progress and durability-warning correction reviewed and integrated on `main` | Affected Windows first-use confirmation |
+| BF-002 | 3 | Startup, Quit, retained-window, and recovery-scheduling corrections integrated on `main` | Distribute and confirm explicit Quit/relaunch on the affected Windows and Mac hosts |
+| BF-003 | 4 | Compact inspection and centered U+0020 marker reviewed and integrated on `main` | Native Windows and affected-host confirmation |
+| BF-004 | 4 | Hotkey access, persistence, reset/disable, and existing/new-window propagation integrated on `main` | Native Windows/AltGr and affected-host confirmation |
+| BF-005 | 7 | Paper/Slate profiles and custom theme editor/storage reviewed and integrated on `main` | Native theme/color-dialog qualification; latest native Cocoa follow-up still open |
+| BF-006 | 8 | Implementation in progress; no supported-script claim yet | Bundled Noto assets, layout/navigation, packaging, performance, and native IME qualification |
+| BF-007 | 6 | Full Find/Replace Lucide control set reviewed and integrated on `main` | Native affected-host visual confirmation |
+| BF-008 | 6 | `\\N :` capture rows with aligned content, preserving `Match N of M`, reviewed and integrated on `main` | Native affected-host visual/accessibility confirmation |
+| BF-009 | 5 | 80% gutter typography and progressive wrapped-row width reviewed and integrated on `main` | Manual affected-host visual confirmation |
+| BF-010 | 5 | Current/on-save EOL wording and all-view post-save refresh reviewed and integrated on `main` | Manual affected-host confirmation |
 
-Fresh baseline evidence on checkpoint `5724f6c` is 1,476 passed with six platform-policy skips in 93.01 seconds; native Cocoa combined smoke passed explicit Quit and session restore. Hosted run `34250570707` succeeded in all four lanes on checkpoint `c7c1521`, including native, offscreen, and sustained checks. The current reviewed integration checkpoint `e2dbbae` is synchronized between local `main` and GitHub `origin/main`; it contains the BF-001 and BF-003 work, the Windows qualification-fixture corrections, the BF-009/BF-010 implementation, and this log's preceding evidence update. Hosted validation of `e2dbbae` is still pending, so the current candidate is not recorded as same-candidate green. These checks do not replace any remaining feedback gate, affected-host confirmation, or predecessor milestone evidence.
+Historical starting-checkpoint evidence on `5724f6c` is 1,476 passed with six platform-policy skips in 93.01 seconds; native Cocoa combined smoke passed explicit Quit and session restore. Current reviewed integration checkpoint `aab3f3c` is synchronized between local `main` and GitHub `origin/main`; hosted run `34253008439` passed all four macOS, Windows, Linux/Python 3.12, and Linux/latest lanes, including full suite, native/offscreen smoke, deep self-check, and sustained checks. A native Cocoa theme follow-up exposed a System-preview link-color leak; reviewed correction `e045b0f` passed 21 native theme, five native window, and 30 offscreen tests but is not yet in the recorded `main` checkpoint. These checks do not replace BF-006, affected-host confirmation, or predecessor milestone evidence.
 
 Use sequential `BF-NNN` identifiers. Record the report date, environment, observation, impact, evidence limits, and later disposition. Keep personal information, machine identifiers, user paths, and raw reports out of this log. Link any subsequently approved work and verification to its entry.
 
@@ -37,7 +37,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Warning correction: the durability cleanup no longer returns from `finally`. Expected open/fsync failures and close failures retain their established result behavior, while an unexpected fsync exception still propagates if close also fails.
 - Verification: the focused bootstrap, durability, and launcher gate passed 68 tests with four Windows-only skips. The full source suite passed 1,488 tests with six platform-policy skips; deep self-check passed all 21 checks; native Cocoa combined smoke passed. The durability source compiled with `SyntaxWarning` promoted to an error on the owned Python 3.12 runtime and Python 3.14. Independent review found no remaining blocking issue.
 - Evidence limits: single-machine timing observations were 14.06 seconds for a disposable fresh source bootstrap and 1.32 seconds for a healthy managed JSON self-check launch. These are local macOS observations, not performance thresholds or affected-Windows confirmation. The warning was corrected separately from the unmeasured cause of the user's delay.
-- Disposition: requested progress and warning behavior implemented at `63dab08` and included in synchronized checkpoint `e2dbbae`. Hosted run `34250570707` succeeded on the earlier `c7c1521` checkpoint; keep the affected Windows first-use flow open until confirmed, and do not treat that run as same-candidate qualification of `e2dbbae`.
+- Disposition: requested progress and warning behavior implemented at `63dab08` and included in hosted-green synchronized checkpoint `aab3f3c`. Keep the affected Windows first-use flow open until confirmed.
 
 ## BF-002 — Windows and macOS terminals remain occupied after exit
 
@@ -62,7 +62,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Additional finding during BF-007 verification: window-close smoke stalled when a recovery successor occupied the only admitted worker slot while waiting for its predecessor. The predecessor was waiting for admission on another worker. An isolated baseline reproducer confirmed that this scheduling race predates the Lucide changes.
 - Additional correction verified locally before integration: serial recovery work is submitted only after its predecessor completes, preserving operation order without consuming a worker slot while waiting. The returned future retains running/cancellation/result behavior. Regressions verify worker availability with successful, failed, and cancelled predecessors; independent review also checked a long operation chain and cancellation before execution.
 - Latest validation with BF-007: 1,453 tests passed with six platform-specific skips; native macOS combined smoke completed window-close, explicit Quit, and session restore. This does not replace verification on the affected Windows and Mac hosts.
-- Integration update, 2026-09-08: hosted run `34250570707` succeeded in all four lanes on `c7c1521`, including native, offscreen, and sustained checks. Local `main` and GitHub `origin/main` now both point to `e2dbbae`, which contains these lifecycle corrections and later qualification and feedback work. Hosted validation of `e2dbbae` remains pending; neither the earlier green run nor repository synchronization is affected-host confirmation.
+- Integration update, 2026-09-08: local `main` and GitHub `origin/main` point to `aab3f3c`. Hosted run `34253008439` succeeded in all four lanes on that checkpoint, including full suite, native/offscreen smoke, deep self-check, and sustained checks. Repository synchronization and hosted automation are not affected-host confirmation.
 - Remaining uncertainty: the Windows commit and underlying exception were not supplied. Paused background work reproduces a Quit hang locally, but has not been confirmed as the trigger on the affected hosts.
 - Next action: distribute the zero-window startup, Quit, and retained-window corrections and verify the user's actual flows on Windows and macOS. Do not clear the blocker solely on local checks.
 - Resolution gate: explicit Quit returns control to the terminal and releases the service; relaunch after terminal closure succeeds with preserved session/recovery state. Verify the reported flows on both Windows and macOS before clearing the testing blocker.
@@ -89,7 +89,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 ## BF-004 — Configure the Unicode inspection combination in Hotkeys
 
 - Reported: 2026-09-07; implementation approved 2026-09-08.
-- Status: implemented locally; native Windows and affected-host beta confirmation pending.
+- Status: implemented, reviewed, and integrated on `main`; native Windows/AltGr and affected-host confirmation pending.
 - Menu access: the top-level **Hotkeys** entry opens the existing modeless command configuration panel. **Editor View → Hold to inspect Unicode** now exposes the shared inspection combination.
 - Configuration: native platform modifier labels, Apply Hold Shortcut, Reset Hold Shortcut, and current/default display. Choose at least two distinct modifiers, or clear all to disable. Category/all resets also restore this setting.
 - Persistence: the portable combination is saved in settings and applied to existing and newly opened editor views. Invalid stored values fall back to the default. Inspection uses a modifier-only hold gesture and does not consume ordinary command events.
@@ -99,19 +99,20 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 ## BF-005 — Theme editing and more packaged themes
 
 - Reported: 2026-09-07.
-- Status: recorded for later planning and action; implementation pending.
+- Status: implemented, independently reviewed, and integrated on `main`; native qualification remains open.
 - Environment: UNITI desktop on Windows PC and macOS.
 - Request: allow users to edit themes and provide more ready-to-use packaged themes.
-- Existing capability: System, Light, and Dark appearance modes, with separate Standard and High Contrast options. These settings do not currently expose a theme editor or a broader collection of named presets.
-- Planning scope: define editable colors and other appearance properties, choose the initial packaged theme collection, and determine how users preview, save, select, and reset custom themes. Exact presets and editing controls have not yet been specified.
+- Implementation: named Paper and Slate profiles join System/Light/Dark. **View → Theme → Edit Themes** can clone a profile, rename and edit every supported UI/editor color, preview across service windows and Find/Replace, then Apply, Cancel, Reset, or delete custom profiles. Packaged profiles are read-only and Standard/High Contrast remains an independent axis.
+- Storage: one bounded schema-1 `theme-profiles.json` beside settings atomically stores custom profiles and the active selection. Invalid or damaged data falls back without rewriting the damaged file; profile limits are 32 custom profiles, 64-character names/ids, and 128 KiB total.
+- Verification: 154 focused settings/theme/window/Find/Replace/icon tests passed; an installed-wheel, Qt-free check loaded Paper and Slate with all 32 roles; offscreen Paper/Slate visuals were reviewed. Hosted run `34253008439` passed all four lanes on `aab3f3c`. A separate native Cocoa check exposed a System-preview link-color leak; reviewed correction `e045b0f` passed 21 native theme, five native window, and 30 offscreen tests but awaits integration. Broader native rendering and color-dialog qualification remains open.
 - Related feedback: include whitespace markers and temporary Unicode detail from BF-003 when assessing readability across themes.
 - Companion icon choice: the user approved [Lucide](https://lucide.dev/) SVG assets for interface actions and chose Find/Replace as the starting point; implementation tracked in BF-007. Treat interface icons separately from Unicode glyphs representing document characters.
-- Disposition: retained for later triage; no theme implementation changes made.
+- Disposition: implemented at `aab3f3c`; keep native qualification open and do not treat integration as B2 promotion.
 
 ## BF-006 — Broader left-to-right font support: Indian scripts, Chinese, and Korean
 
 - Reported: 2026-09-07.
-- Status: recorded for later planning and action; implementation pending.
+- Status: implementation in progress; no font/layout support claim is complete.
 - Environment: UNITI desktop on Windows PC and macOS.
 - Request: expand font support beyond Latin and Cyrillic to more left-to-right scripts, particularly those used in India. The user subsequently added Chinese and Korean.
 - Scope constraint: left-to-right support only for this phase. The user explicitly deferred right-to-left support; RTL and mixed-direction editing are outside this planned expansion for now.
@@ -122,28 +123,28 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Validation scope: verify shaping and combining marks as well as glyph availability; test mixed-script text, cursor movement, selection, deletion, wrapping, and line metrics on Windows and macOS. Check that the current fixed-pitch assumptions accommodate the selected scripts.
 - Input validation: include Chinese and Korean IME composition, candidate selection, commit, and cancellation, checking that composition and committed text display correctly without disturbing document contents or cursor positions.
 - Related feedback: single-character Unicode inspection in BF-003 must account for displayed characters composed of multiple code points when its behavior is defined.
-- Disposition: retained for later triage; no font or text-layout implementation changes made.
+- Disposition: Task 8 is adding the selected bundled Noto assets and auditing text layout. Do not mark any named script, shaping/navigation behavior, package, performance, or native IME flow supported until its final evidence is recorded.
 
 ## BF-007 — Lucide UI icons, starting with Find/Replace
 
 - Reported: 2026-09-07.
-- Status: implemented and verified locally; wider UI rollout remains future work.
+- Status: complete Find/Replace control pass implemented, independently reviewed, and integrated on `main`; native affected-host confirmation remains open.
 - Request: implement Lucide for the UI. The user chose the Find/Replace panel as a good starting point.
-- Follow-up reported 2026-09-08: consider SVG replacements for the F/R panel's `F>` and `R>` indicators, circled `(x)` clear controls, and `[<]` / `[>]` Previous/Next controls. Retain this as beta feedback for later review, using the agreed Lucide direction. Some clear/navigation controls already have SVG implementations locally; compare the running beta build and intended appearance before planning further changes. No UI changes made for this follow-up.
-- Implemented scope: Lucide icons for Find All, Replace All, Previous/Next Match, Replace Current Match, per-field clear controls, Cancel, and the Match Report visibility toggle. Existing handlers, keyboard commands, compact button widths, tooltips, and accessible names remain available. Cancel keeps its text label.
-- Assets: nine SVGs from Lucide 1.42.0, pinned to upstream commit `3859eb20fabe7fd95652fcd4395843b6c0bcdd01`, bundled with complete upstream ISC/MIT notices. Icons require no font installation or runtime download.
+- Follow-up implementation: the remaining `F>`/`R>` labels now use search/replace SVGs, clear uses the complete circle-x glyph without duplicate painting, and existing Previous/Next SVG controls remain. Existing handlers, keyboard commands, compact targets, tooltips, accessible names, and Cancel text remain available.
+- Assets: eleven SVGs from Lucide 1.42.0, pinned to upstream commit `3859eb20fabe7fd95652fcd4395843b6c0bcdd01`, bundled with complete upstream ISC/MIT notices. Git enforces exact LF asset bytes on Windows checkouts. Icons require no font installation or runtime download.
 - Appearance: icons follow the application palette, including native disabled-state opacity, and render at the requested device pixel ratio. Independent review identified and verified a correction for translucent macOS palette colors.
-- Validation: the final full suite passed 1,453 tests with six platform-specific skips after the separate BF-002 recovery scheduling correction. Native macOS icon checks and combined smoke passed. A built wheel includes all nine SVGs and upstream notices; wheel-only imports rendered the icons and panel successfully. Light, dark, and high-contrast previews were inspected. Windows native verification remains pending.
+- Validation: the affected Find/Replace/capture/icon suite passed 72 tests, and the asset follow-up passed eight icon tests plus a real `core.autocrlf=true` checkout regression. Hosted run `34253008439` passed all four lanes on `aab3f3c`. Windows checkout bytes are verified, while affected-host visual confirmation remains pending.
 - Follow-up scope: other UI surfaces can adopt the shared icon renderer later. This change does not implement the whitespace visualization or font expansion requests.
 
 ## BF-008 — Match window label notation
 
 - Reported: 2026-09-08.
-- Status: capture-group interpretation approved; implementation pending.
+- Status: capture-group interpretation and aligned layout implemented, independently reviewed, and integrated on `main`.
 - Request: in the Match window, use `\1 :` for the first match, `\2 :` for the second, and so on.
 - Approved interpretation, 2026-09-08: apply the backslash-number notation to capture-group rows, where the numbering already denotes regex capture groups. Preserve the existing `Match N of M` whole-match occurrence headers.
 - Alignment: use a shared tab stop after the label so matched content starts in the same column on every row, including labels with multiple digits.
-- Disposition: the default scope is approved for plan execution; aligned report layout and label implementation remain pending. No UI or matching behavior changes have been made for BF-008 yet.
+- Implementation: model roles expose label and preview separately. A bounded delegate measures one shared label column, so `\\1 :` through `\\100 :`, named-group metadata, and occurrence suffixes do not shift preview content. Display and accessible text remain complete and readable; `Match N of M` headers are unchanged.
+- Disposition: implemented at `7a6ef08`; the 72-test affected Find/Replace/capture/icon suite passed. Native visual/accessibility confirmation remains open.
 
 ## BF-009 — Smaller editor line numbers
 
@@ -153,8 +154,8 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Implementation: commit `14e6a5a` gives line numbers their own font and metrics at 80% of the editor point size while retaining the editor baseline and row height. Gutter width uses the actual gutter font and indexed line-number range, recalculates as progressive indexing advances, and rebuilds on zoom without changing editor text sizing, hit testing, or scroll steps.
 - Review correction: commit `e2dbbae` settles gutter width before rendering wrapped rows when progressive indexing crosses a digit boundary. If the new width changes wrap columns, row preparation is rebuilt before painting or hit testing. A synthetic 100,019-line restoration regression verifies immediate six-digit fit at 300% zoom.
 - Verification: the combined Task 5 focused matrix passed all 150 tests. Eight initial gutter regressions passed at 50%, 100%, 200%, and 300% zoom, covering smaller ink, six-digit fit, baseline/spacing, selection after scrolling, scroll steps, logical-line numbering under wrapping, and editor-font restoration. After the review correction, the focused gutter/wrap/view-state set passed 11 tests and the covering text-view/Unicode matrix passed all 64 tests. Independent review found no remaining blocking issue.
-- Evidence limits: Qt rendering checks ran offscreen. Manual macOS Retina and affected-host visual acceptance remain pending; hosted validation of current checkpoint `e2dbbae` is also pending.
-- Disposition: the approved 80% gutter scale and progressive six-digit width correction are implemented in synchronized checkpoint `e2dbbae`. Keep manual affected-host confirmation open.
+- Evidence limits: Qt rendering checks ran offscreen. Manual macOS Retina and affected-host visual acceptance remain pending. The later `8fae49d` portability correction retained the exact 80% point-size rule while allowing integer-pixel glyph-height rounding.
+- Disposition: the approved 80% gutter scale and progressive six-digit width correction are included in hosted-green synchronized checkpoint `aab3f3c`. Keep manual affected-host confirmation open.
 
 ## BF-010 — EOL markers unchanged when the status line updates
 
@@ -165,5 +166,5 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Expected behavior: before save, keep markers tied to the current document and state the pending conversion explicitly. After a successful save, refresh status, reports, and painted markers in every view that shares the document.
 - Implementation: commit `8272daf` changes status wording to forms such as `UTF-8, LF (on save: UTF-8, CRLF)`. A successful save now cancels old EOL work, dismisses stale dialogs, replaces or invalidates cached reports, updates status, and repaints every shared-document view across service windows; incomplete bounded inspections schedule fresh analysis. Failed or cancelled saves retain current authority.
 - Verification: the combined Task 5 focused matrix passed all 150 tests. EOL/save coverage includes two distinct views in separate service windows; LF, CR, CRLF, and mixed sources; every explicit target; synchronous and progressive saves across 24 combinations; real markers before and after save; exact saved/reopened bytes; shared report/status refresh; failed and cancelled saves; return to Keep Source; and mixed-byte preservation. Independent review found no remaining blocking issue.
-- Evidence limits: the original report did not record source/target types, save state, platform, or build. Automated coverage establishes the corrected contract, while manual affected-host confirmation and hosted validation of current checkpoint `e2dbbae` remain pending.
-- Disposition: diagnosis and shared-view refresh implemented at `8272daf` and included in synchronized checkpoint `e2dbbae`. Keep manual affected-host confirmation open.
+- Evidence limits: the original report did not record source/target types, save state, platform, or build. Automated coverage establishes the corrected contract, while manual affected-host confirmation remains pending.
+- Disposition: diagnosis and shared-view refresh implemented at `8272daf` and included in hosted-green synchronized checkpoint `aab3f3c`. Keep manual affected-host confirmation open.

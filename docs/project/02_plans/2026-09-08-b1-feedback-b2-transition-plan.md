@@ -10,12 +10,12 @@
 
 **Spec:** [Beta feedback](../BETA_FEEDBACK.md), [current architecture](../01_current/ARCHITECTURE.md), [B1 governing design](v0.001b1-real-world-feedback-beta-design.md), and the proposed defaults in this plan.
 
-**Status:** Execution in progress on 2026-09-08. Task 1 documentation reconciliation is complete; later tasks remain unchecked. This document does not mark feedback resolved, change the product version, or by itself publish anything.
+**Status:** Execution in progress on 2026-09-08. Tasks 1, 2, 4, 5, 6, and the automated/reviewed portion of 7 are integrated through `aab3f3c`; Task 8 and final candidate/platform gates remain open. `aab3f3c` passed all four hosted lanes in run `34253008439`. A reviewed native Cocoa theme correction remains to integrate. This document does not mark feedback resolved, change the product version, or by itself publish anything.
 
 ## Baseline and release interpretation
 
 - Task 1 began on isolated `work/b2-feedback` at `5724f6c`; local `main` matched it. `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` identify A22 (`v0.001a22` / `0.1a22`).
-- The read-only ancestry check initially found `origin/main` at `ca75966`, with local `main` zero commits behind and seven ahead. The six feedback commits `fadc36f`, `09fe356`, `fbeeb0f`, `20b1e02`, `fbe1b6e`, and `0322939` were already present, followed by documentation commit `5724f6c`; none requires reapplication. The controller subsequently pushed `5724f6c`, with hosted run `34247594588` pending.
+- Historical starting observation: the read-only ancestry check initially found `origin/main` at `ca75966`, with local `main` zero commits behind and seven ahead. The six feedback commits `fadc36f`, `09fe356`, `fbeeb0f`, `20b1e02`, `fbe1b6e`, and `0322939` were already present, followed by documentation commit `5724f6c`; none requires reapplication. The controller subsequently pushed `5724f6c`; hosted run `34247594588` was pending at that time.
 - Fresh checkpoint verification is 1,476 passed tests and six skips in 93.01 seconds, deep self-check 21/21, and native Cocoa combined smoke with explicit Quit/session restore. This is a source baseline, not a B2 qualification gate.
 - The feedback additions were preserved in documentation commit `5724f6c`; Task 1 continues in the isolated checkout without disturbing the user's original checkout or running service.
 - Before Task 1, the existing roadmap was A22 → A23 → A24 → B1 and B2 had no milestone record. Calling these reports “B1 feedback” does not establish that the formal executable B1 gate has passed.
@@ -73,8 +73,8 @@
 
 **Design:** emit the exact user-requested line `// prepping UNITI for first use` before environment creation or first dependency installation. Report creating runtime, installing dependencies, validating, and launching as actual stages. Use flushed stderr so `--no-launch` command output and JSON stdout remain parseable. A valid subsequent launch must not claim first-use setup; explicit repair uses repair wording. Never show a fabricated percentage.
 
-- [ ] Add a regression that captures progress before the injected slow environment/dependency operation is allowed to complete; assert the first-use line precedes it. Cover initial, adopted, repair, healthy fast-path, failure, no-launch, and JSON-forwarding cases.
-- [ ] Add an optional progress callback at the environment/dependency operation boundaries; wire the CLI to flushed stderr. Keep existing return values, lock ownership, captured bounded failure diagnostics, and exit codes.
+- [x] Add a regression that captures progress before the injected slow environment/dependency operation is allowed to complete; assert the first-use line precedes it. Cover initial, adopted, repair, healthy fast-path, failure, no-launch, and JSON-forwarding cases.
+- [x] Add an optional progress callback at the environment/dependency operation boundaries; wire the CLI to flushed stderr. Keep existing return values, lock ownership, captured bounded failure diagnostics, and exit codes.
 
 ```python
 # CLI progress sink; callbacks are emitted at real operation boundaries.
@@ -82,9 +82,9 @@ def report_progress(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 ```
 
-- [ ] Reproduce the `return`-inside-`finally` warning using the newest supported Python. Add durability cases for open failure, fsync failure, close failure, and an unexpected exception during fsync with a failing close.
-- [ ] Remove control flow from `finally` in `sync_directory`. Return the fsync outcome after cleanup; preserve propagation of unexpected exceptions. A close failure must not turn failed synchronization into success.
-- [ ] Run focused bootstrap/durability/launcher tests and compile with warnings treated as errors on Python 3.14+; measure actual fresh and healthy-launch timings without introducing a performance claim from dependency-download time.
+- [x] Reproduce the `return`-inside-`finally` warning using the newest supported Python. Add durability cases for open failure, fsync failure, close failure, and an unexpected exception during fsync with a failing close.
+- [x] Remove control flow from `finally` in `sync_directory`. Return the fsync outcome after cleanup; preserve propagation of unexpected exceptions. A close failure must not turn failed synchronization into success.
+- [x] Run focused bootstrap/durability/launcher tests and compile with warnings treated as errors on Python 3.14+; measure actual fresh and healthy-launch timings without introducing a performance claim from dependency-download time.
 
 ```bash
 .venv/bin/python -m pytest -q tests/bootstrap tests/core/test_durability.py tests/test_launchers.py
@@ -120,16 +120,16 @@ Use the owned Windows interpreter and `QT_QPA_PLATFORM=windows` for its native s
 
 **Finding:** normal space currently draws both a point and a middle-dot glyph at `center - 2`. Fixed glyph placement and integer rounding do not center the visible ink at different font sizes. An exploratory pixel reproduction failed at 50/100/200/300% and normal/Retina scale; that exploratory test was removed when the user clarified feedback-only mode.
 
-- [ ] Reinstate a regression rendering an isolated real marker into a transparent QImage at 50/100/200/300% and device scale 1/2. Use fractional layout boundaries. Compare the alpha-weighted pixel centroid against `(x1 + x2) / 2` and the row midpoint within 0.2 logical pixels; prove failure before fixing.
-- [ ] Replace the duplicate mark with one filled, antialiased circular dot using floating-point layout coordinates and the existing space color. Scale its diameter with the editor font and keep it small enough for the actual gap. Save/restore painter state.
+- [x] Reinstate a regression rendering an isolated real marker into a transparent QImage at 50/100/200/300% and device scale 1/2. Use fractional layout boundaries. Compare the alpha-weighted pixel centroid against `(x1 + x2) / 2` and the row midpoint within 0.2 logical pixels; prove failure before fixing.
+- [x] Replace the duplicate mark with one filled, antialiased circular dot using floating-point layout coordinates and the existing space color. Scale its diameter with the editor font and keep it small enough for the actual gap. Save/restore painter state.
 
 ```python
 center = QPointF((x1 + x2) / 2.0, y + self._line_height / 2.0)
 # Draw one circle around this point; do not also draw a text glyph.
 ```
 
-- [ ] Inspect adjacent spaces, a space after an emoji, and light/dark/high-contrast output. Assert text bytes and cursor/selection are unchanged and the existing marker budget still passes.
-- [ ] Verify each whitespace mode with hold/release; one selected code point with mode Off; app deactivation; custom/disabled/reset combination; restart; multiple windows; new windows after configuration.
+- [x] Inspect adjacent spaces, a space after an emoji, and light/dark/high-contrast output. Assert text bytes and cursor/selection are unchanged and the existing marker budget still passes.
+- [x] Verify each whitespace mode with hold/release; one selected code point with mode Off; app deactivation; custom/disabled/reset combination; restart; multiple windows; new windows after configuration.
 - [ ] Test physical Cmd+Option on Mac and Ctrl+Alt on Windows, including interaction with typing, AltGr where available, and existing command shortcuts. Any input conflict must be resolved without swallowing text or changing the persisted whitespace mode.
 
 ```bash
@@ -144,11 +144,11 @@ QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/ui/test_unicode_in
 
 **Gutter default proposed:** line-number font at 80% of document point size; same row baseline and line spacing as the text. Preserve the minimum gutter width and compute additional width from the actual gutter font and largest visible number. Do not shrink document text or alter hit testing/scroll steps.
 
-- [ ] Add a rendering regression at 50/100/200/300% for smaller line-number ink, baseline alignment, six-digit numbers, selection clicks, scrolling, and wrap continuation rows.
-- [ ] Give the gutter its own QFont/QFontMetrics derived from the editor font. Set that font only while painting numbers; restore the editor font before content/markers. Recompute gutter width when zoom or document line-number range changes.
-- [ ] Add synthetic LF, CR, CRLF, and mixed-EOL integration cases that select an output EOL, save, inspect actual bytes, reopen, and observe all views sharing the document. Cover failed/cancelled save and Keep Source.
-- [ ] Establish whether BF-010 occurs before save or after successful save. `set_output_eol` configures conversion on save; markers currently describe committed content. Preserve that truth: before save, status must distinguish current source EOL from “on save” target. After successful save/document rebinding, invalidate EOL analysis and repaint every affected view from the new authority.
-- [ ] If immediate document-wide conversion is desired instead, treat it as a separate undoable edit design; do not fake it by changing markers while bytes still represent the previous EOL.
+- [x] Add a rendering regression at 50/100/200/300% for smaller line-number ink, baseline alignment, six-digit numbers, selection clicks, scrolling, and wrap continuation rows.
+- [x] Give the gutter its own QFont/QFontMetrics derived from the editor font. Set that font only while painting numbers; restore the editor font before content/markers. Recompute gutter width when zoom or document line-number range changes.
+- [x] Add synthetic LF, CR, CRLF, and mixed-EOL integration cases that select an output EOL, save, inspect actual bytes, reopen, and observe all views sharing the document. Cover failed/cancelled save and Keep Source.
+- [x] Establish whether BF-010 occurs before save or after successful save. `set_output_eol` configures conversion on save; markers currently describe committed content. Preserve that truth: before save, status must distinguish current source EOL from “on save” target. After successful save/document rebinding, invalidate EOL analysis and repaint every affected view from the new authority.
+- [x] Immediate document-wide conversion was not selected; markers remain tied to committed bytes until successful save.
 
 ```python
 # Synthetic integration acceptance: LF source converted to CRLF.
@@ -163,15 +163,15 @@ assert all(label == "CRLF" for label in painted_eol_labels_after_save)
 
 **Files:** modify `src/uniti/ui/find_replace.py`, `src/uniti/ui/capture_report.py`, and `src/uniti/ui/icons.py`; add a bounded `src/uniti/ui/capture_report_delegate.py`; update bundled Lucide assets/notices only if an additional glyph is required. Tests: `tests/ui/test_icons.py`, `tests/ui/test_find_replace_contract.py`; create `tests/ui/test_capture_report.py`.
 
-**Interpretation pending user answer:** recommend `\1 :`, `\2 :` for capture-group rows, preserving `Match N of M` occurrence headers. The current panel is a capture report: `CaptureReportModel` lists group rows below whole-match headers. Preserve the user's literal notation in the feedback log; explicitly record the final interpretation before implementing labels. If the answer is successive whole matches, apply the notation to occurrence headers and retain distinct group labels.
+**Approved interpretation:** use `\1 :`, `\2 :` for capture-group rows, preserving `Match N of M` occurrence headers. `CaptureReportModel` lists group rows below whole-match headers; the implemented presentation keeps those identities distinct.
 
 **Layout:** label and content are separate model/delegate fields. A shared measured tab stop places content at one x-coordinate. Literal tabs/spaces in preview text are data, not padding; named groups and occurrence suffixes must not shift the content start. Keep accessible plain-text rows and all bounded report semantics.
 
-- [ ] Compare the running beta panel with local `20b1e02`: clear and Previous/Next already have Lucide action icons; `F>` and `R>` remain text labels. Avoid duplicate replacement work.
-- [ ] Replace F>/R> with search/replace SVG labels using the shared renderer, with Find/Replace accessible names and tooltips. For clear controls, use a circle-x SVG if a complete SVG circle is required and remove the redundant custom painted circle. Preserve click targets, focus behavior, disabled state, and theme tint.
-- [ ] Add `LabelRole` and `ContentRole` model roles for report data rows. Expose each separately while keeping `DisplayRole`/`AccessibleTextRole` readable. The delegate computes one label-column width across the bounded current report and paints content after that width plus a measured tab gap.
-- [ ] Preserve unmatched groups, empty matches, repeated-capture counts, named groups, truncation, current/next separators, loading/unavailable rows, and revision cancellation. Do not change regex numbering or replacement expansion.
-- [ ] Test groups/occurrences 1, 9, 10, and 100, long names, CJK text, empty/unmatched rows, and every F/R zoom. Assert identical content-start x-coordinates; assert accessible text includes both identity and preview. Verify attached/detached and right-report placements.
+- [x] Compare the running beta panel with local `20b1e02`: clear and Previous/Next already have Lucide action icons; `F>` and `R>` remain text labels. Avoid duplicate replacement work.
+- [x] Replace F>/R> with search/replace SVG labels using the shared renderer, with Find/Replace accessible names and tooltips. For clear controls, use a circle-x SVG if a complete SVG circle is required and remove the redundant custom painted circle. Preserve click targets, focus behavior, disabled state, and theme tint.
+- [x] Add `LabelRole` and `ContentRole` model roles for report data rows. Expose each separately while keeping `DisplayRole`/`AccessibleTextRole` readable. The delegate computes one label-column width across the bounded current report and paints content after that width plus a measured tab gap.
+- [x] Preserve unmatched groups, empty matches, repeated-capture counts, named groups, truncation, current/next separators, loading/unavailable rows, and revision cancellation. Do not change regex numbering or replacement expansion.
+- [x] Test groups/occurrences 1, 9, 10, and 100, long names, CJK text, empty/unmatched rows, and every F/R zoom. Assert identical content-start x-coordinates; assert accessible text includes both identity and preview. Verify attached/detached and right-report placements.
 
 ```python
 # For the capture-group interpretation, the model contract is:
@@ -190,12 +190,12 @@ assert group_one_content_x == group_ten_content_x
 
 **Interfaces:** Qt-free immutable `ThemeProfile` carries `id`, `name`, `base_mode`, and a complete string-color mapping. `ThemeProfileStore.load()`/`save()` manage versioned profiles under the existing user configuration root. `theme.py` converts validated profiles into the existing complete `ThemeSpec`; the editor uses a draft profile until Apply.
 
-- [ ] Define schema 1: id/name/base_mode/colors; reject unknown keys, invalid colors and unsupported roles. Proposed bounds: 32 custom profiles, 64 characters per name, 128 KiB total file. Use the existing atomic JSON durability helper and recover invalid settings to the selected built-in without overwriting the damaged file.
-- [ ] Start Paper with base `#FBF7EF` and text `#28251F`; Slate with base `#202830` and text `#E8EDF2`. Fill every existing palette/editor role from the corresponding light/dark profile, then review selection, matches, errors, markers, disabled states, and control icons together. Do not ship partial token maps.
-- [ ] Test profile round-trip, invalid schema/color/bounds, atomic-write failure, unknown selected profile, and existing-settings migration before implementing storage.
-- [ ] Build the editor from role labels and color controls; selecting a role previews across all service windows and F/R. Cancel restores the exact pre-preview global theme. Apply persists the profile and active id together without altering unrelated settings.
-- [ ] Retain High Contrast as a validated overlay; reject edits that violate its existing thresholds rather than silently reducing contrast. In Standard mode, keep explicit contrast feedback visible in the editor.
-- [ ] Test multi-window preview/cancel/apply, restart, reset/delete of active custom profiles, native palettes, and packaged-resource loading from an installed wheel. Review Paper and Slate visually with whitespace, gutter, Match rows, and Lucide controls.
+- [x] Define schema 1: id/name/base_mode/colors; reject unknown keys, invalid colors and unsupported roles. Proposed bounds: 32 custom profiles, 64 characters per name, 128 KiB total file. Use the existing atomic JSON durability helper and recover invalid settings to the selected built-in without overwriting the damaged file.
+- [x] Start Paper with base `#FBF7EF` and text `#28251F`; Slate with base `#202830` and text `#E8EDF2`. Fill every existing palette/editor role from the corresponding light/dark profile, then review selection, matches, errors, markers, disabled states, and control icons together. Do not ship partial token maps.
+- [x] Test profile round-trip, invalid schema/color/bounds, atomic-write failure, unknown selected profile, and existing-settings migration before implementing storage.
+- [x] Build the editor from role labels and color controls; selecting a role previews across all service windows and F/R. Cancel restores the exact pre-preview global theme. Apply persists the profile and active id together without altering unrelated settings.
+- [x] Retain High Contrast as a validated overlay; reject edits that violate its existing thresholds rather than silently reducing contrast. In Standard mode, keep explicit contrast feedback visible in the editor.
+- [ ] Automated multi-window/restart/reset/delete, installed-wheel loading, and offscreen Paper/Slate review passed. Native palette and color-dialog qualification remains open; a Cocoa System-preview equality failure is under investigation.
 
 **Commit:** `feat: add packaged and editable theme profiles` after the isolated theme tests pass.
 

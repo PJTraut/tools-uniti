@@ -4,11 +4,13 @@ Captured: 2026-09-08
 
 This is a continuation snapshot, not a controlling specification. Resolve conflicts using the authority order in the [Documentation System](../00_governance/DOCUMENTATION_SYSTEM.md).
 
-## 2026-09-08 candidate checkpoint
+## 2026-09-08 feedback integration checkpoint
 
-The documentation checkpoint began on isolated branch `work/b2-feedback` at `5724f6cb3081d30b2962ecaefb623be2358331b8`, with a clean tree and local `main` at the same commit. The read-only ancestry check found `origin/main` at `ca759668ea08f6a254ca6c516c04f39c85bf6a0e`, zero local commits behind and seven ahead. Those seven are the six already-present feedback commits `fadc36f`, `09fe356`, `fbeeb0f`, `20b1e02`, `fbe1b6e`, and `0322939`, followed by documentation plan commit `5724f6c`; none needs reapplication. The controller subsequently pushed `5724f6c` to `origin/main` and hosted run `34247594588` was queued/in progress when this handover was updated.
+The feedback work began on isolated branch `work/b2-feedback` at historical checkpoint `5724f6c`. The initial ancestry observation (`origin/main` at `ca75966`, local `main` seven ahead) and the six already-present feedback commits remain historical context; none needs reapplication. Current local `main` and GitHub `origin/main` are synchronized at `aab3f3c`.
 
-The three metadata authorities agree on A22: `VERSION` is `v0.001a22`, while `pyproject.toml` and `src/uniti/__init__.py` are `0.1a22`. Fresh source verification on `5724f6c` passed 1,476 tests with six platform-policy skips in 93.01 seconds, deep self-check 21/21, and native Cocoa combined smoke including explicit Quit and session restore. This is local macOS evidence; it does not satisfy affected-host, executable, dogfood-day, or human-feedback gates.
+The three metadata authorities agree on A22: `VERSION` is `v0.001a22`, while `pyproject.toml` and `src/uniti/__init__.py` are `0.1a22`. Historical source verification on `5724f6c` passed 1,476 tests with six platform-policy skips in 93.01 seconds, deep self-check 21/21, and native Cocoa combined smoke including explicit Quit and session restore. Current `aab3f3c` passed all four hosted lanes in run `34253008439`, including full suite, deep self-check, native/offscreen smoke, and sustained checks. A separate native Cocoa theme check exposed a System-preview link-color leak; reviewed correction `e045b0f` passed 21 native theme, five native window, and 30 offscreen tests but is awaiting integration.
+
+Reviewed Tasks 2, 4, 5, 6, and 7 are integrated: first-use progress and the durability-warning fix; centered U+0020 markers plus persisted hotkey access; 80% gutter typography and truthful current/on-save EOL behavior with all-view refresh; complete Find/Replace Lucide controls and aligned `\\N :` capture rows; and named Paper/Slate plus custom theme editing backed by one bounded atomic profile file. BF-006 Noto/font-layout work remains in progress and must not be described as supported yet.
 
 The existing release policy is retained. A22 remains active with seven qualifying real-use days still `NOT RUN`; A23 executable/health delivery, A24 same-candidate qualification, and B1 private executable human feedback also remain `NOT RUN`. B2 is a [proposed queued successor](../02_plans/v0.001b2-feedback-refinement-beta.md). No previous milestone was completed by this reconciliation.
 
@@ -21,7 +23,8 @@ User steering recorded 2026-09-08: bring all reviewed in-scope local work onto c
 ## Canonical repository state
 
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
-- Canonical branch: `main`; local and remote were synchronized at pushed checkpoint `5724f6c`, with hosted run `34247594588` started for that commit
+- Canonical branch: `main`; local and remote are synchronized at `aab3f3c`
+- Latest hosted-green feedback checkpoint: `aab3f3c`, run `34253008439` (all four lanes)
 - Hosted evidence baseline: `847d48b` (application behavior candidate `7373df0`); `origin/main` includes subsequent evidence-only documentation
 - A20 design/plan commits: `c9cd792`, `06dd906`
 - A20 implementation/acceptance sequence: `fabd036` through `f829d01`, followed by the A20 freeze closure
@@ -104,7 +107,7 @@ Every pane now exposes Assign Document, Split Right, Split Down, and Dock/Undock
 
 The one service-owned Find/Replace surface can attach full-width below the active editor window or detach as the same topmost tool. Placement, detached geometry, complete field state, bounded Undo/Redo, results, report state, and zoom survive window moves and session restore without creating a second panel.
 
-Whitespace modes are Off, EOL, Spaces & Tabs, Invisible Unicode, and All. They paint only committed visible content, preserve exact document bytes/coordinates, classify LF/CRLF/CR through bounded terminator reads, and cap one frame at 4,096 marker operations with visible aggregation. System/Light/Dark and Standard/High Contrast are independent settings backed by complete theme tokens.
+Whitespace modes are Off, EOL, Spaces & Tabs, Invisible Unicode, and All. They paint only committed visible content, preserve exact document bytes/coordinates, classify LF/CRLF/CR through bounded terminator reads, and cap one frame at 4,096 marker operations with visible aggregation. The normal-space marker is centered from real layout bounds, and the configurable inspection hold is reachable from Hotkeys. System/Light/Dark/Paper/Slate/custom profiles and Standard/High Contrast are independent; custom definitions and active selection publish atomically through the profile store.
 
 Implementation commits:
 
@@ -198,4 +201,4 @@ Hosted remediation `e6585d1` through `847d48b` corrected test and benchmark port
 
 No known A20, completed A21 workstream, or A21 candidate correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, launcher, native-path, or inherited text-integrity/regex blocker remains in local or hosted evidence. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive.
 
-Continue A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). Task 19 evidence is complete. Seven distinct active dogfood days on the qualifying behavior candidate remain required and `NOT RUN`; structural UNITI source changes restart that clock, while evidence-only documentation does not. Do not infer or backfill dogfood days from synthetic smoke, benchmark, or hosted activity. Do not tag, release, install, bundle, or package A22. A23 Executable Health & Recovery Alpha remains queued behind A22, followed by A24 Beta Candidate, B1 Real-World Feedback Beta, and proposed B2 Feedback Refinement Beta; none is implicit A22 scope and none is complete.
+Finish Task 8's Noto assets, layout/navigation regressions, packaging, performance comparison, and native IME qualification, then refresh the final integrated candidate evidence. Separately distribute the BF-002 correction to the affected Windows and Mac hosts and require their explicit Quit/relaunch confirmation before closing the blocker. A22 remains active: seven distinct real-use days, A23 executable/health delivery, A24 qualification, and B1 private executable human feedback remain required before B2 identity promotion. Do not infer those gates from source integration or hosted automation, and do not tag, release, or contact testers from this handover alone.
