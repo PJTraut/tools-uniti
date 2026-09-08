@@ -945,7 +945,10 @@ def test_gutter_ink_is_smaller_with_text_baselines_and_six_digit_hit_testing(
         assert baseline == view._metrics.ascent()
         ink = QFontMetrics(font).tightBoundingRect(label.strip())
         ordinary_ink = QFontMetrics(view.font()).tightBoundingRect(label.strip())
-        assert ink.height() < ordinary_ink.height()
+        # At small sizes, font hinting can round both glyph heights to the
+        # same pixel count; the six-digit ink must still be strictly narrower.
+        assert 0 < ink.height() <= ordinary_ink.height()
+        assert 0 < ink.width() < ordinary_ink.width()
         assert x >= 4
         assert x + QFontMetrics(font).horizontalAdvance(label) <= view._gutter_width - 4
         assert view._gutter_width >= 48
