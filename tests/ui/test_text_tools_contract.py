@@ -48,7 +48,7 @@ def test_status_bar_reports_saved_and_pending_exact_text_format(tmp_path: Path):
     window._on_view_state_changed(view)
     assert (
         window._status.format_label.text()
-        == "UTF-8, CRLF -> UTF-16 LE BOM, LF"
+        == "UTF-8, CRLF (on save: UTF-16 LE BOM, LF)"
     )
     window.close_all_documents(force=True)
     window.close()

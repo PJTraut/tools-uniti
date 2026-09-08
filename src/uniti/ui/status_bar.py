@@ -119,12 +119,7 @@ class UNITIStatusBar(QStatusBar):
             self._eol_report = eol_report
         source_eol = self._source_eol_label(self._eol_report)
         saved = document.saved_output_format
-        saved_eol = (
-            source_eol
-            if saved.eol is EOLPolicy.PRESERVE
-            else saved.eol.value
-        )
-        saved_text = format_summary(saved.encoding, saved_eol)
+        saved_text = format_summary(saved.encoding, source_eol)
 
         pending = document.output_format
         pending_eol = (
@@ -134,7 +129,7 @@ class UNITIStatusBar(QStatusBar):
         )
         pending_text = format_summary(pending.encoding, pending_eol)
         self._format.setText(
-            saved_text if pending == saved else f"{saved_text} -> {pending_text}"
+            saved_text if pending == saved else f"{saved_text} (on save: {pending_text})"
         )
 
         try:

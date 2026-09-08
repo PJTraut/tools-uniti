@@ -2269,16 +2269,22 @@ class UNITIMainWindow(QMainWindow):
     ) -> None:
         inspection = self._inspect_known_output(view.document.path, profile)
         view.document.set_source_eol_report(inspection.eol)
-        self._dismiss_eol_dialog(view)
-        if inspection.eol_complete:
-            self._eol_reports[id(view)] = inspection.eol
-        else:
-            self._eol_reports.pop(id(view), None)
-        if inspection.eol_complete and inspection.eol.kind == "MIXED":
-            self._show_mixed_eol_report(view, inspection.eol)
-        self._on_view_state_changed(view)
-        if not inspection.eol_complete:
-            self._schedule_eol_analysis(view)
+        for owner in self._appearance_windows():
+            for candidate in owner.views:
+                if candidate.document is not view.document:
+                    continue
+                owner._cancel_eol_analysis(candidate)
+                owner._dismiss_eol_dialog(candidate)
+                if inspection.eol_complete:
+                    owner._eol_reports[id(candidate)] = inspection.eol
+                else:
+                    owner._eol_reports.pop(id(candidate), None)
+                if inspection.eol_complete and inspection.eol.kind == "MIXED":
+                    owner._show_mixed_eol_report(candidate, inspection.eol)
+                owner._on_view_state_changed(candidate)
+                candidate.viewport().update()
+                if not inspection.eol_complete:
+                    owner._schedule_eol_analysis(candidate)
 
     def _open_verified_export(
         self,
