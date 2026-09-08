@@ -6,6 +6,8 @@ Current product identity: `v0.001b2` / `0.1b2`. Reviewed BF-001–BF-010 code is
 
 [Beta Feedback Log](BETA_FEEDBACK.md) records user observations, implemented corrections and features, verification, and remaining host qualification.
 
+User-facing instructions are in the [User Manual](../user-manual.md), [User Cheat Sheet](../user-cheat-sheet.md), and [Regex Flags Guide](../regex-flags.md). These describe the implemented B2 interface and link here for release qualification.
+
 ## Reading order
 
 1. [`00_governance`](00_governance/DOCUMENTATION_SYSTEM.md) defines the documentation system and [project grammar](00_governance/GRAMMAR.md).

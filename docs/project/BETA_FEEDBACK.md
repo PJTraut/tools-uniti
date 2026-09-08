@@ -4,6 +4,8 @@ Started: 2026-09-07
 
 This log records summarized user observations, implementation dispositions, verification, and remaining qualification. An entry is not an approved implementation commitment. Early source-checkout feedback does not open or satisfy the [B1 feedback gate](02_plans/v0.001b1-real-world-feedback-beta.md).
 
+The B2 anchor report is resolved as expected engine behavior in [BF-011](#bf-011--make-raw-regex-flags-and-line-anchors-explicit); the resulting [regex guide](../regex-flags.md) explains the defaults.
+
 Current identity: `v0.001b2` / `0.1b2`, advanced from A22 at the user's direction under [ADR-0007](05_decisions/ADR-0007-beta-source-version-and-qualification.md). All reviewed BF-001–BF-010 source changes through `3e20214` are committed and integrated on GitHub `main`. The [feedback transition plan](02_plans/2026-09-08-b1-feedback-b2-transition-plan.md) records implementation and remaining checks.
 
 B2 is the active source beta. A22 real-use, A23 executable/health delivery, A24 stabilization, and B1 independent executable feedback remain open release qualification. Version promotion does not close affected-host or native input checks. [Current Status](01_current/STATUS.md) owns the exact baseline and latest evidence.
@@ -169,3 +171,19 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Verification: the combined Task 5 focused matrix passed all 150 tests. EOL/save coverage includes two distinct views in separate service windows; LF, CR, CRLF, and mixed sources; every explicit target; synchronous and progressive saves across 24 combinations; real markers before and after save; exact saved/reopened bytes; shared report/status refresh; failed and cancelled saves; return to Keep Source; and mixed-byte preservation. Independent review found no remaining blocking issue.
 - Evidence limits: the original report did not record source/target types, save state, platform, or build. Automated coverage establishes the corrected contract, while manual affected-host confirmation remains pending.
 - Disposition: diagnosis and shared-view refresh implemented at `8272daf` and included in hosted-green synchronized checkpoint `aab3f3c`. Keep manual affected-host confirmation open.
+
+## BF-011 — Make raw regex flags and line anchors explicit
+
+- Reported: 2026-09-08, on B2.
+- Observation: `^(\d+)\D([^\r\n]+)` returned zero matches while its `(?m)` form matched numbered lines; the user expected editor-style per-line anchors by default.
+- Investigation: the supplied file begins with a heading rather than a digit. UNITI and its pinned regex engine both return zero anchored matches without multiline and 15 with it, including across small streaming windows. The initial three-line sample produces one match when it begins the document; a preceding heading produces zero. Native panel checks also confirmed cursor position does not alter these results.
+- Disposition: resolved as expected raw engine behavior, acknowledged by the user. No regex behavior change is required.
+- Documentation: the [Regex Flags Guide](../regex-flags.md) explains `i`, `m`, `s`, `x`, flag combinations/scopes, Unicode options, and strict document anchors. The [User Manual](../user-manual.md) and [User Cheat Sheet](../user-cheat-sheet.md) make the defaults and common workflows discoverable.
+
+## BF-012 — Full Unicode case folding misses a match with one-character search windows
+
+- Found: 2026-09-08 during documentation-example verification, on B2; this is an internal finding, not a user report.
+- Status: open; no source correction is included in the documentation change.
+- Reproduction: compile `(?fi)straße` or `(?V1)(?i)straße` and search `STRASSE` through `search_document(..., options=SearchOptions(window_chars=1))`. Direct engine matching returns `(0, 7)`; UNITI returns no matches.
+- Evidence boundary: windows of 8 and the default 65,536 characters return the expected match. A default-window probe with 65,531 preceding ASCII characters also passes. A failure with the production default window has not been reproduced; the one-character-window result still requires investigation before claiming complete streaming equivalence for full case folding.
+- Next action: isolate partial-match/context retention behavior, add a regression, and verify the eventual correction across boundary positions and unchanged search limits. The four standard flag examples and scoped/ASCII/Unicode-line-boundary examples are verified separately.

@@ -4,13 +4,19 @@
 
 UNITI is a private source beta, currently `v0.001b2` (`0.1b2` in Python packaging). All reviewed BF-001–BF-010 feedback changes are committed and integrated on GitHub `main` through source candidate `3e20214`. B2 Feedback Refinement Beta is active. Native input, affected-host, executable, and release qualification remain open; see the [source-version decision](docs/project/05_decisions/ADR-0007-beta-source-version-and-qualification.md). The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
 
+## User documentation
+
+- [User Manual](docs/user-manual.md) — getting started, everyday workflows, text formats, recovery, and troubleshooting.
+- [User Cheat Sheet](docs/user-cheat-sheet.md) — common actions, regex flags, and quick reminders.
+- [Regex Flags Guide](docs/regex-flags.md) — line anchors, examples, scoped flags, and Unicode options.
+
 ## Project documentation
 
 - [Project record](docs/project/README.md) — documentation grammar, progression, and ownership.
 - [Current status](docs/project/01_current/STATUS.md) — canonical baseline and verification state.
 - [Ordered roadmap](docs/project/02_plans/ROADMAP.md) — approved outstanding milestones in implementation sequence.
 - [Current handover](docs/project/06_handovers/CURRENT_HANDOVER.md) — concise continuation context and next safe action.
-- [Feedback implementation and remaining checks](docs/project/BETA_FEEDBACK.md) — BF-001–BF-010 changes and qualification status.
+- [Feedback implementation and remaining checks](docs/project/BETA_FEEDBACK.md) — feedback changes, clarifications, and qualification status.
 
 ## Beta capabilities
 
@@ -55,6 +61,10 @@ Still unqualified in the current beta: native Chinese/Korean IME composition on 
 - PySide6 6.8+ for the desktop UI
 
 The core can be installed/tested without Qt. PySide6 is an optional dependency so the text engine remains headless-testable.
+
+## Regex flags and line anchors
+
+Regex mode uses raw engine defaults: `^` matches the start of the document. Add `(?m)` for line-start matching, for example `(?m)^(\d+)\D([^\r\n]+)` for numbered entries. Use `(?i)` for case-insensitive matching, `(?s)` for dots that include newlines, and `(?x)` for readable patterns with spacing and comments. Flags can combine, such as `(?im)`. See the [regex guide](docs/regex-flags.md) for examples, strict document anchors, scoped flags, and line-ending details.
 
 ## Bootstrap and launch
 

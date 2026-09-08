@@ -228,6 +228,8 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
+Keep the [User Manual](../../user-manual.md), [User Cheat Sheet](../../user-cheat-sheet.md), and [Regex Flags Guide](../../regex-flags.md) aligned with implemented menus, workflows, and defaults when behavior changes. Preserve their distinction between the current source beta and outstanding executable qualification.
+
 The current display version is `v0.001b2` in `VERSION` and `uniti.__display_version__`; the package version is `0.1b2` in `pyproject.toml` and `uniti.__version__`. These values must agree. Tags are immutable historical records. `v0.001a20` and `v0.001a21` are implemented without new tags; B2 Feedback Refinement Beta is active.
 
 All reviewed BF-001–BF-010 source changes through `3e20214` are committed and integrated on GitHub `main`. The installed source version is B2 under [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md). Source identity can advance while the [Roadmap](../02_plans/ROADMAP.md) retains unfinished release qualification. After updating all three version declarations, run `.venv/bin/python scripts/bootstrap.py --dev --no-launch` to refresh the owned installation and dependency fingerprint before validation. Keep source-test evidence tied to its tested commit and hosted results tied to their exact run SHA; see [Current Status](STATUS.md).
