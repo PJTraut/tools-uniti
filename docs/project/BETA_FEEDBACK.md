@@ -204,3 +204,12 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Placement: a toggle icon at the bottom-right, beneath the existing × clear control.
 - Scope: display-only wrapping of Find/Replace input text, independent of editor-canvas wrapping; toggling must preserve the expression and replacement text exactly.
 - Acceptance to verify during implementation: clear wrap-on/off state and tooltip, correct scrolling and caret visibility in either mode, and no overlap with the clear control at supported zoom levels.
+
+## BF-015 — Replacement scope: cursor to end of document
+
+- Reported: 2026-09-08, on B2.
+- Status: recorded; implementation pending.
+- Request: add replacement scope settings, including **Replace to End of Document**.
+- Working interpretation: replace matches from the current editor cursor position through the end of the active document, without wrapping to its beginning or changing earlier text.
+- Scope boundary: this request establishes the cursor-to-end option; other replacement scopes remain to be specified.
+- Acceptance to define during implementation: treatment of an active selection or a match crossing the cursor boundary, and whether a match starting exactly at the cursor is included. Preserve full-document regex anchor/context semantics, cancellation, stale-result protection, and one-step Undo for the replacement operation.
