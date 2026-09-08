@@ -12,6 +12,8 @@ The three metadata authorities agree on A22: `VERSION` is `v0.001a22`, while `py
 
 The existing release policy is retained. A22 remains active with seven qualifying real-use days still `NOT RUN`; A23 executable/health delivery, A24 same-candidate qualification, and B1 private executable human feedback also remain `NOT RUN`. B2 is a [proposed queued successor](../02_plans/v0.001b2-feedback-refinement-beta.md). No previous milestone was completed by this reconciliation.
 
+User steering recorded 2026-09-08: bring all reviewed in-scope local work onto canonical `main` and synchronize the remote as each reviewable commit or series passes its checks. B1 fixes and B2 feature work remain separately reviewable, but neither must wait off-main for predecessor qualification. This changes integration timing only: keep A22 metadata and milestone state until the existing A22, A23, A24, and B1 gates pass, and require B1 closure before any B2 release-identity promotion.
+
 ## BF-002 testing blocker — 2026-09-07
 
 [BF-002](../BETA_FEEDBACK.md) is critical and blocks further user testing. Commit `fadc36f` fixes startup after a zero-window session; `09fe356` corrects Quit deadlocks with paused session work; `fbeeb0f` retains the last visible editor until explicit Quit; and `fbe1b6e` prevents ordered recovery work from occupying a worker while waiting. These commits are now in the local and pushed `main` ancestry, but distribution and confirmation on the affected Windows/Mac installations remain outstanding. Follow the feedback entry for current evidence and closure criteria.
@@ -19,7 +21,7 @@ The existing release policy is retained. A22 remains active with seven qualifyin
 ## Canonical repository state
 
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
-- Canonical branch: `main`; pushed checkpoint `5724f6c` with hosted run `34247594588` pending at capture time
+- Canonical branch: `main`; local and remote were synchronized at pushed checkpoint `5724f6c`, with hosted run `34247594588` started for that commit
 - Hosted evidence baseline: `847d48b` (application behavior candidate `7373df0`); `origin/main` includes subsequent evidence-only documentation
 - A20 design/plan commits: `c9cd792`, `06dd906`
 - A20 implementation/acceptance sequence: `fabd036` through `f829d01`, followed by the A20 freeze closure

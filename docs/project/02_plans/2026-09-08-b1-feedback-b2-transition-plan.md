@@ -21,7 +21,7 @@
 - Before Task 1, the existing roadmap was A22 → A23 → A24 → B1 and B2 had no milestone record. Calling these reports “B1 feedback” does not establish that the formal executable B1 gate has passed.
 - Release-policy answer: retain the existing gates. B1 requires qualified same-commit executable builds, fourteen calendar days on the qualifying behavior candidate, and three independent human testers covering macOS, Windows, and Linux. Behavior corrections reset the qualifying-candidate clock as specified by the B1 design.
 - Alternative if the user chooses a source-checkout beta policy: record a decision explicitly replacing the affected admission/distribution/cohort rules, define source-build qualification and tester criteria, and update the roadmap before promotion. Do not silently label missing executable or human evidence as passing.
-- Treat the theme/font extensions and new presentation requests as B2 scope where they exceed B1's feature freeze. B1 defect corrections can land first; B2 feature commits enter main after the B1 closure boundary. All ten feedback entries must meet their agreed acceptance criteria before B2 is presented as ready for testing.
+- Treat the theme/font extensions and new presentation requests as B2 scope where they exceed B1's feature freeze. Per the user's 2026-09-08 integration direction, land all reviewed in-scope fixes and features on canonical `main` and synchronize the remote promptly, using separate reviewable commits or series for B1 fixes and B2 features. Keep A22 metadata/milestone state and require the full predecessor/B1 closure boundary before B2 release promotion. All ten feedback entries must meet their agreed acceptance criteria before B2 is presented as ready for testing.
 
 ## Global constraints
 
@@ -34,7 +34,7 @@
 - Preserve independent appearance and contrast settings; High Contrast retains the current 7:1 primary-text and 4.5:1 marker contrast requirements.
 - Keep raw tester documents, screenshots, paths, machine identities, and support archives outside Git. Commit summarized observations and synthetic regression fixtures only.
 - No release tag, public release, updater, or public package is inferred by advancing source metadata to B2.
-- An execution request must establish remote integration authorization before pushing. This planning task does not itself push, merge, or change version metadata.
+- The user's 2026-09-08 direction authorizes synchronizing reviewed in-scope work to canonical `main` and the remote. Integration does not itself change version metadata, close a gate, create a tag/release, or authorize tester communication.
 
 ## Coverage and order
 
@@ -63,7 +63,7 @@
 - [x] Reconcile stale status/handover fields with A22 metadata and dated evidence while preserving historical A21/A22 counts under their original candidates.
 - [x] Record the retained release policy and enumerate A22's seven remaining real-use days, A23 executable/health delivery, A24 qualification, and B1 human feedback as prerequisites. Missing evidence remains `NOT RUN`.
 - [x] Add proposed/queued B2 with the exact BF-001–BF-010 scope and roadmap link. A22 remains active and B1 is not claimed complete.
-- [x] Use isolated branch/worktree `work/b2-feedback` for the documentation checkpoint, preserving the user's original checkout and running service. The execution plan retains separate review boundaries for B1 fixes and B2 features.
+- [x] Use isolated branch/worktree `work/b2-feedback` for the documentation checkpoint, preserving the user's original checkout and running service. The execution plan retains separate review boundaries for B1 fixes and B2 features while allowing reviewed work to integrate promptly.
 
 **Check:** PASS on 2026-09-08. Metadata agrees across its three sources; every feedback ID maps to a task and evidence state; remote ancestry is recorded; A22 remains active; no previous milestone is closed based on this plan alone.
 
@@ -221,7 +221,7 @@ assert group_one_content_x == group_ten_content_x
 
 **Files:** all accepted feature/fix commits; update `docs/project/BETA_FEEDBACK.md`, current status/scope/architecture/development/handover, and this task checklist.
 
-- [ ] Before integrating B2-only features into main, close the retained predecessor chain using the [A22 plan](v0.001a22-dogfood-performance-implementation.md), [A23 plan](v0.001a23-executable-health-recovery-implementation.md), [A24 gate](v0.001a24-beta-candidate.md), and [B1 plan](v0.001b1-real-world-feedback-beta-implementation.md). Preserve the exact B1 closure candidate and human evidence. Defect corrections can land earlier; prepare B2 features on their branch while predecessor evidence is gathered. Under an explicitly revised source-beta policy, satisfy the recorded replacement gates instead.
+- [ ] Integrate each reviewed in-scope fix or feature commit/series into canonical `main` and synchronize the remote promptly, preserving separate review boundaries for B1 fixes and B2 features. Keep A22 version and milestone metadata while the [A22 plan](v0.001a22-dogfood-performance-implementation.md), [A23 plan](v0.001a23-executable-health-recovery-implementation.md), [A24 gate](v0.001a24-beta-candidate.md), and [B1 plan](v0.001b1-real-world-feedback-beta-implementation.md) remain open. Preserve exact candidate identities and evidence as integration changes the source tree.
 - [ ] Review the coverage table against the actual diff. Every BF entry needs implemented behavior plus its stated platform checks; no item becomes closed merely because a commit exists. Any requested deferral requires an explicit scope decision and remains visible.
 - [ ] Run one complete candidate gate after focused workstream gates. Record SHA, platform, runtime, command and result; do not reuse the old 1,476-test claim.
 
@@ -237,15 +237,15 @@ git diff --check
 - [ ] Run existing A22 sustained/performance gates and compare unchanged thresholds. Run the owned-runtime CI driver on Mac, Windows and both Linux lanes, preserving exact allowed skip policy. Run applicable A23/A24/B1 bundle, clean-host, health/recovery, inventory and privacy gates from their governing plans.
 - [ ] Build and inspect the wheel plus qualifying native distributions. Verify all icons, fonts, profiles and notices are packaged, and load resources with no source checkout or network fallback.
 - [ ] Obtain independent review of the final diff, especially durability/lifecycle, EOL save semantics, theme persistence and multilingual layout. Resolve blocking findings and re-run affected checks.
-- [ ] Reconcile remote changes without force-push. Integrate the reviewed branch into main using a fast-forward when possible, or a reviewed merge if histories diverged. Existing local-main fixes require ancestry validation, not duplicate cherry-picks.
-- [ ] Verify the final integrated tree locally; push within the execution authorization and require all hosted lanes on that same integrated commit. If integration changes behavior, repeat affected checks and refresh the candidate identity.
+- [ ] Reconcile remote changes without force-push. Integrate reviewed work into main using a fast-forward when possible, or a reviewed merge if histories diverged. Existing local-main fixes require ancestry validation, not duplicate cherry-picks.
+- [ ] Verify each integrated tree locally; push under the user's 2026-09-08 synchronization direction and require all hosted lanes on the same integrated commit. If integration changes behavior, repeat affected checks and refresh the candidate identity.
 - [ ] Record the main SHA and evidence per feedback item. Preserve previous-candidate evidence as history.
 
 ## Task 10: Confirm B1 closure and advance the B2 identity
 
 **Files:** `VERSION`, `src/uniti/__init__.py`, `pyproject.toml`, release/bundle manifests introduced by A23/B1, `README.md`, roadmap/current documents, and implemented-history indexes; create `tests/test_b2_identity.py`.
 
-- [ ] Confirm Task 9 recorded the predecessor/B1 closure boundary before B2-only feature integration. Do not count source-checkout reports or simulated days as qualifying independent executable feedback.
+- [ ] Confirm the full predecessor chain and B1 closure are recorded before B2 release-identity promotion. B2-only feature code may already be integrated on `main`; do not count source-checkout reports or simulated days as qualifying independent executable feedback.
 - [ ] Confirm Task 9's final integrated-candidate gate passed after all B2 features entered main. Under an explicitly revised source-beta policy, verify the recorded replacement gates and label the evidence accordingly.
 - [ ] Add a failing identity test covering all three canonical version sources. Update display identity to `v0.001b2` and package identity to `0.1b2` in a separate promotion commit. Use static metadata parsing if the test runtime still has pre-promotion package metadata.
 
