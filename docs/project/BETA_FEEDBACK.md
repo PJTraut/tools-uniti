@@ -195,3 +195,12 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Request: leave a ¼-em (`0.25em`) gap between the editor canvas content and its surrounding frame.
 - Working interpretation: an inset around all sides of the canvas, measured relative to the active editor font and scaling with editor zoom.
 - Acceptance to verify during implementation: consistent visible spacing without clipping text, caret, selection, or whitespace markers; wrapping, scrolling, gutter alignment, and pointer hit testing must account for the inset.
+
+## BF-014 — Find/Replace input wrap toggle
+
+- Reported: 2026-09-08, on B2.
+- Status: recorded; implementation pending.
+- Request: allow wrapping to be toggled in the Find/Replace input area.
+- Placement: a toggle icon at the bottom-right, beneath the existing × clear control.
+- Scope: display-only wrapping of Find/Replace input text, independent of editor-canvas wrapping; toggling must preserve the expression and replacement text exactly.
+- Acceptance to verify during implementation: clear wrap-on/off state and tooltip, correct scrolling and caret visibility in either mode, and no overlap with the clear control at supported zoom levels.
