@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from uniti.core.document import Document
+from uniti.app.graphemes import neighbor_boundary, deletion_span
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,7 +61,9 @@ class EditorState:
             return self.document.total_chars()
         return offset
 
-    def _set_cursor(self, offset: int, *, selecting: bool, vertical: bool = False) -> None:
+    def _set_cursor(
+        self, offset: int, *, selecting: bool, vertical: bool = False
+    ) -> None:
         self.document.break_history_coalescing()
         offset = self._validate_position(offset)
         if not selecting:
@@ -73,14 +76,14 @@ class EditorState:
         self._set_cursor(offset, selecting=selecting)
 
     def move_left(self, *, selecting: bool = False) -> None:
-        self._set_cursor(max(0, self.cursor - 1), selecting=selecting)
+        result = neighbor_boundary(self.document, self.cursor, -1)
+        if result.complete:
+            self._set_cursor(result.position, selecting=selecting)
 
     def move_right(self, *, selecting: bool = False) -> None:
-        try:
-            self.document.read(self.cursor, self.cursor + 1)
-        except ValueError:
-            return
-        self._set_cursor(self.cursor + 1, selecting=selecting)
+        result = neighbor_boundary(self.document, self.cursor, 1)
+        if result.complete:
+            self._set_cursor(result.position, selecting=selecting)
 
     @staticmethod
     def _is_word_character(character: str) -> bool:
@@ -109,7 +112,9 @@ class EditorState:
             if character is None or not self._is_word_character(character):
                 break
             target -= 1
-        self._set_cursor(target, selecting=selecting)
+        result = neighbor_boundary(self.document, target, 1, inclusive=True)
+        if result.complete:
+            self._set_cursor(result.position, selecting=selecting)
 
     def move_word_right(self, *, selecting: bool = False) -> None:
         target = self.cursor
@@ -120,7 +125,9 @@ class EditorState:
         while character is not None and not self._is_word_character(character):
             target += 1
             character = self._character_at(target)
-        self._set_cursor(target, selecting=selecting)
+        result = neighbor_boundary(self.document, target, 1, inclusive=True)
+        if result.complete:
+            self._set_cursor(result.position, selecting=selecting)
 
     def _column(self) -> int:
         line = self.document.line_for_char(self.cursor)
@@ -142,7 +149,9 @@ class EditorState:
         except ValueError:
             return
         target = start + min(self._preferred_column, end - start)
-        self._set_cursor(target, selecting=selecting, vertical=True)
+        result = neighbor_boundary(self.document, target, 1, inclusive=True)
+        if result.complete:
+            self._set_cursor(result.position, selecting=selecting, vertical=True)
 
     def move_up(self, *, selecting: bool = False) -> None:
         self._move_vertical(-1, selecting=selecting)
@@ -251,12 +260,11 @@ class EditorState:
             self.cursor = start
             self.anchor = start
         elif self.cursor > 0:
-            self.document.delete(
-                self.cursor - 1,
-                self.cursor,
-                coalesce="backspace",
-            )
-            self.cursor -= 1
+            span = deletion_span(self.document, self.cursor, -1)
+            if span is None:
+                return
+            self.document.delete(*span, coalesce="backspace")
+            self.cursor = span[0]
             self.anchor = self.cursor
         self._preferred_column = None
 
@@ -268,15 +276,11 @@ class EditorState:
             self.cursor = start
             self.anchor = start
         else:
-            try:
-                self.document.read(self.cursor, self.cursor + 1)
-            except ValueError:
+            span = deletion_span(self.document, self.cursor, 1)
+            if span is None or span[0] == span[1]:
                 return
-            self.document.delete(
-                self.cursor,
-                self.cursor + 1,
-                coalesce="delete_forward",
-            )
+            self.document.delete(*span, coalesce="delete_forward")
+            self.cursor = self.anchor = span[0]
         self._preferred_column = None
 
     def undo(self) -> None:

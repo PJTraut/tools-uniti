@@ -37,6 +37,7 @@ class WrappedRowIndex:
         row_block_size: int = 512,
         max_blocks: int = 4,
         checkpoint_lines: int = 256,
+        row_provider=None,
     ) -> None:
         if columns <= 0:
             raise ValueError("columns must be positive")
@@ -47,6 +48,9 @@ class WrappedRowIndex:
         if checkpoint_lines <= 0:
             raise ValueError("checkpoint_lines must be positive")
         self._document = document
+        self._row_provider = row_provider
+        self._block_positions = {0: (0, 0)}
+        self._rebuild_resume = {}
         self.columns = columns
         self._row_block_size = row_block_size
         self._max_blocks = max_blocks
@@ -121,6 +125,19 @@ class WrappedRowIndex:
                 return None
             if self._next_column == 0:
                 self._remember_checkpoint(self._next_line, self._known_count)
+            if self._row_provider is not None:
+                length, final = self._row_provider(self._next_line, self._next_column)
+                if length or self._next_column == 0:
+                    row = WrappedRow(self._next_line, self._next_column, length)
+                    if final:
+                        self._next_line += 1
+                        self._next_column = 0
+                    else:
+                        self._next_column += length
+                    return row
+                self._next_line += 1
+                self._next_column = 0
+                continue
             text = self._document.read_line_window(
                 self._next_line,
                 column_start=self._next_column,
@@ -143,6 +160,11 @@ class WrappedRowIndex:
         return None
 
     def _append_next(self) -> None:
+        if self._known_count % self._row_block_size == 0:
+            self._block_positions[self._known_count // self._row_block_size] = (
+                self._next_line,
+                self._next_column,
+            )
         row = self._next_row()
         if row is None:
             return
@@ -152,37 +174,54 @@ class WrappedRowIndex:
     def _rebuild_block(self, block_index: int) -> None:
         first = block_index * self._row_block_size
         stop = min(self._known_count, first + self._row_block_size)
-        line = 0
-        column = 0
-        row_index = 0
-        rows: list[WrappedRow] = []
+        line, column = self._block_positions.get(block_index, (0, 0))
+        row_index = first if block_index in self._block_positions else 0
+        existing = self._blocks.get(block_index)
+        rows = list(existing.rows) if existing is not None else []
+        if rows and block_index in self._rebuild_resume:
+            line, column, row_index = self._rebuild_resume[block_index]
+        else:
+            rows = []
         while row_index < stop:
             try:
                 self._document.line_start(line)
             except ValueError:
                 break
-            text = self._document.read_line_window(
-                line,
-                column_start=column,
-                max_chars=self.columns,
-            )
-            if text:
-                row = WrappedRow(line, column, len(text))
-                if len(text) < self.columns:
+            if self._row_provider is not None:
+                try:
+                    length, final = self._row_provider(line, column)
+                except ValueError:
+                    break
+                row = WrappedRow(line, column, length)
+                if final:
                     line += 1
                     column = 0
                 else:
-                    column += len(text)
-            elif column == 0:
-                row = WrappedRow(line, 0, 0)
-                line += 1
+                    column += length
             else:
-                line += 1
-                column = 0
-                continue
+                text = self._document.read_line_window(
+                    line,
+                    column_start=column,
+                    max_chars=self.columns,
+                )
+                if text:
+                    row = WrappedRow(line, column, len(text))
+                    if len(text) < self.columns:
+                        line += 1
+                        column = 0
+                    else:
+                        column += len(text)
+                elif column == 0:
+                    row = WrappedRow(line, 0, 0)
+                    line += 1
+                else:
+                    line += 1
+                    column = 0
+                    continue
             if row_index >= first:
                 rows.append(row)
             row_index += 1
+        self._rebuild_resume[block_index] = (line, column, row_index)
         self._blocks[block_index] = WrappedRowBlock(block_index, first, tuple(rows))
         self._blocks.move_to_end(block_index)
         while len(self._blocks) > self._max_blocks:
@@ -191,10 +230,22 @@ class WrappedRowIndex:
     def ensure_row(self, row_index: int) -> None:
         if row_index < 0:
             raise ValueError("row_index must be non-negative")
+        if self._row_provider is not None:
+            self._row_provider.read_chars = 0
+        work = 0
         while row_index >= self._known_count and not self._complete:
-            self._append_next()
+            if self._row_provider is not None and work >= 512:
+                break
+            try:
+                self._append_next()
+            except ValueError:
+                break
+            work += 1
         if row_index < self._known_count and self._cached_row(row_index) is None:
-            self._rebuild_block(row_index // self._row_block_size)
+            try:
+                self._rebuild_block(row_index // self._row_block_size)
+            except ValueError:
+                pass
 
     def row(self, row_index: int) -> WrappedRow:
         self.ensure_row(row_index)
@@ -223,6 +274,35 @@ class WrappedRowIndex:
     def row_for_position(self, line: int, column: int) -> int:
         if line < 0 or column < 0:
             raise ValueError("line and column must be non-negative")
+        if self._row_provider is not None:
+            target = (line, column)
+            if (self._next_line, self._next_column) <= target and not self._complete:
+                self.ensure_row(self._known_count + 511)
+            if (self._next_line, self._next_column) <= target and not self._complete:
+                raise ValueError("shaped position pending")
+            candidates = [
+                (block, position)
+                for block, position in self._block_positions.items()
+                if position <= target
+            ]
+            block = candidates[-1][0] if candidates else 0
+            first = block * self._row_block_size
+            self.ensure_row(
+                min(self._known_count - 1, first + self._row_block_size - 1)
+            )
+            last = None
+            for row_index in range(
+                first, min(self._known_count, first + self._row_block_size)
+            ):
+                row = self._cached_row(row_index)
+                if row is None:
+                    raise ValueError("shaped position pending")
+                if (row.line, row.column_start) > target:
+                    break
+                last = row_index
+            if last is None:
+                raise ValueError("position beyond document")
+            return last
         start = self._document.line_start(line)
         if column == 0:
             local_row = 0

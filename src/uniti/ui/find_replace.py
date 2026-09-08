@@ -541,7 +541,7 @@ class FindReplaceWindow(QDockWidget):
             font.setPointSizeF(point_size * scale)
             widget.setFont(font)
         for field in (self.find_input, self.replace_input):
-            field.setMinimumHeight(max(28, field.fontMetrics().height() + 10))
+            field.setMinimumHeight(field.minimum_content_height())
         self.zoomChanged.emit(percent)
 
     def zoom_in(self) -> None:

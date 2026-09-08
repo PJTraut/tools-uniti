@@ -59,7 +59,7 @@ def test_text_view_pages_horizontally_by_character_window():
     assert "def _horizontal_window" in source
     assert "column_start=column_start" in source
     assert "line_window_start = line_start + column_start" in source
-    assert "return line_start + column_start + low" in source
+    assert "shaped.cp_for_x" in source
 
 
 def test_text_view_exposes_clipboard_and_ime_contracts_without_qt_document_storage():
@@ -942,7 +942,7 @@ def test_gutter_ink_is_smaller_with_text_baselines_and_six_digit_hit_testing(
         (x, baseline, label), font = numbers[0]
         assert label.strip() == "100000"
         assert font.pointSizeF() == pytest.approx(view.font().pointSizeF() * 0.8)
-        assert baseline == view._metrics.ascent()
+        assert baseline == view._row_ascent
         ink = QFontMetrics(font).tightBoundingRect(label.strip())
         ordinary_ink = QFontMetrics(view.font()).tightBoundingRect(label.strip())
         # At small sizes, font hinting can round both glyph heights to the
@@ -1059,7 +1059,12 @@ def test_restored_deep_wrapped_row_has_six_digit_gutter_before_first_paint(
 
         view.restore_state(record)
 
-        # No event-loop/repaint cycle may be needed to repair layout after restore.
+        # Cold shaped lookup advances within its per-request work budget.
+        # The first actual target paint still needs the final gutter and wrap width.
+        for _ in range(500):
+            index = view._prepare_wrapped_rows(99_999, view._visible_line_capacity())
+            if index.known_count > 100_010:
+                break
         assert view._gutter_width > initial_width
         assert view._gutter_width >= view._gutter_metrics.horizontalAdvance("100000") + 12
         assert view._wrap_columns() < initial_columns

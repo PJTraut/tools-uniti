@@ -19,3 +19,5 @@ tests/fixtures/** -text
 src/uniti/ui/assets/fonts/*.otf binary
 src/uniti/ui/assets/fonts/licenses/* -text
 src/uniti/ui/assets/fonts/manifest.json text eol=lf
+# Upstream OFL text is byte-pinned, including original trailing whitespace.
+src/uniti/ui/assets/fonts/licenses/* whitespace=-blank-at-eol,-blank-at-eof

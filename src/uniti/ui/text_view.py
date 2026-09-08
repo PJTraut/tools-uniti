@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections import Counter
+from collections import Counter, OrderedDict
 import time
+import math
 import uuid
 import weakref
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal, QTimer
 from PySide6.QtGui import (
     QFont,
     QFontMetrics,
+    QFontMetricsF,
     QGuiApplication,
     QInputMethodEvent,
     QKeyEvent,
@@ -29,6 +31,9 @@ from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
 from uniti.ui.theme import EditorThemeTokens, active_theme
 from uniti.ui.font_policy import resolve_editor_font
+from uniti.ui.text_layout import ShapedWindow, Utf16Map
+from uniti.ui.horizontal_layout import HorizontalLayouts
+from uniti.ui.shaped_wrap import ShapedRowProvider
 from uniti.ui.whitespace import (
     WhitespaceKind,
     WhitespaceMode,
@@ -68,9 +73,7 @@ def _zero_width_visible(
     *,
     owns_end: bool,
 ) -> bool:
-    return row_start <= position < row_end or (
-        owns_end and position == row_end
-    )
+    return row_start <= position < row_end or (owns_end and position == row_end)
 
 
 class UNITITextView(QAbstractScrollArea):
@@ -112,19 +115,28 @@ class UNITITextView(QAbstractScrollArea):
         self._wrap_signature: tuple[int, int, int] | None = None
         self.setFont(self._base_font)
         self._metrics = QFontMetrics(self.font())
-        self._line_height = max(1, self._metrics.height())
+        self._row_ascent, self._line_height = self._font_envelope()
         self._gutter_font = QFont(self.font())
         self._gutter_font.setPointSizeF(self.font().pointSizeF() * 0.8)
         self._gutter_metrics = QFontMetrics(self._gutter_font)
         self._gutter_width = 48
         self._max_visible_chars = 8192
-        self._cell_width = max(1, self._metrics.horizontalAdvance("M"))
+        self._cell_width = max(
+            1, math.ceil(QFontMetricsF(self.font()).horizontalAdvance("M"))
+        )
         self._max_seen_line_width = 0
         self._drag_selecting = False
         self._click_count = 0
         self._last_click_at = 0.0
         self._last_click_position = (0.0, 0.0)
         self._preedit_text = ""
+        self._preedit_cursor = 0
+        self._preedit_formats = ()
+        self._preedit_cursor_visible = True
+        self._shape_cache = OrderedDict()
+        self._horizontal_layouts = None
+        self._horizontal_signature = None
+        self.geometry_pending = False
         self._match_index = MatchIndex(())
         self._progressive_navigation = False
         self._dock_return: DockReturnRecord | None = None
@@ -237,13 +249,24 @@ class UNITITextView(QAbstractScrollArea):
 
     def _wrap_columns(self) -> int:
         width = max(1, self.viewport().width() - self._gutter_width - 8)
-        return max(1, width // self._cell_width)
+        return max(1, int(width // QFontMetricsF(self.font()).horizontalAdvance("M")))
 
     def _wrapped_row_index(self) -> WrappedRowIndex:
         columns = self._wrap_columns()
-        signature = (id(self.document), self.document.revision, columns)
+        signature = (
+            id(self.document),
+            self.document.revision,
+            columns,
+            self.font().key(),
+        )
         if self._wrap_index is None or signature != self._wrap_signature:
-            self._wrap_index = WrappedRowIndex(self.document, columns)
+            width = max(1, self.viewport().width() - self._gutter_width - 8)
+            provider = ShapedRowProvider(
+                self.document, self.font(), width, self._cell_width * 4
+            )
+            self._wrap_index = WrappedRowIndex(
+                self.document, columns, row_provider=provider
+            )
             self._wrap_signature = signature
         return self._wrap_index
 
@@ -260,13 +283,37 @@ class UNITITextView(QAbstractScrollArea):
         self.wrapChanged.emit(enabled)
         self.viewport().update()
 
+    def _font_envelope(self):
+        ascent = self._metrics.ascent()
+        descent = self._metrics.descent()
+        # Full family metrics include marks outside primary Latin ascent.
+        for family in self.font().families():
+            font = QFont(self.font())
+            font.setFamily(family)
+            metrics = QFontMetrics(font)
+            ascent, descent = (
+                max(ascent, metrics.ascent()),
+                max(descent, metrics.descent()),
+            )
+        sample = ShapedWindow(
+            "क्षि ক্কি ક્કિ ਕਿ ಕ್ಕಿ ക്കി କ୍କି க்கி క్కి 中文 한국어 👩‍💻", self.font()
+        )
+        for line in sample.lines:
+            ascent, descent = (
+                max(ascent, math.ceil(line.ascent())),
+                max(descent, math.ceil(line.descent())),
+            )
+        return ascent, max(1, ascent + descent)
+
     def _rebuild_metrics(self) -> None:
         self._metrics = QFontMetrics(self.font())
-        self._line_height = max(1, self._metrics.height())
+        self._row_ascent, self._line_height = self._font_envelope()
         self._gutter_font = QFont(self.font())
         self._gutter_font.setPointSizeF(self.font().pointSizeF() * 0.8)
         self._gutter_metrics = QFontMetrics(self._gutter_font)
-        self._cell_width = max(1, self._metrics.horizontalAdvance("M"))
+        self._cell_width = max(
+            1, math.ceil(QFontMetricsF(self.font()).horizontalAdvance("M"))
+        )
         self._max_seen_line_width = 0
         self._wrap_index = None
         self._wrap_signature = None
@@ -330,9 +377,18 @@ class UNITITextView(QAbstractScrollArea):
         if self._soft_wrap:
             scrollbar.setValue(0)
             return
-        theoretical_width = self.document.total_chars() * self._cell_width
-        upper_bound = max(0, theoretical_width - scrollbar.pageStep())
-        selected = min(requested, upper_bound)
+        # A saved pixel offset cannot be capped using code-point cell counts.
+        # The bounded layout resolves the actual line width progressively.
+        selected = max(0, min(requested, 2_147_483_647))
+        index = self.document.document_line_index
+        if index.complete and index.indexed_line_count == 1:
+            start, offset, shape, resolved = self._horizontal_geometry(0)
+            if resolved and not self.document.read_line_window(
+                0, column_start=start + len(shape.text), max_chars=1
+            ):
+                selected = min(
+                    selected, max(0, int(offset + shape.width) - scrollbar.pageStep())
+                )
         if selected > scrollbar.maximum():
             scrollbar.setMaximum(selected)
         scrollbar.setValue(selected)
@@ -355,9 +411,7 @@ class UNITITextView(QAbstractScrollArea):
         self._refresh_scrollbars(advance_index=False)
         self._restore_horizontal_scroll(record.horizontal_scroll)
         vertical = (
-            record.wrap_viewport_row
-            if record.soft_wrap
-            else record.vertical_scroll
+            record.wrap_viewport_row if record.soft_wrap else record.vertical_scroll
         )
         self._restore_vertical_scroll(vertical)
         line = self.document.line_for_char(self.state.cursor)
@@ -444,6 +498,12 @@ class UNITITextView(QAbstractScrollArea):
             # available text columns. Rebuild rows before using that layout.
             self._update_gutter_width()
             if index.columns == self._wrap_columns():
+                if (
+                    not index.complete
+                    and index.known_count <= first_row + visible
+                    and not index._row_provider.blocked
+                ):
+                    QTimer.singleShot(0, self.viewport().update)
                 return index
 
     def _refresh_scrollbars(self, *, advance_index: bool) -> None:
@@ -491,11 +551,47 @@ class UNITITextView(QAbstractScrollArea):
         super().resizeEvent(event)
         self._refresh_scrollbars(advance_index=False)
 
-    def _horizontal_window(self) -> tuple[int, int]:
-        horizontal = self.horizontalScrollBar().value()
-        column_start = horizontal // self._cell_width
-        text_x = self._gutter_width - (horizontal % self._cell_width)
-        return column_start, text_x
+    def _horizontal_window(self, line: int = 0) -> tuple[int, float]:
+        start, offset, _, resolved = self._horizontal_geometry(line)
+        return start, self._gutter_width + offset - self.horizontalScrollBar().value()
+
+    def _horizontal_geometry(self, line, *, column=None):
+        signature = (id(self.document), self.document.revision, self.font().key())
+        if signature != self._horizontal_signature:
+            self._horizontal_layouts = HorizontalLayouts(
+                self.document, self.font(), self._cell_width * 4
+            )
+            self._horizontal_signature = signature
+        result = self._horizontal_layouts.window(
+            line, pixel=self.horizontalScrollBar().value(), column=column
+        )
+        self.geometry_pending = not result[3]
+        if self.geometry_pending and result[2].text:
+            QTimer.singleShot(0, self.viewport().update)
+        return result
+
+    def _shape(self, text, window_start=None, *, origin=0):
+        preedit = None
+        if (
+            window_start is not None
+            and self._preedit_text
+            and 0 <= self.state.cursor - window_start <= len(text)
+        ):
+            preedit = (self.state.cursor - window_start, self._preedit_text)
+        key = (text, self.font().key(), preedit, origin % (self._cell_width * 4))
+        shaped = self._shape_cache.pop(key, None)
+        if shaped is None:
+            shaped = ShapedWindow(
+                text,
+                self.font(),
+                tab_stop_px=self._cell_width * 4,
+                preedit=preedit,
+                tab_origin=origin,
+            )
+        self._shape_cache[key] = shaped
+        while len(self._shape_cache) > 64:
+            self._shape_cache.popitem(last=False)
+        return shaped
 
     def _line_content(
         self,
@@ -514,17 +610,25 @@ class UNITITextView(QAbstractScrollArea):
         return self._line_content(line, column_start).text
 
     def _paint_invalid_byte_annotations(
-        self, painter: QPainter, annotated, window_start: int, text: str, text_x: int, y: int
+        self,
+        painter: QPainter,
+        annotated,
+        window_start: int,
+        text: str,
+        text_x: int,
+        y: int,
+        shaped=None,
     ) -> None:
         if not annotated.invalid_bytes:
             return
+        shaped = self._shape(text) if shaped is None else shaped
         painter.setPen(self._theme_tokens.invalid_byte)
         for span in annotated.invalid_bytes:
             local = span.start - window_start
             if local < 0 or local >= len(text):
                 continue
-            x1 = text_x + self._metrics.horizontalAdvance(text[:local])
-            x2 = text_x + self._metrics.horizontalAdvance(text[: local + 1])
+            x1 = text_x + shaped.x_for_cp(local)
+            x2 = text_x + shaped.x_for_cp(local + 1)
             painter.drawRect(
                 int(x1),
                 y + 1,
@@ -540,14 +644,10 @@ class UNITITextView(QAbstractScrollArea):
         y: float,
         *,
         selection: tuple[int, int] | None = None,
+        shaped=None,
     ) -> QTextLayout:
-        layout = QTextLayout(text, self.font())
-        layout.beginLayout()
-        line = layout.createLine()
-        if line.isValid():
-            line.setLineWidth(max(1.0, float(self._metrics.horizontalAdvance(text) + 8)))
-            line.setPosition(QPointF(0.0, 0.0))
-        layout.endLayout()
+        shaped = self._shape(text) if shaped is None else shaped
+        layout = shaped.layout
         formats: list[QTextLayout.FormatRange] = []
         if selection is not None:
             start, end = selection
@@ -555,11 +655,38 @@ class UNITITextView(QAbstractScrollArea):
                 selected_format = QTextCharFormat()
                 selected_format.setForeground(self._theme_tokens.selected_text)
                 selected_range = QTextLayout.FormatRange()
-                selected_range.start = start
-                selected_range.length = end - start
+                selected_range.start = shaped.unit_for_cp(start)
+                selected_range.length = shaped.unit_for_cp(end) - selected_range.start
                 selected_range.format = selected_format
                 formats.append(selected_range)
-        layout.draw(painter, QPointF(x, y), formats)
+        if shaped.preedit is not None:
+            fmt = QTextCharFormat()
+            fmt.setFontUnderline(True)
+            item = QTextLayout.FormatRange()
+            item.start = shaped.mapping.cp_to_u16(shaped.preedit[0])
+            item.length = len(shaped.preedit[1].encode("utf-16-le")) // 2
+            item.format = fmt
+            formats.append(item)
+            for attribute in self._preedit_formats:
+                if (
+                    0 <= attribute.start <= item.length
+                    and 0 <= attribute.length <= item.length - attribute.start
+                ):
+                    styled = QTextLayout.FormatRange()
+                    styled.start = item.start + attribute.start
+                    styled.length = attribute.length
+                    styled.format = QTextCharFormat(attribute.value)
+                    formats.append(styled)
+        layout.draw(
+            painter,
+            QPointF(
+                x,
+                y
+                + self._row_ascent
+                - (shaped.lines[0].ascent() if shaped.lines else self._row_ascent),
+            ),
+            formats,
+        )
         return layout
 
     @staticmethod
@@ -577,9 +704,8 @@ class UNITITextView(QAbstractScrollArea):
         y: float,
     ) -> None:
         tokens = self._theme_tokens
-        baseline = y + self._metrics.ascent()
+        baseline = y + self._row_ascent
         left = int(round(x1))
-        right = max(left + 1, int(round(x2)))
         if kind == "overflow":
             painter.setPen(tokens.invisible_marker)
             painter.drawText(left + 3, baseline, label)
@@ -606,15 +732,19 @@ class UNITITextView(QAbstractScrollArea):
             return
         elif kind == "eol":
             painter.setPen(tokens.eol_marker)
-            painter.drawText(left + 3, baseline, {"LF": "␊", "CR": "␍", "CRLF": "␍␊"}[label])
+            painter.drawText(
+                left + 3, baseline, {"LF": "␊", "CR": "␍", "CRLF": "␍␊"}[label]
+            )
             return
         else:
             painter.setPen(tokens.invisible_marker)
             width = max(4.0, self._cell_width * 0.8)
             center = (x1 + x2) / 2 if abs(x2 - x1) >= 0.5 else x1
-            paint_compact_marker(painter, label, QRectF(
-                center - width / 2, y + 1, width, self._line_height - 2
-            ))
+            paint_compact_marker(
+                painter,
+                label,
+                QRectF(center - width / 2, y + 1, width, self._line_height - 2),
+            )
             return
 
     def _paint_whitespace_for_row(
@@ -628,6 +758,8 @@ class UNITITextView(QAbstractScrollArea):
         *,
         owns_end: bool,
         budget: _MarkerBudget,
+        shaped=None,
+        end_offset=None,
     ) -> None:
         if self._whitespace_mode == WhitespaceMode.OFF or layout.lineCount() == 0:
             return
@@ -636,13 +768,17 @@ class UNITITextView(QAbstractScrollArea):
         viewport_left = float(self._gutter_width)
         markers = tuple(iter_character_markers(text, self._whitespace_mode))
         # Document offsets count code points; QTextLine offsets count UTF-16 units.
-        utf16_positions = [0]
-        for character in text:
-            utf16_positions.append(utf16_positions[-1] + (2 if ord(character) > 0xFFFF else 1))
+        mapping = Utf16Map(text)
+        utf16_positions = [
+            shaped.unit_for_cp(i) if shaped is not None else mapping.cp_to_u16(i)
+            for i in range(len(text) + 1)
+        ]
         index = 0
         while index < len(markers):
             marker = markers[index]
-            x1 = float(text_x) + self._layout_cursor_x(layout_line, utf16_positions[marker.index])
+            x1 = float(text_x) + self._layout_cursor_x(
+                layout_line, utf16_positions[marker.index]
+            )
             x2 = float(text_x) + self._layout_cursor_x(
                 layout_line,
                 utf16_positions[marker.index + 1],
@@ -695,10 +831,17 @@ class UNITITextView(QAbstractScrollArea):
                 )
 
         if shows_eol(self._whitespace_mode) and owns_end:
-            terminator = self.document.line_terminator(line_number)
+            iterator = self.document.iter_text(end_offset, chunk_chars=2)
+            try:
+                _, tail = next(iterator)
+            except StopIteration:
+                tail = ""
+            terminator = "\r\n" if tail.startswith("\r\n") else tail[:1]
             label = {"\n": "LF", "\r\n": "CRLF", "\r": "CR"}.get(terminator)
             if label is not None:
-                x = float(text_x) + self._layout_cursor_x(layout_line, utf16_positions[-1])
+                x = float(text_x) + self._layout_cursor_x(
+                    layout_line, utf16_positions[-1]
+                )
                 if viewport_left <= x <= viewport_right:
                     budget.last_position = (x, x, y)
                     if _consume_marker(budget):
@@ -725,8 +868,7 @@ class UNITITextView(QAbstractScrollArea):
         selection = self.state.selection
         cursor_line = self.document.line_for_char(self.state.cursor)
         wrapped = (
-            self._prepare_wrapped_rows(first_line, visible)
-            if self._soft_wrap else None
+            self._prepare_wrapped_rows(first_line, visible) if self._soft_wrap else None
         )
 
         painter.fillRect(
@@ -737,66 +879,121 @@ class UNITITextView(QAbstractScrollArea):
             tokens.gutter_base,
         )
 
-        display_rows: list[tuple[int, int, int, int]] = []
+        display_rows: list[tuple[int, int, float, int, int]] = []
         if wrapped is not None:
-            for row in range(visible):
+            for row in range(min(visible, max(0, wrapped.known_count - first_line))):
                 try:
                     visual = wrapped.row(first_line + row)
                 except ValueError:
                     break
                 display_rows.append(
-                    (visual.line, visual.column_start, self._gutter_width, row)
+                    (
+                        visual.line,
+                        visual.column_start,
+                        self._gutter_width,
+                        row,
+                        visual.length,
+                    )
                 )
         else:
-            column_start, text_x = self._horizontal_window()
-            display_rows = [
-                (first_line + row, column_start, text_x, row)
-                for row in range(visible)
-            ]
+            for row in range(visible):
+                try:
+                    column_start, offset, geometry, _ = self._horizontal_geometry(
+                        first_line + row
+                    )
+                    text_x = (
+                        self._gutter_width + offset - self.horizontalScrollBar().value()
+                    )
+                except ValueError:
+                    break
+                display_rows.append(
+                    (first_line + row, column_start, text_x, row, len(geometry.text))
+                )
 
-        for line_number, column_start, text_x, row in display_rows:
+        for line_number, column_start, text_x, row, row_length in display_rows:
             try:
                 line_start = self.document.line_start(line_number)
                 annotated = self._line_content(
                     line_number,
                     column_start,
-                    max_chars=self._wrap_columns() if self._soft_wrap else None,
+                    max_chars=max(1, row_length),
                 )
                 text = annotated.text
+                text = text[:row_length]
             except ValueError:
                 break
 
             y = row * self._line_height
-            baseline = y + self._metrics.ascent()
+            baseline = y + self._row_ascent
             painter.setPen(tokens.gutter_text)
             if not self._soft_wrap or column_start == 0:
                 label = str(line_number + 1)
                 painter.setFont(self._gutter_font)
                 painter.drawText(
-                    self._gutter_width - 8 - self._gutter_metrics.horizontalAdvance(label),
+                    self._gutter_width
+                    - 8
+                    - self._gutter_metrics.horizontalAdvance(label),
                     baseline,
                     label,
                 )
                 painter.setFont(self.font())
 
-            width = self._metrics.horizontalAdvance(text)
-            known_columns = column_start + len(text)
-            if len(text) >= self._max_visible_chars:
-                known_columns += self._max_visible_chars
+            shaped = self._shape(
+                text,
+                line_start + column_start,
+                origin=(
+                    0
+                    if self._soft_wrap
+                    else text_x
+                    - self._gutter_width
+                    + self.horizontalScrollBar().value()
+                ),
+            )
+            ascent = max((math.ceil(line.ascent()) for line in shaped.lines), default=0)
+            descent = max(
+                (math.ceil(line.descent()) for line in shaped.lines), default=0
+            )
+            if (
+                ascent > self._row_ascent
+                or descent > self._line_height - self._row_ascent
+            ):
+                self._row_ascent = max(self._row_ascent, ascent)
+                self._line_height = max(self._line_height, self._row_ascent + descent)
+                painter.end()
+                self.viewport().update()
+                return
+            painter.save()
+            painter.setClipRect(
+                QRectF(
+                    self._gutter_width,
+                    0,
+                    max(0, self.viewport().width() - self._gutter_width),
+                    self.viewport().height(),
+                )
+            )
+            width = shaped.width
             if not self._soft_wrap:
                 self._max_seen_line_width = max(
                     self._max_seen_line_width,
-                    known_columns * self._cell_width,
-                    self.horizontalScrollBar().value() + width,
+                    int(
+                        text_x
+                        - self._gutter_width
+                        + self.horizontalScrollBar().value()
+                        + width
+                        + (self.viewport().width() if len(text) >= 8191 else 0)
+                    ),
                 )
 
             line_window_start = line_start + column_start
             line_end = line_window_start + len(text)
-            logical_line_end = self.document.line_end(line_number)
-            owns_end = line_end >= logical_line_end
+            owns_end = not self.document.read_line_window(
+                line_number, column_start=column_start + len(text), max_chars=1
+            )
             if len(self._match_index):
                 match_color = tokens.match
-                for record in self._match_index.intersecting(line_window_start, line_end + 1):
+                for record in self._match_index.intersecting(
+                    line_window_start, line_end + 1
+                ):
                     if record.start == record.end and not _zero_width_visible(
                         record.start,
                         line_window_start,
@@ -808,7 +1005,7 @@ class UNITITextView(QAbstractScrollArea):
                     b = min(record.end, line_end) - line_window_start
                     a = max(0, min(len(text), a))
                     b = max(0, min(len(text), b))
-                    x1 = text_x + self._metrics.horizontalAdvance(text[:a])
+                    x1 = text_x + shaped.x_for_cp(a)
                     if record.start == record.end:
                         marker_width = max(2.0, self.devicePixelRatioF())
                         marker_x = max(
@@ -828,7 +1025,7 @@ class UNITITextView(QAbstractScrollArea):
                             match_color,
                         )
                     elif b > a:
-                        x2 = text_x + self._metrics.horizontalAdvance(text[:b])
+                        x2 = text_x + shaped.x_for_cp(b)
                         painter.fillRect(
                             int(x1),
                             y,
@@ -845,8 +1042,8 @@ class UNITITextView(QAbstractScrollArea):
                 if visible_start < visible_end:
                     a = visible_start - line_window_start
                     b = visible_end - line_window_start
-                    x1 = text_x + self._metrics.horizontalAdvance(text[:a])
-                    x2 = text_x + self._metrics.horizontalAdvance(text[:b])
+                    x1 = text_x + shaped.x_for_cp(a)
+                    x2 = text_x + shaped.x_for_cp(b)
                     painter.fillRect(
                         int(x1),
                         y,
@@ -857,7 +1054,7 @@ class UNITITextView(QAbstractScrollArea):
                     selected_range = (a, b)
 
             self._paint_invalid_byte_annotations(
-                painter, annotated, line_window_start, text, text_x, y
+                painter, annotated, line_window_start, text, text_x, y, shaped
             )
             painter.setPen(tokens.text)
             layout = self._paint_line_text(
@@ -866,6 +1063,7 @@ class UNITITextView(QAbstractScrollArea):
                 float(text_x),
                 float(y),
                 selection=selected_range,
+                shaped=shaped,
             )
             self._paint_whitespace_for_row(
                 painter,
@@ -876,31 +1074,29 @@ class UNITITextView(QAbstractScrollArea):
                 line_number,
                 owns_end=owns_end,
                 budget=marker_budget,
+                shaped=shaped,
+                end_offset=line_end,
             )
 
-            if line_number == cursor_line and self._preedit_text:
+            if (
+                line_number == cursor_line
+                and self.hasFocus()
+                and self._preedit_cursor_visible
+            ):
                 local_column = self.state.cursor - line_window_start
                 if 0 <= local_column <= len(text):
-                    preedit_x = text_x + self._metrics.horizontalAdvance(text[:local_column])
-                    painter.drawText(int(preedit_x), baseline, self._preedit_text)
-                    preedit_width = self._metrics.horizontalAdvance(self._preedit_text)
-                    painter.drawLine(
-                        int(preedit_x),
-                        y + self._line_height - 2,
-                        int(preedit_x + preedit_width),
-                        y + self._line_height - 2,
+                    cursor_x = text_x + (
+                        shaped.preedit_x(self._preedit_cursor)
+                        if shaped.preedit
+                        else shaped.x_for_cp(local_column)
                     )
-
-            if line_number == cursor_line and self.hasFocus():
-                local_column = self.state.cursor - line_window_start
-                if 0 <= local_column <= len(text):
-                    cursor_x = text_x + self._metrics.horizontalAdvance(text[:local_column])
                     painter.drawLine(
-                        int(cursor_x),
+                        math.ceil(cursor_x),
                         y + 1,
-                        int(cursor_x),
+                        math.ceil(cursor_x),
                         y + self._line_height - 1,
                     )
+            painter.restore()
 
         if marker_budget.overflow and marker_budget.last_position is not None:
             x1, x2, y = marker_budget.last_position
@@ -929,9 +1125,13 @@ class UNITITextView(QAbstractScrollArea):
         font.setPointSizeF(max(6, font.pointSizeF() * 0.85))
         metrics = QFontMetrics(font)
         row_height = metrics.height() + 4
-        columns = max(1, min(3, width // max(240, metrics.horizontalAdvance("NNBSP U+202F") + 36)))
+        columns = max(
+            1, min(3, width // max(240, metrics.horizontalAdvance("NNBSP U+202F") + 36))
+        )
         header_rows = 2 if detail is not None else 1
-        capacity = max(0, int(self.viewport().height() * 0.45) // row_height - header_rows)
+        capacity = max(
+            0, int(self.viewport().height() * 0.45) // row_height - header_rows
+        )
         if capacity == 0 and detail is None:
             return
         shown = min(len(entries), capacity * columns)
@@ -940,7 +1140,9 @@ class UNITITextView(QAbstractScrollArea):
             shown = max(0, shown - columns)
         rows = (shown + columns - 1) // columns
         height = (header_rows + rows + int(truncated)) * row_height + 8
-        box = QRectF(self._gutter_width + 4, self.viewport().height() - height - 4, width, height)
+        box = QRectF(
+            self._gutter_width + 4, self.viewport().height() - height - 4, width, height
+        )
         painter.save()
         try:
             painter.setFont(font)
@@ -949,10 +1151,17 @@ class UNITITextView(QAbstractScrollArea):
             painter.drawRect(box)
 
             def text(value, x, y, available):
-                value = metrics.elidedText(value, Qt.TextElideMode.ElideRight, max(1, int(available)))
+                value = metrics.elidedText(
+                    value, Qt.TextElideMode.ElideRight, max(1, int(available))
+                )
                 painter.drawText(QPointF(x, y + metrics.ascent()), value)
 
-            text("Unicode inspection — visible marker types", box.left() + 6, box.top() + 4, width - 12)
+            text(
+                "Unicode inspection — visible marker types",
+                box.left() + 6,
+                box.top() + 4,
+                width - 12,
+            )
             if detail is not None:
                 text(detail, box.left() + 6, box.top() + row_height + 4, width - 12)
             labels = tuple(self._inspection_labels)
@@ -961,17 +1170,29 @@ class UNITITextView(QAbstractScrollArea):
                 x = box.left() + column * width / columns + 6
                 y = box.top() + (header_rows + row) * row_height + 4
                 label = labels[index]
-                glyph = {"SPACE": "·", "TAB": "»", "LF": "␊", "CR": "␍", "CRLF": "␍␊"}.get(label)
+                glyph = {
+                    "SPACE": "·",
+                    "TAB": "»",
+                    "LF": "␊",
+                    "CR": "␍",
+                    "CRLF": "␍␊",
+                }.get(label)
                 painter.setPen(self._theme_tokens.invisible_marker)
                 if glyph is not None:
                     text(glyph, x, y, 28)
                 else:
-                    paint_compact_marker(painter, label, QRectF(x + 3, y, 12, row_height - 3))
+                    paint_compact_marker(
+                        painter, label, QRectF(x + 3, y, 12, row_height - 3)
+                    )
                 painter.setPen(self._theme_tokens.text)
                 text(entry, x + 28, y, width / columns - 40)
             if truncated:
-                text(f"+{len(entries) - shown} types; select one character for details",
-                    box.left() + 6, box.top() + (header_rows + rows) * row_height + 4, width - 12)
+                text(
+                    f"+{len(entries) - shown} types; select one character for details",
+                    box.left() + 6,
+                    box.top() + (header_rows + rows) * row_height + 4,
+                    width - 12,
+                )
         finally:
             painter.restore()
 
@@ -989,31 +1210,30 @@ class UNITITextView(QAbstractScrollArea):
             text_x = self._gutter_width
         else:
             line = visual_row
-            column_start, text_x = self._horizontal_window()
+            column_start, offset, geometry, resolved = self._horizontal_geometry(line)
+            if not resolved:
+                return self.state.cursor
+            text_x = self._gutter_width + offset - self.horizontalScrollBar().value()
         try:
             line_start = self.document.line_start(line)
-            text = self._line_text(line, column_start)
-            if self._soft_wrap:
-                text = text[: self._wrap_columns()]
+            text = (
+                self._line_text(line, column_start)[: wrapped_row.length]
+                if self._soft_wrap
+                else geometry.text
+            )
         except ValueError:
             return self.state.cursor
 
-        target = max(0.0, x - text_x)
-        low = 0
-        high = len(text)
-        while low < high:
-            middle = (low + high) // 2
-            width = self._metrics.horizontalAdvance(text[: middle + 1])
-            if width < target:
-                low = middle + 1
-            else:
-                high = middle
-        if low < len(text):
-            before = self._metrics.horizontalAdvance(text[:low])
-            after = self._metrics.horizontalAdvance(text[: low + 1])
-            if target > (before + after) / 2:
-                low += 1
-        return line_start + column_start + low
+        shaped = self._shape(
+            text,
+            line_start + column_start,
+            origin=(
+                0
+                if self._soft_wrap
+                else text_x - self._gutter_width + self.horizontalScrollBar().value()
+            ),
+        )
+        return line_start + column_start + shaped.cp_for_x(max(0.0, x - text_x))
 
     def _select_range(self, start: int, end: int) -> None:
         self.state.move_to(start)
@@ -1025,10 +1245,7 @@ class UNITITextView(QAbstractScrollArea):
         if position >= total:
             return total, total
         character = self.document.read(position, position + 1)
-        if (
-            not self.state._is_word_character(character)
-            and position > 0
-        ):
+        if not self.state._is_word_character(character) and position > 0:
             previous = self.document.read(position - 1, position)
             if self.state._is_word_character(previous):
                 position -= 1
@@ -1207,15 +1424,64 @@ class UNITITextView(QAbstractScrollArea):
         commit = event.commitString()
         replacement_length = event.replacementLength()
         replacement_start = event.replacementStart()
+        surrounding, cursor, _ = self.state.ime_surrounding_text()
+        mapping = Utf16Map(surrounding)
+        changed = bool(commit or replacement_length)
         if replacement_length or replacement_start:
-            start = max(0, self.state.cursor + replacement_start)
-            end = max(start, start + replacement_length)
+            start_unit = mapping.cp_to_u16(cursor) + replacement_start
+            end_unit = start_unit + replacement_length
+            try:
+                start = (
+                    self.state.cursor
+                    - cursor
+                    + mapping.u16_to_cp(start_unit, bias="floor")
+                )
+                end = (
+                    self.state.cursor
+                    - cursor
+                    + mapping.u16_to_cp(end_unit, bias="ceil")
+                )
+            except ValueError:
+                event.ignore()
+                return
             self.state.move_to(start)
             self.state.move_to(end, selecting=True)
-        if commit:
-            self.state.insert_text(commit)
-        self._preedit_text = event.preeditString()
-        if commit:
+        if changed:
+            self.state._replace_selection(commit)
+        self._preedit_text = event.preeditString()[:2048]
+        self._preedit_cursor = len(self._preedit_text)
+        self._preedit_cursor_visible = True
+        self._preedit_formats = tuple(
+            a
+            for a in event.attributes()[:256]
+            if a.type == QInputMethodEvent.AttributeType.TextFormat
+        )
+        for attribute in event.attributes()[:256]:
+            if attribute.type == QInputMethodEvent.AttributeType.Selection:
+                surrounding, relative, _ = self.state.ime_surrounding_text()
+                context = Utf16Map(surrounding)
+                base = self.state.cursor - relative
+                try:
+                    anchor = base + context.u16_to_cp(attribute.start, bias="floor")
+                    cursor = base + context.u16_to_cp(
+                        attribute.start + attribute.length, bias="ceil"
+                    )
+                except ValueError:
+                    continue
+                self.state.move_to(anchor)
+                self.state.move_to(cursor, selecting=True)
+                changed = True
+            if attribute.type == QInputMethodEvent.AttributeType.Cursor:
+                self._preedit_cursor_visible = attribute.length != 0
+                self._preedit_cursor = Utf16Map(self._preedit_text).u16_to_cp(
+                    max(
+                        0,
+                        min(
+                            Utf16Map(self._preedit_text).positions[-1], attribute.start
+                        ),
+                    )
+                )
+        if changed:
             self._state_changed()
         else:
             self.viewport().update()
@@ -1231,15 +1497,35 @@ class UNITITextView(QAbstractScrollArea):
                 visual_row = self._wrapped_row_index().row_for_position(line, column)
                 wrapped = self._wrapped_row_index().row(visual_row)
             except ValueError:
-                visual_row = first
-                wrapped_column = 0
+                return QRectF()
             else:
                 wrapped_column = wrapped.column_start
-            x = self._gutter_width + (column - wrapped_column) * self._cell_width
+            text = self._line_text(line, wrapped_column)[: wrapped.length]
+            shaped = self._shape(text, line_start + wrapped_column)
+            x = self._gutter_width + (
+                shaped.preedit_x(self._preedit_cursor)
+                if shaped.preedit
+                else shaped.x_for_cp(min(len(text), column - wrapped_column))
+            )
             y = (visual_row - first) * self._line_height
         else:
             horizontal = self.horizontalScrollBar().value()
-            x = self._gutter_width + column * self._cell_width - horizontal
+            start, offset, shaped, resolved = self._horizontal_geometry(
+                line, column=column
+            )
+            if not resolved:
+                return QRectF()
+            shaped = self._shape(shaped.text, line_start + start, origin=offset)
+            x = (
+                self._gutter_width
+                + offset
+                + (
+                    shaped.preedit_x(self._preedit_cursor)
+                    if shaped.preedit
+                    else shaped.x_for_cp(min(len(shaped.text), column - start))
+                )
+                - horizontal
+            )
             y = (line - first) * self._line_height
         return QRectF(float(x), float(y), 2.0, float(self._line_height))
 
@@ -1248,13 +1534,20 @@ class UNITITextView(QAbstractScrollArea):
             return True
         if query == Qt.InputMethodQuery.ImCursorRectangle:
             return self._cursor_rectangle()
-        surrounding, cursor_relative, anchor_relative = self.state.ime_surrounding_text()
+        surrounding, cursor_relative, anchor_relative = (
+            self.state.ime_surrounding_text()
+        )
         if query == Qt.InputMethodQuery.ImCursorPosition:
-            return cursor_relative
+            return Utf16Map(surrounding).cp_to_u16(cursor_relative)
         if query == Qt.InputMethodQuery.ImAnchorPosition:
-            return anchor_relative
+            return Utf16Map(surrounding).cp_to_u16(anchor_relative)
         if query == Qt.InputMethodQuery.ImCurrentSelection:
-            return self.state.selected_text()
+            selection = self.state.selection
+            return (
+                self.document.read(*selection)
+                if selection and selection[1] - selection[0] <= 4096
+                else ""
+            )
         if query == Qt.InputMethodQuery.ImSurroundingText:
             return surrounding
         return super().inputMethodQuery(query)
@@ -1343,16 +1636,18 @@ class UNITITextView(QAbstractScrollArea):
         if self._soft_wrap:
             line_start = self.document.line_start(line)
             column = self.state.cursor - line_start
+            index = self._wrapped_row_index()
+            previous_count = index.known_count
             try:
-                visual_row = self._wrapped_row_index().row_for_position(line, column)
+                visual_row = index.row_for_position(line, column)
             except ValueError:
-                visual_row = first
+                if index.known_count > previous_count:
+                    QTimer.singleShot(0, self._ensure_cursor_visible)
+                return
             if visual_row < first:
                 self.verticalScrollBar().setValue(visual_row)
             elif visual_row >= first + visible:
-                self.verticalScrollBar().setValue(
-                    max(0, visual_row - visible + 1)
-                )
+                self.verticalScrollBar().setValue(max(0, visual_row - visible + 1))
             self.horizontalScrollBar().setValue(0)
             return
         if line < first:
@@ -1362,7 +1657,12 @@ class UNITITextView(QAbstractScrollArea):
 
         line_start = self.document.line_start(line)
         column = self.state.cursor - line_start
-        cursor_pixel = column * self._cell_width
+        start, offset, shaped, resolved = self._horizontal_geometry(line, column=column)
+        if not resolved:
+            if shaped.text:
+                QTimer.singleShot(0, self._ensure_cursor_visible)
+            return
+        cursor_pixel = int(offset + shaped.x_for_cp(column - start))
         horizontal = self.horizontalScrollBar()
         page = max(1, horizontal.pageStep())
         if cursor_pixel < horizontal.value():

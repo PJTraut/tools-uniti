@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QPalette
+from PySide6.QtGui import QPalette, QFont, QFontMetrics
 from PySide6.QtWidgets import QApplication, QStyle, QStyledItemDelegate
 
 from uniti.ui.capture_report import CaptureReportModel
+from uniti.ui.font_policy import resolve_editor_font
+from uniti.ui.text_layout import ShapedWindow
 
 
 class CaptureReportDelegate(QStyledItemDelegate):
@@ -16,6 +18,27 @@ class CaptureReportDelegate(QStyledItemDelegate):
         super().__init__(parent)
         self._width_cache_key: tuple[int, int, str] | None = None
         self._cached_label_width = 0
+
+    @staticmethod
+    def _fallback_font(font):
+        result = QFont(font)
+        result.setFamilies(
+            list(dict.fromkeys([font.family(), *resolve_editor_font().font.families()]))
+        )
+        return result
+
+    def sizeHint(self, option, index):
+        result = super().sizeHint(option, index)
+        font = self._fallback_font(option.font)
+        text = str(index.data() or "")[:8192]
+        shaped = ShapedWindow(text, font)
+        result.setHeight(
+            max(
+                result.height(),
+                int(max((line.height() for line in shaped.lines), default=0)) + 4,
+            )
+        )
+        return result
 
     def _label_width(self, option, model) -> int:
         cache_key = (
@@ -30,9 +53,7 @@ class CaptureReportDelegate(QStyledItemDelegate):
                         model.data(model.index(row, 0), CaptureReportModel.LabelRole)
                     )
                     for row in range(model.rowCount())
-                    if model.data(
-                        model.index(row, 0), CaptureReportModel.LabelRole
-                    )
+                    if model.data(model.index(row, 0), CaptureReportModel.LabelRole)
                     is not None
                 ),
                 default=0,
@@ -43,9 +64,7 @@ class CaptureReportDelegate(QStyledItemDelegate):
     @staticmethod
     def _text_bounds(option) -> QRect:
         style = (
-            option.widget.style()
-            if option.widget is not None
-            else QApplication.style()
+            option.widget.style() if option.widget is not None else QApplication.style()
         )
         margin = style.pixelMetric(
             QStyle.PixelMetric.PM_FocusFrameHMargin,
@@ -81,11 +100,11 @@ class CaptureReportDelegate(QStyledItemDelegate):
 
         styled = option.__class__(option)
         self.initStyleOption(styled, index)
+        styled.font = self._fallback_font(styled.font)
+        styled.fontMetrics = QFontMetrics(styled.font)
         styled.text = ""
         style = (
-            styled.widget.style()
-            if styled.widget is not None
-            else QApplication.style()
+            styled.widget.style() if styled.widget is not None else QApplication.style()
         )
         style.drawControl(
             QStyle.ControlElement.CE_ItemViewItem,

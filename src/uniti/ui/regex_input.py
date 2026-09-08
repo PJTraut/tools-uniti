@@ -6,6 +6,8 @@ from PySide6.QtCore import QEvent
 from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
 
 from uniti.regex.analysis import RegexAnalysis
+from uniti.ui.font_policy import resolve_editor_font
+from uniti.ui.text_layout import Utf16Map, ShapedWindow
 from uniti.ui.bounded_text_edit import BoundedSingleLineTextEdit
 
 
@@ -16,9 +18,7 @@ def _relative_luminance(color: QColor) -> float:
     channels: list[float] = []
     for value in color.getRgbF()[:3]:
         channels.append(
-            value / 12.92
-            if value <= 0.04045
-            else ((value + 0.055) / 1.055) ** 2.4
+            value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
         )
     return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
 
@@ -134,6 +134,7 @@ class _AnalysisHighlighter(QSyntaxHighlighter):
         analysis = self.analysis
         if analysis is None or analysis.expression != text:
             return
+        mapping = Utf16Map(text)
         for token in analysis.tokens:
             if token.end <= token.start or token.start >= len(text):
                 continue
@@ -147,7 +148,10 @@ class _AnalysisHighlighter(QSyntaxHighlighter):
                 fmt = self._formats.get(token.kind, self._formats["literal"])
             if not token.valid or token.kind == "invalid":
                 fmt = self._invalid_format(fmt)
-            self.setFormat(token.start, length, fmt)
+            start_unit = mapping.cp_to_u16(token.start)
+            self.setFormat(
+                start_unit, mapping.cp_to_u16(token.start + length) - start_unit, fmt
+            )
 
         for diagnostic in analysis.diagnostics:
             start = max(0, min(len(text), diagnostic.start))
@@ -157,8 +161,9 @@ class _AnalysisHighlighter(QSyntaxHighlighter):
                     continue
                 start = max(0, start - 1)
                 end = start + 1
-            fmt = self._invalid_format(self.format(start))
-            self.setFormat(start, end - start, fmt)
+            start_unit = mapping.cp_to_u16(start)
+            fmt = self._invalid_format(self.format(start_unit))
+            self.setFormat(start_unit, mapping.cp_to_u16(end) - start_unit, fmt)
 
 
 class PatternHighlighter(_AnalysisHighlighter):
@@ -169,9 +174,17 @@ class ReplacementHighlighter(_AnalysisHighlighter):
     pass
 
 
-class RegexInput(BoundedSingleLineTextEdit):
+class _FallbackTextInput(BoundedSingleLineTextEdit):
+    def minimum_content_height(self) -> int:
+        shape = ShapedWindow("क्षि ক্কি 中文 한국어", self.font())
+        return max(28, int(max(line.height() for line in shape.lines)) + 12)
+
+
+class RegexInput(_FallbackTextInput):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        self.setFont(resolve_editor_font().font)
+        self.setMinimumHeight(self.minimum_content_height())
         self.highlighter = PatternHighlighter(self.document(), self)
 
     def set_analysis(self, analysis: RegexAnalysis) -> None:
@@ -191,9 +204,11 @@ class RegexInput(BoundedSingleLineTextEdit):
                 self.blockSignals(blocked)
 
 
-class ReplacementInput(BoundedSingleLineTextEdit):
+class ReplacementInput(_FallbackTextInput):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        self.setFont(resolve_editor_font().font)
+        self.setMinimumHeight(self.minimum_content_height())
         self.highlighter = ReplacementHighlighter(self.document(), self)
 
     def set_analysis(self, analysis: RegexAnalysis) -> None:
