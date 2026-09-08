@@ -215,3 +215,13 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Working interpretation: replacements update the open documents without automatically saving their files.
 - Acceptance to define during implementation: treatment of an active selection or a match crossing the cursor boundary, and whether a match starting exactly at the cursor is included. Preserve full-document regex anchor/context semantics, cancellation, stale-result protection, and one-step Undo for the replacement operation.
 - Cross-document acceptance to define: completion and replacement counts per document, cancellation or partial failure reporting, handling of documents that change during planning, and clear Undo behavior for the batch. Preserve each document's shared-view ownership and unsaved-change state.
+
+## BF-016 — Document groups with customizable names and colors
+
+- Reported: 2026-09-08, on B2.
+- Status: feature request recorded; design and implementation pending.
+- Request: group documents using default tags **A**, **B**, and **C**, with customizable group names and colors.
+- Working interpretation: lightweight grouping of open documents within UNITI. Group membership belongs to the document and remains consistent across its tabs, splits, and windows; it does not modify the document's file contents.
+- Design choices still open: one group or multiple tags per document, adding/removing groups beyond the three defaults, where labels/colors appear, and whether assignments persist across sessions.
+- Related request: [BF-015](#bf-015--replacement-scope-cursor-to-end-of-document) adds replacement scopes. A group-specific replacement scope is a possible follow-up, not yet requested.
+- Scope review: reconcile this feature with the currently parked project/workspace boundary before implementation; document tags do not by themselves establish projects, folders, or workspace discovery.
