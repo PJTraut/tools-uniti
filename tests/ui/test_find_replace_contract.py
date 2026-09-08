@@ -192,7 +192,7 @@ def _contrast_ratio(first, second) -> float:
 
 def test_regex_inputs_render_supplied_immutable_analysis():
     assert REGEX_INPUT.exists()
-    source = REGEX_INPUT.read_text()
+    source = REGEX_INPUT.read_text(encoding="utf-8")
     assert "QSyntaxHighlighter" in source
     assert "set_analysis" in source
     assert "tokenize_pattern" not in source
@@ -203,7 +203,7 @@ def test_regex_inputs_render_supplied_immutable_analysis():
 
 def test_find_replace_panel_has_worker_cancellation_navigation_and_capture_ui():
     assert PANEL.exists()
-    source = PANEL.read_text()
+    source = PANEL.read_text(encoding="utf-8")
     for required in (
         "TaskSpec",
         "TaskKind",
@@ -329,15 +329,15 @@ def test_capture_report_model_formats_rows_and_accessible_text():
 
 
 def test_text_view_paints_compact_match_index_intersections_only():
-    source = VIEW.read_text()
+    source = VIEW.read_text(encoding="utf-8")
     assert "MatchIndex" in source
     assert "intersecting" in source
     assert "set_match_index" in source
 
 
 def test_main_window_integrates_bottom_find_replace_panel_and_shortcuts():
-    source = MAIN.read_text()
-    shortcut_source = SHORTCUT_POLICY.read_text()
+    source = MAIN.read_text(encoding="utf-8")
+    shortcut_source = SHORTCUT_POLICY.read_text(encoding="utf-8")
     assert "FindReplaceWindow" in source
     assert "build_shortcut_policy" in source
     assert "standard.Find" in shortcut_source
@@ -674,7 +674,7 @@ def test_find_all_renders_every_visible_match_with_clear_contrast(tmp_path: Path
 
 
 def test_find_replace_uses_shared_resource_task_coordinator():
-    source = PANEL.read_text()
+    source = PANEL.read_text(encoding="utf-8")
     assert "resource_manager" in source
     assert "_resource_manager.tasks.submit" in source
 
@@ -1085,7 +1085,7 @@ def test_single_zero_width_replace_inserts_once_and_invalidates_results(
 
 
 def test_replace_current_captures_widget_text_before_worker_starts():
-    source = PANEL.read_text()
+    source = PANEL.read_text(encoding="utf-8")
     method = source[source.index("    def replace_current(") : source.index("    def replace_all(")]
 
     capture = method.index("replacement_text = self._replacement_expression()")
