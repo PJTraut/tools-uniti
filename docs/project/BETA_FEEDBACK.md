@@ -4,7 +4,24 @@ Started: 2026-09-07
 
 This log collects summarized user observations for later triage, planning, and action. An entry is not an approved implementation commitment. Early source-checkout feedback does not open or satisfy the [B1 feedback gate](02_plans/v0.001b1-real-world-feedback-beta.md).
 
-Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02_plans/2026-09-08-b1-feedback-b2-transition-plan.md) covers BF-001–BF-010, integration into main, and version advancement. Preparing this plan does not close the entries or change the current release identity.
+Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02_plans/2026-09-08-b1-feedback-b2-transition-plan.md) covers BF-001–BF-010, and its proposed successor scope is recorded in the [B2 Feedback Refinement Beta milestone](02_plans/v0.001b2-feedback-refinement-beta.md). The existing executable release policy is retained. A22 real-use days, A23 executable/health delivery, A24 qualification, and B1 private executable human feedback remain prerequisites; preparing these records does not close an entry, complete B1, or change the A22 release identity.
+
+## 2026-09-08 execution and evidence map
+
+| Feedback | Planned task | Current evidence state | Remaining gate |
+|---|---:|---|---|
+| BF-001 | 2 | Report recorded; implementation `NOT RUN` | First-use progress, warning correction, focused verification |
+| BF-002 | 3 | Local fixes and macOS source smoke pass | Affected Windows/Mac distribution and confirmation `NOT RUN` |
+| BF-003 | 4 | Compact markers/inspection implemented locally | Centered U+0020 correction and native/affected-host evidence |
+| BF-004 | 4 | Configuration implemented locally | Cross-window/restart and Windows/affected-host evidence |
+| BF-005 | 7 | `NOT RUN` | Editable themes, presets, persistence, contrast qualification |
+| BF-006 | 8 | `NOT RUN` | Selected Noto packaging, shaping, navigation, and IME qualification |
+| BF-007 | 6 | Initial Lucide controls implemented locally | F>/R>, clear/navigation reconciliation and native evidence |
+| BF-008 | 6 | `NOT RUN` | Final label interpretation and aligned report layout |
+| BF-009 | 5 | `NOT RUN` | 80% gutter typography and zoom/layout qualification |
+| BF-010 | 5 | `NOT RUN` | Pending-versus-current EOL wording and post-save view refresh |
+
+Fresh baseline evidence on checkpoint `5724f6c` is 1,476 passed with six platform-policy skips in 93.01 seconds; native Cocoa combined smoke passed explicit Quit and session restore. These checks do not replace any remaining feedback gate or predecessor milestone evidence.
 
 Use sequential `BF-NNN` identifiers. Record the report date, environment, observation, impact, evidence limits, and later disposition. Keep personal information, machine identifiers, user paths, and raw reports out of this log. Link any subsequently approved work and verification to its entry.
 

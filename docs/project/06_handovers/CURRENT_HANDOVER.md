@@ -1,17 +1,25 @@
 # UNITI Current Handover
 
-Captured: 2026-09-05
+Captured: 2026-09-08
 
 This is a continuation snapshot, not a controlling specification. Resolve conflicts using the authority order in the [Documentation System](../00_governance/DOCUMENTATION_SYSTEM.md).
 
+## 2026-09-08 candidate checkpoint
+
+The documentation checkpoint began on isolated branch `work/b2-feedback` at `5724f6cb3081d30b2962ecaefb623be2358331b8`, with a clean tree and local `main` at the same commit. The read-only ancestry check found `origin/main` at `ca759668ea08f6a254ca6c516c04f39c85bf6a0e`, zero local commits behind and seven ahead. Those seven are the six already-present feedback commits `fadc36f`, `09fe356`, `fbeeb0f`, `20b1e02`, `fbe1b6e`, and `0322939`, followed by documentation plan commit `5724f6c`; none needs reapplication. The controller subsequently pushed `5724f6c` to `origin/main` and hosted run `34247594588` was queued/in progress when this handover was updated.
+
+The three metadata authorities agree on A22: `VERSION` is `v0.001a22`, while `pyproject.toml` and `src/uniti/__init__.py` are `0.1a22`. Fresh source verification on `5724f6c` passed 1,476 tests with six platform-policy skips in 93.01 seconds, deep self-check 21/21, and native Cocoa combined smoke including explicit Quit and session restore. This is local macOS evidence; it does not satisfy affected-host, executable, dogfood-day, or human-feedback gates.
+
+The existing release policy is retained. A22 remains active with seven qualifying real-use days still `NOT RUN`; A23 executable/health delivery, A24 same-candidate qualification, and B1 private executable human feedback also remain `NOT RUN`. B2 is a [proposed queued successor](../02_plans/v0.001b2-feedback-refinement-beta.md). No previous milestone was completed by this reconciliation.
+
 ## BF-002 testing blocker — 2026-09-07
 
-[BF-002](../BETA_FEEDBACK.md) is critical and blocks further user testing. Local commit `fadc36f` fixes startup after a zero-window session; GitHub `main` was checked at `ca75966`, without that fix. Local commit `09fe356` corrects Quit deadlocks with paused session work and preserves ordering when paused writes resume. The user clarified that the display must remain available while the service is alive: ordinary last-window close now retains an empty visible editor window, while explicit Quit ends the service. Distribution and confirmation on the affected Windows/Mac installations remain outstanding. Follow the feedback entry for current evidence and closure criteria.
+[BF-002](../BETA_FEEDBACK.md) is critical and blocks further user testing. Commit `fadc36f` fixes startup after a zero-window session; `09fe356` corrects Quit deadlocks with paused session work; `fbeeb0f` retains the last visible editor until explicit Quit; and `fbe1b6e` prevents ordered recovery work from occupying a worker while waiting. These commits are now in the local and pushed `main` ancestry, but distribution and confirmation on the affected Windows/Mac installations remain outstanding. Follow the feedback entry for current evidence and closure criteria.
 
 ## Canonical repository state
 
 - Repository: `https://github.com/PJTraut/tools-uniti.git`
-- Canonical branch: `main`
+- Canonical branch: `main`; pushed checkpoint `5724f6c` with hosted run `34247594588` pending at capture time
 - Hosted evidence baseline: `847d48b` (application behavior candidate `7373df0`); `origin/main` includes subsequent evidence-only documentation
 - A20 design/plan commits: `c9cd792`, `06dd906`
 - A20 implementation/acceptance sequence: `fabd036` through `f829d01`, followed by the A20 freeze closure
@@ -22,7 +30,7 @@ This is a continuation snapshot, not a controlling specification. Resolve confli
 - A22 implementation sequence: `f214635` through exact behavior candidate `7373df0`; local evidence and hosted portability remediation `f1b588e` through `847d48b`
 - Latest implemented milestone: `v0.001a21` — Cross-Platform Alpha at hosted-proven commit `8b24f4b`
 - Active milestone: `v0.001a22` — Dogfood / Performance Alpha
-- Queued milestones: `v0.001a23` — Executable Health & Recovery Alpha; `v0.001a24` — Beta Candidate; `v0.001b1` — Real-World Feedback Beta
+- Queued milestones: `v0.001a23` — Executable Health & Recovery Alpha; `v0.001a24` — Beta Candidate; `v0.001b1` — Real-World Feedback Beta; proposed/queued `v0.001b2` — Feedback Refinement Beta
 - Current display/package metadata: `v0.001a22` / `0.1a22`
 - Latest immutable tag: `v0.001a15` at `10f419e`
 - a16 through a20 tags: none
@@ -43,6 +51,8 @@ A20, the A21 Editor Layout and Visibility workstream, and the A21 Cross-Platform
 - [Queued B1 real-world feedback milestone](../02_plans/v0.001b1-real-world-feedback-beta.md)
 - [Approved B1 real-world feedback design](../02_plans/v0.001b1-real-world-feedback-beta-design.md)
 - [B1 real-world feedback implementation plan](../02_plans/v0.001b1-real-world-feedback-beta-implementation.md)
+- [Proposed B2 feedback refinement milestone](../02_plans/v0.001b2-feedback-refinement-beta.md)
+- [B1 feedback closure and B2 transition execution plan](../02_plans/2026-09-08-b1-feedback-b2-transition-plan.md)
 - [Executable-only product boundary decision](../05_decisions/ADR-0006-executable-health-recovery-boundary.md)
 - [Implemented A20 milestone](../03_implemented/milestones/2026-09-04-uniti-v0.001a20-recovery-session-alpha.md)
 - [Implemented A20 design](../03_implemented/designs/2026-09-04-uniti-v0.001a20-recovery-session-design.md)
@@ -186,4 +196,4 @@ Hosted remediation `e6585d1` through `847d48b` corrected test and benchmark port
 
 No known A20, completed A21 workstream, or A21 candidate correctness, durability, concurrent-writer, external-overwrite, responsiveness, unbounded-allocation, launcher, native-path, or inherited text-integrity/regex blocker remains in local or hosted evidence. The service is not a permanently installed daemon; it persists with zero windows only while the launched process remains alive.
 
-Continue A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). Task 19 evidence is complete. The sole remaining freeze condition is seven distinct active dogfood days on behavior candidate `7373df0`; structural UNITI source changes restart that clock, while evidence-only documentation does not. Do not infer or backfill dogfood days from synthetic smoke, benchmark, or hosted activity. Do not tag, release, install, bundle, or package A22. A23 Executable Health & Recovery Alpha remains queued behind A22, followed by A24 Beta Candidate and B1 Real-World Feedback Beta; none is implicit A22 scope.
+Continue A22 from the active [Dogfood / Performance Alpha milestone](../02_plans/v0.001a22-dogfood-performance-alpha.md). Task 19 evidence is complete. Seven distinct active dogfood days on the qualifying behavior candidate remain required and `NOT RUN`; structural UNITI source changes restart that clock, while evidence-only documentation does not. Do not infer or backfill dogfood days from synthetic smoke, benchmark, or hosted activity. Do not tag, release, install, bundle, or package A22. A23 Executable Health & Recovery Alpha remains queued behind A22, followed by A24 Beta Candidate, B1 Real-World Feedback Beta, and proposed B2 Feedback Refinement Beta; none is implicit A22 scope and none is complete.

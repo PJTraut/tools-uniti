@@ -1,23 +1,25 @@
 # UNITI Current Status
 
-Date: 2026-09-05
+Date: 2026-09-08
 
 ## Canonical baseline
 
 | Item | Current value |
 |---|---|
-| Repository branch | local `main` |
-| Remote baseline | `origin/main` at hosted-proven candidate `8b24f4b` |
+| Documentation checkout | `work/b2-feedback` at checkpoint `5724f6cb3081d30b2962ecaefb623be2358331b8`; local `main` pointed to the same commit when this checkpoint was prepared |
+| Remote ancestry | `origin/main` at `ca759668ea08f6a254ca6c516c04f39c85bf6a0e`; local `main` is seven commits ahead and zero behind |
 | Verified A20 implementation sequence | `fabd036` through `f829d01`, preceded by design/plan commits `c9cd792` and `06dd906`, followed by the A20 freeze closure |
 | Verified A21 Editor Layout and Visibility sequence | `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`; preceded by design/plan commits `9477197` and `61c1f19` |
 | A21 Cross-Platform candidate/remediation sequence | `09ad62b` through `8b24f4b`; preceded by plan commit `a3a4d81` |
 | Latest implemented milestone | `v0.001a21` — Cross-Platform Alpha at hosted-proven commit `8b24f4b` |
 | Active product milestone | `v0.001a22` — Dogfood / Performance Alpha |
-| Display/package metadata | `v0.001a21` / `0.1a21` |
+| Display/package metadata | `v0.001a22` / `0.1a22` in `VERSION`, `pyproject.toml`, and `src/uniti/__init__.py` |
 | Latest immutable release tag | `v0.001a15` at `10f419e` |
-| Queued milestones | `v0.001a23`, `v0.001a24`, `v0.001b1` |
+| Queued milestones | `v0.001a23`, `v0.001a24`, `v0.001b1`; proposed successor `v0.001b2` remains behind all predecessor gates |
 
-The A20 implementation/freeze, completed A21 workstream, and A21 cross-platform candidate are on `main`. The required macOS, Windows, Linux/Python 3.12, and Linux/latest-Python hosted lanes all passed on identical commit `8b24f4b`. No new tag, release, installer, bundle, or other distributable package was created.
+The retained release policy remains in force. A22 is still active because no qualifying real-use day is recorded; seven distinct days therefore remain `NOT RUN`. A23 executable/health delivery, A24 same-candidate qualification, and the B1 private executable human-feedback gate remain queued and `NOT RUN`. B1 has not been completed or promoted by the source-checkout feedback in [BF-001–BF-010](../BETA_FEEDBACK.md). Proposed B2 scope is recorded in the [B2 Feedback Refinement Beta milestone](../02_plans/v0.001b2-feedback-refinement-beta.md), but it is not active and the product identity remains A22.
+
+The six feedback commits after the initially observed remote `ca75966` are already present and must not be reapplied: `fadc36f` (zero-window restore), `09fe356` (Quit with paused work), `fbeeb0f` (retained last window), `20b1e02` (Find/Replace Lucide icons), `fbe1b6e` (recovery scheduling), and `0322939` (compact whitespace and held Unicode inspection). Documentation checkpoint `5724f6c` follows them. The read-only check initially found the remote lacked all seven; the controller subsequently pushed `5724f6c` and queued hosted run `34247594588`. No tag, release, installer, bundle, or other distributable package was created during this reconciliation.
 
 ## Implemented A21 Cross-Platform behavior
 
@@ -66,7 +68,19 @@ The A20 implementation/freeze, completed A21 workstream, and A21 cross-platform 
 
 Aggregate pruning removes oldest closed-document history first, then inactive-open history, then oldest active-document transactions; current state is never evicted. Low-space tests use injected capacity and controlled write/fsync failures only—no test fills, reserves, or truncates the real filesystem to manufacture LOWDISK.
 
-## Current verification
+## Current checkout verification
+
+Fresh verification on exact checkpoint `5724f6cb3081d30b2962ecaefb623be2358331b8` reported:
+
+```text
+full pytest: 1476 passed, 6 skipped in 93.01s
+deep self-check: pass, 21/21 checks
+native Cocoa combined smoke: pass; explicit Quit and session restore passed
+```
+
+This establishes a local macOS source baseline only. Windows native verification, distribution to the affected Windows and Mac hosts, and their BF-002 Quit/relaunch confirmation remain `NOT RUN`. It does not satisfy A22 dogfood days, A23 executable delivery, A24 qualification, or B1 independent human feedback.
+
+## Historical A21 verification
 
 Fresh local verification on the hosted-proven A21 candidate tree reported:
 
@@ -101,4 +115,4 @@ No known shared-code session-writer race, silent admitted-history loss, external
 
 UNITI does not install a permanent OS daemon. The desktop service retains an empty visible editor window when the user closes the last window, and exits on explicit Quit, logout, shutdown, or process termination. Legacy zero-window sessions remain restorable. Project/workspace semantics, cloud sync, collaboration, plugins, LSP, syntax highlighting, permanent background services, polished installers, user-authored themes, and expanded keyboard-driven Unicode inspection remain outside the implemented boundary.
 
-The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). A22 Dogfood / Performance Alpha is active. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
+The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). A22 Dogfood / Performance Alpha remains active. A23, A24, B1, and proposed B2 remain successors in that order. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).

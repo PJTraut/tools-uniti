@@ -10,16 +10,16 @@
 
 **Spec:** [Beta feedback](../BETA_FEEDBACK.md), [current architecture](../01_current/ARCHITECTURE.md), [B1 governing design](v0.001b1-real-world-feedback-beta-design.md), and the proposed defaults in this plan.
 
-**Status:** Prepared for review on 2026-09-08. This document plans execution; it does not mark feedback resolved, change the product version, or publish anything.
+**Status:** Execution in progress on 2026-09-08. Task 1 documentation reconciliation is complete; later tasks remain unchecked. This document does not mark feedback resolved, change the product version, or by itself publish anything.
 
 ## Baseline and release interpretation
 
-- Inspected local `main`: `0322939`. `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` identify A22 (`v0.001a22` / `0.1a22`). Some current-status prose still describes A21 and must be reconciled against evidence.
-- Existing local commits already cover much of BF-002, BF-003, BF-004, and BF-007. Their presence on local main is established; the current remote tip and affected testers' builds have not been checked for this plan.
-- The latest recorded local implementation gate is 1,476 passing tests and six skips, with native macOS inspection and combined smoke. This is historical evidence, not a fresh B2 gate.
-- The feedback log contains uncommitted additions for the most recent reports. Preserve them before creating an execution checkout.
-- The existing roadmap is A22 → A23 → A24 → B1. B2 has no existing milestone. Calling these reports “B1 feedback” does not establish that the formal executable B1 gate has passed.
-- Planning assumption pending the user's release-policy answer: retain the existing gates. B1 requires qualified same-commit executable builds, fourteen calendar days on the qualifying behavior candidate, and three independent human testers covering macOS, Windows, and Linux. Behavior corrections reset the qualifying-candidate clock as specified by the B1 design.
+- Task 1 began on isolated `work/b2-feedback` at `5724f6c`; local `main` matched it. `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` identify A22 (`v0.001a22` / `0.1a22`).
+- The read-only ancestry check initially found `origin/main` at `ca75966`, with local `main` zero commits behind and seven ahead. The six feedback commits `fadc36f`, `09fe356`, `fbeeb0f`, `20b1e02`, `fbe1b6e`, and `0322939` were already present, followed by documentation commit `5724f6c`; none requires reapplication. The controller subsequently pushed `5724f6c`, with hosted run `34247594588` pending.
+- Fresh checkpoint verification is 1,476 passed tests and six skips in 93.01 seconds, deep self-check 21/21, and native Cocoa combined smoke with explicit Quit/session restore. This is a source baseline, not a B2 qualification gate.
+- The feedback additions were preserved in documentation commit `5724f6c`; Task 1 continues in the isolated checkout without disturbing the user's original checkout or running service.
+- Before Task 1, the existing roadmap was A22 → A23 → A24 → B1 and B2 had no milestone record. Calling these reports “B1 feedback” does not establish that the formal executable B1 gate has passed.
+- Release-policy answer: retain the existing gates. B1 requires qualified same-commit executable builds, fourteen calendar days on the qualifying behavior candidate, and three independent human testers covering macOS, Windows, and Linux. Behavior corrections reset the qualifying-candidate clock as specified by the B1 design.
 - Alternative if the user chooses a source-checkout beta policy: record a decision explicitly replacing the affected admission/distribution/cohort rules, define source-build qualification and tester criteria, and update the roadmap before promotion. Do not silently label missing executable or human evidence as passing.
 - Treat the theme/font extensions and new presentation requests as B2 scope where they exceed B1's feature freeze. B1 defect corrections can land first; B2 feature commits enter main after the B1 closure boundary. All ten feedback entries must meet their agreed acceptance criteria before B2 is presented as ready for testing.
 
@@ -58,14 +58,14 @@
 
 **Consumes:** actual Git/version state and existing milestone evidence. **Produces:** an exact baseline, the selected release path, and a BF-by-BF evidence checklist.
 
-- [ ] Preserve the feedback changes in a documentation commit; record `git status --short`, `git branch --show-current`, and `git rev-parse HEAD`. Do not include unrelated files.
-- [ ] Fetch remote refs read-only, then run `git log --left-right --oneline origin/main...main`. Inventory `fadc36f`, `09fe356`, `fbeeb0f`, `20b1e02`, `fbe1b6e`, and `0322939`. Do not reapply changes already present.
-- [ ] Reconcile stale status/handover fields using actual metadata and recorded evidence. Preserve historical gate counts under their original candidate, rather than replacing them with new counts.
-- [ ] Record the release-policy answer. Under the retained policy, enumerate A22's remaining real-use days, A23 executable/health delivery, A24 qualification, and B1 human feedback as prerequisites using their existing plans. Missing evidence remains NOT RUN.
-- [ ] Add a proposed B2 successor with the exact scope in the coverage table. Keep the existing active milestone unchanged until its gate closes. Label B2 proposed/queued as appropriate; do not claim B1 completed.
-- [ ] Prepare an isolated branch/worktree for future B2 feature work after the documentation checkpoint. Preserve the user's current checkout and running service. Fix commits targeting B1 and feature commits targeting B2 must remain separately reviewable.
+- [x] Preserve the feedback changes in documentation commit `5724f6c`; the clean checkpoint recorded branch `work/b2-feedback` and exact HEAD `5724f6cb3081d30b2962ecaefb623be2358331b8`. No unrelated files were included.
+- [x] Fetch remote refs read-only and record `origin/main...main`: initially zero behind/seven ahead from remote `ca75966`; inventory `fadc36f`, `09fe356`, `fbeeb0f`, `20b1e02`, `fbe1b6e`, and `0322939` as already present. No change was reapplied.
+- [x] Reconcile stale status/handover fields with A22 metadata and dated evidence while preserving historical A21/A22 counts under their original candidates.
+- [x] Record the retained release policy and enumerate A22's seven remaining real-use days, A23 executable/health delivery, A24 qualification, and B1 human feedback as prerequisites. Missing evidence remains `NOT RUN`.
+- [x] Add proposed/queued B2 with the exact BF-001–BF-010 scope and roadmap link. A22 remains active and B1 is not claimed complete.
+- [x] Use isolated branch/worktree `work/b2-feedback` for the documentation checkpoint, preserving the user's original checkout and running service. The execution plan retains separate review boundaries for B1 fixes and B2 features.
 
-**Check:** metadata agrees across its three sources; every feedback ID has a task; remote ancestry is recorded; no previous milestone is closed based on this plan alone.
+**Check:** PASS on 2026-09-08. Metadata agrees across its three sources; every feedback ID maps to a task and evidence state; remote ancestry is recorded; A22 remains active; no previous milestone is closed based on this plan alone.
 
 ## Task 2: First-run progress and durability warning — BF-001
 
