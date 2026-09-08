@@ -187,3 +187,11 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Reproduction: compile `(?fi)straße` or `(?V1)(?i)straße` and search `STRASSE` through `search_document(..., options=SearchOptions(window_chars=1))`. Direct engine matching returns `(0, 7)`; UNITI returns no matches.
 - Evidence boundary: windows of 8 and the default 65,536 characters return the expected match. A default-window probe with 65,531 preceding ASCII characters also passes. A failure with the production default window has not been reproduced; the one-character-window result still requires investigation before claiming complete streaming equivalence for full case folding.
 - Next action: isolate partial-match/context retention behavior, add a regression, and verify the eventual correction across boundary positions and unchanged search limits. The four standard flag examples and scoped/ASCII/Unicode-line-boundary examples are verified separately.
+
+## BF-013 — Quarter-em gap inside the editor canvas frame
+
+- Reported: 2026-09-08, on B2.
+- Status: recorded; implementation pending.
+- Request: leave a ¼-em (`0.25em`) gap between the editor canvas content and its surrounding frame.
+- Working interpretation: an inset around all sides of the canvas, measured relative to the active editor font and scaling with editor zoom.
+- Acceptance to verify during implementation: consistent visible spacing without clipping text, caret, selection, or whitespace markers; wrapping, scrolling, gutter alignment, and pointer hit testing must account for the inset.
