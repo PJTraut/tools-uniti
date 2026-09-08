@@ -11,7 +11,7 @@ INSPECTOR = Path("src/uniti/ui/character_inspector.py")
 
 
 def test_main_window_keeps_reinterpret_conversion_and_eol_commands_distinct():
-    source = MAIN.read_text()
+    source = MAIN.read_text(encoding="utf-8")
     for required in (
         "Reinterpret As",
         "Convert on Save",
@@ -80,7 +80,7 @@ def test_status_bar_reports_editor_zoom_and_wrap_state_when_pyside6_available():
 
 def test_character_inspector_exposes_unicode_name_codepoint_and_encoding_bytes():
     assert INSPECTOR.exists()
-    source = INSPECTOR.read_text()
+    source = INSPECTOR.read_text(encoding="utf-8")
     for required in (
         "unicodedata.name",
         "U+",
@@ -93,7 +93,7 @@ def test_character_inspector_exposes_unicode_name_codepoint_and_encoding_bytes()
 
 
 def test_main_window_background_eol_analysis_uses_independent_byte_source():
-    source = MAIN.read_text()
+    source = MAIN.read_text(encoding="utf-8")
     assert "analyze_eol" in source
     assert "ByteSource.open" in source
     assert "self._resources.tasks" in source
@@ -122,7 +122,7 @@ def test_text_tools_offscreen_smoke_when_pyside6_available(tmp_path: Path):
 
 
 def test_main_window_exposes_diagnostics_tool_without_using_it_as_document_storage():
-    source = Path("src/uniti/ui/main_window.py").read_text()
+    source = Path("src/uniti/ui/main_window.py").read_text(encoding="utf-8")
     dialog = Path("src/uniti/ui/diagnostics_dialog.py")
     assert "Diagnostics" in source
     assert "diagnostics_snapshot" in source
@@ -131,15 +131,15 @@ def test_main_window_exposes_diagnostics_tool_without_using_it_as_document_stora
 
 
 def test_reinterpret_uses_current_logical_path_after_save_as():
-    source = MAIN.read_text()
+    source = MAIN.read_text(encoding="utf-8")
     reinterpret = source[source.index("def reinterpret_current"):source.index("def _show_save_error")]
     assert "path = view.document.path" in reinterpret
     assert "path = view.document.source.path" not in reinterpret
 
 
 def test_character_inspector_can_distinguish_decode_error_bytes_from_true_replacement_character():
-    inspector = INSPECTOR.read_text()
-    main = MAIN.read_text()
+    inspector = INSPECTOR.read_text(encoding="utf-8")
+    main = MAIN.read_text(encoding="utf-8")
     assert "invalid_bytes" in inspector
     assert "Decode error bytes" in inspector
     assert "read_with_annotations" in main

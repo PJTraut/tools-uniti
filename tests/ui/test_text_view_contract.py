@@ -11,7 +11,7 @@ SOURCE = Path("src/uniti/ui/text_view.py")
 
 def test_text_view_is_custom_qabstractscrollarea_without_qt_document_store():
     assert SOURCE.exists()
-    source = SOURCE.read_text()
+    source = SOURCE.read_text(encoding="utf-8")
     assert "QPlainTextEdit" not in source
     assert "QTextDocument" not in source
     assert "_fixed_pitch_font" not in source
@@ -26,7 +26,7 @@ def test_text_view_is_custom_qabstractscrollarea_without_qt_document_store():
 def test_core_and_resources_remain_qt_free():
     for root in (Path("src/uniti/core"), Path("src/uniti/resources")):
         for path in root.glob("*.py"):
-            source = path.read_text()
+            source = path.read_text(encoding="utf-8")
             assert "PySide6" not in source
             assert "PyQt" not in source
 
@@ -55,7 +55,7 @@ def test_text_view_offscreen_smoke_when_pyside6_is_available(tmp_path: Path):
 
 
 def test_text_view_pages_horizontally_by_character_window():
-    source = SOURCE.read_text()
+    source = SOURCE.read_text(encoding="utf-8")
     assert "def _horizontal_window" in source
     assert "column_start=column_start" in source
     assert "line_window_start = line_start + column_start" in source
@@ -63,7 +63,7 @@ def test_text_view_pages_horizontally_by_character_window():
 
 
 def test_text_view_exposes_clipboard_and_ime_contracts_without_qt_document_storage():
-    source = SOURCE.read_text()
+    source = SOURCE.read_text(encoding="utf-8")
     for required in (
         "copy_selection",
         "cut_selection",
@@ -80,7 +80,7 @@ def test_text_view_exposes_clipboard_and_ime_contracts_without_qt_document_stora
 
 
 def test_text_view_paints_invalid_byte_annotations_distinctly():
-    source = SOURCE.read_text()
+    source = SOURCE.read_text(encoding="utf-8")
     assert "read_line_window_annotated" in source
     assert "invalid_bytes" in source
     assert "_paint_invalid_byte_annotations" in source

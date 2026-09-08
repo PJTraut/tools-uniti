@@ -13,8 +13,8 @@ APPLICATION = Path("src/uniti/app/application.py")
 
 def test_main_window_declares_tabs_file_edit_actions_and_status():
     assert MAIN.exists()
-    source = MAIN.read_text()
-    shortcut_source = SHORTCUT_POLICY.read_text()
+    source = MAIN.read_text(encoding="utf-8")
+    shortcut_source = SHORTCUT_POLICY.read_text(encoding="utf-8")
     for required in ("QTabWidget", "Open", "Save", "Save As", "Undo", "Redo", "UNITIStatusBar"):
         assert required in source + shortcut_source
     assert "build_shortcut_policy" in source
@@ -23,7 +23,7 @@ def test_main_window_declares_tabs_file_edit_actions_and_status():
 
 def test_application_imports_pyside6_only_inside_runtime_function():
     assert APPLICATION.exists()
-    tree = ast.parse(APPLICATION.read_text())
+    tree = ast.parse(APPLICATION.read_text(encoding="utf-8"))
     top_level_imports = [
         node
         for node in tree.body
@@ -72,8 +72,8 @@ def test_startup_recovery_is_not_owned_by_each_editor_window():
 
 
 def test_application_uses_app_paths_and_settings_store():
-    source = MAIN.read_text()
-    application = APPLICATION.read_text()
+    source = MAIN.read_text(encoding="utf-8")
+    application = APPLICATION.read_text(encoding="utf-8")
     assert "SettingsStore" in source
     assert "last_directory" in source
     assert "AppPaths.current" in application
@@ -82,14 +82,14 @@ def test_application_uses_app_paths_and_settings_store():
 
 
 def test_desktop_startup_creates_one_service_owned_window():
-    application = APPLICATION.read_text()
+    application = APPLICATION.read_text(encoding="utf-8")
     assert "UNITIService(" in application
     assert "service.new_window()" in application
     assert 'context.data["service"] = service' in application
 
 
 def test_main_window_handles_open_and_external_save_errors_in_ui():
-    source = MAIN.read_text()
+    source = MAIN.read_text(encoding="utf-8")
     assert "ExternalFileChangedError" in source
     assert "File Changed on Disk" in source
     assert "Open Failed" in source
@@ -97,13 +97,13 @@ def test_main_window_handles_open_and_external_save_errors_in_ui():
 
 
 def test_main_window_does_not_bypass_document_history_for_replace_all():
-    source = MAIN.read_text()
+    source = MAIN.read_text(encoding="utf-8")
     assert "_reload_after_stream_replace" not in source
     assert "streamReplaceCommitted.connect" not in source
 
 
 def test_main_window_uses_shared_resource_manager_for_workers_and_tab_priority():
-    source = MAIN.read_text()
+    source = MAIN.read_text(encoding="utf-8")
     assert "ResourceManager" in source
     assert "resource_manager" in source
     assert "self._resources.tasks" in source
@@ -111,12 +111,12 @@ def test_main_window_uses_shared_resource_manager_for_workers_and_tab_priority()
 
 
 def test_main_window_flushes_and_shuts_down_recovery_manager_on_application_close():
-    source = MAIN.read_text()
+    source = MAIN.read_text(encoding="utf-8")
     assert "self._recovery_manager.shutdown()" in source
 
 
 def test_main_window_periodically_observes_resource_memory_pressure():
-    source = MAIN.read_text()
+    source = MAIN.read_text(encoding="utf-8")
     assert "_resource_timer" in source
     assert "observe_resources" in source
     assert "_resource_probe_future" in source
@@ -125,13 +125,13 @@ def test_main_window_periodically_observes_resource_memory_pressure():
 
 
 def test_pause_background_command_stays_in_existing_editor_view_category():
-    source = SHORTCUT_POLICY.read_text()
+    source = SHORTCUT_POLICY.read_text(encoding="utf-8")
     assert '"view.pause_background"' in source
     assert "category.EDITOR_VIEW" in source
 
 
 def test_main_window_accepts_completed_startup_snapshot_for_diagnostics():
-    source = MAIN.read_text()
+    source = MAIN.read_text(encoding="utf-8")
     assert "startup_snapshot" in source
     assert "set_startup_snapshot" in source
 

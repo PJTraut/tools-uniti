@@ -26,7 +26,7 @@ def test_qt_imports_are_confined_to_ui_and_launcher_modules():
     )
     for root in forbidden_roots:
         for path in root.glob("*.py"):
-            source = path.read_text()
+            source = path.read_text(encoding="utf-8")
             assert "PySide6" not in source
             assert "PyQt" not in source
 
@@ -34,7 +34,7 @@ def test_qt_imports_are_confined_to_ui_and_launcher_modules():
 def test_pyside6_is_declared_as_optional_ui_dependency():
     import tomllib
 
-    project = tomllib.loads(Path("pyproject.toml").read_text())
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     assert any(dep.startswith("PySide6") for dep in project["project"]["optional-dependencies"]["ui"])
 
 

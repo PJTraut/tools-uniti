@@ -14,7 +14,7 @@ def test_regex_engine_dependency_is_exactly_pinned():
 
     import regex
 
-    project = tomllib.loads(Path("pyproject.toml").read_text())
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     dependencies = project["project"]["dependencies"]
     assert f"regex=={regex.__version__}" in dependencies
 
@@ -25,8 +25,8 @@ def test_project_versions_are_canonical():
 
     import uniti
 
-    project = tomllib.loads(Path("pyproject.toml").read_text())
-    display = Path("VERSION").read_text().strip()
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    display = Path("VERSION").read_text(encoding="utf-8").strip()
     assert project["project"]["version"] == uniti.__version__
     assert uniti.__display_version__ == display
     assert uniti.__version__ == "0.1a22"
@@ -48,7 +48,7 @@ def test_project_declares_uniti_console_entrypoint():
     import tomllib
     from pathlib import Path
 
-    project = tomllib.loads(Path("pyproject.toml").read_text())
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
     assert project["project"]["scripts"]["uniti"] == "uniti.app.application:main"
 
 
