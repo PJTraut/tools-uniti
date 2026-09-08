@@ -1,5 +1,12 @@
 # B1 Feedback Closure and B2 Transition Implementation Plan
 
+## Source promotion update — 2026-09-08
+
+The user has directed the project to move beyond A22. [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md) supersedes this plan's earlier requirement to retain A22 metadata and defer B2 activation until all predecessor gates pass. B2 is now the active source beta, `v0.001b2` / `0.1b2`. All BF-001–BF-010 source changes were already integrated through `3e20214`; this promotion updates identity and records over pre-promotion baseline `33c71d3`.
+
+Earlier execution rulings and Tasks 1–9 below retain their historical integration context. Their technical acceptance and outstanding physical/hosted checks still apply. A22/A23/A24/B1 requirements remain open release qualification, not a reason to hold the source label at A22. No qualified executable, release, tag, or tester distribution is claimed.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Resolve every outstanding BF-001–BF-010 item, integrate verified changes into canonical `main`, and qualify `v0.001b2` without losing the existing release evidence requirements.
@@ -10,7 +17,7 @@
 
 **Spec:** [Beta feedback](../BETA_FEEDBACK.md), [current architecture](../01_current/ARCHITECTURE.md), [B1 governing design](v0.001b1-real-world-feedback-beta-design.md), and the proposed defaults in this plan.
 
-**Status:** Execution in progress on 2026-09-08. Candidate `3e20214` contains the complete reviewed BF-001–BF-010 code series and passed the final local candidate gate. Local `main` and GitHub `origin/main` were verified synchronized at `23507ca` before this documentation refresh, containing unchanged source `3e20214`; the earlier `b152f0e` synchronization remains historical. Native IME/affected-host qualification and release gates remain open. Latest hosted-green checkpoint is `aab3f3c` in run `34253008439`; latest synchronized-checkpoint run `34256794807` on `23507ca` was blocked before execution by GitHub account billing/payment or spending limits. This document does not mark feedback resolved, change the product version, or by itself publish anything.
+**Status:** B2 source promotion active under ADR-0007. Reviewed feedback implementation and its historical local gate are complete; current verification is recorded in [Current Status](../01_current/STATUS.md). Native IME, affected-host, hosted, and executable release qualification remain open.
 
 **Execution rulings:** Keep the platform-resolved monospace face primary and treat bundled Noto as ordered application fallback. Order Han families from the host locale because plain text carries no per-range SC/TC language metadata. Use extended-grapheme boundaries for user navigation/deletion while preserving exact code-point selection/inspection; Unicode graphemes are not claimed to equal every script syllable. Cold deep variable-width geometry may resolve progressively within fixed materialization bounds rather than publishing approximate positions; inherited logical-line indexing is not newly bounded. Long preedit pans only its virtual row to keep the composition caret visible. These choices cost a possible visible wait for cold deep mixed-script jumps, locale-dependent Han regional forms, and host fallback for emoji. RTL/mixed-direction editing and physical native IME qualification remain outside the implemented claim. Hosted jobs blocked before execution provide no pass/fail evidence and do not alter any gate.
 
@@ -256,30 +263,18 @@ git diff --check
 
 Synchronization recheck, 2026-09-08: local `main` and GitHub `origin/main` matched `23507ca` with no pending changes before this documentation refresh. The complete code candidate remains `3e20214`; later commits changed documentation only.
 
-## Task 10: Confirm B1 closure and advance the B2 identity
+## Task 10: Advance the implemented source to B2
 
-**Files:** `VERSION`, `src/uniti/__init__.py`, `pyproject.toml`, release/bundle manifests introduced by A23/B1, `README.md`, roadmap/current documents, and implemented-history indexes; create `tests/test_b2_identity.py`.
+The source-identity portion now follows ADR-0007. Prior requirements to complete all predecessor milestones before changing the source version are superseded; their release acceptance criteria remain open.
 
-- [ ] Confirm the full predecessor chain and B1 closure are recorded before B2 release-identity promotion. B2-only feature code may already be integrated on `main`; do not count source-checkout reports or simulated days as qualifying independent executable feedback.
-- [ ] Confirm Task 9's final integrated-candidate gate passed after all B2 features entered main. Under an explicitly revised source-beta policy, verify the recorded replacement gates and label the evidence accordingly.
-- [ ] Add a failing identity test covering all three canonical version sources. Update display identity to `v0.001b2` and package identity to `0.1b2` in a separate promotion commit. Use static metadata parsing if the test runtime still has pre-promotion package metadata.
+- [x] Set `VERSION` and `uniti.__display_version__` to `v0.001b2`; set `pyproject.toml` and `uniti.__version__` to `0.1b2`.
+- [x] Refresh the owned development installation with the existing bootstrap; verify installed metadata and `--version` match the new source identity.
+- [x] Update current documentation, roadmap, and B2 milestone; retain unfinished predecessor records in plans rather than falsely archiving them as completed.
+- [x] Complete fresh local promotion validation and record results in Current Status: 1,646 passed, six expected skips; coherent installed identity, compilation, 21/21 deep self-check, and native Cocoa smoke passed.
+- [ ] Complete same-commit hosted, physical input, affected-host, and executable release qualification. Source promotion does not satisfy these gates.
+- [ ] Rebuild B2-labelled native distributions and tester manifests after executable prerequisites pass. Qualify upgrade from the previous tester settings/session, and document rollback using the previous qualified build and copied state without deleting sessions or requiring automatic repair. These remain executable release checks, not prerequisites for the source label.
 
-```python
-from pathlib import Path
-import tomllib
-import uniti
-
-assert Path("VERSION").read_text().strip() == "v0.001b2"
-assert uniti.__display_version__ == "v0.001b2"
-assert uniti.__version__ == "0.1b2"
-assert tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"] == "0.1b2"
-```
-
-- [ ] Refresh the managed development installation through the existing bootstrap after the version bump; rerun metadata/launch tests. Rebuild B2-labelled distributions and tester information/manifests so embedded identities match the promotion SHA.
-- [ ] Run source, hosted, clean-host and native smoke gates on the B2 promotion candidate, including upgrade from the previous tester settings/session. Document a rollback using the previous qualified build and copied state; do not require deleting sessions or automatic repair.
-- [ ] Move only completed milestone/workstream records to implemented history, repair links, activate B2, and update current docs to the real product state. Keep BF-002 open if affected-host confirmation is still missing; that blocks readiness.
-
-**Commit:** `chore: advance uniti to v0.001b2` after B1 closure and feedback implementation; qualification results follow as evidence commits. No automatic tag/public release.
+No automatic tag or public release follows from this source version change.
 
 ## Task 11: Open the B2 testing round
 
@@ -293,8 +288,8 @@ assert tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"] =
 - [ ] Every BF-001–BF-010 requirement implemented and verified, or a clearly recorded user-approved scope change exists.
 - [ ] Critical BF-002 closed on the affected Windows and Mac hosts.
 - [ ] Canonical main contains the reviewed implementation and passes same-commit hosted gates.
-- [ ] Formal predecessor gates passed, or an explicit replacement release-policy decision is recorded and satisfied.
-- [ ] B2 identities, bundled resources, tester instructions and current documentation agree.
+- [ ] Formal predecessor release qualification passed; ADR-0007 changes source-identity timing only.
+- [ ] B2 identities, bundled resources, qualified executable tester instructions and current documentation agree; source identity and docs are updated, executable tester delivery remains pending.
 - [ ] B2-labelled builds qualify on required hosts; source-only testing is not represented as executable qualification.
 - [ ] No public release/tag or tester communication inferred from this plan.
 

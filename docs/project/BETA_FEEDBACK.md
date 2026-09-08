@@ -4,9 +4,9 @@ Started: 2026-09-07
 
 This log records summarized user observations, implementation dispositions, verification, and remaining qualification. An entry is not an approved implementation commitment. Early source-checkout feedback does not open or satisfy the [B1 feedback gate](02_plans/v0.001b1-real-world-feedback-beta.md).
 
-Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02_plans/2026-09-08-b1-feedback-b2-transition-plan.md) covers BF-001–BF-010, and its proposed successor scope is recorded in the [B2 Feedback Refinement Beta milestone](02_plans/v0.001b2-feedback-refinement-beta.md). The existing executable release policy is retained. A22 real-use days, A23 executable/health delivery, A24 qualification, and B1 private executable human feedback remain prerequisites; preparing these records does not close an entry, complete B1, or change the A22 release identity.
+Current identity: `v0.001b2` / `0.1b2`, advanced from A22 at the user's direction under [ADR-0007](05_decisions/ADR-0007-beta-source-version-and-qualification.md). All reviewed BF-001–BF-010 source changes through `3e20214` are committed and integrated on GitHub `main`. The [feedback transition plan](02_plans/2026-09-08-b1-feedback-b2-transition-plan.md) records implementation and remaining checks.
 
-Current identity: `v0.001a22` / `0.1a22`. All reviewed BF-001–BF-010 source changes through `3e20214` are committed and integrated on GitHub `main`; synchronization was verified at `23507ca` before this documentation refresh. Implementation completion does not close host qualification or promote the release. [Current Status](01_current/STATUS.md) owns the exact baseline and latest hosted evidence.
+B2 is the active source beta. A22 real-use, A23 executable/health delivery, A24 stabilization, and B1 independent executable feedback remain open release qualification. Version promotion does not close affected-host or native input checks. [Current Status](01_current/STATUS.md) owns the exact baseline and latest evidence.
 
 ## 2026-09-08 execution and evidence map
 
@@ -109,7 +109,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Verification: 154 focused settings/theme/window/Find/Replace/icon tests passed; an installed-wheel, Qt-free check loaded Paper and Slate with all 32 roles; offscreen Paper/Slate visuals were reviewed. Hosted run `34253008439` passed all four lanes on `aab3f3c`. A separate native Cocoa check exposed a System-preview link-color leak; reviewed correction `e045b0f`, included in candidate `3e20214`, passed 21 native theme, five native window, and 30 offscreen tests. A clean native rerun on the integrated intermediate tree passed all 21 theme/editor tests. Broader native rendering and color-dialog qualification remains open.
 - Related feedback: include whitespace markers and temporary Unicode detail from BF-003 when assessing readability across themes.
 - Companion icon choice: the user approved [Lucide](https://lucide.dev/) SVG assets for interface actions and chose Find/Replace as the starting point; implementation tracked in BF-007. Treat interface icons separately from Unicode glyphs representing document characters.
-- Disposition: implemented at `aab3f3c`; keep native qualification open and do not treat integration as B2 promotion.
+- Disposition: implemented at `aab3f3c`; keep native qualification open after B2 source promotion.
 
 ## BF-006 — Broader left-to-right font support: Indian scripts, Chinese, and Korean
 

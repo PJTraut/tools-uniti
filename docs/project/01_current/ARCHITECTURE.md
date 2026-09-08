@@ -1,9 +1,9 @@
 # UNITI Current Architecture
 
 Date: 2026-09-08
-Baseline: A22 identity retained; complete reviewed feedback code candidate `3e20214`; latest hosted-green checkpoint `aab3f3c`
+Baseline: B2 source identity; complete reviewed feedback code candidate `3e20214`; latest hosted-green checkpoint `aab3f3c`
 
-Display/package version: `v0.001a22` / `0.1a22`. The feedback candidate is integrated on GitHub `main`; [Current Status](STATUS.md) owns synchronization and qualification evidence.
+Display/package version: `v0.001b2` / `0.1b2`. The feedback candidate is integrated on GitHub `main`; [Current Status](STATUS.md) owns synchronization and qualification evidence.
 
 ## Lifecycle boundary
 
@@ -248,4 +248,4 @@ The pinned read-only workflow defines exactly macOS 15/Python 3.12, Windows 2025
 
 ## Planned-change boundary
 
-The complete a20 Recovery & Session Alpha, A21 Editor Layout and Visibility workstream, A21 Cross-Platform Alpha, A22 source work, and reviewed BF-001–BF-010 changes above are implemented architecture in candidate `3e20214`. The identity remains A22 because its real-use gate and the A23, A24, and B1 predecessors remain open. Physical Windows/macOS/Linux Chinese/Korean IME qualification and affected-host shutdown confirmation remain open. RTL/mixed-direction editing, multi-code-point inspection labels, extension-sensed file-type profiles, and syntax highlighting remain outside current scope.
+The complete a20 Recovery & Session Alpha, A21 Editor Layout and Visibility workstream, A21 Cross-Platform Alpha, A22 source work, and reviewed BF-001–BF-010 changes above are implemented architecture in candidate `3e20214`. The source identity is now B2 under [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md); the A22 real-use and A23, A24, and B1 release qualification requirements remain open. Physical Windows/macOS/Linux Chinese/Korean IME qualification and affected-host shutdown confirmation remain open. RTL/mixed-direction editing, multi-code-point inspection labels, extension-sensed file-type profiles, and syntax highlighting remain outside current scope.

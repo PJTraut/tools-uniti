@@ -2,7 +2,7 @@
 
 **Unicode Intelligent Text Interchange** — a focused cross-platform power text editor built around text correctness, explicit encoding/EOL state, large-file editing, and Python `regex`.
 
-UNITI is a private alpha, currently `v0.001a22` (`0.1a22` in Python packaging). All reviewed BF-001–BF-010 feedback changes are committed and integrated on GitHub `main` through source candidate `3e20214`. A22 Dogfood / Performance Alpha remains active; native input, affected-host, and release qualification remain open before B1/B2 promotion. The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
+UNITI is a private source beta, currently `v0.001b2` (`0.1b2` in Python packaging). All reviewed BF-001–BF-010 feedback changes are committed and integrated on GitHub `main` through source candidate `3e20214`. B2 Feedback Refinement Beta is active. Native input, affected-host, executable, and release qualification remain open; see the [source-version decision](docs/project/05_decisions/ADR-0007-beta-source-version-and-qualification.md). The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
 
 ## Project documentation
 
@@ -12,9 +12,9 @@ UNITI is a private alpha, currently `v0.001a22` (`0.1a22` in Python packaging). 
 - [Current handover](docs/project/06_handovers/CURRENT_HANDOVER.md) — concise continuation context and next safe action.
 - [Feedback implementation and remaining checks](docs/project/BETA_FEEDBACK.md) — BF-001–BF-010 changes and qualification status.
 
-## Alpha capabilities
+## Beta capabilities
 
-The current development alpha includes:
+The current source beta includes:
 
 - mmap-preferred immutable byte source with bounded fallback reads;
 - lazy UTF-8 / UTF-16 LE/BE / UTF-32 LE/BE handling;
@@ -46,7 +46,7 @@ The current development alpha includes:
 - explicit macOS, Windows, and Linux path/identity policy; capability-driven `full` / `file_synced` / `unsafe` publication results; pointer repair from complete session generations; native shortcut and fixed-font resolution; and
 - fast/deep self-checks for runtime, dependencies, paths, schemas, resources, filesystem primitives, regex intelligence, text fidelity, recovery/session continuity, large-file behavior, offscreen Qt, and bounded cross-platform evidence.
 
-Still unqualified in the current alpha: native Chinese/Korean IME composition on Windows, macOS, and Linux, plus affected-host confirmation of the critical shutdown correction. Explicitly deferred: right-to-left/mixed-direction editing, multi-code-point inspection labels, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers. See the [LTR text layout and editing contract](docs/ltr-text-layout.md) for behavior and bounds.
+Still unqualified in the current beta: native Chinese/Korean IME composition on Windows, macOS, and Linux, plus affected-host confirmation of the critical shutdown correction. Explicitly deferred: right-to-left/mixed-direction editing, multi-code-point inspection labels, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers. See the [LTR text layout and editing contract](docs/ltr-text-layout.md) for behavior and bounds.
 
 ## Requirements
 
@@ -162,7 +162,7 @@ The driver validates runtime ownership and dependencies, runs the complete suite
 
 The latest complete four-lane feedback pass is on `aab3f3c`. The subsequent source candidate `3e20214` passed its complete local gate, but GitHub blocked all jobs for documentation checkpoint `23507ca` before execution because of account payments or spending limits. See [Current status](docs/project/01_current/STATUS.md) for dated run evidence; source integration does not establish hosted qualification.
 
-## Alpha runtime checklist
+## Beta runtime checklist
 
 After installing `.[ui,dev]` on the Mac, run:
 

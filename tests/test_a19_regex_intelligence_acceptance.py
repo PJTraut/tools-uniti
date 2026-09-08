@@ -3,6 +3,8 @@ import importlib.metadata
 from pathlib import Path
 import tomllib
 
+from packaging.version import Version
+
 import pytest
 import uniti
 
@@ -20,9 +22,10 @@ def test_release_metadata_remains_canonical_after_a19():
 
     assert display == uniti.__display_version__
     assert project["project"]["version"] == uniti.__version__
-    assert display.startswith("v0.001a")
-    assert uniti.__version__.startswith("0.1a")
-    assert display.removeprefix("v0.001a") == uniti.__version__.removeprefix("0.1a")
+    assert display.startswith("v0.001")
+    assert uniti.__version__.startswith("0.1")
+    assert display.removeprefix("v0.001") == uniti.__version__.removeprefix("0.1")
+    assert Version(uniti.__version__) >= Version("0.1a19")
 
 
 def test_a19_uses_only_the_pinned_engine_and_advanced_metadata():

@@ -3,6 +3,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import uniti
+
 from uniti.app.diagnostics import diagnostics_snapshot
 from uniti.app.dogfood_store import StoreFailureCode, StoreStatus
 from uniti.core.document import Document
@@ -11,7 +13,7 @@ from uniti.resources import MemorySnapshot, ResourceManager
 
 def test_diagnostics_snapshot_is_json_serializable_and_reports_runtime():
     snapshot = diagnostics_snapshot()
-    assert snapshot["uniti"]["display_version"].startswith("v0.001a")
+    assert snapshot["uniti"]["display_version"] == uniti.__display_version__
     assert snapshot["runtime"]["python"].startswith(f"{sys.version_info.major}.")
     assert snapshot["memory"]["physical_bytes"] >= 0
     assert snapshot["documents"] == []

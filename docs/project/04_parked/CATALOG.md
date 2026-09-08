@@ -4,7 +4,7 @@ Last reviewed: 2026-09-08
 
 These capabilities are intentionally outside the lean editor boundary described by [Current Scope](../01_current/SCOPE.md). They are recorded for later re-evaluation, not promised delivery.
 
-Current identity is `v0.001a22` / `0.1a22`, with feedback source candidate `3e20214` integrated on `main`. Bounded multi-window/document ownership and durable session restoration were implemented in A20 and are no longer parked. Bundled Indic/CJK fallback, shaped LTR editing, and focused theme editing are also implemented; remaining native input qualification is tracked in [Current Status](../01_current/STATUS.md).
+Current identity is `v0.001b2` / `0.1b2`, with feedback source candidate `3e20214` integrated on `main`. Bounded multi-window/document ownership and durable session restoration were implemented in A20 and are no longer parked. Bundled Indic/CJK fallback, shaped LTR editing, and focused theme editing are also implemented; remaining native input qualification is tracked in [Current Status](../01_current/STATUS.md).
 
 ## Project and workspace concepts
 
@@ -51,7 +51,7 @@ Current identity is `v0.001a22` / `0.1a22`, with feedback source candidate `3e20
 ## File-type profiles and syntax highlighting
 
 - **Future capability:** UNITI senses a file's presentation profile from its extension and applies a predefined syntax highlighter. Illustrative profiles include `.txt` as Plain Text, `.md` as Markdown, and `.xml` as XML; unknown extensions fall back to Plain Text. These are file-type profiles, not document-content templates. Highlighting is presentation-only and must never mutate text, encoding, BOM, or line endings. Manual override behavior and the final supported-profile catalog remain future design decisions.
-- **Why parked:** Extension mapping, incremental parsing, and language grammars would create new profile, cache, worker, invalidation, and grammar-maintenance responsibilities beyond regex-field highlighting. This capability remains outside the current A22 scope and has no roadmap position or target version.
+- **Why parked:** Extension mapping, incremental parsing, and language grammars would create new profile, cache, worker, invalidation, and grammar-maintenance responsibilities beyond regex-field highlighting. This capability remains outside the current B2 scope and has no roadmap position or target version.
 - **Known dependencies/risks:** profile ownership, extension aliases, parser choice, grammar distribution, multiline incremental state, huge-file degradation, manual override semantics, and memory-pressure integration.
 - **Re-evaluation trigger:** stable rendering/cache interfaces and approval of a bounded file-type and syntax-highlighting subset.
 

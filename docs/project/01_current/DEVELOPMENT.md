@@ -1,7 +1,7 @@
 # UNITI Current Development Workflow
 
 Date: 2026-09-08
-Version: `v0.001a22` / `0.1a22`
+Version: `v0.001b2` / `0.1b2`
 
 ## Requirements and policy
 
@@ -228,8 +228,8 @@ Malformed supported state/settings are preserved as timestamped `.invalid` sibli
 
 ## Versioning and documentation
 
-The current display version is `v0.001a22` in `VERSION` and `uniti.__display_version__`; the package version is `0.1a22` in `pyproject.toml` and `uniti.__version__`. These values must agree. Tags are immutable historical records. `v0.001a20` and `v0.001a21` are implemented without new tags; A22 Dogfood / Performance Alpha is active.
+The current display version is `v0.001b2` in `VERSION` and `uniti.__display_version__`; the package version is `0.1b2` in `pyproject.toml` and `uniti.__version__`. These values must agree. Tags are immutable historical records. `v0.001a20` and `v0.001a21` are implemented without new tags; B2 Feedback Refinement Beta is active.
 
-All reviewed BF-001–BF-010 source changes through `3e20214` are committed and integrated on GitHub `main`. B1/B2 in feedback and plan names identifies the intended release work, not the installed version. Version promotion follows the predecessor gates in the [Roadmap](../02_plans/ROADMAP.md); documentation refreshes do not change release identity. Keep source-test evidence tied to its tested commit and hosted results tied to their exact run SHA; see [Current Status](STATUS.md).
+All reviewed BF-001–BF-010 source changes through `3e20214` are committed and integrated on GitHub `main`. The installed source version is B2 under [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md). Source identity can advance while the [Roadmap](../02_plans/ROADMAP.md) retains unfinished release qualification. After updating all three version declarations, run `.venv/bin/python scripts/bootstrap.py --dev --no-launch` to refresh the owned installation and dependency fingerprint before validation. Keep source-test evidence tied to its tested commit and hosted results tied to their exact run SHA; see [Current Status](STATUS.md).
 
 Approved outstanding work belongs in the ordered [Roadmap](../02_plans/ROADMAP.md). Verified plans move to [Implemented](../03_implemented/README.md); current documents and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md) are updated in the same closure.

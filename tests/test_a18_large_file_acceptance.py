@@ -4,6 +4,8 @@ import sys
 import tomllib
 from pathlib import Path
 
+from packaging.version import Version
+
 import uniti
 
 from uniti.app.paths import AppPaths
@@ -17,9 +19,10 @@ def test_a18_or_later_release_metadata_remains_coherent():
     display = Path("VERSION").read_text(encoding="utf-8").strip()
     assert display == uniti.__display_version__
     assert project["project"]["version"] == uniti.__version__
-    assert display.startswith("v0.001a")
-    assert uniti.__version__.startswith("0.1a")
-    assert int(display.removeprefix("v0.001a")) >= 18
+    assert display.startswith("v0.001")
+    assert uniti.__version__.startswith("0.1")
+    assert display.removeprefix("v0.001") == uniti.__version__.removeprefix("0.1")
+    assert Version(uniti.__version__) >= Version("0.1a18")
 
 
 def _has_qt_imports(*roots: Path) -> bool:

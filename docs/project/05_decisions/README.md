@@ -21,3 +21,4 @@ Each record contains its date, status, context, decision, consequences, and affe
 | [ADR-0004](ADR-0004-a16-usability-boundary.md) | accepted | a16 keeps document authority in core while defining bounded focus-owned histories, floating F/R, mode separation, scoped commands, and no toolbar. |
 | [ADR-0005](ADR-0005-editor-layout-and-visibility-boundary.md) | accepted | Extend A20 panes with reversible view docking, one movable F/R dock, bounded whitespace overlays, and a separate contrast axis. |
 | [ADR-0006](ADR-0006-executable-health-recovery-boundary.md) | accepted | Make native bundles the future public product entry with read-only health, bounded automatic maintenance, consent-based offline repair, Safe Session, and no supported public CLI. |
+| [ADR-0007](ADR-0007-beta-source-version-and-qualification.md) | accepted | Advance the integrated source to B2 while retaining unfinished executable, platform, and human release qualification. |

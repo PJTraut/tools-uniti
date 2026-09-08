@@ -6,26 +6,31 @@ Date: 2026-09-08
 
 | Item | Current value |
 |---|---|
-| Starting documentation checkpoint | Isolated `work/b2-feedback` at `5724f6cb3081d30b2962ecaefb623be2358331b8`; local `main` pointed to the same commit when Task 1 began |
-| Initial remote ancestry | The first read-only check found `origin/main` at `ca759668ea08f6a254ca6c516c04f39c85bf6a0e`; local `main` was seven commits ahead and zero behind |
-| Complete feedback code candidate | `3e20214`; contains reviewed BF-001–BF-010 implementation, including the native System-preview and wrapped-row-seam IME corrections |
-| Synchronization verified before this documentation refresh | On 2026-09-08, local `main` and GitHub `origin/main` matched `23507ca`, with a clean working tree and zero commits ahead or behind; it contains verified source candidate `3e20214` plus documentation-only follow-ups |
-| Latest hosted-green feedback checkpoint | `aab3f3c`; run `34253008439` passed all four lanes, including full suite, deep self-check, native/offscreen smoke, and sustained checks |
-| Latest hosted attempt | [Run `34256794807`](https://github.com/PJTraut/tools-uniti/actions/runs/34256794807) on `23507ca` reports failure, but all four jobs have zero executed steps; annotations report failed account payments or a spending-limit block. This is not an executed code-test failure or pass |
-| Verified A20 implementation sequence | `fabd036` through `f829d01`, preceded by design/plan commits `c9cd792` and `06dd906`, followed by the A20 freeze closure |
-| Verified A21 Editor Layout and Visibility sequence | `23d6c2d` through `dcf04c6`, plus schema-reporting repair `fcfd5ea`; preceded by design/plan commits `9477197` and `61c1f19` |
-| A21 Cross-Platform candidate/remediation sequence | `09ad62b` through `8b24f4b`; preceded by plan commit `a3a4d81` |
-| Latest implemented milestone | `v0.001a21` — Cross-Platform Alpha at hosted-proven commit `8b24f4b` |
-| Active product milestone | `v0.001a22` — Dogfood / Performance Alpha |
-| Display/package metadata | `v0.001a22` / `0.1a22` in `VERSION`, `pyproject.toml`, and `src/uniti/__init__.py` |
-| Latest immutable release tag | `v0.001a15` at `10f419e` |
-| Queued milestones | `v0.001a23`, `v0.001a24`, `v0.001b1`; proposed successor `v0.001b2` remains behind all predecessor gates |
+| Current source identity | `v0.001b2` / `0.1b2` in `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` |
+| Active development milestone | B2 Feedback Refinement Beta |
+| Implemented feedback | All reviewed BF-001–BF-010 source changes through `3e20214`, integrated on GitHub `main` |
+| Pre-promotion baseline | `33c71d3`, synchronized on `main`; changes from source candidate `3e20214` to that checkpoint were documentation-only |
+| Promotion scope | Version metadata and project records; existing document, settings, session, and recovery schemas remain unchanged |
+| Latest complete hosted feedback pass | `aab3f3c`, [run `34253008439`](https://github.com/PJTraut/tools-uniti/actions/runs/34253008439), all four lanes |
+| Last recorded hosted account block | [Run `34259043043`](https://github.com/PJTraut/tools-uniti/actions/runs/34259043043) on `33c71d3`: zero executed steps in all four jobs; GitHub annotations cite failed payments or spending limits |
+| Latest completed milestone | A21 Cross-Platform Alpha at hosted-proven `8b24f4b` |
+| Latest immutable release tag | `v0.001a15` at `10f419e`; no beta tag or native distribution is created by this source promotion |
 
-The retained release policy remains in force. A22 is still active because no qualifying real-use day is recorded; seven distinct days therefore remain `NOT RUN`. A23 executable/health delivery, A24 same-candidate qualification, and the B1 private executable human-feedback gate remain queued and `NOT RUN`. B1 has not been completed or promoted by the source-checkout feedback in [BF-001–BF-010](../BETA_FEEDBACK.md). Proposed B2 scope is recorded in the [B2 Feedback Refinement Beta milestone](../02_plans/v0.001b2-feedback-refinement-beta.md), but it is not active and the product identity remains A22.
+The user directed the project to move beyond A22 after the beta feedback work was implemented. [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md) advances the source identity and activates B2 while preserving unfinished release qualification. A22 real-use days, A23 executable health/recovery delivery, A24 stabilization, and B1 independent executable feedback remain open. Those historical milestone names identify outstanding requirements, not the currently installed source version.
 
-The synchronized baseline `23507ca` contains unchanged verified source `3e20214`; every intervening change is documentation-only. Earlier synchronization at `b152f0e` is historical. This refresh records the current version and integration state, adds no source-test claim, and does not substitute for same-integrated-commit hosted qualification. The latest run was checked directly on 2026-09-08; earlier attempts `34253913469`, `34253932056`, and `34256598416` encountered the same reported account block.
+The critical BF-002 affected-host confirmation, physical Chinese/Korean IME qualification, and same-commit hosted validation also remain open. Source integration and version advancement do not supply those results. The [Roadmap](../02_plans/ROADMAP.md) records the revised development and qualification order.
 
-The six feedback commits after the initially observed remote `ca75966` are already present and must not be reapplied: `fadc36f` (zero-window restore), `09fe356` (Quit with paused work), `fbeeb0f` (retained last window), `20b1e02` (initial Find/Replace Lucide icons), `fbe1b6e` (recovery scheduling), and `0322939` (compact whitespace and held Unicode inspection). Historical documentation checkpoint `5724f6c` follows them. The reviewed series through candidate `3e20214` adds first-use progress and the durability-warning fix, centered markers and hotkey propagation, EOL truth/all-view refresh, 80% gutter text, complete Find/Replace SVGs and aligned capture rows, packaged/editable theme profiles, bundled Noto fallback, and bounded shaped LTR editing. No version promotion, tag, release, installer, or tester distribution followed from this integration.
+## B2 source promotion verification
+
+Fresh local validation on the B2 promotion working tree based on `33c71d3`, 2026-09-08:
+
+- The owned development installation was refreshed through bootstrap; `--version` reports `v0.001b2`, and source/display/package/installed metadata agree on `v0.001b2` / `0.1b2`.
+- The initial suite found five assertions that required alpha labels (1,641 passed, six expected skips). Those assertions were updated to preserve canonical metadata and minimum-version checks across alpha/beta versions; all 65 focused tests passed.
+- The complete rerun passed **1,646 tests with six expected platform skips in 95.17 seconds**.
+- Compilation and all **21 deep self-checks** passed. Native Cocoa and offscreen combined smoke passed, including explicit Quit, session/history restoration, and instance forwarding.
+- Relative documentation links and diff checks passed; independent review confirmed coherent B2 metadata and retained release requirements.
+
+This validates the local source promotion. Same-commit hosted, physical input, affected-host, and executable qualification remain pending. No historical performance or wheel result is relabelled as a fresh B2 measurement.
 
 ## Integrated feedback behavior
 
@@ -98,7 +103,7 @@ deep self-check: pass, 21/21 checks
 native Cocoa combined smoke: pass; explicit Quit and session restore passed
 ```
 
-Focused workstream gates and independent reviews passed for Tasks 2, 4, 5, 6, 7, and 8. Task 8 passed 211 expanded focused tests, a 129-test review-fix matrix, and final scoped rereview with six targeted plus ten independent EOL-ownership probes. Candidate `3e20214` passed the complete source suite with 1,646 tests and six expected platform skips in 95.63 seconds, compilation, diff checks, all 21 deep self-checks, 108 native Cocoa targeted tests, and both native Cocoa and offscreen combined smoke including Quit/session restore. Its rebuilt isolated wheel contains 40 exact resources: 13 fonts, 11 SVGs, two themes, and 14 manifest/notice files; mixed text and Find/Replace render from the installed wheel. The uncontended unchanged scroll, typing, and giant-line gates passed with p95 medians 6.016, 10.055, and 3.623 ms, and the 72-action mixed-script scenario passed at 4.428 ms p95/26.031 ms maximum. All four local hosted-profile sustained families passed five measured cycles plus warmup with no contention. These timings and sustained results are local supporting evidence. Hosted run `34253008439` remains the latest complete four-lane gate on earlier checkpoint `aab3f3c`; the latest same-commit hosted attempt on `23507ca` was blocked before execution by the account constraint above. Neither local automation nor focused native checks satisfy physical IME, affected-host, A22 dogfood-day, A23, A24, or B1 gates.
+Focused workstream gates and independent reviews passed for Tasks 2, 4, 5, 6, 7, and 8. Task 8 passed 211 expanded focused tests, a 129-test review-fix matrix, and final scoped rereview with six targeted plus ten independent EOL-ownership probes. Candidate `3e20214` passed the complete source suite with 1,646 tests and six expected platform skips in 95.63 seconds, compilation, diff checks, all 21 deep self-checks, 108 native Cocoa targeted tests, and both native Cocoa and offscreen combined smoke including Quit/session restore. Its rebuilt isolated wheel contains 40 exact resources: 13 fonts, 11 SVGs, two themes, and 14 manifest/notice files; mixed text and Find/Replace render from the installed wheel. The uncontended unchanged scroll, typing, and giant-line gates passed with p95 medians 6.016, 10.055, and 3.623 ms, and the 72-action mixed-script scenario passed at 4.428 ms p95/26.031 ms maximum. All four local hosted-profile sustained families passed five measured cycles plus warmup with no contention. These timings and sustained results are local supporting evidence. Hosted run `34253008439` remains the latest complete four-lane gate on earlier checkpoint `aab3f3c`; later hosted attempts through `33c71d3` were blocked before execution by the account constraint above. Neither local automation nor focused native checks satisfy physical IME, affected-host, A22 dogfood-day, A23, A24, or B1 gates.
 
 ## Historical A21 verification
 
@@ -135,4 +140,4 @@ No known shared-code session-writer race, silent admitted-history loss, external
 
 UNITI does not install a permanent OS daemon. The desktop service retains an empty visible editor window when the user closes the last window, and exits on explicit Quit, logout, shutdown, or process termination. Legacy zero-window sessions remain restorable. Project/workspace semantics, cloud sync, collaboration, plugins, LSP, syntax highlighting, permanent background services, polished installers, multi-code-point grapheme inspection, and RTL/mixed-direction editing remain outside the implemented boundary. User-authored theme profiles and configurable held single-code-point Unicode inspection are implemented.
 
-The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). A22 Dogfood / Performance Alpha remains active. A23, A24, B1, and proposed B2 remain successors in that order. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
+The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). B2 Feedback Refinement Beta is active. Outstanding A22, A23, A24, and B1 release qualification remains recorded under ADR-0007. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
