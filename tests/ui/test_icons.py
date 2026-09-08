@@ -1,5 +1,6 @@
 import importlib.util
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -95,6 +96,34 @@ def test_new_lucide_assets_are_exact_utf8_copies_from_the_pinned_source(
     path = Path("src/uniti/ui/assets/lucide") / f"{name}.svg"
 
     assert path.read_bytes() == source.encode("utf-8")
+
+
+@pytest.mark.parametrize("name", ("search.svg", "LICENSE"))
+def test_lucide_assets_preserve_lf_bytes_with_autocrlf(tmp_path, name):
+    checkout = tmp_path / "checkout"
+    relative_asset = Path("src/uniti/ui/assets/lucide") / name
+    asset = checkout / relative_asset
+    asset.parent.mkdir(parents=True)
+    attributes = Path(".gitattributes").read_text(encoding="utf-8")
+    (checkout / ".gitattributes").write_text(attributes, encoding="utf-8")
+    expected = relative_asset.read_bytes()
+    asset.write_bytes(expected)
+
+    def git(*arguments, autocrlf=None):
+        command = ["git", "-C", str(checkout)]
+        if autocrlf is not None:
+            command.extend(("-c", f"core.autocrlf={autocrlf}"))
+        subprocess.run((*command, *arguments), check=True, capture_output=True)
+
+    git("init", "--quiet")
+    git("config", "user.name", "UNITI test")
+    git("config", "user.email", "uniti-test@example.invalid")
+    git("add", ".gitattributes", str(relative_asset), autocrlf="false")
+    git("commit", "--quiet", "-m", "fixture")
+    asset.unlink()
+    git("checkout", "--", str(relative_asset), autocrlf="true")
+
+    assert asset.read_bytes() == expected
 
 
 def test_existing_icon_follows_palette_and_disabled_selected_states(app):

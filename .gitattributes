@@ -8,6 +8,8 @@
 *.json text eol=lf
 *.sh text eol=lf
 *.command text eol=lf
+*.svg text eol=lf
+src/uniti/ui/assets/lucide/LICENSE text eol=lf
 *.bat text eol=crlf
 
 # UNITI's future byte/EOL/encoding fixtures must never be rewritten by Git.
