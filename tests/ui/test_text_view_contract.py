@@ -96,16 +96,20 @@ def test_text_view_paints_invalid_byte_annotations_distinctly():
         ("all", ("SPACE", "TAB", "NBSP", "ZWSP", "CRLF")),
     ),
 )
+@pytest.mark.parametrize("inspecting", [False, True])
 def test_whitespace_modes_paint_only_their_marker_categories(
     tmp_path: Path,
     monkeypatch,
     mode: str,
     expected: tuple[str, ...],
+    inspecting: bool,
 ):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
 
     from uniti.app.editor_state import EditorState
     from uniti.core.document import Document
@@ -126,11 +130,17 @@ def test_whitespace_modes_paint_only_their_marker_categories(
         view.resize(640, 100)
         view.show()
         app.processEvents()
+        if inspecting:
+            app.sendEvent(view, QKeyEvent(
+                QEvent.Type.KeyPress, Qt.Key.Key_Alt,
+                Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier,
+            ))
         painted.clear()
         view.viewport().repaint()
         app.processEvents()
 
         assert tuple(painted) == expected
+        app.sendEvent(app, QEvent(QEvent.Type.ApplicationDeactivate))
         view.close()
 
 

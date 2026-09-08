@@ -9,6 +9,7 @@ from pathlib import Path
 from uniti.core.durability import DurabilityResult
 
 from .atomic_json import atomic_write_json, preserve_invalid
+from .inspection_shortcut import DEFAULT_INSPECTION_MODIFIERS, normalize_inspection_modifiers
 
 SETTINGS_SCHEMA = 3
 
@@ -26,6 +27,7 @@ class Settings:
     theme_mode: str = "System"
     theme_contrast: str = "Standard"
     whitespace_mode: str = "off"
+    whitespace_inspect_modifiers: str = DEFAULT_INSPECTION_MODIFIERS
     find_replace_zoom_percent: int = 100
     find_replace_report_location: str = "Right"
     find_replace_geometry: tuple[int, int, int, int] | None = None
@@ -78,6 +80,12 @@ def _settings_from_payload(payload: object) -> Settings:
         "all",
     }:
         whitespace_mode = "off"
+    try:
+        inspection_modifiers = normalize_inspection_modifiers(
+            payload.get("whitespace_inspect_modifiers", DEFAULT_INSPECTION_MODIFIERS)
+        )
+    except (TypeError, ValueError):
+        inspection_modifiers = DEFAULT_INSPECTION_MODIFIERS
     find_replace_zoom_percent = payload.get("find_replace_zoom_percent", 100)
     if (
         not isinstance(find_replace_zoom_percent, int)
@@ -120,6 +128,7 @@ def _settings_from_payload(payload: object) -> Settings:
         theme_mode=theme_mode,
         theme_contrast=theme_contrast,
         whitespace_mode=whitespace_mode,
+        whitespace_inspect_modifiers=inspection_modifiers,
         find_replace_zoom_percent=find_replace_zoom_percent,
         find_replace_report_location=find_replace_report_location,
         find_replace_geometry=find_replace_geometry,

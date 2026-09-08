@@ -30,6 +30,11 @@ class WhitespaceMarker:
 
 
 _KNOWN_LABELS = {
+    "\u2003": "EMSP",
+    "\u2002": "ENSP",
+    "\u2009": "THINSP",
+    "\u200a": "HAIRSP",
+    "\u3000": "IDSP",
     "\u00a0": "NBSP",
     "\u202f": "NNBSP",
     "\u200b": "ZWSP",
@@ -37,7 +42,28 @@ _KNOWN_LABELS = {
     "\u200d": "ZWJ",
     "\u2060": "WJ",
     "\ufeff": "BOM",
+    "\u200e": "LRM",
+    "\u200f": "RLM",
 }
+
+
+def marker_detail(label: str) -> str:
+    parts = []
+    identities = {value: key for key, value in _KNOWN_LABELS.items()}
+    identities.update({"SPACE": " ", "TAB": "\t", "LF": "\n", "CR": "\r", "CRLF": "\r\n"})
+    for item in label.split(" / "):
+        name, separator, count = item.partition("×")
+        characters = identities.get(name)
+        code = " ".join(f"U+{ord(c):04X}" for c in characters) if characters else ""
+        detail = f"{name} {code}".strip()
+        parts.append(detail + (f" ×{count}" if separator else ""))
+    return " / ".join(parts)
+
+
+def character_detail(character: str) -> str:
+    aliases = {"\t": "CHARACTER TABULATION", "\n": "LINE FEED", "\r": "CARRIAGE RETURN"}
+    name = aliases.get(character) or unicodedata.name(character, "<no Unicode name>")
+    return f"U+{ord(character):04X} — {name}"
 
 
 def parse_whitespace_mode(value: object) -> WhitespaceMode:

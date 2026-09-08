@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+import sys
+
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QDialog,
     QHBoxLayout,
+    QGroupBox,
     QLabel,
     QPushButton,
     QKeySequenceEdit,
@@ -18,6 +22,11 @@ from PySide6.QtWidgets import (
 )
 
 from uniti.app.commands import CommandCategory, CommandRegistry, ShortcutCollision
+from uniti.app.inspection_shortcut import (
+    DEFAULT_INSPECTION_MODIFIERS,
+    MODIFIER_NAMES,
+    normalize_inspection_modifiers,
+)
 
 
 def _native_shortcut(shortcut: str) -> str:
@@ -30,6 +39,8 @@ def _native_shortcut(shortcut: str) -> str:
 
 
 class HotkeysPopup(QDialog):
+    inspectionShortcutChanged = Signal(str)
+
     def __init__(self, registry: CommandRegistry, parent=None) -> None:
         super().__init__(parent)
         self.registry = registry
@@ -82,10 +93,43 @@ class HotkeysPopup(QDialog):
         self.error_label = QLabel("", self)
         self.error_label.setWordWrap(True)
 
+        self.inspection_group = QGroupBox("Hold to inspect Unicode", self)
+        inspection_layout = QVBoxLayout(self.inspection_group)
+        self.inspection_label = QLabel(self.inspection_group)
+        self.inspection_label.setWordWrap(True)
+        inspection_layout.addWidget(self.inspection_label)
+        inspection_layout.addWidget(QLabel(
+            "Hold to reveal whitespace details in the selected whitespace mode, "
+            "or inspect one selected Unicode code point. Release to hide.\n"
+            "Choose at least two modifiers; clear all to disable.", self.inspection_group
+        ))
+        modifier_row = QHBoxLayout()
+        native_names = (
+            {"Ctrl": "Cmd", "Alt": "Option", "Shift": "Shift", "Meta": "Control"}
+            if sys.platform == "darwin"
+            else {"Ctrl": "Ctrl", "Alt": "Alt", "Shift": "Shift", "Meta": "Win / Meta"}
+        )
+        self._inspection_names = native_names
+        self.inspection_checks = {}
+        for name in MODIFIER_NAMES:
+            checkbox = QCheckBox(native_names[name], self.inspection_group)
+            self.inspection_checks[name] = checkbox
+            modifier_row.addWidget(checkbox)
+        apply_inspection = QPushButton("Apply Hold Shortcut", self.inspection_group)
+        reset_inspection = QPushButton("Reset Hold Shortcut", self.inspection_group)
+        modifier_row.addWidget(apply_inspection)
+        modifier_row.addWidget(reset_inspection)
+        inspection_layout.addLayout(modifier_row)
+        apply_inspection.clicked.connect(self._apply_inspection_shortcut)
+        reset_inspection.clicked.connect(self._reset_inspection_shortcut)
+        self.set_inspection_modifiers(DEFAULT_INSPECTION_MODIFIERS)
+        self.inspection_group.hide()
+
         layout = QVBoxLayout(self)
         layout.addLayout(category_row)
         layout.addWidget(self.table, 1)
         layout.addLayout(assignment_row)
+        layout.addWidget(self.inspection_group)
         layout.addWidget(self.error_label)
 
         assign_button.clicked.connect(self._assign_selected)
@@ -97,6 +141,33 @@ class HotkeysPopup(QDialog):
             lambda _command_id, _shortcut: self._populate_table()
         )
         self._populate_table()
+
+    def set_inspection_modifiers(self, value: str) -> None:
+        selected = normalize_inspection_modifiers(value)
+        for name, checkbox in self.inspection_checks.items():
+            checkbox.setChecked(name in selected.split("+"))
+        def native(modifiers):
+            return "+".join(self._inspection_names[n] for n in modifiers.split("+") if n) or "Disabled"
+        self.inspection_label.setText(
+            f"Current: {native(selected)}    Default: {native(DEFAULT_INSPECTION_MODIFIERS)}"
+        )
+
+    def _apply_inspection_shortcut(self) -> None:
+        selected = "+".join(n for n, check in self.inspection_checks.items() if check.isChecked())
+        try:
+            selected = normalize_inspection_modifiers(selected)
+        except ValueError as exc:
+            self.last_error = str(exc)
+            self.error_label.setText(self.last_error)
+            return
+        self.last_error = ""
+        self.error_label.clear()
+        self.set_inspection_modifiers(selected)
+        self.inspectionShortcutChanged.emit(selected)
+
+    def _reset_inspection_shortcut(self) -> None:
+        self.set_inspection_modifiers(DEFAULT_INSPECTION_MODIFIERS)
+        self._apply_inspection_shortcut()
 
     def _selected_command_id(self) -> str | None:
         row = self.table.currentRow()
@@ -151,6 +222,7 @@ class HotkeysPopup(QDialog):
 
     def select_category(self, category: CommandCategory) -> None:
         self._category = category
+        self.inspection_group.setVisible(category == CommandCategory.EDITOR_VIEW)
         for button, candidate in zip(self.category_buttons, CommandCategory):
             button.setChecked(candidate == category)
         self.last_error = ""
@@ -193,9 +265,12 @@ class HotkeysPopup(QDialog):
 
     def reset_current_category(self) -> None:
         self.registry.reset_category(self._category)
+        if self._category == CommandCategory.EDITOR_VIEW:
+            self._reset_inspection_shortcut()
 
     def reset_all(self) -> None:
         self.registry.reset_all()
+        self._reset_inspection_shortcut()
 
     def _assign_selected(self) -> None:
         command_id = self._selected_command_id()

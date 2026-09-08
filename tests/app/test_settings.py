@@ -27,6 +27,16 @@ def test_settings_store_defaults_when_missing(tmp_path: Path):
     assert store.load() == Settings()
 
 
+@pytest.mark.parametrize("value, expected", [
+    ("Shift+Alt", "Alt+Shift"), ("", ""), ("Alt", "Ctrl+Alt"),
+    ("Ctrl+Ctrl", "Ctrl+Alt"), ("Ctrl+X", "Ctrl+Alt"), (None, "Ctrl+Alt"),
+])
+def test_inspection_shortcut_settings_validation(tmp_path, value, expected):
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"schema": 3, "whitespace_inspect_modifiers": value}))
+    assert SettingsStore(path).load().whitespace_inspect_modifiers == expected
+
+
 def test_settings_store_round_trips_and_replaces_atomically(tmp_path: Path):
     path = tmp_path / "config" / "settings.json"
     store = SettingsStore(path)
@@ -203,6 +213,7 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
         "theme_contrast": "Standard",
         "theme_mode": "System",
         "whitespace_mode": "off",
+        "whitespace_inspect_modifiers": "Ctrl+Alt",
     }
 
 

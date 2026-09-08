@@ -47,36 +47,30 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 
 ## BF-003 — Refine visible whitespace using InDesign as a reference
 
-- Reported: 2026-09-07.
-- Status: reference comparison and user requirements recorded for later planning and action; implementation pending.
+- Reported: 2026-09-07; implementation approved 2026-09-08 after comparison with the user-provided character table.
+- Status: implemented locally; native Windows and affected-host beta confirmation pending.
 - Environment: Windows PC and macOS; default held combination also specified for Linux.
-- Request: improve UNITI's visible whitespace, informed by Adobe InDesign's hidden-character display.
-- Reference: Adobe's [hidden-character glossary](https://helpx.adobe.com/indesign/desktop/language-and-proofing/glyphs-characters-and-expressions/hidden-character-glossary.html) documents compact marks including `·` for ordinary spaces, `»` for tabs, `¶` for paragraph ends, and `↵` for soft returns, with distinct symbols for special spaces. Adobe's [display guidance](https://helpx.adobe.com/indesign/desktop/language-and-proofing/glyphs-characters-and-expressions/view-or-show-hidden-characters.html) describes nonprinting marks displayed in the layer color.
-- Current UNITI rendering: spaces use dots, tabs use a drawn arrow across their width, line endings use `LF`/`CRLF`/`CR` labels, and invisible Unicode uses bordered text badges such as `NBSP` and `ZWSP`. Badge width can exceed the character's layout width and paint over neighboring text.
-- Proposed direction: compact symbols with consistent theme-aware marker color, preserving text layout and avoiding overlapping badges. Keep precise character identity accessible through inspection and retain the distinction between LF, CRLF, and CR.
-- User clarification — preserve Unicode detail: show compact markers normally, and temporarily reveal detailed Unicode labels while a key combination is held. Restore compact markers when the combination is released; this is a hold action, not a toggle.
-- Selected default: `Ctrl+Alt` on Windows/Linux and `Cmd+Option` on macOS. The user selected this option over `Shift+Alt` / `Shift+Option`.
-- Whitespace filtering: the current whitespace setting controls which whitespace overlays appear in both compact and detailed views. Off remains off; EOL, Spaces & Tabs, Invisible Unicode, and All retain their category boundaries. Holding the combination must not enable every category or change the saved whitespace mode.
-- Single-character inspection: the same held combination must also display Unicode information for a single selected character, including an ordinary visible character. Preserve the selection and document contents. Multi-character selection behavior and the treatment of a displayed character composed of multiple Unicode code points need definition during planning.
-- Detail presentation: retain exact character identity, with code point information available for single-character inspection. Decide the placement of temporary detail so it remains readable without obscuring adjacent text. Selected-character inspection is a separate use of the same gesture; whitespace overlays continue to follow the selected whitespace setting.
-- Interaction acceptance: release of either required modifier ends inspection; leaving the application must not leave the detailed display stuck on. The gesture must not edit text, move the cursor, alter selection, or persist a temporary inspection state.
-- Related configuration request: expose this held combination in the Hotkeys configuration panel; tracked in BF-004.
-- Symbol-font recommendation for planning: evaluate [Noto Sans Symbols](https://notofonts.github.io/noto-docs/specimen/NotoSansSymbols/) and [Noto Sans Symbols2](https://notofonts.github.io/noto-docs/specimen/NotoSansSymbols2/) as companion Unicode symbol fonts. For compact whitespace overlays, consider drawing simple dots, arrows, and zero-width indicators directly for controlled sizing and alignment. Exact glyph mappings remain to be chosen and verified; displayed markers must not replace document characters.
-- Semantic boundary: InDesign distinguishes paragraph and soft-return semantics; these must not be assumed equivalent to UNITI's physical line-ending encodings. Automatic visual wrapping must not appear as an inserted break.
-- Next review: choose the exact symbols and detail presentation, then verify every whitespace mode with the combination held/released, single-character selection, special and zero-width spaces, adjacent invisible runs, mixed line endings, soft wrapping, zoom, and light/dark/high-contrast themes within the existing visible-rendering budget. Verify native modifier behavior on Windows and macOS.
-- Disposition: requirements retained in beta feedback as requested; no rendering or input behavior change made yet.
+- Reference: Adobe's [hidden-character glossary](https://helpx.adobe.com/indesign/desktop/language-and-proofing/glyphs-characters-and-expressions/hidden-character-glossary.html) and the supplied character table informed the compact marks. UNITI keeps physical line-ending identity rather than adopting paragraph/soft-return semantics.
+- Implemented ordinary marks: space `·`, tab `»`, LF `␊`, CR `␍`, CRLF `␍␊`. Automatic visual wrapping has no end-of-line marker.
+- Implemented special marks: em/en spaces use different bar widths with dots; NBSP uses a caret; narrow NBSP a caret with dot; thin space a downward caret with dot; hair space two dots; ideographic space a box with dot. Zero-width space uses a stem with endpoint rings, non-joiner outward arrows, joiner a joining arch, word joiner an I-beam, and direction marks directional flags. BOM uses a diamond with dot; other invisible characters use a diamond. These are theme-aware drawings, independent of installed symbol fonts.
+- Co-located invisible runs use a compact aggregate; held details retain each distinct character identity. Marker placement accounts for UTF-16 layout offsets after supplementary characters such as emoji.
+- Held inspection: `Ctrl+Alt` on Windows/Linux and `Cmd+Option` on macOS temporarily shows a bounded Unicode key at the bottom of the viewport, listing visible marker types and their code points. Compact marks remain in place; adjacent labels do not overlap. Release of either required modifier or application deactivation hides the key.
+- Whitespace filtering: Off, EOL, Spaces & Tabs, Invisible Unicode, and All retain their category boundaries during inspection. Holding the combination does not change the saved mode.
+- Selected-character inspection: the same gesture shows the code point and Unicode name for exactly one selected code point in the focused editor, including ordinary visible text and supplementary characters, even with whitespace Off. Multi-code-point grapheme inspection remains future work.
+- Display-only behavior: inspection preserves document contents, cursor, selection, and layout. Existing visible rendering and marker budgets remain in place. The key limits its rows and summarizes additional types when space is restricted.
+- Scope boundary: screenshot autoreplace commands, font expansion, and RTL editing are not part of this implementation. Symbol-font evaluation remains under the broader font work.
+- Configuration: see BF-004.
+- Verification: full local suite passed 1,476 tests with six platform-specific skips. All 12 inspection tests passed on native macOS, and native combined smoke confirmed explicit Quit and session restore. Coverage includes mode filtering, release/deactivation, short-view and supplementary-character inspection, adjacent invisible identities, marker alignment, and configuration. Source compilation, changed-document local links, and `git diff --check` passed. Independent review found no remaining blocking issues. Windows native modifier/rendering checks and affected-host beta confirmation remain pending.
 
 ## BF-004 — Configure the Unicode inspection combination in Hotkeys
 
-- Reported: 2026-09-07.
-- Status: recorded for later planning and action; implementation pending.
-- Environment: Windows PC and macOS, with portable shortcut settings.
-- Request: provide a hotkey configuration panel, including configuration of the shared held combination for whitespace detail and single-character Unicode inspection from BF-003.
-- Existing capability: UNITI already has a top-level Hotkeys entry opening a modeless configuration panel with command categories, Default/Current bindings, assignment, clearing, collision reporting, and reset controls. The new held inspection gesture is not currently exposed there.
-- Proposed extension: add a clearly labeled hold-to-inspect setting under Editor View in the existing panel. Display native platform modifier names, allow the combination to be changed, and provide reset to the selected default (`Ctrl+Alt` on Windows/Linux; `Cmd+Option` on macOS).
-- Expected behavior: persist the configured combination across launches and apply it consistently to open and newly opened editor views. Explain that the keys must remain held and that whitespace detail respects the whitespace setting. Both whitespace detail and single-character inspection use the same configured combination.
-- Planning checks: distinguish a modifier-only held gesture from an ordinary command shortcut; validate allowed combinations and interactions with existing shortcuts; ensure configuration and resets do not alter document contents or leave inspection active.
-- Disposition: extend the existing panel when BF-003 is planned; no hotkey configuration changes made yet.
+- Reported: 2026-09-07; implementation approved 2026-09-08.
+- Status: implemented locally; native Windows and affected-host beta confirmation pending.
+- Menu access: the top-level **Hotkeys** entry opens the existing modeless command configuration panel. **Editor View → Hold to inspect Unicode** now exposes the shared inspection combination.
+- Configuration: native platform modifier labels, Apply Hold Shortcut, Reset Hold Shortcut, and current/default display. Choose at least two distinct modifiers, or clear all to disable. Category/all resets also restore this setting.
+- Persistence: the portable combination is saved in settings and applied to existing and newly opened editor views. Invalid stored values fall back to the default. Inspection uses a modifier-only hold gesture and does not consume ordinary command events.
+- Shutdown confirmation: the existing **File → Quit** action requests service shutdown; Qt can place Quit in the native application menu on macOS. Closing the last editor window retains the visible empty editor, as requested in BF-002.
+- Verification: configuration tests cover assignment, invalid combinations, reset, disabled inspection, persisted reload, effective custom bindings, and presence of Quit/Hotkeys actions.
 
 ## BF-005 — Theme editing and more packaged themes
 

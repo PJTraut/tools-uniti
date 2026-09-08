@@ -34,6 +34,7 @@ The current development alpha includes:
 - custom PySide6 `QAbstractScrollArea` editor viewport — Qt never owns the document;
 - tabs, native menus, persisted System/Light/Dark application themes, Cut/Copy/Paste, IME composition support, and operational status bar;
 - one service-owned topmost asynchronous regex-aware Find/Replace panel with persisted field state and Undo/Redo, per-field clear controls, theme-aware Lucide action icons, cursor-relative Previous/Next independent of Find All, a right-docked Match Report, visible-only normal/zero-width overlays, and bounded model-backed current/next capture reports;
+- compact whitespace markers with distinct special-space and zero-width symbols, plus held Unicode inspection (`Ctrl+Alt` on Windows/Linux, `Cmd+Option` on macOS), configurable through **Hotkeys → Editor View**;
 - separate **Reinterpret As** and **Convert on Save** controls;
 - source-aware inserted-EOL policy, EOL controls, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics.
 - explicit Python 3.12+ bootstrap into a UNITI-owned source or application-local virtual environment;
@@ -42,7 +43,7 @@ The current development alpha includes:
 - explicit macOS, Windows, and Linux path/identity policy; capability-driven `full` / `file_synced` / `unsafe` publication results; pointer repair from complete session generations; native shortcut and fixed-font resolution; and
 - fast/deep self-checks for runtime, dependencies, paths, schemas, resources, filesystem primitives, regex intelligence, text fidelity, recovery/session continuity, large-file behavior, offscreen Qt, and bounded cross-platform evidence.
 
-Explicitly deferred beyond this alpha: expanded keyboard-driven Unicode inspection, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
+Explicitly deferred beyond this alpha: multi-code-point grapheme inspection, project/workspace concepts, plugins, LSP, Git UI, terminal, AI/cloud features, hex editing, full syntax highlighting, and polished platform installers.
 
 ## Requirements
 

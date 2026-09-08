@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import Counter
 import time
 import uuid
 import weakref
@@ -34,7 +35,11 @@ from uniti.ui.whitespace import (
     iter_character_markers,
     parse_whitespace_mode,
     shows_eol,
+    marker_detail,
+    character_detail,
 )
+from uniti.ui.whitespace_painter import paint_compact_marker
+from uniti.ui.unicode_inspection import unicode_inspection
 from uniti.ui.wrap_index import WrappedRowIndex
 
 
@@ -121,9 +126,12 @@ class UNITITextView(QAbstractScrollArea):
         self._progressive_navigation = False
         self._dock_return: DockReturnRecord | None = None
         self._whitespace_mode = WhitespaceMode.OFF
+        self._inspection_labels: dict[str, None] = {}
         app = QApplication.instance()
         if not isinstance(app, QApplication):
             raise RuntimeError("UNITITextView requires an existing QApplication")
+        self._inspection = unicode_inspection(app)
+        self._inspection.changed.connect(self.viewport().update)
         self._theme_tokens = active_theme(app).editor
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
@@ -176,6 +184,25 @@ class UNITITextView(QAbstractScrollArea):
     @property
     def whitespace_mode(self) -> WhitespaceMode:
         return self._whitespace_mode
+
+    @property
+    def whitespace_details_visible(self) -> bool:
+        return self._inspection.active and self._whitespace_mode != WhitespaceMode.OFF
+
+    @property
+    def selected_character_detail(self) -> str | None:
+        if self._disposed or not self._inspection.active or not self.hasFocus():
+            return None
+        selection = self.state.selection
+        if selection is None or selection[1] - selection[0] != 1:
+            return None
+        return character_detail(self.document.read(*selection))
+
+    @property
+    def inspection_entries(self) -> tuple[str, ...]:
+        if not self.whitespace_details_visible:
+            return ()
+        return tuple(marker_detail(label) for label in self._inspection_labels)
 
     @property
     def theme_tokens(self) -> EditorThemeTokens:
@@ -364,6 +391,7 @@ class UNITITextView(QAbstractScrollArea):
         if self._disposed:
             return
         self._disposed = True
+        self._inspection.changed.disconnect(self.viewport().update)
         self._document_refresh_queued = False
         remove = self._remove_document_listener
         self._remove_document_listener = None
@@ -373,7 +401,12 @@ class UNITITextView(QAbstractScrollArea):
     def focusInEvent(self, event) -> None:
         super().focusInEvent(event)
         if not self._disposed:
+            self.viewport().update()
             self.viewFocused.emit(self.view_id)
+
+    def focusOutEvent(self, event) -> None:
+        super().focusOutEvent(event)
+        self.viewport().update()
 
     def closeEvent(self, event) -> None:
         self.dispose()
@@ -526,45 +559,35 @@ class UNITITextView(QAbstractScrollArea):
         baseline = y + self._metrics.ascent()
         left = int(round(x1))
         right = max(left + 1, int(round(x2)))
+        if kind == "overflow":
+            painter.setPen(tokens.invisible_marker)
+            painter.drawText(left + 3, baseline, label)
+            return
+        if self.whitespace_details_visible:
+            for item in label.split(" / "):
+                self._inspection_labels[item.partition("×")[0]] = None
         if kind == WhitespaceKind.SPACE:
             painter.setPen(tokens.space_marker)
             center = left + max(0, (right - left) // 2)
             painter.drawPoint(center, y + max(1, self._line_height // 2))
             painter.drawText(center - 2, baseline, "·")
             return
-        if kind == WhitespaceKind.TAB:
+        elif kind == WhitespaceKind.TAB:
             painter.setPen(tokens.tab_marker)
-            mid = y + max(1, self._line_height // 2)
-            arrow_end = max(left + 3, right - 2)
-            painter.drawLine(left + 1, mid, arrow_end, mid)
-            painter.drawLine(arrow_end - 3, mid - 2, arrow_end, mid)
-            painter.drawLine(arrow_end - 3, mid + 2, arrow_end, mid)
-            painter.drawPoint(left, mid)
+            painter.drawText(left + 1, baseline, "»")
             return
-        if kind in {"eol", "overflow"}:
-            painter.setPen(
-                tokens.eol_marker
-                if kind == "eol"
-                else tokens.invisible_marker
-            )
-            painter.drawPoint(left, y + max(1, self._line_height // 2))
-            painter.drawText(left + 3, baseline, label)
+        elif kind == "eol":
+            painter.setPen(tokens.eol_marker)
+            painter.drawText(left + 3, baseline, {"LF": "␊", "CR": "␍", "CRLF": "␍␊"}[label])
             return
-
-        label_width = self._metrics.horizontalAdvance(label) + 6
-        badge_width = max(8, right - left, label_width)
-        badge = QRectF(
-            float(left),
-            float(y + 1),
-            float(badge_width),
-            float(max(2, self._line_height - 2)),
-        )
-        painter.fillRect(badge, tokens.invisible_background)
-        painter.setPen(tokens.invisible_border)
-        painter.drawRect(badge)
-        painter.setPen(tokens.invisible_marker)
-        painter.drawPoint(left + 1, y + max(1, self._line_height // 2))
-        painter.drawText(badge, Qt.AlignmentFlag.AlignCenter, label)
+        else:
+            painter.setPen(tokens.invisible_marker)
+            width = max(4.0, self._cell_width * 0.8)
+            center = (x1 + x2) / 2 if abs(x2 - x1) >= 0.5 else x1
+            paint_compact_marker(painter, label, QRectF(
+                center - width / 2, y + 1, width, self._line_height - 2
+            ))
+            return
 
     def _paint_whitespace_for_row(
         self,
@@ -584,13 +607,17 @@ class UNITITextView(QAbstractScrollArea):
         viewport_right = float(self.viewport().width())
         viewport_left = float(self._gutter_width)
         markers = tuple(iter_character_markers(text, self._whitespace_mode))
+        # Document offsets count code points; QTextLine offsets count UTF-16 units.
+        utf16_positions = [0]
+        for character in text:
+            utf16_positions.append(utf16_positions[-1] + (2 if ord(character) > 0xFFFF else 1))
         index = 0
         while index < len(markers):
             marker = markers[index]
-            x1 = float(text_x) + self._layout_cursor_x(layout_line, marker.index)
+            x1 = float(text_x) + self._layout_cursor_x(layout_line, utf16_positions[marker.index])
             x2 = float(text_x) + self._layout_cursor_x(
                 layout_line,
-                marker.index + 1,
+                utf16_positions[marker.index + 1],
             )
             label = marker.label
             if marker.kind == WhitespaceKind.INVISIBLE and abs(x2 - x1) < 0.5:
@@ -604,11 +631,11 @@ class UNITITextView(QAbstractScrollArea):
                         break
                     candidate_x1 = float(text_x) + self._layout_cursor_x(
                         layout_line,
-                        candidate.index,
+                        utf16_positions[candidate.index],
                     )
                     candidate_x2 = float(text_x) + self._layout_cursor_x(
                         layout_line,
-                        candidate.index + 1,
+                        utf16_positions[candidate.index + 1],
                     )
                     if (
                         abs(candidate_x2 - candidate_x1) >= 0.5
@@ -618,7 +645,11 @@ class UNITITextView(QAbstractScrollArea):
                     group_end += 1
                 count = group_end - index
                 if count > 1:
-                    label = f"{label}×{count}"
+                    counts = Counter(item.label for item in markers[index:group_end])
+                    label = " / ".join(
+                        f"{name}×{total}" if total > 1 else name
+                        for name, total in counts.items()
+                    )
                 index = group_end
             else:
                 index += 1
@@ -639,7 +670,7 @@ class UNITITextView(QAbstractScrollArea):
             terminator = self.document.line_terminator(line_number)
             label = {"\n": "LF", "\r\n": "CRLF", "\r": "CR"}.get(terminator)
             if label is not None:
-                x = float(text_x) + self._layout_cursor_x(layout_line, len(text))
+                x = float(text_x) + self._layout_cursor_x(layout_line, utf16_positions[-1])
                 if viewport_left <= x <= viewport_right:
                     budget.last_position = (x, x, y)
                     if _consume_marker(budget):
@@ -654,6 +685,7 @@ class UNITITextView(QAbstractScrollArea):
 
     def paintEvent(self, event) -> None:
         del event
+        self._inspection_labels.clear()
         painter = QPainter(self.viewport())
         tokens = self._theme_tokens
         painter.fillRect(self.viewport().rect(), tokens.base)
@@ -849,7 +881,66 @@ class UNITITextView(QAbstractScrollArea):
             )
             marker_budget.remaining -= 1
 
+        self._paint_inspection_key(painter)
         self._refresh_scrollbars(advance_index=False)
+
+    def _paint_inspection_key(self, painter: QPainter) -> None:
+        detail = self.selected_character_detail
+        entries = self.inspection_entries
+        if detail is None and not entries:
+            return
+        width = self.viewport().width() - self._gutter_width - 8
+        if width < 40:
+            return
+        font = QFont(self.font())
+        font.setPointSizeF(max(6, font.pointSizeF() * 0.85))
+        metrics = QFontMetrics(font)
+        row_height = metrics.height() + 4
+        columns = max(1, min(3, width // max(240, metrics.horizontalAdvance("NNBSP U+202F") + 36)))
+        header_rows = 2 if detail is not None else 1
+        capacity = max(0, int(self.viewport().height() * 0.45) // row_height - header_rows)
+        if capacity == 0 and detail is None:
+            return
+        shown = min(len(entries), capacity * columns)
+        truncated = shown < len(entries)
+        if truncated:
+            shown = max(0, shown - columns)
+        rows = (shown + columns - 1) // columns
+        height = (header_rows + rows + int(truncated)) * row_height + 8
+        box = QRectF(self._gutter_width + 4, self.viewport().height() - height - 4, width, height)
+        painter.save()
+        try:
+            painter.setFont(font)
+            painter.fillRect(box, self._theme_tokens.gutter_base)
+            painter.setPen(self._theme_tokens.text)
+            painter.drawRect(box)
+
+            def text(value, x, y, available):
+                value = metrics.elidedText(value, Qt.TextElideMode.ElideRight, max(1, int(available)))
+                painter.drawText(QPointF(x, y + metrics.ascent()), value)
+
+            text("Unicode inspection — visible marker types", box.left() + 6, box.top() + 4, width - 12)
+            if detail is not None:
+                text(detail, box.left() + 6, box.top() + row_height + 4, width - 12)
+            labels = tuple(self._inspection_labels)
+            for index, entry in enumerate(entries[:shown]):
+                row, column = divmod(index, columns)
+                x = box.left() + column * width / columns + 6
+                y = box.top() + (header_rows + row) * row_height + 4
+                label = labels[index]
+                glyph = {"SPACE": "·", "TAB": "»", "LF": "␊", "CR": "␍", "CRLF": "␍␊"}.get(label)
+                painter.setPen(self._theme_tokens.invisible_marker)
+                if glyph is not None:
+                    text(glyph, x, y, 28)
+                else:
+                    paint_compact_marker(painter, label, QRectF(x + 3, y, 12, row_height - 3))
+                painter.setPen(self._theme_tokens.text)
+                text(entry, x + 28, y, width / columns - 40)
+            if truncated:
+                text(f"+{len(entries) - shown} types; select one character for details",
+                    box.left() + 6, box.top() + (header_rows + rows) * row_height + 4, width - 12)
+        finally:
+            painter.restore()
 
     def _char_for_point(self, x: float, y: float) -> int:
         visual_row = self.verticalScrollBar().value() + max(

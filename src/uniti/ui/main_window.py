@@ -96,6 +96,7 @@ from uniti.ui.theme import (
     apply_theme,
 )
 from uniti.ui.whitespace import WhitespaceMode, parse_whitespace_mode
+from uniti.ui.unicode_inspection import unicode_inspection
 
 if TYPE_CHECKING:
     from uniti.app.service import UNITIService
@@ -181,6 +182,9 @@ class UNITIMainWindow(QMainWindow):
             )
         shortcut_policy = build_shortcut_policy(
             self._settings.shortcut_overrides
+        )
+        unicode_inspection(QApplication.instance()).set_modifiers(
+            self._settings.whitespace_inspect_modifiers
         )
         self.shortcut_notices = shortcut_policy.notices
         self.shortcut_warning_count = 0
@@ -517,6 +521,17 @@ class UNITIMainWindow(QMainWindow):
             self._settings,
             shortcut_overrides=self._command_registry.overrides,
         )
+        self._save_settings()
+
+    def set_inspection_modifiers(self, modifiers: str) -> None:
+        controller = unicode_inspection(QApplication.instance())
+        controller.set_modifiers(modifiers)
+        for window in self._appearance_windows():
+            window._settings = dataclass_replace(
+                window._settings, whitespace_inspect_modifiers=controller.modifiers
+            )
+            if window._hotkeys_popup is not None:
+                window._hotkeys_popup.set_inspection_modifiers(controller.modifiers)
         self._save_settings()
 
     def eventFilter(self, watched, event) -> bool:
@@ -1284,6 +1299,10 @@ class UNITIMainWindow(QMainWindow):
     def show_hotkeys(self) -> HotkeysPopup:
         if self._hotkeys_popup is None:
             self._hotkeys_popup = HotkeysPopup(self._command_registry, self)
+            self._hotkeys_popup.set_inspection_modifiers(
+                self._settings.whitespace_inspect_modifiers
+            )
+            self._hotkeys_popup.inspectionShortcutChanged.connect(self.set_inspection_modifiers)
         self._hotkeys_popup.show_below(self.menuBar())
         return self._hotkeys_popup
 
