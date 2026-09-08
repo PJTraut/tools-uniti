@@ -70,6 +70,7 @@ from uniti.resources import (
     TaskSpec,
 )
 from uniti.ui.capture_report import CaptureReportModel
+from uniti.ui.capture_report_delegate import CaptureReportDelegate
 from uniti.ui.icons import lucide_icon
 from uniti.ui.regex_input import RegexInput, ReplacementInput
 
@@ -225,6 +226,7 @@ class FindReplaceWindow(QDockWidget):
         self.capture_view = QListView(content)
         self.capture_model = CaptureReportModel(self.capture_view)
         self.capture_view.setModel(self.capture_model)
+        self.capture_view.setItemDelegate(CaptureReportDelegate(self.capture_view))
         self.capture_view.setAccessibleName("Match Report")
         self.regex_checkbox = QCheckBox("Regex", content)
         self.case_sensitive_checkbox = QCheckBox("Case", content)

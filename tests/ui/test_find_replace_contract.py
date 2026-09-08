@@ -311,10 +311,10 @@ def test_capture_report_model_formats_rows_and_accessible_text():
 
     assert model.rows() == (
         "Match 1 of 2",
-        "1 letter │ a | a | a (3 occurrences)",
-        "2 empty │ empty at 3",
-        "3 missing │ not matched",
-        "4 mixed │ a | empty at 1 (2 occurrences)",
+        r"\1 : a | a | a (3 occurrences) [letter]",
+        r"\2 : empty at 3 [empty]",
+        r"\3 : not matched [missing]",
+        r"\4 : a | empty at 1 (2 occurrences) [mixed]",
         "─────────────────",
         "Match 2 of 2",
         "capture details unavailable",
@@ -1480,9 +1480,9 @@ def test_navigation_publishes_loading_then_current_and_next_capture_report(
             and panel.capture_model.rows()[0] == "Match 1 of 2",
         )
         rows = panel.capture_model.rows()
-        assert "1 letter │ a | a | a (3 occurrences)" in rows
+        assert r"\1 : a | a | a (3 occurrences) [letter]" in rows
         assert "Match 2 of 2" in rows
-        assert "1 letter │ b | b | b (3 occurrences)" in rows
+        assert r"\1 : b | b | b (3 occurrences) [letter]" in rows
         assert all("group 0" not in row.lower() for row in rows)
         assert panel.capture_view.accessibleName() == "Match Report"
     finally:
