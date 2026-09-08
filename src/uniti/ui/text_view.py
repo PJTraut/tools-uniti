@@ -436,13 +436,22 @@ class UNITITextView(QAbstractScrollArea):
             self._gutter_width = width
             self.viewport().update()
 
+    def _prepare_wrapped_rows(self, first_row: int, visible: int) -> WrappedRowIndex:
+        while True:
+            index = self._wrapped_row_index()
+            index.ensure_row(first_row + visible)
+            # Indexing can discover another line-number digit, reducing the
+            # available text columns. Rebuild rows before using that layout.
+            self._update_gutter_width()
+            if index.columns == self._wrap_columns():
+                return index
+
     def _refresh_scrollbars(self, *, advance_index: bool) -> None:
         self._update_gutter_width()
         visible = self._visible_line_capacity()
         if self._soft_wrap:
-            index = self._wrapped_row_index()
             first_row = self.verticalScrollBar().value()
-            index.ensure_row(first_row + visible)
+            index = self._prepare_wrapped_rows(first_row, visible)
             if index.complete:
                 maximum = max(0, index.known_count - visible)
             else:
@@ -715,6 +724,10 @@ class UNITITextView(QAbstractScrollArea):
         visible = self._visible_line_capacity()
         selection = self.state.selection
         cursor_line = self.document.line_for_char(self.state.cursor)
+        wrapped = (
+            self._prepare_wrapped_rows(first_line, visible)
+            if self._soft_wrap else None
+        )
 
         painter.fillRect(
             0,
@@ -725,9 +738,7 @@ class UNITITextView(QAbstractScrollArea):
         )
 
         display_rows: list[tuple[int, int, int, int]] = []
-        if self._soft_wrap:
-            wrapped = self._wrapped_row_index()
-            wrapped.ensure_row(first_line + visible)
+        if wrapped is not None:
             for row in range(visible):
                 try:
                     visual = wrapped.row(first_line + row)

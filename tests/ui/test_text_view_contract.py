@@ -1017,3 +1017,60 @@ def test_small_gutter_font_does_not_leak_into_wrapped_text_or_markers(tmp_path, 
         view.dispose()
         view.close()
         app.processEvents()
+
+
+def test_restored_deep_wrapped_row_has_six_digit_gutter_before_first_paint(
+    tmp_path, monkeypatch,
+):
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+    from PySide6.QtGui import QPainter
+    from PySide6.QtWidgets import QApplication
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    import uniti.ui.text_view as text_view
+
+    app = QApplication.instance() or QApplication([])
+    path = tmp_path / "deep-wrapped.txt"
+    path.write_bytes(b"x\n" * 99_999 + b"abcdefghijklmnopqrstuvwxyz\n" * 20)
+    numbers = []
+
+    class ObservedPainter(QPainter):
+        def drawText(self, *args):
+            if len(args) == 3 and isinstance(args[2], str) and args[2].isdigit():
+                numbers.append(args)
+            return super().drawText(*args)
+
+    monkeypatch.setattr(text_view, "QPainter", ObservedPainter)
+    with Document.open(path, encoding="utf-8") as document:
+        view = text_view.UNITITextView(EditorState(document))
+        view.resize(360, 180)
+        view.set_zoom_percent(300)
+        view.set_soft_wrap(True)
+        view.show()
+        app.processEvents()
+        initial_width = view._gutter_width
+        initial_columns = view._wrap_columns()
+        assert document.document_line_index.indexed_line_count < 100_000
+        record = replace(view.export_state("deep"), wrap_viewport_row=99_999)
+
+        view.restore_state(record)
+
+        # No event-loop/repaint cycle may be needed to repair layout after restore.
+        assert view._gutter_width > initial_width
+        assert view._gutter_width >= view._gutter_metrics.horizontalAdvance("100000") + 12
+        assert view._wrap_columns() < initial_columns
+        index = view._wrapped_row_index()
+        assert index.columns == view._wrap_columns()
+        assert index.known_count > 99_999
+        row = index.row(99_999)
+        assert row.line == 99_999
+        assert row.length == view._wrap_columns()
+        numbers.clear()
+        view.viewport().repaint()
+        assert numbers[0][2] == "100000"
+        assert numbers[0][0] >= 4
+        assert view._char_for_point(view._gutter_width, view._line_height // 2) == document.line_start(99_999)
+        view.dispose()
+        view.close()
+        app.processEvents()
