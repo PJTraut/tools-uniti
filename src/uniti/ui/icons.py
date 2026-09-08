@@ -17,6 +17,8 @@ LUCIDE_ICONS = frozenset({
     "chevron-right",
     "replace",
     "x",
+    "search",
+    "circle-x",
     "panel-right-open",
     "panel-right-close",
     "circle-stop",

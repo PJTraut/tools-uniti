@@ -1,5 +1,6 @@
 import importlib.util
 import os
+from pathlib import Path
 
 import pytest
 
@@ -46,6 +47,56 @@ def test_lucide_icons_render_packaged_assets_at_high_dpi(app):
             ), name
 
 
+@pytest.mark.parametrize(
+    ("name", "source"),
+    (
+        (
+            "search",
+            """<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="m21 21-4.34-4.34" />
+  <circle cx="11" cy="11" r="8" />
+</svg>
+""",
+        ),
+        (
+            "circle-x",
+            """<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m15 9-6 6" />
+  <path d="m9 9 6 6" />
+</svg>
+""",
+        ),
+    ),
+)
+def test_new_lucide_assets_are_exact_utf8_copies_from_the_pinned_source(
+    name, source
+):
+    path = Path("src/uniti/ui/assets/lucide") / f"{name}.svg"
+
+    assert path.read_bytes() == source.encode("utf-8")
+
+
 def test_existing_icon_follows_palette_and_disabled_selected_states(app):
     from PySide6.QtGui import QColor, QIcon, QPalette
 
@@ -82,6 +133,7 @@ def test_existing_icon_follows_palette_and_disabled_selected_states(app):
 
 def test_find_replace_controls_have_icons_and_keep_accessible_names(app):
     from uniti.ui.find_replace import FindReplacePanel
+    from uniti.ui.icons import lucide_icon
 
     panel = FindReplacePanel(lambda: None)
     try:
@@ -98,6 +150,18 @@ def test_find_replace_controls_have_icons_and_keep_accessible_names(app):
             assert not button.icon().isNull(), label
             assert button.accessibleName() == label
             assert button.toolTip() == label
+        for indicator, label in (
+            (panel.find_indicator, "Find"),
+            (panel.replace_indicator, "Replace"),
+        ):
+            assert not indicator.icon().isNull()
+            assert indicator.accessibleName() == label
+            assert indicator.toolTip() == label
+            assert indicator.focusPolicy().name == "NoFocus"
+        circle_x = panel.find_clear_button.icon().pixmap(24, 24).toImage()
+        assert circle_x == panel.replace_clear_button.icon().pixmap(24, 24).toImage()
+        assert circle_x == lucide_icon("circle-x").pixmap(24, 24).toImage()
+        assert circle_x != lucide_icon("x").pixmap(24, 24).toImage()
         assert not panel.cancel_button.icon().isNull()
         assert panel.cancel_button.text() == "Cancel"
         opened = panel.report_toggle_button.icon().pixmap(24, 24).toImage()

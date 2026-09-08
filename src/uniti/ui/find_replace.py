@@ -9,7 +9,7 @@ import time
 import weakref
 
 from PySide6.QtCore import QEvent, QTimer, Qt, Signal
-from PySide6.QtGui import QFont, QIcon, QPainter, QPalette, QPen, QWheelEvent
+from PySide6.QtGui import QFont, QIcon, QPainter, QWheelEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QApplication,
@@ -93,32 +93,26 @@ class FindRequest:
     origin: int
 
 
-class _CircularClearButton(QToolButton):
-    """Small palette-aware clear control that stays circular on native styles."""
+class _IconLabel(QWidget):
+    """A non-interactive, accessible label painted by the shared icon renderer."""
+
+    def __init__(self, icon_name: str, accessible_name: str, parent=None) -> None:
+        super().__init__(parent)
+        self._icon = lucide_icon(icon_name)
+        self.setAccessibleName(accessible_name)
+        self.setToolTip(accessible_name)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.setFixedSize(24, 24)
+
+    def icon(self) -> QIcon:
+        return self._icon
 
     def paintEvent(self, event) -> None:
-        del event
-        palette = self.palette()
-        group = (
-            QPalette.ColorGroup.Active
-            if self.isEnabled()
-            else QPalette.ColorGroup.Disabled
-        )
-        background = palette.color(group, QPalette.ColorRole.Button)
-        if self.isDown():
-            background = (
-                background.darker(110)
-                if background.lightnessF() > 0.5
-                else background.lighter(115)
-            )
+        super().paintEvent(event)
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setBrush(background)
-        painter.setPen(QPen(palette.color(group, QPalette.ColorRole.Mid), 1.0))
-        painter.drawEllipse(self.rect().adjusted(1, 1, -1, -1))
-        self.icon().paint(
+        self._icon.paint(
             painter,
-            self.rect().adjusted(4, 4, -4, -4),
+            self.rect().adjusted(2, 2, -2, -2),
             mode=QIcon.Mode.Normal if self.isEnabled() else QIcon.Mode.Disabled,
         )
 
@@ -253,11 +247,13 @@ class FindReplaceWindow(QDockWidget):
         self.find_clear_button.setEnabled(False)
         self.replace_clear_button.setEnabled(False)
 
+        self.find_indicator = _IconLabel("search", "Find", content)
+        self.replace_indicator = _IconLabel("replace", "Replace", content)
         find_row = QHBoxLayout()
-        find_row.addWidget(QLabel("F>"))
+        find_row.addWidget(self.find_indicator)
         find_row.addWidget(self.find_input, 1)
         replace_row = QHBoxLayout()
-        replace_row.addWidget(QLabel("R>"))
+        replace_row.addWidget(self.replace_indicator)
         replace_row.addWidget(self.replace_input, 1)
 
         options_row = QHBoxLayout()
@@ -511,8 +507,9 @@ class FindReplaceWindow(QDockWidget):
 
     @staticmethod
     def _clear_button(accessible_name: str, parent: QWidget) -> QToolButton:
-        button = _CircularClearButton(parent)
-        button.setIcon(lucide_icon("x"))
+        button = QToolButton(parent)
+        button.setAutoRaise(True)
+        button.setIcon(lucide_icon("circle-x"))
         button.setAccessibleName(accessible_name)
         button.setToolTip(accessible_name)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
