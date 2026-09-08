@@ -42,6 +42,7 @@ class EnvironmentManager:
         platform_name: str | None = None,
         query: Callable[[tuple[str, ...]], HostPython] | None = None,
         builder_factory: Callable[[], object] | None = None,
+        progress: Callable[[str], None] | None = None,
     ) -> None:
         self.source_root = Path(source_root).resolve()
         self.environment_path = Path(environment_path).resolve()
@@ -52,6 +53,7 @@ class EnvironmentManager:
         self._builder_factory = builder_factory or (
             lambda: venv.EnvBuilder(with_pip=True, clear=False)
         )
+        self._progress = progress if progress is not None else lambda _message: None
 
     @property
     def marker_path(self) -> Path:
@@ -139,6 +141,7 @@ class EnvironmentManager:
         return self.expected_runtime, updated
 
     def _create_marked_environment(self) -> tuple[Path, RuntimeMarker]:
+        self._progress("// creating UNITI runtime")
         self.environment_path.mkdir(parents=True, exist_ok=False)
         marker = self.new_marker()
         self._write_marker(marker)
@@ -155,6 +158,7 @@ class EnvironmentManager:
             ) from error
 
     def _adopt_source_environment(self) -> tuple[Path, RuntimeMarker]:
+        self._progress("// adopting existing UNITI runtime")
         expected = self.source_root / ".venv"
         if self.environment_path != expected.resolve():
             raise BootstrapError("source runtime must be exactly <source-root>/.venv", 11)
@@ -182,6 +186,7 @@ class EnvironmentManager:
             if not repair:
                 raise
             try:
+                self._progress("// repairing UNITI runtime")
                 builder = self._builder_factory()
                 getattr(builder, "create")(self.environment_path)
                 identity = self._validate_runtime()

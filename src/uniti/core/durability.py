@@ -165,13 +165,12 @@ class NativeDurabilityAdapter:
             except OSError:
                 return False
             synced = True
-            return True
         finally:
             try:
                 os.close(descriptor)
             except OSError:
-                if not synced:
-                    return False
+                pass
+        return synced
 
 
 def combine_durability(

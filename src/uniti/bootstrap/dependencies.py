@@ -85,12 +85,14 @@ class DependencyManager:
         mode: BootstrapMode,
         dev: bool = False,
         runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+        progress: Callable[[str], None] | None = None,
     ) -> None:
         self.runtime_python = Path(runtime_python).absolute()
         self.source_root = Path(source_root).resolve()
         self.mode = mode
         self.dev = dev
         self.runner = runner
+        self._progress = progress if progress is not None else lambda _message: None
         self.manifest = DependencyManifest.load(self.source_root)
 
     def install_command(self) -> tuple[str, ...]:
@@ -186,6 +188,8 @@ class DependencyManager:
                 fingerprint = self.fingerprint(marker, versions)
                 if fingerprint == marker.dependency_fingerprint:
                     return DependencyResult(fingerprint, versions, True)
+        self._progress("// installing UNITI dependencies")
         self._install()
+        self._progress("// validating UNITI setup")
         versions = self.validate()
         return DependencyResult(self.fingerprint(marker, versions), versions, False)

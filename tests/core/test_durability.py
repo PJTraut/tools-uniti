@@ -182,3 +182,21 @@ def test_native_directory_sync_reports_open_or_sync_unavailable(monkeypatch):
     )
     assert NativeDurabilityAdapter().sync_directory("/owned") is False
     assert calls == [81]
+
+
+def test_native_directory_sync_preserves_unexpected_sync_error_when_close_fails(
+    monkeypatch,
+):
+    monkeypatch.setattr("uniti.core.durability.os.open", lambda *_args: 91)
+
+    def fail_sync(_descriptor):
+        raise RuntimeError("unexpected sync failure")
+
+    monkeypatch.setattr("uniti.core.durability.os.fsync", fail_sync)
+    monkeypatch.setattr(
+        "uniti.core.durability.os.close",
+        lambda _descriptor: (_ for _ in ()).throw(OSError("close failure")),
+    )
+
+    with pytest.raises(RuntimeError, match="unexpected sync failure"):
+        NativeDurabilityAdapter().sync_directory("/owned")

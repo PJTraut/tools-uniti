@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import threading
 import venv
 from pathlib import Path
 
@@ -87,6 +88,88 @@ def test_missing_environment_writes_unhealthy_marker_before_builder_failure(
     assert caught.value.exit_code == 11
     assert target.is_dir()
     assert json.loads(manager.marker_path.read_text(encoding="utf-8"))["healthy"] is False
+
+
+def test_runtime_creation_progress_precedes_slow_builder(
+    source_root, host_python, tmp_path
+):
+    target = tmp_path / "new-local"
+    progress: list[str] = []
+    builder_started = threading.Event()
+    release_builder = threading.Event()
+    outcome: list[BootstrapError] = []
+
+    class SlowBuilder:
+        def create(self, _path):
+            builder_started.set()
+            release_builder.wait(timeout=5)
+            raise RuntimeError("stop after progress observation")
+
+    manager = manager_for(
+        source_root,
+        host_python,
+        BootstrapMode.LOCAL,
+        target,
+        builder_factory=lambda: SlowBuilder(),
+        progress=progress.append,
+    )
+
+    def ensure_runtime():
+        try:
+            manager.ensure()
+        except BootstrapError as error:
+            outcome.append(error)
+
+    worker = threading.Thread(target=ensure_runtime)
+    worker.start()
+    try:
+        assert builder_started.wait(timeout=5)
+        assert progress == ["// creating UNITI runtime"]
+    finally:
+        release_builder.set()
+        worker.join(timeout=5)
+
+    assert not worker.is_alive()
+    assert len(outcome) == 1
+
+
+def test_adoption_and_repair_report_the_actual_environment_stage(
+    source_root, host_python
+):
+    target = source_root / ".venv"
+    venv.EnvBuilder(with_pip=False, clear=False).create(target)
+    adoption_progress: list[str] = []
+    manager = manager_for(
+        source_root,
+        host_python,
+        BootstrapMode.SOURCE,
+        target,
+        progress=adoption_progress.append,
+    )
+
+    manager.ensure()
+
+    assert adoption_progress == ["// adopting existing UNITI runtime"]
+
+    target.joinpath("bin/python").unlink()
+    repair_progress: list[str] = []
+
+    class BrokenRepairBuilder:
+        def create(self, _path):
+            raise RuntimeError("repair stopped")
+
+    repairing = manager_for(
+        source_root,
+        host_python,
+        BootstrapMode.SOURCE,
+        target,
+        builder_factory=lambda: BrokenRepairBuilder(),
+        progress=repair_progress.append,
+    )
+    with pytest.raises(BootstrapError):
+        repairing.ensure(repair=True)
+
+    assert repair_progress == ["// repairing UNITI runtime"]
 
 
 def test_mismatched_marked_environment_is_refused(source_root, host_python, tmp_path):

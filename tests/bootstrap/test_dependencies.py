@@ -154,7 +154,68 @@ def test_repair_installs_even_when_marker_matches(source_root, marker):
     assert manager.install_command() in observed
 
 
+def test_install_and_validation_progress_precede_dependency_commands(source_root, marker):
+    progress: list[str] = []
+
+    def runner(command, **kwargs):
+        invocation = tuple(str(part) for part in command)
+        if invocation[-2:] == ("pip", "--version"):
+            assert progress == ["// installing UNITI dependencies"]
+        elif "-c" in invocation:
+            assert progress == [
+                "// installing UNITI dependencies",
+                "// validating UNITI setup",
+            ]
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {"uniti-editor": "0.1a16", "regex": "2026.5.9", "PySide6": "6.9.2"}
+                ),
+                "",
+            )
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    manager = DependencyManager(
+        source_root / ".venv/bin/python",
+        source_root,
+        mode=BootstrapMode.SOURCE,
+        runner=runner,
+        progress=progress.append,
+    )
+
+    manager.ensure(marker=marker, repair=False)
+
+    assert progress == [
+        "// installing UNITI dependencies",
+        "// validating UNITI setup",
+    ]
+
+
+def test_healthy_fast_path_is_quiet(source_root, marker):
+    observed: list[tuple[str, ...]] = []
+    progress: list[str] = []
+    manager = DependencyManager(
+        source_root / ".venv/bin/python",
+        source_root,
+        mode=BootstrapMode.SOURCE,
+        runner=successful_runner(observed),
+        progress=progress.append,
+    )
+    versions = {"uniti-editor": "0.1a16", "regex": "2026.5.9", "PySide6": "6.9.2"}
+    matching = replace(
+        marker,
+        healthy=True,
+        dependency_fingerprint=manager.fingerprint(marker, versions),
+    )
+
+    assert manager.ensure(marker=matching, repair=False).fast_path is True
+    assert progress == []
+
+
 def test_broken_pip_check_is_dependency_failure(source_root, marker):
+    progress: list[str] = []
+
     def broken_runner(command, **kwargs):
         invocation = tuple(str(part) for part in command)
         if "-c" in invocation:
@@ -175,12 +236,17 @@ def test_broken_pip_check_is_dependency_failure(source_root, marker):
         source_root,
         mode=BootstrapMode.SOURCE,
         runner=broken_runner,
+        progress=progress.append,
     )
 
     with pytest.raises(BootstrapError) as caught:
         manager.ensure(marker=marker, repair=True)
 
     assert caught.value.exit_code == 12
+    assert progress == [
+        "// installing UNITI dependencies",
+        "// validating UNITI setup",
+    ]
 
 
 def test_installed_uniti_metadata_must_match_canonical_project_version(source_root, marker):

@@ -6,7 +6,7 @@ import argparse
 import shlex
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import uniti
@@ -89,6 +89,10 @@ def managed_command(runtime: Path, request: BootstrapRequest) -> tuple[str, ...]
     return tuple(command)
 
 
+def report_progress(message: str) -> None:
+    print(message, file=sys.stderr, flush=True)
+
+
 def _persist_bootstrap(
     request: BootstrapRequest,
     result: BootstrapResult,
@@ -122,7 +126,25 @@ def _persist_bootstrap(
     store.save(payload)
 
 
-def run_bootstrap(request: BootstrapRequest) -> BootstrapResult:
+def run_bootstrap(
+    request: BootstrapRequest,
+    *,
+    progress: Callable[[str], None] | None = None,
+) -> BootstrapResult:
+    progress_sink = report_progress if progress is None else progress
+    setup_started = False
+
+    def report_setup_stage(message: str) -> None:
+        nonlocal setup_started
+        if not setup_started:
+            progress_sink(
+                "// repairing UNITI setup"
+                if request.repair
+                else "// prepping UNITI for first use"
+            )
+            setup_started = True
+        progress_sink(message)
+
     root = validate_source_root(request.source_root)
     host = query_python((sys.executable,))
     target = environment_path(request)
@@ -131,6 +153,7 @@ def run_bootstrap(request: BootstrapRequest) -> BootstrapResult:
         environment_path=target,
         mode=request.mode,
         host=host,
+        progress=report_setup_stage,
     )
     with manager.lock():
         runtime, marker = manager.ensure(repair=request.repair)
@@ -139,6 +162,7 @@ def run_bootstrap(request: BootstrapRequest) -> BootstrapResult:
             root,
             mode=request.mode,
             dev=request.dev,
+            progress=report_setup_stage,
         ).ensure(marker=marker, repair=request.repair)
         marker = manager.mark_healthy(marker, dependencies.fingerprint)
         prepared = BootstrapResult(
@@ -153,6 +177,8 @@ def run_bootstrap(request: BootstrapRequest) -> BootstrapResult:
 
     if request.no_launch:
         return prepared
+    if setup_started:
+        progress_sink("// launching UNITI")
     command = managed_command(runtime, request)
     try:
         completed = subprocess.run(command, check=False, shell=False)
