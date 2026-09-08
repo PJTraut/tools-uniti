@@ -10,7 +10,7 @@ Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02
 
 | Feedback | Planned task | Current evidence state | Remaining gate |
 |---|---:|---|---|
-| BF-001 | 2 | Progress and warning corrections implemented, reviewed, and on GitHub `main` | Affected Windows first-use confirmation; hosted qualification still running |
+| BF-001 | 2 | Progress and warning corrections implemented, reviewed, and on GitHub `main`; checkpoint `c7c1521` hosted green | Affected Windows first-use confirmation; latest-candidate hosted qualification pending |
 | BF-002 | 3 | Corrections and platform-fixture follow-ups on GitHub `main`; macOS source checks passed | Affected Windows/Mac distribution and confirmation remain open |
 | BF-003 | 4 | Compact inspection and centered U+0020 marker implemented, reviewed, and on GitHub `main` | Native Windows and affected-host beta confirmation |
 | BF-004 | 4 | Configuration implemented locally | Cross-window/restart and Windows/affected-host evidence |
@@ -18,10 +18,10 @@ Planning update, 2026-09-08: the [B1 feedback closure and B2 transition plan](02
 | BF-006 | 8 | `NOT RUN` | Selected Noto packaging, shaping, navigation, and IME qualification |
 | BF-007 | 6 | Initial Lucide controls implemented locally | F>/R>, clear/navigation reconciliation and native evidence |
 | BF-008 | 6 | Capture-group interpretation approved; implementation `NOT RUN` | Preserve `Match N of M`; implement and verify aligned group rows |
-| BF-009 | 5 | `NOT RUN` | 80% gutter typography and zoom/layout qualification |
-| BF-010 | 5 | `NOT RUN` | Pending-versus-current EOL wording and post-save view refresh |
+| BF-009 | 5 | 80% gutter typography and progressive wrapped-row width implemented, reviewed, and on GitHub `main` | Manual affected-host visual confirmation |
+| BF-010 | 5 | Pending/current EOL wording and shared post-save refresh implemented, reviewed, and on GitHub `main` | Manual affected-host confirmation |
 
-Fresh baseline evidence on checkpoint `5724f6c` is 1,476 passed with six platform-policy skips in 93.01 seconds; native Cocoa combined smoke passed explicit Quit and session restore. The reviewed integration checkpoint `c7c1521` is synchronized between local `main` and GitHub `origin/main`; it contains the BF-001 startup work, the BF-003 centering work, and Windows qualification-fixture corrections for UTF-8 source decoding, exact LF bytes, and platform runtime-path selection. Hosted run `34250570707` is still in progress and is not recorded as passing. These checks do not replace any remaining feedback gate or predecessor milestone evidence.
+Fresh baseline evidence on checkpoint `5724f6c` is 1,476 passed with six platform-policy skips in 93.01 seconds; native Cocoa combined smoke passed explicit Quit and session restore. Hosted run `34250570707` succeeded in all four lanes on checkpoint `c7c1521`, including native, offscreen, and sustained checks. The current reviewed integration checkpoint `e2dbbae` is synchronized between local `main` and GitHub `origin/main`; it contains the BF-001 and BF-003 work, the Windows qualification-fixture corrections, the BF-009/BF-010 implementation, and this log's preceding evidence update. Hosted validation of `e2dbbae` is still pending, so the current candidate is not recorded as same-candidate green. These checks do not replace any remaining feedback gate, affected-host confirmation, or predecessor milestone evidence.
 
 Use sequential `BF-NNN` identifiers. Record the report date, environment, observation, impact, evidence limits, and later disposition. Keep personal information, machine identifiers, user paths, and raw reports out of this log. Link any subsequently approved work and verification to its entry.
 
@@ -37,7 +37,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Warning correction: the durability cleanup no longer returns from `finally`. Expected open/fsync failures and close failures retain their established result behavior, while an unexpected fsync exception still propagates if close also fails.
 - Verification: the focused bootstrap, durability, and launcher gate passed 68 tests with four Windows-only skips. The full source suite passed 1,488 tests with six platform-policy skips; deep self-check passed all 21 checks; native Cocoa combined smoke passed. The durability source compiled with `SyntaxWarning` promoted to an error on the owned Python 3.12 runtime and Python 3.14. Independent review found no remaining blocking issue.
 - Evidence limits: single-machine timing observations were 14.06 seconds for a disposable fresh source bootstrap and 1.32 seconds for a healthy managed JSON self-check launch. These are local macOS observations, not performance thresholds or affected-Windows confirmation. The warning was corrected separately from the unmeasured cause of the user's delay.
-- Disposition: requested progress and warning behavior implemented at `63dab08` and included in synchronized checkpoint `c7c1521`. Keep the affected Windows first-use flow open until confirmed; hosted run `34250570707` remains in progress.
+- Disposition: requested progress and warning behavior implemented at `63dab08` and included in synchronized checkpoint `e2dbbae`. Hosted run `34250570707` succeeded on the earlier `c7c1521` checkpoint; keep the affected Windows first-use flow open until confirmed, and do not treat that run as same-candidate qualification of `e2dbbae`.
 
 ## BF-002 — Windows and macOS terminals remain occupied after exit
 
@@ -62,7 +62,7 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 - Additional finding during BF-007 verification: window-close smoke stalled when a recovery successor occupied the only admitted worker slot while waiting for its predecessor. The predecessor was waiting for admission on another worker. An isolated baseline reproducer confirmed that this scheduling race predates the Lucide changes.
 - Additional correction verified locally before integration: serial recovery work is submitted only after its predecessor completes, preserving operation order without consuming a worker slot while waiting. The returned future retains running/cancellation/result behavior. Regressions verify worker availability with successful, failed, and cancelled predecessors; independent review also checked a long operation chain and cancellation before execution.
 - Latest validation with BF-007: 1,453 tests passed with six platform-specific skips; native macOS combined smoke completed window-close, explicit Quit, and session restore. This does not replace verification on the affected Windows and Mac hosts.
-- Integration update, 2026-09-08: local `main` and GitHub `origin/main` both point to `c7c1521`, which contains these lifecycle corrections and the later Windows qualification-fixture corrections. Hosted run `34250570707` is still in progress; synchronization is not affected-host confirmation or a hosted green result.
+- Integration update, 2026-09-08: hosted run `34250570707` succeeded in all four lanes on `c7c1521`, including native, offscreen, and sustained checks. Local `main` and GitHub `origin/main` now both point to `e2dbbae`, which contains these lifecycle corrections and later qualification and feedback work. Hosted validation of `e2dbbae` remains pending; neither the earlier green run nor repository synchronization is affected-host confirmation.
 - Remaining uncertainty: the Windows commit and underlying exception were not supplied. Paused background work reproduces a Quit hang locally, but has not been confirmed as the trigger on the affected hosts.
 - Next action: distribute the zero-window startup, Quit, and retained-window corrections and verify the user's actual flows on Windows and macOS. Do not clear the blocker solely on local checks.
 - Resolution gate: explicit Quit returns control to the terminal and releases the service; relaunch after terminal closure succeeds with preserved session/recovery state. Verify the reported flows on both Windows and macOS before clearing the testing blocker.
@@ -148,15 +148,22 @@ Use sequential `BF-NNN` identifiers. Record the report date, environment, observ
 ## BF-009 — Smaller editor line numbers
 
 - Reported: 2026-09-08.
-- Status: recorded for later planning and action; implementation pending.
-- Request: display editor line numbers at a smaller font size than the document text. The exact size or relative scale remains to be chosen.
-- Disposition: retained as beta feedback; no rendering changes made.
+- Status: implemented, independently reviewed, and integrated on GitHub `main`; manual affected-host visual confirmation pending.
+- Request: display editor line numbers at a smaller font size than the document text.
+- Implementation: commit `14e6a5a` gives line numbers their own font and metrics at 80% of the editor point size while retaining the editor baseline and row height. Gutter width uses the actual gutter font and indexed line-number range, recalculates as progressive indexing advances, and rebuilds on zoom without changing editor text sizing, hit testing, or scroll steps.
+- Review correction: commit `e2dbbae` settles gutter width before rendering wrapped rows when progressive indexing crosses a digit boundary. If the new width changes wrap columns, row preparation is rebuilt before painting or hit testing. A synthetic 100,019-line restoration regression verifies immediate six-digit fit at 300% zoom.
+- Verification: the combined Task 5 focused matrix passed all 150 tests. Eight initial gutter regressions passed at 50%, 100%, 200%, and 300% zoom, covering smaller ink, six-digit fit, baseline/spacing, selection after scrolling, scroll steps, logical-line numbering under wrapping, and editor-font restoration. After the review correction, the focused gutter/wrap/view-state set passed 11 tests and the covering text-view/Unicode matrix passed all 64 tests. Independent review found no remaining blocking issue.
+- Evidence limits: Qt rendering checks ran offscreen. Manual macOS Retina and affected-host visual acceptance remain pending; hosted validation of current checkpoint `e2dbbae` is also pending.
+- Disposition: the approved 80% gutter scale and progressive six-digit width correction are implemented in synchronized checkpoint `e2dbbae`. Keep manual affected-host confirmation open.
 
 ## BF-010 — EOL markers unchanged when the status line updates
 
 - Reported: 2026-09-08.
-- Status: recorded for later triage, planning, and action.
+- Status: diagnosed, implemented, independently reviewed, and integrated on GitHub `main`; manual affected-host confirmation pending.
 - Observation: after changing EOL, the bottom status/reporting line updates, but the visible EOL characters in the editor view remain unchanged.
-- Expected behavior: make the relationship between the selected EOL setting, the status line, and the displayed line-ending markers consistent and clear.
-- Evidence limits: source/target EOL types, whether the document had been saved, and the affected platform/build were not recorded. Later review should distinguish a pending conversion-on-save setting from the document's current line endings.
-- Disposition: retained as beta feedback; no diagnosis or implementation changes made.
+- Diagnosis: the conversion menu selects output policy for the next save; it does not immediately change current document bytes. Visible markers correctly continue to show the source line endings before save. Core save/reload authority already changed the document and its markers after a successful save, but sibling views could retain stale EOL reports, and the status wording did not clearly distinguish current encoding/EOL from the pending output policy.
+- Expected behavior: before save, keep markers tied to the current document and state the pending conversion explicitly. After a successful save, refresh status, reports, and painted markers in every view that shares the document.
+- Implementation: commit `8272daf` changes status wording to forms such as `UTF-8, LF (on save: UTF-8, CRLF)`. A successful save now cancels old EOL work, dismisses stale dialogs, replaces or invalidates cached reports, updates status, and repaints every shared-document view across service windows; incomplete bounded inspections schedule fresh analysis. Failed or cancelled saves retain current authority.
+- Verification: the combined Task 5 focused matrix passed all 150 tests. EOL/save coverage includes two distinct views in separate service windows; LF, CR, CRLF, and mixed sources; every explicit target; synchronous and progressive saves across 24 combinations; real markers before and after save; exact saved/reopened bytes; shared report/status refresh; failed and cancelled saves; return to Keep Source; and mixed-byte preservation. Independent review found no remaining blocking issue.
+- Evidence limits: the original report did not record source/target types, save state, platform, or build. Automated coverage establishes the corrected contract, while manual affected-host confirmation and hosted validation of current checkpoint `e2dbbae` remain pending.
+- Disposition: diagnosis and shared-view refresh implemented at `8272daf` and included in synchronized checkpoint `e2dbbae`. Keep manual affected-host confirmation open.
