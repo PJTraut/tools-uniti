@@ -247,8 +247,11 @@ class UNITITextView(QAbstractScrollArea):
             raise TypeError("dock return must be a DockReturnRecord or None")
         self._dock_return = record
 
+    def _wrap_width(self) -> int:
+        return max(1, self.viewport().width() - self._gutter_width - 8)
+
     def _wrap_columns(self) -> int:
-        width = max(1, self.viewport().width() - self._gutter_width - 8)
+        width = self._wrap_width()
         return max(1, int(width // QFontMetricsF(self.font()).horizontalAdvance("M")))
 
     def _wrapped_row_index(self) -> WrappedRowIndex:
@@ -257,10 +260,11 @@ class UNITITextView(QAbstractScrollArea):
             id(self.document),
             self.document.revision,
             columns,
+            self._wrap_width(),
             self.font().key(),
         )
         if self._wrap_index is None or signature != self._wrap_signature:
-            width = max(1, self.viewport().width() - self._gutter_width - 8)
+            width = self._wrap_width()
             provider = ShapedRowProvider(
                 self.document, self.font(), width, self._cell_width * 4
             )
@@ -497,7 +501,7 @@ class UNITITextView(QAbstractScrollArea):
             # Indexing can discover another line-number digit, reducing the
             # available text columns. Rebuild rows before using that layout.
             self._update_gutter_width()
-            if index.columns == self._wrap_columns():
+            if index._row_provider.width_px == self._wrap_width():
                 if (
                     not index.complete
                     and index.known_count <= first_row + visible
@@ -592,6 +596,15 @@ class UNITITextView(QAbstractScrollArea):
         while len(self._shape_cache) > 64:
             self._shape_cache.popitem(last=False)
         return shaped
+
+    def _composition_pan(self, shaped: ShapedWindow, text_x: float) -> float:
+        """Pan only the virtual composition row; preserve document scroll state."""
+        if shaped.preedit is None:
+            return 0.0
+        caret = text_x + shaped.preedit_x(self._preedit_cursor)
+        left = float(self._gutter_width + 2)
+        right = max(left, float(self.viewport().width() - 4))
+        return min(right, max(left, caret)) - caret
 
     def _line_content(
         self,
@@ -972,6 +985,17 @@ class UNITITextView(QAbstractScrollArea):
                 )
             )
             width = shaped.width
+            if shaped.preedit is not None:
+                width = self._shape(
+                    text,
+                    origin=(
+                        0
+                        if self._soft_wrap
+                        else text_x
+                        - self._gutter_width
+                        + self.horizontalScrollBar().value()
+                    ),
+                ).width
             if not self._soft_wrap:
                 self._max_seen_line_width = max(
                     self._max_seen_line_width,
@@ -984,6 +1008,7 @@ class UNITITextView(QAbstractScrollArea):
                     ),
                 )
 
+            text_x += self._composition_pan(shaped, text_x)
             line_window_start = line_start + column_start
             line_end = line_window_start + len(text)
             owns_end = not self.document.read_line_window(
@@ -1233,6 +1258,7 @@ class UNITITextView(QAbstractScrollArea):
                 else text_x - self._gutter_width + self.horizontalScrollBar().value()
             ),
         )
+        text_x += self._composition_pan(shaped, text_x)
         return line_start + column_start + shaped.cp_for_x(max(0.0, x - text_x))
 
     def _select_range(self, start: int, end: int) -> None:
@@ -1527,6 +1553,9 @@ class UNITITextView(QAbstractScrollArea):
                 - horizontal
             )
             y = (line - first) * self._line_height
+        if shaped.preedit is not None:
+            text_x = x - shaped.preedit_x(self._preedit_cursor)
+            x += self._composition_pan(shaped, text_x)
         return QRectF(float(x), float(y), 2.0, float(self._line_height))
 
     def inputMethodQuery(self, query):

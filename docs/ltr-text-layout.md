@@ -41,8 +41,9 @@ selection attributes convert from UTF-16 through that snapshot, including
 supplementary characters and deletion-only commits. Preedit text is a bounded
 virtual projection and never enters document history; its cursor and formatting
 are painted through the same Qt layout. Commit, cancellation and undo are
-covered by synthetic events. Preedit remains associated with its current logical
-row and can extend beyond the visible edge during composition.
+covered by synthetic events. Preedit remains associated with its current row. A temporary pan of that row
+keeps the composition caret visible in narrow viewports without changing saved
+scroll or wrap settings; cancellation and commit restore ordinary geometry.
 
 The bundled coverage and synthetic tests cover nine Indic scripts, Simplified
 and Traditional Chinese, Korean, Latin/Cyrillic, tabs and representative emoji.

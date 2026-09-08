@@ -468,3 +468,103 @@ def test_narrow_shaped_wrap_keeps_first_row_when_window_has_many_rows(qapp):
     provider = ShapedRowProvider(Text(), resolve_editor_font().font, 1, 32)
     assert provider(0, 0) == (1, False)
     assert len(provider.cache) <= 512
+
+
+def test_wrap_resize_inside_latin_column_bucket_uses_exact_pixel_width(qapp, tmp_path):
+    from uniti.ui.text_view import UNITITextView
+    from uniti.ui.shaped_wrap import ShapedRowProvider
+
+    p = tmp_path / "pixel-wrap"
+    p.write_text("中文éकिक्षि한국어" * 80, encoding="utf-8")
+    with Document.open(p, encoding="utf-8") as doc:
+        view = UNITITextView(EditorState(doc))
+        view.resize(400, 240)
+        view.set_soft_wrap(True)
+        view.show()
+        qapp.processEvents()
+        checked_same_bucket = False
+        try:
+            for width in range(401, 421):
+                original = view._wrapped_row_index()
+                original_columns = view._wrap_columns()
+                initial_width = view.viewport().width() - view._gutter_width - 8
+                view.resize(width, 240)
+                qapp.processEvents()
+                available = view.viewport().width() - view._gutter_width - 8
+                if (
+                    view._wrap_columns() != original_columns
+                    or available <= initial_width
+                ):
+                    continue
+                current = view._prepare_wrapped_rows(0, 1)
+                fresh = ShapedRowProvider(
+                    doc, view.font(), available, view._cell_width * 4
+                )
+                assert current is not original
+                assert current._row_provider.width_px == available
+                assert current.row(0).length == fresh(0, 0)[0]
+                checked_same_bucket = True
+            assert checked_same_bucket
+        finally:
+            view.close()
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_long_preedit_keeps_caret_visible_and_cancel_restores_geometry(
+    qapp, tmp_path, wrapped, monkeypatch
+):
+    from uniti.ui.text_view import UNITITextView
+
+    p = tmp_path / "composition-pan"
+    p.write_text("AB", encoding="utf-8")
+    with Document.open(p, encoding="utf-8") as doc:
+        view = UNITITextView(EditorState(doc))
+        view.resize(180, 220)
+        view.set_zoom_percent(250)
+        view.set_soft_wrap(wrapped)
+        view.show()
+        qapp.processEvents()
+        view.state.move_to(1)
+        view._state_changed()
+        before = view._cursor_rectangle()
+        revision = doc.revision
+        horizontal = view.horizontalScrollBar().value()
+        try:
+            view.inputMethodEvent(QInputMethodEvent("中文한국어" * 12, []))
+            caret = view._cursor_rectangle()
+            painted_carets = []
+            original_paint = view._paint_line_text
+
+            def observe_paint(painter, text, x, y, **kwargs):
+                shaped = kwargs.get("shaped")
+                if shaped is not None and shaped.preedit is not None:
+                    painted_carets.append(x + shaped.preedit_x(view._preedit_cursor))
+                return original_paint(painter, text, x, y, **kwargs)
+
+            monkeypatch.setattr(view, "_paint_line_text", observe_paint)
+            view.viewport().repaint()
+            assert painted_carets == pytest.approx([caret.left()])
+            assert (
+                view._char_for_point(caret.center().x(), caret.center().y())
+                == view.state.cursor
+            )
+            assert view._gutter_width <= caret.left()
+            assert caret.right() <= view.viewport().width()
+            assert doc.revision == revision
+            assert not doc.can_undo
+            assert view.soft_wrap == wrapped
+            assert view.horizontalScrollBar().value() == horizontal
+            view.inputMethodEvent(QInputMethodEvent("", []))
+            assert view._cursor_rectangle() == before
+            assert doc.revision == revision
+            view.inputMethodEvent(QInputMethodEvent("中文한국어" * 12, []))
+            commit = QInputMethodEvent()
+            commit.setCommitString("中文")
+            view.inputMethodEvent(commit)
+            assert view._preedit_text == ""
+            assert doc.read(0, 4) == "A中文B"
+            assert view.soft_wrap == wrapped
+            view.state.undo()
+            assert doc.read(0, 2) == "AB"
+        finally:
+            view.close()

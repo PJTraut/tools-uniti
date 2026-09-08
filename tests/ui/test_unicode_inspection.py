@@ -222,7 +222,8 @@ def test_space_marker_alpha_centroid_is_centered(app, tmp_path, font_scale, devi
     with Document.open(path, encoding="utf-8") as document:
         view = UNITITextView(EditorState(document))
         view.set_zoom_percent(int(font_scale * 100))
-        width, height = 96, 48
+        # The canvas must contain the full fallback row at every zoom.
+        width, height = 96, int(13.25 + view._line_height + 8)
         image = QImage(int(width * device_scale), int(height * device_scale),
             QImage.Format.Format_ARGB32)
         image.setDevicePixelRatio(device_scale)
