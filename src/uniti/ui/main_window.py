@@ -13,7 +13,17 @@ import uuid
 import weakref
 
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
-from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence, QShortcut
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QCloseEvent,
+    QColor,
+    QIcon,
+    QKeySequence,
+    QPainter,
+    QPixmap,
+    QShortcut,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -179,6 +189,15 @@ class UNITIMainWindow(QMainWindow):
         self._theme_store = self._settings_store.theme_profiles if self._settings_store is not None else None
         self._theme_state = (self._theme_store.load(self._settings.theme_mode)
                              if self._theme_store is not None else ThemeProfileState(active_id=self._settings.theme_mode))
+        from uniti.app.document_groups import default_groups
+        self._group_store = (
+            self._settings_store.document_groups
+            if self._settings_store is not None
+            else None
+        )
+        self._groups = (
+            self._group_store.load() if self._group_store is not None else default_groups()
+        )
         app = QApplication.instance()
         if isinstance(app, QApplication) and not preview_active(app):
             profile = self._theme_state.resolve()
@@ -239,6 +258,7 @@ class UNITIMainWindow(QMainWindow):
         self._panes.splitRequested.connect(self._split_pane)
         self._panes.assignmentRequested.connect(self._show_assignment_menu)
         self._panes.dockToggleRequested.connect(self._toggle_view_dock)
+        self._panes.groupMenuRequested.connect(self._show_group_menu)
         if service is not None:
             self._panes.viewDetachRequested.connect(
                 lambda view_id, _position: service.undock_view(view_id)
@@ -840,6 +860,7 @@ class UNITIMainWindow(QMainWindow):
             )
         )
         theme_menu.addAction(self._high_contrast_action)
+        view_menu.addAction("Document Groups…", self.show_document_group_editor)
 
         editor_view_menu = view_menu.addMenu("&Editor View")
         editor_view_menu.addAction(
@@ -1159,6 +1180,98 @@ class UNITIMainWindow(QMainWindow):
             self.statusBar().showMessage(str(exc)[:256], 5000)
             raise
 
+    @staticmethod
+    def _group_swatch_icon(color: str) -> QIcon:
+        size = 12
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBrush(QColor(color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawEllipse(1, 1, size - 2, size - 2)
+        finally:
+            painter.end()
+        return QIcon(pixmap)
+
+    def _refresh_group_indicator(self, view_id: str) -> None:
+        if self._service is None:
+            return
+        leaf = self._panes.leaf_for_view(view_id)
+        if leaf is None:
+            return
+        index = leaf.index_of(view_id)
+        if index < 0:
+            return
+        entry = self._service.documents.entry_for_view(view_id)
+        group = next(
+            (g for g in self._groups if entry is not None and g.id == entry.group_id),
+            None,
+        )
+        leaf.tabs.setTabIcon(
+            index, self._group_swatch_icon(group.color) if group is not None else QIcon()
+        )
+
+    def _refresh_all_group_indicators(self) -> None:
+        for view_id in self._panes.view_ids:
+            self._refresh_group_indicator(view_id)
+
+    def _set_document_group(self, document_id: str, group_id: str | None) -> None:
+        if self._service is None:
+            return
+        self._service.documents.set_group(document_id, group_id)
+        entry = self._service.documents.get(document_id)
+        for view_id in entry.view_ids:
+            self._refresh_group_indicator(view_id)
+
+    def _show_group_menu(self, view_id: str, position: QPoint) -> None:
+        if self._service is None:
+            return
+        entry = self._service.documents.entry_for_view(view_id)
+        if entry is None:
+            return
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        none_action = menu.addAction("No Group")
+        none_action.setCheckable(True)
+        none_action.setChecked(entry.group_id is None)
+        none_action.triggered.connect(
+            lambda _checked=False, document_id=entry.document_id: (
+                self._set_document_group(document_id, None)
+            )
+        )
+        if self._groups:
+            menu.addSeparator()
+        for group in self._groups:
+            action = menu.addAction(self._group_swatch_icon(group.color), group.name)
+            action.setCheckable(True)
+            action.setChecked(entry.group_id == group.id)
+            action.triggered.connect(
+                lambda _checked=False,
+                document_id=entry.document_id,
+                group_id=group.id: self._set_document_group(document_id, group_id)
+            )
+        menu.addSeparator()
+        manage_action = menu.addAction("Manage Groups…")
+        manage_action.triggered.connect(self.show_document_group_editor)
+        menu.popup(position)
+
+    def show_document_group_editor(self) -> None:
+        from uniti.ui.document_group_editor import DocumentGroupEditor
+
+        editor = DocumentGroupEditor(self._groups, self)
+        if editor.exec() and self._group_store is not None:
+            groups = editor.groups()
+            self._group_store.save(groups)
+            removed_ids = {g.id for g in self._groups} - {g.id for g in groups}
+            self._groups = groups
+            if self._service is not None and removed_ids:
+                for entry in self._service.documents.entries:
+                    if entry.group_id in removed_ids:
+                        self._service.documents.set_group(entry.document_id, None)
+            self._refresh_all_group_indicators()
+
     def _disconnect_view(self, view: UNITITextView) -> None:
         for signal in (
             view.stateChanged,
@@ -1404,6 +1517,7 @@ class UNITIMainWindow(QMainWindow):
         self._tabs = leaf.tabs
         if entry is not None:
             self._service.documents.bind_view(entry.document_id, view.view_id)
+            self._refresh_group_indicator(view.view_id)
         if initial_eol_report is not None:
             document.set_source_eol_report(initial_eol_report)
             if initial_eol_complete:

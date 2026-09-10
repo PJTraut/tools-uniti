@@ -150,6 +150,12 @@ class SettingsStore:
         from .theme_profiles import ThemeProfileStore
         return ThemeProfileStore(self.path.with_name("theme-profiles.json"))
 
+    @property
+    def document_groups(self):
+        """The separate atomic authority for document group (tag) definitions."""
+        from .document_groups import DocumentGroupStore
+        return DocumentGroupStore(self.path.with_name("document-groups.json"))
+
     def load(self) -> Settings:
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))

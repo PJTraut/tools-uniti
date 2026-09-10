@@ -24,6 +24,15 @@ class RegexContextLimitError(RuntimeError):
     """Pattern requires more retained context than virtual search permits."""
 
 
+# The third-party `regex` engine's `finditer(..., partial=True)` reports an
+# unreliable partial-match start position once the scanned buffer is shorter
+# than a variable-width full-casefold literal's full character range (for
+# example `ß` folding to/from `ss`/`SS` under `(?f)`). Deferring the unsafe/
+# partial scan until at least this many characters are buffered keeps the
+# reported position trustworthy regardless of `window_chars`.
+_MIN_UNSAFE_SCAN_CHARS = 8
+
+
 @dataclass(frozen=True, slots=True)
 class SearchOptions:
     window_chars: int = 65_536
@@ -32,6 +41,7 @@ class SearchOptions:
     max_context_chars: int = 1_048_576
     progress_chars: int = 1_048_576
     include_captures: bool = True
+    start: int = 0
 
     def __post_init__(self) -> None:
         if self.window_chars <= 0:
@@ -44,6 +54,8 @@ class SearchOptions:
             raise ValueError("max_context_chars must be positive")
         if self.progress_chars <= 0:
             raise ValueError("progress_chars must be positive")
+        if self.start < 0:
+            raise ValueError("start must be non-negative")
 
 
 def _needs_full_prefix(compiled: regex.Pattern) -> bool:
@@ -114,12 +126,13 @@ def _iter_engine_matches(
     retain_prefix = _needs_full_prefix(compiled)
     source_iter = iter(
         document.iter_text(
+            options.start,
             chunk_chars=options.window_chars,
             intent=ReadIntent.STREAMING,
         )
     )
     buffer = ""
-    buffer_start = 0
+    buffer_start = options.start
     search_pos = 0
     emitted = 0
     eof = False
@@ -196,6 +209,9 @@ def _iter_engine_matches(
             if progress is not None:
                 progress(scanned, scanned)
             return
+
+        if len(buffer) < _MIN_UNSAFE_SCAN_CHARS:
+            continue
 
         unsafe_start = len(buffer)
         replayed = list(emitted_overlap)

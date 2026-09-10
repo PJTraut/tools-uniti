@@ -32,6 +32,7 @@ class DocumentEntry:
     saved_stamp: SavedFileStamp | None
     last_active_at: datetime
     closed_at: datetime | None
+    group_id: str | None = None
 
 
 def _utc_now() -> datetime:
@@ -155,6 +156,14 @@ class DocumentRegistry:
 
     def get(self, document_id: str) -> DocumentEntry:
         return self._entries[_identifier(document_id, "document ID")]
+
+    def set_group(self, document_id: str, group_id: str | None) -> None:
+        """Assign (or clear) the one group a document belongs to."""
+
+        entry = self.get(document_id)
+        if group_id is not None:
+            _identifier(group_id, "document group ID")
+        entry.group_id = group_id
 
     def entry_for_view(self, view_id: str) -> DocumentEntry | None:
         document_id = self._views.get(_identifier(view_id, "view ID"))

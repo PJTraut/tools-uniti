@@ -24,7 +24,13 @@ def _wait_until(app, predicate, timeout: float = 5.0):
     raise AssertionError("condition did not become true before timeout")
 
 
-def _make_panel(tmp_path: Path, text: str, *, dogfood_observer=None):
+def _make_panel(
+    tmp_path: Path,
+    text: str,
+    *,
+    dogfood_observer=None,
+    document_provider=None,
+):
     from PySide6.QtWidgets import QApplication
 
     from uniti.app.editor_state import EditorState
@@ -40,6 +46,7 @@ def _make_panel(tmp_path: Path, text: str, *, dogfood_observer=None):
     panel = FindReplacePanel(
         lambda: view,
         dogfood_observer=dogfood_observer,
+        document_provider=document_provider,
     )
     return app, document, view, panel
 
@@ -65,6 +72,125 @@ def _run_regex_search(app, panel, pattern: str, *, expected: int):
     _wait_until(app, lambda: panel.compile_current() is not None)
     panel.find_all()
     _wait_until(app, lambda: panel.result_count == expected and not panel.busy)
+
+
+def test_replace_scope_combo_has_three_options_defaulting_to_whole_document(
+    tmp_path: Path,
+):
+    from uniti.ui.find_replace import ReplaceScope
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha")
+    try:
+        assert panel.replace_scope_combo.count() == 3
+        assert panel.replace_scope() == ReplaceScope.WHOLE_DOCUMENT
+        labels = [panel.replace_scope_combo.itemText(i) for i in range(3)]
+        assert labels == ["Whole Document", "Cursor to End", "All Open Documents"]
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_replace_all_cursor_to_end_only_replaces_matches_after_cursor(
+    tmp_path: Path,
+):
+    from uniti.ui.find_replace import ReplaceScope
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha alpha alpha")
+    try:
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+        view.state.move_to(6)  # start of the second "alpha"
+        panel.replace_scope_combo.setCurrentIndex(
+            panel.replace_scope_combo.findData(ReplaceScope.CURSOR_TO_END)
+        )
+
+        panel.replace_all()
+        _wait_until(
+            app, lambda: not panel.busy and "replaced" in panel.status_label.text()
+        )
+
+        assert document.read(0, document.total_chars()) == "alpha omega omega"
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_replace_all_open_documents_replaces_every_document_once(tmp_path: Path):
+    from uniti.core.document import Document
+    from uniti.ui.find_replace import ReplaceScope
+
+    other_path = tmp_path / "other.txt"
+    other_path.write_text("alpha alpha", encoding="utf-8", newline="")
+    other_document = Document.open(other_path, encoding="utf-8")
+
+    app, document, view, panel = _make_panel(
+        tmp_path,
+        "alpha alpha",
+        document_provider=lambda: [document, other_document],
+    )
+    try:
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+        panel.replace_scope_combo.setCurrentIndex(
+            panel.replace_scope_combo.findData(ReplaceScope.ALL_OPEN_DOCUMENTS)
+        )
+
+        panel.replace_all()
+        _wait_until(
+            app,
+            lambda: not panel.busy and "replaced across" in panel.status_label.text(),
+        )
+
+        assert document.read(0, document.total_chars()) == "omega omega"
+        assert other_document.read(0, other_document.total_chars()) == "omega omega"
+        assert "2 document" in panel.status_label.text()
+    finally:
+        _close_panel(app, document, view, panel)
+        other_document.close()
+
+
+def test_replace_all_open_documents_is_unavailable_without_a_document_provider(
+    tmp_path: Path,
+):
+    from uniti.app.dogfood import Operation, Outcome
+    from uniti.ui.find_replace import ReplaceScope
+
+    calls = []
+    app, document, view, panel = _make_panel(
+        tmp_path,
+        "alpha",
+        dogfood_observer=lambda operation, outcome, **facts: calls.append(
+            (operation, outcome, facts)
+        ),
+    )
+    try:
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+        panel.replace_scope_combo.setCurrentIndex(
+            panel.replace_scope_combo.findData(ReplaceScope.ALL_OPEN_DOCUMENTS)
+        )
+
+        panel.replace_all()
+
+        assert not panel.busy
+        assert calls[-1][0] is Operation.REPLACE_ALL
+        assert calls[-1][1] is Outcome.UNAVAILABLE
+        assert document.read(0, document.total_chars()) == "alpha"
+    finally:
+        _close_panel(app, document, view, panel)
 
 
 def test_find_replace_reports_fixed_operations_without_content(tmp_path: Path):
@@ -1405,6 +1531,88 @@ def test_find_replace_is_topmost_and_clear_buttons_clear_only_their_input():
     panel.shutdown()
     panel.close()
     app.processEvents()
+
+
+def test_find_replace_wrap_toggle_sets_line_wrap_without_changing_text():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QTextEdit
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    panel.resize(720, 320)
+    panel.show()
+    panel.find_input.set_text("needle")
+    panel.replace_input.set_text("replacement")
+    app.processEvents()
+
+    try:
+        assert panel.find_wrap_button.isCheckable()
+        assert panel.replace_wrap_button.isCheckable()
+        assert panel.find_wrap_button.accessibleName() == "Wrap Find"
+        assert panel.replace_wrap_button.accessibleName() == "Wrap Replace"
+        for field, clear_button, wrap_button in (
+            (panel.find_input, panel.find_clear_button, panel.find_wrap_button),
+            (
+                panel.replace_input,
+                panel.replace_clear_button,
+                panel.replace_wrap_button,
+            ),
+        ):
+            assert field.lineWrapMode() == QTextEdit.LineWrapMode.NoWrap
+            assert wrap_button.width() == wrap_button.height()
+            assert wrap_button.x() == clear_button.x()
+            assert wrap_button.y() >= clear_button.y() + clear_button.height()
+
+        panel.find_wrap_button.setChecked(True)
+        assert panel.find_input.lineWrapMode() == QTextEdit.LineWrapMode.WidgetWidth
+        assert panel.find_input.text() == "needle"
+        assert panel.replace_input.lineWrapMode() == QTextEdit.LineWrapMode.NoWrap
+
+        panel.replace_wrap_button.setChecked(True)
+        assert panel.replace_input.lineWrapMode() == QTextEdit.LineWrapMode.WidgetWidth
+        assert panel.replace_input.text() == "replacement"
+
+        panel.find_wrap_button.setChecked(False)
+        assert panel.find_input.lineWrapMode() == QTextEdit.LineWrapMode.NoWrap
+        assert panel.find_input.text() == "needle"
+    finally:
+        panel.shutdown()
+        panel.close()
+        app.processEvents()
+
+
+def test_find_replace_wrap_state_persists_through_restore():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QTextEdit
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    restored = FindReplacePanel(lambda: None)
+    try:
+        panel.find_wrap_button.setChecked(True)
+        record = panel.export_state("view-target")
+        assert record.find_wrap is True
+        assert record.replace_wrap is False
+
+        restored.restore_state(record)
+        assert restored.find_wrap_button.isChecked() is True
+        assert restored.replace_wrap_button.isChecked() is False
+        assert restored.find_input.lineWrapMode() == QTextEdit.LineWrapMode.WidgetWidth
+        assert restored.replace_input.lineWrapMode() == QTextEdit.LineWrapMode.NoWrap
+        assert restored.export_state("view-target") == record
+    finally:
+        for item in (panel, restored):
+            item.shutdown()
+            item.close()
+        app.processEvents()
 
 
 def test_primary_modifier_wheel_zooms_focused_find_replace_only(tmp_path: Path):

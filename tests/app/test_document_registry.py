@@ -32,6 +32,28 @@ def test_registry_adopts_one_document_per_canonical_path(tmp_path: Path):
         duplicate.close()
 
 
+def test_registry_assigns_and_clears_a_single_group_per_document(tmp_path: Path):
+    document = _open_document(tmp_path)
+    registry = DocumentRegistry(clock=lambda: NOW)
+    try:
+        entry = registry.adopt(document)
+        assert entry.group_id is None
+
+        registry.set_group(entry.document_id, "A")
+        assert entry.group_id == "A"
+
+        registry.set_group(entry.document_id, "B")
+        assert entry.group_id == "B"
+
+        registry.set_group(entry.document_id, None)
+        assert entry.group_id is None
+
+        with pytest.raises(ValueError):
+            registry.set_group(entry.document_id, "")
+    finally:
+        registry.close_all()
+
+
 def test_registry_detects_an_existing_file_reached_through_a_hard_link(
     tmp_path: Path,
 ):

@@ -428,6 +428,9 @@ class UNITIService:
                 lambda: self.active_view,
                 resource_manager=self.resources,
                 dogfood_observer=self.record_dogfood,
+                document_provider=lambda: [
+                    entry.document for entry in self.documents.entries
+                ],
             )
             self._find_replace.placementChanged.connect(
                 self._record_find_replace_placement

@@ -220,6 +220,7 @@ def capture_service_session(
                 entry.view_ids,
                 _timestamp(entry.last_active_at),
                 None if entry.closed_at is None else _timestamp(entry.closed_at),
+                entry.group_id,
             )
         )
         if entry.saved_stamp is None:
@@ -326,6 +327,8 @@ def capture_service_session(
         last_target_view_id=find_state.last_target_view_id,
         history_pack=find_reference,
         placement=find_state.placement,
+        find_wrap=find_state.find_wrap,
+        replace_wrap=find_state.replace_wrap,
     )
     manifest = SessionManifest(
         schema=SESSION_SCHEMA,
@@ -479,6 +482,8 @@ def merge_find_replace_history(manifest_record, history_pack):
         report_visible=manifest_record.report_visible,
         last_target_view_id=manifest_record.last_target_view_id,
         placement=manifest_record.placement,
+        find_wrap=manifest_record.find_wrap,
+        replace_wrap=manifest_record.replace_wrap,
     )
 
 

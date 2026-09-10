@@ -23,7 +23,7 @@ from PySide6.QtGui import (
     QTextLayout,
     QWheelEvent,
 )
-from PySide6.QtWidgets import QAbstractScrollArea, QApplication
+from PySide6.QtWidgets import QAbstractScrollArea, QApplication, QFrame
 
 from uniti.app.editor_state import EditorState, EditorStateSnapshot
 from uniti.app.session import DockReturnRecord, ViewRecord
@@ -95,6 +95,9 @@ class UNITITextView(QAbstractScrollArea):
         view_id: str | None = None,
     ) -> None:
         super().__init__(parent)
+        # The canvas inset below is the only intended gap; a native frame
+        # border would add an untracked, style-dependent extra offset.
+        self.setFrameShape(QFrame.Shape.NoFrame)
         if not isinstance(state, EditorState):
             raise TypeError("state must be an EditorState")
         if view_id is not None and (not isinstance(view_id, str) or not view_id):
@@ -124,6 +127,7 @@ class UNITITextView(QAbstractScrollArea):
         self._cell_width = max(
             1, math.ceil(QFontMetricsF(self.font()).horizontalAdvance("M"))
         )
+        self._apply_canvas_inset()
         self._max_seen_line_width = 0
         self._drag_selecting = False
         self._click_count = 0
@@ -247,6 +251,21 @@ class UNITITextView(QAbstractScrollArea):
             raise TypeError("dock return must be a DockReturnRecord or None")
         self._dock_return = record
 
+    def _apply_canvas_inset(self) -> None:
+        # Quarter-em gap between the rendered canvas (gutter and text) and
+        # the surrounding frame; scales with font size/zoom like other
+        # cached metrics. Qt's viewport margins keep every existing
+        # gutter/wrap/scrollbar/hit-test calculation, which is already
+        # expressed relative to `self.viewport()`, correct with no other
+        # change.
+        self._canvas_inset = max(1, round(self._cell_width * 0.25))
+        self.setViewportMargins(
+            self._canvas_inset,
+            self._canvas_inset,
+            self._canvas_inset,
+            self._canvas_inset,
+        )
+
     def _wrap_width(self) -> int:
         return max(1, self.viewport().width() - self._gutter_width - 8)
 
@@ -318,6 +337,7 @@ class UNITITextView(QAbstractScrollArea):
         self._cell_width = max(
             1, math.ceil(QFontMetricsF(self.font()).horizontalAdvance("M"))
         )
+        self._apply_canvas_inset()
         self._max_seen_line_width = 0
         self._wrap_index = None
         self._wrap_signature = None

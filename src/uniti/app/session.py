@@ -26,7 +26,7 @@ from uniti.core.history import (
 )
 
 
-SESSION_SCHEMA = 2
+SESSION_SCHEMA = 4
 HISTORY_PACK_SCHEMA = 1
 MAX_MANIFEST_BYTES = 1 << 20
 MAX_PACK_ENCODED_BYTES = 32 << 20
@@ -199,6 +199,8 @@ class FindReplaceRecord:
     report_visible: bool
     last_target_view_id: str | None
     placement: Literal["attached", "detached"] = "detached"
+    find_wrap: bool = False
+    replace_wrap: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.find, InputHistoryRecord) or not isinstance(
@@ -304,6 +306,8 @@ class FindReplaceManifestRecord:
     last_target_view_id: str | None
     history_pack: HistoryPackReference | None
     placement: Literal["attached", "detached"] = "detached"
+    find_wrap: bool = False
+    replace_wrap: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.find_current, InputStateRecord) or not isinstance(
@@ -319,7 +323,15 @@ class FindReplaceManifestRecord:
 
 
 def _validate_find_replace_options(record: object) -> None:
-    for field in ("regex", "case_sensitive", "whole_word", "visible", "report_visible"):
+    for field in (
+        "regex",
+        "case_sensitive",
+        "whole_word",
+        "visible",
+        "report_visible",
+        "find_wrap",
+        "replace_wrap",
+    ):
         _require_bool(getattr(record, field), f"find/replace {field}")
     _validate_geometry(getattr(record, "geometry"), optional=True)
     _require_plain_int(
@@ -459,6 +471,7 @@ class DocumentRecord:
     view_ids: tuple[str, ...]
     last_active_at: str
     closed_at: str | None
+    group_id: str | None = None
 
     def __post_init__(self) -> None:
         _require_identifier(self.document_id, "document ID")
@@ -471,6 +484,8 @@ class DocumentRecord:
         _require_timestamp(self.last_active_at, "document last_active_at")
         if self.closed_at is not None:
             _require_timestamp(self.closed_at, "document closed_at")
+        if self.group_id is not None:
+            _require_identifier(self.group_id, "document group ID")
 
 
 @dataclass(frozen=True, slots=True)
@@ -859,6 +874,7 @@ def manifest_to_payload(manifest: SessionManifest) -> dict[str, object]:
                 "canonical_path": item.canonical_path,
                 "closed_at": item.closed_at,
                 "document_id": item.document_id,
+                "group_id": item.group_id,
                 "last_active_at": item.last_active_at,
                 "view_ids": list(item.view_ids),
             }
@@ -867,6 +883,7 @@ def manifest_to_payload(manifest: SessionManifest) -> dict[str, object]:
         "find_replace": {
             "case_sensitive": manifest.find_replace.case_sensitive,
             "find_current": _state_to_payload(manifest.find_replace.find_current),
+            "find_wrap": manifest.find_replace.find_wrap,
             "geometry": (
                 list(manifest.find_replace.geometry)
                 if manifest.find_replace.geometry is not None
@@ -881,6 +898,7 @@ def manifest_to_payload(manifest: SessionManifest) -> dict[str, object]:
             "placement": manifest.find_replace.placement,
             "regex": manifest.find_replace.regex,
             "replace_current": _state_to_payload(manifest.find_replace.replace_current),
+            "replace_wrap": manifest.find_replace.replace_wrap,
             "report_visible": manifest.find_replace.report_visible,
             "visible": manifest.find_replace.visible,
             "whole_word": manifest.find_replace.whole_word,
@@ -1071,7 +1089,7 @@ def manifest_from_payload(value: object) -> SessionManifest:
     }
     _keys(payload, required, "session manifest")
     source_schema = payload.get("schema")
-    if type(source_schema) is not int or source_schema not in {1, SESSION_SCHEMA}:
+    if type(source_schema) is not int or source_schema not in {1, 2, 3, SESSION_SCHEMA}:
         raise UnsupportedSessionSchema(
             f"unsupported session schema: {source_schema}"
         )
@@ -1131,13 +1149,18 @@ def manifest_from_payload(value: object) -> SessionManifest:
         views.append(ViewRecord(**view_values))
 
     documents = []
+    document_fields = {
+        "document_id",
+        "canonical_path",
+        "view_ids",
+        "last_active_at",
+        "closed_at",
+    }
+    if source_schema >= 4:
+        document_fields = document_fields | {"group_id"}
     for value in documents_payload:
         item = _mapping(value, "document")
-        _keys(
-            item,
-            {"document_id", "canonical_path", "view_ids", "last_active_at", "closed_at"},
-            "document",
-        )
+        _keys(item, document_fields, "document")
         documents.append(
             DocumentRecord(
                 item["document_id"],
@@ -1145,6 +1168,7 @@ def manifest_from_payload(value: object) -> SessionManifest:
                 tuple(_list(item["view_ids"], "document view IDs")),
                 item["last_active_at"],
                 item["closed_at"],
+                item["group_id"] if source_schema >= 4 else None,
             )
         )
 
@@ -1162,11 +1186,11 @@ def manifest_from_payload(value: object) -> SessionManifest:
         "last_target_view_id",
         "history_pack",
     }
-    find_fields = (
-        find_fields_v1
-        if source_schema == 1
-        else find_fields_v1 | {"placement"}
-    )
+    find_fields = find_fields_v1
+    if source_schema >= 2:
+        find_fields = find_fields | {"placement"}
+    if source_schema >= 3:
+        find_fields = find_fields | {"find_wrap", "replace_wrap"}
     _keys(find_payload, find_fields, "find/replace manifest")
     find_geometry = find_payload["geometry"]
     find_replace = FindReplaceManifestRecord(
@@ -1186,6 +1210,8 @@ def manifest_from_payload(value: object) -> SessionManifest:
         if find_payload["history_pack"] is None
         else _reference_from_payload(find_payload["history_pack"]),
         "detached" if source_schema == 1 else find_payload["placement"],
+        find_payload["find_wrap"] if source_schema >= 3 else False,
+        find_payload["replace_wrap"] if source_schema >= 3 else False,
     )
 
     return SessionManifest(

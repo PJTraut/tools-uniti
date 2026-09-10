@@ -92,6 +92,72 @@ def test_zero_width_results_are_exact_across_tiny_windows(
     assert [record.span for record in results] == expected
 
 
+@pytest.mark.parametrize(
+    "pattern",
+    (r"(?fi)straße", r"(?V1)(?i)straße"),
+)
+@pytest.mark.parametrize("window_chars", (1, 8))
+def test_full_case_folding_matches_across_tiny_windows(
+    tmp_path: Path,
+    pattern: str,
+    window_chars: int,
+):
+    path = tmp_path / "casefold.txt"
+    path.write_text("STRASSE", encoding="utf-8")
+    with Document.open(path) as document:
+        results = list(
+            search_document(
+                document,
+                compile_pattern(pattern),
+                options=SearchOptions(window_chars=window_chars),
+            )
+        )
+
+    assert [record.span for record in results] == [(0, 7)]
+
+
+def test_search_start_excludes_matches_before_it_and_includes_one_at_it(
+    tmp_path: Path,
+):
+    path = tmp_path / "start-offset.txt"
+    path.write_text("one one one", encoding="utf-8")
+    with Document.open(path) as document:
+        # A match beginning exactly at `start` is included.
+        at_start = list(
+            search_document(
+                document,
+                compile_pattern(r"one"),
+                options=SearchOptions(start=4),
+            )
+        )
+        # Matches entirely before `start` are excluded.
+        after_start = list(
+            search_document(
+                document,
+                compile_pattern(r"one"),
+                options=SearchOptions(start=5),
+            )
+        )
+
+    assert [record.span for record in at_start] == [(4, 7), (8, 11)]
+    assert [record.span for record in after_start] == [(8, 11)]
+
+
+def test_search_start_is_honored_across_tiny_windows(tmp_path: Path):
+    path = tmp_path / "start-offset-windowed.txt"
+    path.write_text("one one one", encoding="utf-8")
+    with Document.open(path) as document:
+        results = list(
+            search_document(
+                document,
+                compile_pattern(r"one"),
+                options=SearchOptions(start=4, window_chars=1),
+            )
+        )
+
+    assert [record.span for record in results] == [(4, 7), (8, 11)]
+
+
 def test_search_can_cancel_before_engine_work(tmp_path: Path):
     path = tmp_path / "cancel.txt"
     path.write_text("abc" * 1000, encoding="utf-8")

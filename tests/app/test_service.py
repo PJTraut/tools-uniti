@@ -600,6 +600,142 @@ def test_active_view_routes_across_registered_windows(tmp_path: Path):
     service.documents.close_all()
 
 
+def test_find_replace_document_provider_lists_every_adopted_document(
+    tmp_path: Path,
+):
+    app, service, _recovery = _desktop_service(tmp_path)
+    try:
+        first = _document(tmp_path, "first.txt")
+        second = _document(tmp_path, "second.txt")
+        service.documents.adopt(first)
+        service.documents.adopt(second)
+
+        provided = list(service.find_replace._document_provider())
+
+        assert set(provided) == {first, second}
+    finally:
+        _stop_desktop_service(app, service)
+
+
+def test_document_group_assignment_updates_registry_and_tab_icon(tmp_path: Path):
+    from uniti.app.document_groups import DocumentGroup
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "grouped.txt"
+    path.write_text("abc", encoding="utf-8")
+    window = service.new_window()
+    try:
+        view = window.open_path(path)
+        assert view is not None
+        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        entry = service.documents.entry_for_view(view.view_id)
+        leaf = window.panes.leaf_for_view(view.view_id)
+        index = leaf.index_of(view.view_id)
+
+        window._set_document_group(entry.document_id, "A")
+
+        assert entry.group_id == "A"
+        assert not leaf.tabs.tabIcon(index).isNull()
+
+        window._set_document_group(entry.document_id, None)
+
+        assert entry.group_id is None
+        assert leaf.tabs.tabIcon(index).isNull()
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_group_menu_lists_groups_and_marks_the_assigned_one(
+    tmp_path: Path, monkeypatch
+):
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QMenu
+
+    from uniti.app.document_groups import DocumentGroup
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "menu.txt"
+    path.write_text("abc", encoding="utf-8")
+    window = service.new_window()
+    captured: list[QMenu] = []
+    monkeypatch.setattr(QMenu, "popup", lambda self, *a, **k: captured.append(self))
+    try:
+        view = window.open_path(path)
+        window._groups = (
+            DocumentGroup("A", "A", "#e06c75"),
+            DocumentGroup("B", "B", "#61afef"),
+        )
+        entry = service.documents.entry_for_view(view.view_id)
+        service.documents.set_group(entry.document_id, "B")
+
+        window._show_group_menu(view.view_id, QPoint(10, 10))
+
+        assert len(captured) == 1
+        menu = captured[0]
+        labels = [
+            action.text() for action in menu.actions() if not action.isSeparator()
+        ]
+        assert labels == ["No Group", "A", "B", "Manage Groups…"]
+        checked = {
+            action.text(): action.isChecked()
+            for action in menu.actions()
+            if action.isCheckable()
+        }
+        assert checked == {"No Group": False, "A": False, "B": True}
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_manage_groups_dialog_persists_and_clears_removed_group_assignment(
+    tmp_path: Path, monkeypatch
+):
+    from uniti.app.document_groups import DocumentGroup
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "manage.txt"
+    path.write_text("abc", encoding="utf-8")
+    window = service.new_window()
+    try:
+        view = window.open_path(path)
+        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        entry = service.documents.entry_for_view(view.view_id)
+        service.documents.set_group(entry.document_id, "A")
+
+        class FakeEditor:
+            def __init__(self, groups, parent=None) -> None:
+                self._groups = groups
+
+            def exec(self) -> bool:
+                return True
+
+            def groups(self):
+                return ()
+
+        monkeypatch.setattr(
+            "uniti.ui.document_group_editor.DocumentGroupEditor", FakeEditor
+        )
+
+        window.show_document_group_editor()
+
+        assert window._groups == ()
+        assert entry.group_id is None
+        assert window._group_store.load() == ()
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
 def test_service_owns_one_lazy_find_replace_panel(tmp_path: Path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication

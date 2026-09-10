@@ -282,3 +282,16 @@ def test_theme_profiles_migrate_using_existing_mode_without_changing_settings(tm
     assert state.active_id == 'Dark'
     assert store.theme_profiles.path.parent == store.path.parent
     assert store.path.read_bytes() == before
+
+
+def test_document_groups_store_is_a_separate_atomic_file_beside_settings(tmp_path):
+    from uniti.app.document_groups import default_groups
+    from uniti.app.settings import Settings, SettingsStore
+    store = SettingsStore(tmp_path / 'settings.json')
+    store.save(Settings(theme_mode='Dark', soft_wrap=True))
+    before = store.path.read_bytes()
+
+    assert store.document_groups.load() == default_groups()
+    assert store.document_groups.path.parent == store.path.parent
+    assert store.document_groups.path.name == 'document-groups.json'
+    assert store.path.read_bytes() == before

@@ -656,6 +656,7 @@ class SessionController:
         )
         entry.last_active_at = last_active
         entry.closed_at = closed
+        entry.group_id = record.group_id
 
     def _submit_restore(self, document_id: str, *, foreground: bool):
         from uniti.resources import WorkPriority

@@ -5,14 +5,25 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
+from enum import Enum
 import time
 import weakref
 
-from PySide6.QtCore import QEvent, QTimer, Qt, Signal
-from PySide6.QtGui import QFont, QIcon, QPainter, QWheelEvent
+from PySide6.QtCore import QEvent, QPointF, QTimer, Qt, Signal
+from PySide6.QtGui import (
+    QFont,
+    QGuiApplication,
+    QIcon,
+    QPainter,
+    QPalette,
+    QPen,
+    QPixmap,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QApplication,
+    QComboBox,
     QDockWidget,
     QFrame,
     QHBoxLayout,
@@ -22,6 +33,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSplitter,
+    QTextEdit,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -76,6 +88,12 @@ from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 
 _FIND_RESULT_MEMORY_BYTES = 1 << 20
+
+
+class ReplaceScope(Enum):
+    WHOLE_DOCUMENT = "whole_document"
+    CURSOR_TO_END = "cursor_to_end"
+    ALL_OPEN_DOCUMENTS = "all_open_documents"
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,9 +154,12 @@ class FindReplaceWindow(QDockWidget):
         *,
         resource_manager: ResourceManager | None = None,
         dogfood_observer: Callable[..., None] | None = None,
+        document_provider: Callable[[], object] | None = None,
     ) -> None:
         if dogfood_observer is not None and not callable(dogfood_observer):
             raise TypeError("dogfood observer must be callable or None")
+        if document_provider is not None and not callable(document_provider):
+            raise TypeError("document provider must be callable or None")
         super().__init__("Find / Replace", parent)
         self.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
         self.setFeatures(
@@ -156,6 +177,7 @@ class FindReplaceWindow(QDockWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
         self.resize(720, 320)
         self._view_provider = view_provider
+        self._document_provider = document_provider
         self._dogfood_observer = dogfood_observer
         self._shutdown = False
         self._owns_resources = resource_manager is None
@@ -249,6 +271,13 @@ class FindReplaceWindow(QDockWidget):
         self.find_clear_button.setEnabled(False)
         self.replace_clear_button.setEnabled(False)
 
+        self.find_wrap_button = self._wrap_toggle_button("Wrap Find", self.find_input)
+        self.replace_wrap_button = self._wrap_toggle_button(
+            "Wrap Replace", self.replace_input
+        )
+        self.find_wrap_button.toggled.connect(self._find_wrap_toggled)
+        self.replace_wrap_button.toggled.connect(self._replace_wrap_toggled)
+
         self.find_indicator = _IconLabel("search", "Find", content)
         self.replace_indicator = _IconLabel("replace", "Replace", content)
         find_row = QHBoxLayout()
@@ -258,10 +287,23 @@ class FindReplaceWindow(QDockWidget):
         replace_row.addWidget(self.replace_indicator)
         replace_row.addWidget(self.replace_input, 1)
 
+        self.replace_scope_combo = QComboBox(content)
+        self.replace_scope_combo.setAccessibleName("Replace Scope")
+        self.replace_scope_combo.setToolTip("Replace Scope")
+        self.replace_scope_combo.addItem("Whole Document", ReplaceScope.WHOLE_DOCUMENT)
+        self.replace_scope_combo.addItem("Cursor to End", ReplaceScope.CURSOR_TO_END)
+        self.replace_scope_combo.addItem(
+            "All Open Documents", ReplaceScope.ALL_OPEN_DOCUMENTS
+        )
+        self.replace_scope_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+
         options_row = QHBoxLayout()
         options_row.addWidget(self.regex_checkbox)
         options_row.addWidget(self.case_sensitive_checkbox)
         options_row.addWidget(self.whole_word_checkbox)
+        options_row.addWidget(self.replace_scope_combo)
         options_row.addStretch(1)
         self.report_toggle_button = QPushButton(self)
         self.report_toggle_button.setSizePolicy(
@@ -516,16 +558,81 @@ class FindReplaceWindow(QDockWidget):
         button.setToolTip(accessible_name)
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.setFixedSize(20, 20)
-        parent.setViewportMargins(0, 0, 26, 0)
+        parent.setViewportMargins(0, 0, 26, 22)
+        return button
+
+    @staticmethod
+    def _wrap_toggle_icon() -> QIcon:
+        """Theme-aware wrap glyph drawn without a bundled SVG asset."""
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        try:
+            color = QGuiApplication.palette().color(
+                QPalette.ColorGroup.Active, QPalette.ColorRole.ButtonText
+            )
+            pen = QPen(color, 1.4)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.drawLine(QPointF(3, 5), QPointF(12, 5))
+            painter.drawPolyline(
+                (
+                    QPointF(12, 5),
+                    QPointF(12, 10),
+                    QPointF(5, 10),
+                )
+            )
+            painter.drawLine(QPointF(5, 10), QPointF(8, 7.5))
+            painter.drawLine(QPointF(5, 10), QPointF(8, 12.5))
+        finally:
+            painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _wrap_toggle_button(accessible_name: str, parent: QWidget) -> QToolButton:
+        button = QToolButton(parent)
+        button.setAutoRaise(True)
+        button.setCheckable(True)
+        button.setIcon(FindReplaceWindow._wrap_toggle_icon())
+        button.setAccessibleName(accessible_name)
+        button.setToolTip(accessible_name)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setFixedSize(20, 20)
         return button
 
     def _position_clear_buttons(self) -> None:
-        for field, button in (
-            (self.find_input, self.find_clear_button),
-            (self.replace_input, self.replace_clear_button),
+        for field, clear_button, wrap_button in (
+            (self.find_input, self.find_clear_button, self.find_wrap_button),
+            (self.replace_input, self.replace_clear_button, self.replace_wrap_button),
         ):
-            button.move(max(0, field.width() - button.width() - 4), 4)
-            button.raise_()
+            right = max(0, field.width() - clear_button.width() - 4)
+            clear_button.move(right, 4)
+            wrap_button.move(right, clear_button.height() + 8)
+            clear_button.raise_()
+            wrap_button.raise_()
+
+    @staticmethod
+    def _apply_wrap_mode(field: QTextEdit, checked: bool) -> None:
+        field.setLineWrapMode(
+            QTextEdit.LineWrapMode.WidgetWidth
+            if checked
+            else QTextEdit.LineWrapMode.NoWrap
+        )
+        # Wrapped content can exceed the field's single-line height; allow
+        # internal scrolling only while wrapped so the caret stays reachable.
+        field.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            if checked
+            else Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
+    def _find_wrap_toggled(self, checked: bool) -> None:
+        self._apply_wrap_mode(self.find_input, checked)
+
+    def _replace_wrap_toggled(self, checked: bool) -> None:
+        self._apply_wrap_mode(self.replace_input, checked)
 
     def set_zoom_percent(self, percent: int) -> None:
         percent = max(50, min(300, int(percent)))
@@ -661,6 +768,12 @@ class FindReplaceWindow(QDockWidget):
         self._view_provider = provider
         self._update_actions()
 
+    def set_document_provider(self, provider: Callable[[], object] | None) -> None:
+        if provider is not None and not callable(provider):
+            raise TypeError("document provider must be callable or None")
+        self._document_provider = provider
+        self._update_actions()
+
     def target_changed(self) -> None:
         if self.busy:
             self.cancel_search()
@@ -686,6 +799,8 @@ class FindReplaceWindow(QDockWidget):
             report_visible=self._report_open,
             last_target_view_id=last_target_view_id,
             placement=self._placement,
+            find_wrap=self.find_wrap_button.isChecked(),
+            replace_wrap=self.replace_wrap_button.isChecked(),
         )
 
     def restore_state(self, record: FindReplaceRecord) -> None:
@@ -699,6 +814,8 @@ class FindReplaceWindow(QDockWidget):
             self.regex_checkbox,
             self.case_sensitive_checkbox,
             self.whole_word_checkbox,
+            self.find_wrap_button,
+            self.replace_wrap_button,
         )
         blocked = tuple(widget.blockSignals(True) for widget in widgets)
         self._restoring_state = True
@@ -717,6 +834,10 @@ class FindReplaceWindow(QDockWidget):
             self.whole_word_checkbox.setEnabled(not record.regex)
             self.find_clear_button.setEnabled(bool(record.find.current.text))
             self.replace_clear_button.setEnabled(bool(record.replace.current.text))
+            self.find_wrap_button.setChecked(record.find_wrap)
+            self.replace_wrap_button.setChecked(record.replace_wrap)
+            self._find_wrap_toggled(record.find_wrap)
+            self._replace_wrap_toggled(record.replace_wrap)
             self._set_placement(record.placement)
             self.show() if record.visible else self.hide()
         finally:
@@ -1191,7 +1312,15 @@ class FindReplaceWindow(QDockWidget):
             rejected_cleanup=snapshot.close,
         )
 
+    def replace_scope(self) -> ReplaceScope:
+        data = self.replace_scope_combo.currentData()
+        return data if isinstance(data, ReplaceScope) else ReplaceScope.WHOLE_DOCUMENT
+
     def replace_all(self) -> None:
+        scope = self.replace_scope()
+        if scope is ReplaceScope.ALL_OPEN_DOCUMENTS:
+            self._replace_all_open_documents()
+            return
         started_at = time.monotonic()
         view = self._current_view()
         compiled = self.compile_current()
@@ -1210,6 +1339,9 @@ class FindReplaceWindow(QDockWidget):
         seal = self._operation_seal(view)
         revision = seal.revision
         replacement_text = self._replacement_expression()
+        search_start = (
+            view.state.cursor if scope is ReplaceScope.CURSOR_TO_END else 0
+        )
         snapshot = view.document.snapshot()
 
         def work(context: TaskContext):
@@ -1219,7 +1351,7 @@ class FindReplaceWindow(QDockWidget):
                     compiled,
                     replacement_text,
                     document_revision=revision,
-                    options=SearchOptions(timeout=0.5),
+                    options=SearchOptions(timeout=0.5, start=search_start),
                     cancelled=lambda: context.token.cancelled,
                     progress=lambda completed, total: context.report(
                         "Planning replacements",
@@ -1237,6 +1369,64 @@ class FindReplaceWindow(QDockWidget):
             started_at=started_at,
             context=seal,
             rejected_cleanup=snapshot.close,
+        )
+
+    def _replace_all_open_documents(self) -> None:
+        started_at = time.monotonic()
+        view = self._current_view()
+        compiled = self.compile_current()
+        if (
+            view is None
+            or compiled is None
+            or not self._replacement_is_current()
+            or self._document_provider is None
+        ):
+            self._record_dogfood(
+                Operation.REPLACE_ALL,
+                Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
+            return
+        documents = list(self._document_provider())
+        if not documents:
+            self._record_dogfood(
+                Operation.REPLACE_ALL,
+                Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
+            return
+        self._cancel_capture_report(clear=True)
+        replacement_text = self._replacement_expression()
+
+        def work(context: TaskContext):
+            results: list[tuple[object, ReplacementPlan]] = []
+            try:
+                for document in documents:
+                    revision = document.revision
+                    snapshot = document.snapshot()
+                    with snapshot:
+                        plan = collect_replacement_plan(
+                            snapshot,
+                            compiled,
+                            replacement_text,
+                            document_revision=revision,
+                            options=SearchOptions(timeout=0.5),
+                            cancelled=lambda: context.token.cancelled,
+                        )
+                    results.append((document, plan))
+            except Exception:
+                for _document, pending_plan in results:
+                    pending_plan.close()
+                raise
+            return results
+
+        self._start_job(
+            "replace_all_documents",
+            view,
+            work,
+            task_kind=TaskKind.REPLACE,
+            dogfood_operation=Operation.REPLACE_ALL,
+            started_at=started_at,
         )
 
     def cancel_search(self) -> None:
@@ -1295,6 +1485,9 @@ class FindReplaceWindow(QDockWidget):
         if task_handle is not None and task_handle.token.cancelled:
             if isinstance(payload, (MatchStore, ReplacementPlan)):
                 payload.close()
+            elif kind == "replace_all_documents" and isinstance(payload, list):
+                for _document, pending_plan in payload:
+                    pending_plan.close()
             if self.status_label.text() != "text changed — search again":
                 self.status_label.setText("cancelled")
             if dogfood_operation is not None and started_at is not None:
@@ -1322,6 +1515,8 @@ class FindReplaceWindow(QDockWidget):
                 )
             elif kind == "replace_all":
                 operation_outcome = self._apply_replace_all(view, payload, context)
+            elif kind == "replace_all_documents":
+                operation_outcome = self._apply_replace_all_documents(payload)
             else:
                 operation_outcome = Outcome.FAILED
         except Exception:
@@ -1435,6 +1630,47 @@ class FindReplaceWindow(QDockWidget):
         view._state_changed()
         self.status_label.setText(f"{count:,} replaced")
         self._update_actions()
+        return Outcome.SUCCESS
+
+    def _apply_replace_all_documents(
+        self,
+        results: list[tuple[object, ReplacementPlan]],
+    ) -> Outcome:
+        memory_limit = max(
+            1 << 20,
+            min(256 << 20, self._resource_manager.status.available_memory // 4),
+        )
+        replaced_total = 0
+        documents_changed = 0
+        documents_skipped = 0
+        for document, plan in results:
+            try:
+                count = document.apply_replacement_plan(
+                    plan,
+                    expected_revision=plan.document_revision,
+                    memory_limit_bytes=memory_limit,
+                )
+            except Exception:
+                documents_skipped += 1
+                continue
+            finally:
+                plan.close()
+            replaced_total += count
+            if count:
+                documents_changed += 1
+        self._clear_results()
+        if documents_skipped:
+            self.status_label.setText(
+                f"{replaced_total:,} replaced across {documents_changed:,} "
+                f"document(s); {documents_skipped:,} skipped (changed during planning)"
+            )
+        else:
+            self.status_label.setText(
+                f"{replaced_total:,} replaced across {documents_changed:,} document(s)"
+            )
+        self._update_actions()
+        if documents_skipped and documents_changed == 0:
+            return Outcome.FAILED
         return Outcome.SUCCESS
 
     @staticmethod

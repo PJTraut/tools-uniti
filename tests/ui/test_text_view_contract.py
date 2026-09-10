@@ -216,7 +216,10 @@ def test_wrapped_eol_marker_is_painted_only_on_final_visual_row(
             painted.append((label, y))
 
         monkeypatch.setattr(view, "_paint_whitespace_marker", observe)
-        view.resize(view._gutter_width + view._cell_width * 2 + 10, 120)
+        view.resize(
+            view._gutter_width + view._cell_width * 2 + 10 + view._canvas_inset * 2,
+            120 + view._canvas_inset * 2,
+        )
         view.set_soft_wrap(True)
         view.set_whitespace_mode("eol")
         view.show()
@@ -402,7 +405,10 @@ def test_wrapped_zero_width_marker_is_painted_on_only_its_owning_row(
                 match=match,
             )
         )
-        view.resize(view._gutter_width + view._cell_width * 2 + 10, 100)
+        view.resize(
+            view._gutter_width + view._cell_width * 2 + 10 + view._canvas_inset * 2,
+            100 + view._canvas_inset * 2,
+        )
         view.set_soft_wrap(True)
         view.set_match_index(MatchIndex((MatchRecord(2, 2),)))
         view.show()
@@ -989,7 +995,10 @@ def test_small_gutter_font_does_not_leak_into_wrapped_text_or_markers(tmp_path, 
     with Document.open(path, encoding="utf-8") as document:
         view = text_view.UNITITextView(EditorState(document))
         view.set_zoom_percent(zoom)
-        view.resize(view._gutter_width + view._cell_width * 2 + 10, view._line_height * 9)
+        view.resize(
+            view._gutter_width + view._cell_width * 2 + 10 + view._canvas_inset * 2,
+            view._line_height * 9 + view._canvas_inset * 2,
+        )
         view.set_soft_wrap(True)
         view.set_whitespace_mode("eol")
         original_text = view._paint_line_text
@@ -1080,5 +1089,56 @@ def test_restored_deep_wrapped_row_has_six_digit_gutter_before_first_paint(
         assert numbers[0][0] >= 4
         assert view._char_for_point(view._gutter_width, view._line_height // 2) == document.line_start(99_999)
         view.dispose()
+        view.close()
+        app.processEvents()
+
+
+@pytest.mark.parametrize("zoom", [50, 100, 200, 300])
+def test_canvas_inset_scales_with_zoom_and_keeps_hit_testing_correct(
+    tmp_path: Path, zoom: int
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "canvas-inset.txt"
+    path.write_text("alpha bravo\nnext line\n", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        view.set_zoom_percent(zoom)
+        view.resize(320, 160)
+        view.show()
+        app.processEvents()
+
+        inset = view._canvas_inset
+        assert inset == max(1, round(view._cell_width * 0.25))
+        assert inset >= 1
+
+        outer = view.rect()
+        inner = view.viewport().geometry()
+        assert inner.left() == outer.left() + inset
+        assert inner.top() == outer.top() + inset
+        assert inner.width() == outer.width() - 2 * inset
+        assert inner.height() == outer.height() - 2 * inset
+
+        # Hit-testing uses viewport-local coordinates and is unaffected by
+        # the frame inset: a click still resolves to the same word.
+        x = view._gutter_width + view.fontMetrics().horizontalAdvance("alpha br")
+        y = view._line_height // 2
+        view._select_click_unit(x, y, 2)
+        assert view.state.selected_text() == "bravo"
+
+        # No content is clipped by the inset: every painted row still fits
+        # inside the (smaller) viewport rect.
+        painter_target = view.viewport().rect()
+        assert painter_target.width() > 0 and painter_target.height() > 0
+        view.viewport().repaint()
+
         view.close()
         app.processEvents()

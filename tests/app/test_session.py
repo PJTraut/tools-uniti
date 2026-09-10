@@ -257,7 +257,13 @@ def test_manifest_payload_round_trips_complete_structural_state():
     anchor = session_module.DockReturnRecord("window-a", "pane-left", 3)
     manifest = _manifest(
         views=(replace(_manifest().views[0], dock_return=anchor),),
-        find_replace=replace(_find_manifest(), placement="attached"),
+        find_replace=replace(
+            _find_manifest(),
+            placement="attached",
+            find_wrap=True,
+            replace_wrap=True,
+        ),
+        documents=(replace(_manifest().documents[0], group_id="A"),),
     )
 
     payload = manifest_to_payload(manifest)
@@ -269,6 +275,9 @@ def test_manifest_payload_round_trips_complete_structural_state():
         "tab_index": 3,
     }
     assert payload["find_replace"]["placement"] == "attached"
+    assert payload["find_replace"]["find_wrap"] is True
+    assert payload["find_replace"]["replace_wrap"] is True
+    assert payload["documents"][0]["group_id"] == "A"
     assert len(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ) <= (1 << 20)
@@ -291,9 +300,46 @@ def test_dock_return_record_rejects_untrusted_values(kwargs):
 def test_schema_one_manifest_migrates_new_presentation_fields():
     restored = manifest_from_payload(_schema_one_payload_fixture())
 
-    assert restored.schema == SESSION_SCHEMA == 2
+    assert restored.schema == SESSION_SCHEMA == 4
     assert all(view.dock_return is None for view in restored.views)
     assert restored.find_replace.placement == "detached"
+    assert restored.find_replace.find_wrap is False
+    assert restored.find_replace.replace_wrap is False
+    assert all(document.group_id is None for document in restored.documents)
+
+
+def _schema_two_payload_fixture() -> dict[str, object]:
+    payload = _schema_one_payload_fixture()
+    payload["schema"] = 2
+    payload["views"][0]["dock_return"] = None
+    payload["find_replace"]["placement"] = "attached"
+    return payload
+
+
+def test_schema_two_manifest_migrates_wrap_fields():
+    restored = manifest_from_payload(_schema_two_payload_fixture())
+
+    assert restored.schema == SESSION_SCHEMA == 4
+    assert restored.find_replace.placement == "attached"
+    assert restored.find_replace.find_wrap is False
+    assert restored.find_replace.replace_wrap is False
+    assert all(document.group_id is None for document in restored.documents)
+
+
+def _schema_three_payload_fixture() -> dict[str, object]:
+    payload = _schema_two_payload_fixture()
+    payload["schema"] = 3
+    payload["find_replace"]["find_wrap"] = True
+    payload["find_replace"]["replace_wrap"] = False
+    return payload
+
+
+def test_schema_three_manifest_migrates_document_group_id():
+    restored = manifest_from_payload(_schema_three_payload_fixture())
+
+    assert restored.schema == SESSION_SCHEMA == 4
+    assert restored.find_replace.find_wrap is True
+    assert all(document.group_id is None for document in restored.documents)
 
 
 @pytest.mark.parametrize(
@@ -515,7 +561,7 @@ def test_pack_decoder_rejects_checksum_mismatch():
 
 def test_manifest_and_pack_reject_unsupported_schemas():
     manifest_payload = manifest_to_payload(_manifest())
-    manifest_payload["schema"] = 3
+    manifest_payload["schema"] = 5
     with pytest.raises(UnsupportedSessionSchema):
         manifest_from_payload(manifest_payload)
 

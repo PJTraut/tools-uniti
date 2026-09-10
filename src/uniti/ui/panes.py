@@ -43,12 +43,21 @@ class _ShellView(QWidget):
 
 class _DetachableTabBar(QTabBar):
     detachRequested = Signal(str, QPoint)
+    groupMenuRequested = Signal(str, QPoint)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._pressed_view_id: str | None = None
         self._pressed_position = QPoint()
         self._dragging = False
+
+    def contextMenuEvent(self, event) -> None:
+        index = self.tabAt(event.pos())
+        data = self.tabData(index) if index >= 0 else None
+        if isinstance(data, str):
+            self.groupMenuRequested.emit(data, event.globalPos())
+            return
+        super().contextMenuEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -156,6 +165,7 @@ class PaneLeaf(QTabWidget):
     splitRequested = Signal(str, Qt.Orientation)
     assignmentRequested = Signal(str, QPoint)
     dockToggleRequested = Signal(str)
+    groupMenuRequested = Signal(str, QPoint)
 
     def __init__(
         self,
@@ -177,6 +187,7 @@ class PaneLeaf(QTabWidget):
         self.currentChanged.connect(self._publish_active_view)
         self.tabCloseRequested.connect(self._publish_close_request)
         tab_bar.detachRequested.connect(self.viewDetachRequested)
+        tab_bar.groupMenuRequested.connect(self.groupMenuRequested)
         self.controls.splitRequested.connect(
             lambda orientation: self.splitRequested.emit(self.pane_id, orientation)
         )
@@ -369,6 +380,7 @@ class EditorPaneTree(QWidget):
     splitRequested = Signal(str, Qt.Orientation)
     assignmentRequested = Signal(str, QPoint)
     dockToggleRequested = Signal(str)
+    groupMenuRequested = Signal(str, QPoint)
 
     def __init__(
         self,
@@ -394,6 +406,7 @@ class EditorPaneTree(QWidget):
         leaf.splitRequested.connect(self.splitRequested)
         leaf.assignmentRequested.connect(self.assignmentRequested)
         leaf.dockToggleRequested.connect(self.dockToggleRequested)
+        leaf.groupMenuRequested.connect(self.groupMenuRequested)
         return leaf
 
     def _make_split(

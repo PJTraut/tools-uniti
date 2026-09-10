@@ -86,6 +86,30 @@ def test_control_requests_use_stable_pane_and_view_ids(qapp, three_views):
     assert isinstance(assignment.at(0)[1], QPoint)
 
 
+def test_tab_bar_context_menu_emits_group_menu_request_for_the_clicked_tab(
+    qapp, three_views
+):
+    from PySide6.QtGui import QContextMenuEvent
+
+    _document, views = three_views
+    tree = EditorPaneTree(pane_id="left")
+    tree.add_view(views[0])
+    tree.add_view(views[1])
+    spy = QSignalSpy(tree.groupMenuRequested)
+    tab_bar = tree.first_leaf.tabs.tabBar()
+    index = tree.first_leaf.index_of(views[1].view_id)
+    point = tab_bar.tabRect(index).center()
+
+    event = QContextMenuEvent(
+        QContextMenuEvent.Reason.Mouse, point, tab_bar.mapToGlobal(point)
+    )
+    tab_bar.contextMenuEvent(event)
+
+    assert spy.count() == 1
+    assert spy.at(0)[0] == views[1].view_id
+    assert isinstance(spy.at(0)[1], QPoint)
+
+
 def test_split_tree_round_trip_and_empty_leaf_collapse(qapp, three_views):
     _document, views = three_views
     tree = EditorPaneTree(pane_id="left")
