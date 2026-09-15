@@ -59,9 +59,26 @@ def _argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _is_program_name(argument: str) -> bool:
+    """Recognize argv[0] for every real launch shape.
+
+    `python -m uniti` — the production launch path via `bootstrap/cli.py`'s
+    `managed_command` — sets argv[0] to the resolved path of
+    `uniti/__main__.py`, not the string "uniti" or a path ending in
+    "/uniti"; failing to also recognize that left the module's own file
+    swept into the `files` positional argument, so UNITI opened its own
+    `__main__.py` as a document on every startup.
+    """
+
+    path = Path(argument)
+    if path.name in ("uniti", "uniti.exe"):
+        return True
+    return path.name == "__main__.py" and path.parent.name == "uniti"
+
+
 def parse_args(argv: list[str]) -> ApplicationRequest:
     arguments = list(argv)
-    if arguments and (arguments[0] == "uniti" or arguments[0].endswith("/uniti")):
+    if arguments and _is_program_name(arguments[0]):
         arguments = arguments[1:]
     namespace = _argument_parser().parse_args(arguments)
     if namespace.deep and not namespace.self_check:

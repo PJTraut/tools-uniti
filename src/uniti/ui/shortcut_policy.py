@@ -86,6 +86,7 @@ def _definitions() -> tuple[CommandDefinition, ...]:
     scope = CommandScope
     standard = QKeySequence.StandardKey
     records = (
+        ("file.new", "New", category.FILE, scope.WINDOW, standard.New),
         ("file.open", "Open…", category.FILE, scope.WINDOW, standard.Open),
         ("file.save", "Save", category.FILE, scope.WINDOW, standard.Save),
         ("file.save_as", "Save As…", category.FILE, scope.WINDOW, standard.SaveAs),
@@ -196,7 +197,7 @@ def _definitions() -> tuple[CommandDefinition, ...]:
             scope.FIND_REPLACE,
             "find.report_cycle",
         ),
-        ("window.new", "New Window", category.FILE, scope.WINDOW, (standard.New, "window.new")),
+        ("window.new", "New Window", category.FILE, scope.WINDOW, "window.new"),
         ("view.split_right", "Split Right", category.EDITOR_VIEW, scope.EDITOR, None),
         ("view.split_down", "Split Down", category.EDITOR_VIEW, scope.EDITOR, None),
         ("view.close_split", "Close Split", category.EDITOR_VIEW, scope.EDITOR, None),
@@ -212,6 +213,13 @@ def _definitions() -> tuple[CommandDefinition, ...]:
             "Attach/Detach Find & Replace",
             category.FIND_REPLACE_VIEW,
             scope.FIND_REPLACE,
+            None,
+        ),
+        (
+            "find.toggle_visibility",
+            "Show/Hide Find & Replace",
+            category.FIND_REPLACE,
+            scope.WINDOW,
             None,
         ),
     )

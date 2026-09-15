@@ -682,10 +682,28 @@ def test_restore_shell_then_active_document_round_trips_history_views_and_panel(
         find_replace_pack=loaded.find_replace_pack,
     )
 
+    from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+
     restored_window = service.windows.windows[0]
     assert service.window_count == 1
     assert restored_window.views == ()
-    assert restored_window.panes.export_state() == loaded.manifest.windows[0].root
+    # The manifest's find_replace record has placement="attached", so
+    # restore_shell attaches it immediately (service_controller.restore_shell)
+    # — it is now a real leaf inside the pane tree (see the Find/Replace
+    # pane-tree integration), splitting the window's single original leaf
+    # rather than leaving the tree exactly as captured.
+    restored_tree = restored_window.panes.export_state()
+    original_root = loaded.manifest.windows[0].root
+    assert restored_tree.kind == "split"
+    assert len(restored_tree.children) == 2
+    original_leaf, find_replace_leaf = (
+        (restored_tree.children[0], restored_tree.children[1])
+        if restored_tree.children[0].view_ids == original_root.view_ids
+        else (restored_tree.children[1], restored_tree.children[0])
+    )
+    assert original_leaf == original_root
+    assert find_replace_leaf.kind == "leaf"
+    assert find_replace_leaf.view_ids == (FIND_REPLACE_VIEW_ID,)
     assert service.documents.count == 0
     service.restore_active()
 
@@ -705,7 +723,14 @@ def test_restore_shell_then_active_document_round_trips_history_views_and_panel(
     assert service.find_replace.export_state("active-view").find == find_history
     assert service.find_replace.export_state("active-view").replace == replace_history
     assert service.find_replace.placement == "attached"
-    assert service.find_replace.parentWidget() is restored_window
+    assert service.find_replace._dock_host is restored_window
+    assert restored_window.panes.contains_view(FIND_REPLACE_VIEW_ID)
+
+    # The attached Find/Replace pane is not a session ``ViewRecord`` — it
+    # persists separately via the ``find_replace`` manifest field — so a
+    # fresh capture prunes its split back out of the persisted pane tree
+    # (mirrors ``EditorPaneTree.close_leaf``'s collapse); the captured root
+    # is therefore identical to the manifest's original single-leaf root.
     assert service.capture_session(clean_shutdown=True) == SessionSnapshot(
         loaded.manifest,
         loaded.packs,

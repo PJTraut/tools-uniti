@@ -89,11 +89,14 @@ def test_saved_eol_refreshes_every_window(workspace, tmp_path, monkeypatch, sour
     app.processEvents()
     window.set_output_eol(target)
     app.processEvents()
+    expected = b"one" + ending + b"two" + ending
+    # BF-023: choosing a target EOL converts every shared view's live
+    # content immediately; only the on-disk bytes remain the pre-save
+    # source until an actual save happens.
     assert path.read_bytes() == source
-    assert view.document.read(0, len(source)).encode() == source
-    before = ["LF", "CRLF"] if kind == "Mixed" else [kind, kind]
+    assert view.document.read(0, len(expected)).encode() == expected
     for _, candidate in pairs:
-        assert _labels(app, monkeypatch, candidate) == before
+        assert _labels(app, monkeypatch, candidate) == [target, target]
     if progressive:
         handle = window.start_save_current()
         assert handle is not None
@@ -101,7 +104,6 @@ def test_saved_eol_refreshes_every_window(workspace, tmp_path, monkeypatch, sour
     else:
         assert window.save_current() == path
     app.processEvents()
-    expected = b"one" + ending + b"two" + ending
     assert path.read_bytes() == expected
     with Document.open(path, encoding="utf-8") as reopened:
         assert reopened.read(0, len(expected)).encode() == expected
@@ -112,7 +114,12 @@ def test_saved_eol_refreshes_every_window(workspace, tmp_path, monkeypatch, sour
         assert id(candidate) not in owner._eol_dialogs
 
 
-def test_pending_conversion_and_keep_source_are_explicit_in_every_window(workspace, tmp_path, monkeypatch):
+def test_eol_conversion_is_reflected_immediately_not_only_on_save(
+    workspace, tmp_path, monkeypatch
+):
+    # BF-023: choosing an EOL target changes the live document (and its
+    # status text) right away — there is no more save-time-only "pending"
+    # state for EOL; only encoding conversions still defer to save.
     app, service = workspace
     path = tmp_path / "pending.txt"
     path.write_bytes(b"one\ntwo\n")
@@ -120,18 +127,38 @@ def test_pending_conversion_and_keep_source_are_explicit_in_every_window(workspa
     pairs[0][0].set_output_eol("CRLF")
     app.processEvents()
     for owner, view in pairs:
-        assert owner._status.format_label.text() == "UTF-8, LF (on save: UTF-8, CRLF)"
-        assert _labels(app, monkeypatch, view) == ["LF", "LF"]
-    pairs[0][0].set_output_eol(None)
-    app.processEvents()
-    for owner, view in pairs:
-        assert owner._status.format_label.text() == "UTF-8, LF"
+        assert owner._status.format_label.text() == "UTF-8, CRLF"
+        assert _labels(app, monkeypatch, view) == ["CRLF", "CRLF"]
+        assert view.document.modified
     assert pairs[0][0].save_current() == path
+    assert path.read_bytes() == b"one\r\ntwo\r\n"
+
+
+def test_keep_source_before_any_conversion_leaves_the_document_untouched(
+    workspace, tmp_path, monkeypatch
+):
+    app, service = workspace
+    path = tmp_path / "keep-source.txt"
+    path.write_bytes(b"one\ntwo\n")
+    pairs = _shared_views(service, path)
+    window, view = pairs[0]
+    window.set_output_eol(None)
+    app.processEvents()
+    for owner, candidate in pairs:
+        assert owner._status.format_label.text() == "UTF-8, LF"
+        assert not candidate.document.modified
+    assert window.save_current() == path
     assert path.read_bytes() == b"one\ntwo\n"
 
 
 @pytest.mark.parametrize("cancel", [False, True])
-def test_unsuccessful_save_keeps_source_markers_and_pending_target(workspace, tmp_path, monkeypatch, cancel):
+def test_unsuccessful_save_does_not_revert_the_already_converted_document(
+    workspace, tmp_path, monkeypatch, cancel
+):
+    # BF-023: the conversion is a normal in-memory edit that already
+    # happened before the save was ever attempted, so a failed or
+    # cancelled save leaves it exactly as converted — there is no
+    # separate "pending target" left to revert to.
     import uniti.ui.file_operations as operations
 
     app, service = workspace
@@ -160,18 +187,19 @@ def test_unsuccessful_save_keeps_source_markers_and_pending_target(workspace, tm
     assert path.read_bytes() == b"one\ntwo\n"
     for owner, candidate in pairs:
         assert candidate.document.modified
-        assert _labels(app, monkeypatch, candidate) == ["LF", "LF"]
-        assert owner._status.format_label.text() == "UTF-8, LF (on save: UTF-8, CRLF)"
+        assert _labels(app, monkeypatch, candidate) == ["CRLF", "CRLF"]
+        assert owner._status.format_label.text() == "UTF-8, CRLF"
 
 
-def test_keep_source_preserves_mixed_bytes_and_reports(workspace, tmp_path, monkeypatch):
+def test_keep_source_on_a_mixed_document_preserves_its_original_bytes(
+    workspace, tmp_path, monkeypatch
+):
     app, service = workspace
     path = tmp_path / "mixed.txt"
     original = b"one\ntwo\r\n"
     path.write_bytes(original)
     pairs = _shared_views(service, path)
     window, _ = pairs[0]
-    window.set_output_eol("CR")
     window.set_output_eol(None)
     assert window.save_current() == path
     app.processEvents()

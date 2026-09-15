@@ -158,6 +158,44 @@ def test_search_start_is_honored_across_tiny_windows(tmp_path: Path):
     assert [record.span for record in results] == [(4, 7), (8, 11)]
 
 
+def test_search_end_excludes_matches_at_or_after_it(tmp_path: Path):
+    path = tmp_path / "end-offset.txt"
+    path.write_text("one one one", encoding="utf-8")
+    with Document.open(path) as document:
+        bounded = list(
+            search_document(
+                document,
+                compile_pattern(r"one"),
+                options=SearchOptions(end=7),
+            )
+        )
+        exact_boundary = list(
+            search_document(
+                document,
+                compile_pattern(r"one"),
+                options=SearchOptions(end=11),
+            )
+        )
+
+    assert [record.span for record in bounded] == [(0, 3), (4, 7)]
+    assert [record.span for record in exact_boundary] == [(0, 3), (4, 7), (8, 11)]
+
+
+def test_search_start_and_end_together_bound_a_selection_region(tmp_path: Path):
+    path = tmp_path / "region.txt"
+    path.write_text("one one one", encoding="utf-8")
+    with Document.open(path) as document:
+        results = list(
+            search_document(
+                document,
+                compile_pattern(r"one"),
+                options=SearchOptions(start=4, end=7, window_chars=1),
+            )
+        )
+
+    assert [record.span for record in results] == [(4, 7)]
+
+
 def test_search_can_cancel_before_engine_work(tmp_path: Path):
     path = tmp_path / "cancel.txt"
     path.write_text("abc" * 1000, encoding="utf-8")

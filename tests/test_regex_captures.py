@@ -45,6 +45,86 @@ def _request(
     )
 
 
+def test_capture_report_includes_replacement_preview_when_requested(
+    tmp_path: Path,
+):
+    path = tmp_path / "preview.txt"
+    path.write_text("alpha beta", encoding="utf-8")
+    pattern = r"(?P<first>\w+) (?P<second>\w+)"
+    with Document.open(path) as document:
+        compiled = compile_pattern(pattern)
+        [record] = list(
+            search_document(
+                document,
+                compiled,
+                options=SearchOptions(include_captures=False),
+            )
+        )
+        request = _request(document, ((0, record),), pattern_text=pattern)
+        with document.snapshot() as snapshot:
+            with_preview = resolve_capture_report(
+                snapshot, compiled, request, replacement=r"\2 \1"
+            )
+            without_preview = resolve_capture_report(snapshot, compiled, request)
+
+    assert with_preview.matches[0].replacement_preview == "beta alpha"
+    assert without_preview.matches[0].replacement_preview is None
+
+
+def test_capture_report_tracks_which_preview_spans_came_from_which_group(
+    tmp_path: Path,
+):
+    # BF-052 item 5: the Match Report colors a replacement preview's
+    # substituted portions using the source group's own color — this
+    # requires knowing exactly which spans in the expanded preview text
+    # came from which capturing group.
+    path = tmp_path / "preview-spans.txt"
+    path.write_text("alpha beta", encoding="utf-8")
+    pattern = r"(?P<first>\w+) (?P<second>\w+)"
+    with Document.open(path) as document:
+        compiled = compile_pattern(pattern)
+        [record] = list(
+            search_document(
+                document,
+                compiled,
+                options=SearchOptions(include_captures=False),
+            )
+        )
+        request = _request(document, ((0, record),), pattern_text=pattern)
+        with document.snapshot() as snapshot:
+            report = resolve_capture_report(
+                snapshot, compiled, request, replacement=r"X-\2-\1-Y"
+            )
+
+    match = report.matches[0]
+    assert match.replacement_preview == "X-beta-alpha-Y"
+    assert match.replacement_preview_group_spans == ((2, 6, 2), (7, 12, 1))
+
+
+def test_capture_report_replacement_preview_falls_back_to_none_on_invalid_group(
+    tmp_path: Path,
+):
+    path = tmp_path / "preview-invalid.txt"
+    path.write_text("alpha", encoding="utf-8")
+    pattern = r"(?P<only>\w+)"
+    with Document.open(path) as document:
+        compiled = compile_pattern(pattern)
+        [record] = list(
+            search_document(
+                document,
+                compiled,
+                options=SearchOptions(include_captures=False),
+            )
+        )
+        request = _request(document, ((0, record),), pattern_text=pattern)
+        with document.snapshot() as snapshot:
+            report = resolve_capture_report(
+                snapshot, compiled, request, replacement=r"\9"
+            )
+
+    assert report.matches[0].replacement_preview is None
+
+
 def test_capture_report_distinguishes_unmatched_empty_and_repeated(
     tmp_path: Path,
 ):

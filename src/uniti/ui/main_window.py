@@ -6,7 +6,10 @@ from collections.abc import Mapping
 from concurrent.futures import Future
 from dataclasses import dataclass, replace as dataclass_replace
 from pathlib import Path
+import re
+import shutil
 import sys
+import tempfile
 import time
 from typing import TYPE_CHECKING
 import uuid
@@ -48,13 +51,19 @@ from uniti.app.editor_state import EditorState
 from uniti.app.platform_policy import native_paths_equal, normalize_native_path
 from uniti.app.recovery_manager import RecoveryHealth, RecoveryManager
 from uniti.app.session import MAX_VIEWS
-from uniti.app.settings import Settings, SettingsStore
+from uniti.app.settings import (
+    MAX_EDITOR_TAB_WIDTH,
+    MIN_EDITOR_TAB_WIDTH,
+    Settings,
+    SettingsStore,
+)
 from uniti.app.window_manager import ViewLocation
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.durability import DurabilityLevel
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
+from uniti.core.syntax_profiles import profile_for_extension
 from uniti.core.index_jobs import (
     LineNavigationResult,
     build_line_index_batch,
@@ -68,6 +77,7 @@ from uniti.core.text_format import (
     encoding_profiles,
     profile_from_codec,
 )
+from uniti.regex.replace import convert_document_eol, convert_document_tabs_to_spaces
 from uniti.core.text_inspection import (
     TextFileInspection,
     inspect_source,
@@ -92,7 +102,7 @@ from uniti.ui.file_format_dialogs import (
     SaveAsFormatDialog,
 )
 from uniti.ui.file_operations import FileOperationController, FileOperationHandle
-from uniti.ui.find_replace import FindReplaceWindow
+from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID, FindReplaceWindow
 from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.panes import EditorPaneTree
 from uniti.ui.shortcut_policy import build_shortcut_policy
@@ -148,6 +158,20 @@ class _SaveJob:
     output_format: OutputFormat
     target_view_ref: weakref.ReferenceType | None
     target_document: Document | None
+
+
+def _convert_and_set_output_eol(document: Document, eol: str | None) -> None:
+    """Apply an EOL choice to a document's live content immediately (BF-023),
+    then record it as the output policy too — shared by the Editor View menu
+    (`UNITIMainWindow.set_output_eol`) and the mixed-EOL-on-open dialog
+    (`_show_mixed_eol_report`), so both surfaces for choosing a document's
+    EOL behave identically rather than one converting live and the other
+    only deferring to save."""
+
+    if eol is not None:
+        convert_document_eol(document, eol)
+        document.set_insertion_eol(eol)
+    document.set_output_eol(eol)
 
 
 class UNITIMainWindow(QMainWindow):
@@ -283,6 +307,7 @@ class UNITIMainWindow(QMainWindow):
         ):
             field.installEventFilter(self)
             field.viewport().installEventFilter(self)
+        self._find_replace.matchPositionChanged.connect(self._on_match_position_changed)
         if service is None:
             self._find_replace.hide()
             self._find_replace.set_zoom_percent(
@@ -587,6 +612,47 @@ class UNITIMainWindow(QMainWindow):
                 view.set_whitespace_mode(selected)
         self._save_settings()
 
+    def set_tab_width(self, width: int) -> None:
+        width = max(
+            MIN_EDITOR_TAB_WIDTH, min(MAX_EDITOR_TAB_WIDTH, int(width))
+        )
+        for window in self._appearance_windows():
+            action = getattr(window, "_tab_width_actions", {}).get(width)
+            if action is not None:
+                action.setChecked(True)
+            window._settings = dataclass_replace(
+                window._settings,
+                editor_tab_width=width,
+            )
+            for view in window.views:
+                view.set_tab_width(width)
+        self._save_settings()
+
+    def _prompt_custom_tab_width(self) -> None:
+        width, accepted = QInputDialog.getInt(
+            self,
+            "Tab Width",
+            "Spaces per tab:",
+            self._settings.editor_tab_width,
+            MIN_EDITOR_TAB_WIDTH,
+            MAX_EDITOR_TAB_WIDTH,
+        )
+        if accepted:
+            self.set_tab_width(width)
+        else:
+            # Restore the checked preset/custom action to match the
+            # unchanged setting — the exclusive group already flipped to
+            # "Custom…" when this action was triggered.
+            action = self._tab_width_actions.get(self._settings.editor_tab_width)
+            (action or self._custom_tab_width_action).setChecked(True)
+
+    def convert_tabs_to_spaces(self) -> None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        convert_document_tabs_to_spaces(view.document, self._settings.editor_tab_width)
+        self._on_view_state_changed(view)
+
     def _on_command_binding_changed(self, command_id: str, shortcut: str) -> None:
         sequence = QKeySequence.fromString(
             shortcut,
@@ -679,7 +745,11 @@ class UNITIMainWindow(QMainWindow):
 
     @property
     def view_ids(self) -> tuple[str, ...]:
-        return self._panes.view_ids
+        return tuple(
+            view_id
+            for view_id in self._panes.view_ids
+            if view_id != FIND_REPLACE_VIEW_ID
+        )
 
     @property
     def active_view_id(self) -> str | None:
@@ -696,6 +766,14 @@ class UNITIMainWindow(QMainWindow):
     def _contains_view(self, view: UNITITextView) -> bool:
         return self.view_for_id(view.view_id) is view
 
+    def _on_match_position_changed(self, view_id: str, text: str | None) -> None:
+        if self.view_for_id(view_id) is None:
+            return
+        if text is None:
+            self._status.clear_match_position()
+        else:
+            self._status.update_match_position(text)
+
     def _select_view(self, view: UNITITextView) -> None:
         if not self._contains_view(view):
             raise ValueError("view does not belong to this window")
@@ -708,7 +786,11 @@ class UNITIMainWindow(QMainWindow):
             self._service.set_active_view(self.window_id, self.active_view_id)
 
     def _on_pane_view_selected(self, view_id: str) -> None:
-        if self._service is not None and self.view_for_id(view_id) is None:
+        if (
+            self._service is not None
+            and view_id != FIND_REPLACE_VIEW_ID
+            and self.view_for_id(view_id) is None
+        ):
             self._service.promote_restore(view_id)
 
     def _action(self, text: str, shortcut, handler) -> QAction:
@@ -746,6 +828,7 @@ class UNITIMainWindow(QMainWindow):
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
+        file_menu.addAction(self._command_action("file.new", self.new_file))
         file_menu.addAction(
             self._command_action("window.new", self.new_window)
         )
@@ -775,35 +858,46 @@ class UNITIMainWindow(QMainWindow):
         )
 
         edit_menu.addSeparator()
-        navigation_menu = edit_menu.addMenu("&Navigation")
-        navigation_menu.addAction(
+        edit_menu.addAction(
+            self._command_action("find.open", self.toggle_find_replace_visibility)
+        )
+        edit_menu.addAction(self._command_action("find.replace", self.show_replace))
+        edit_menu.addAction(
+            self._command_action("find.next", self._find_replace.next_match)
+        )
+        edit_menu.addAction(
+            self._command_action("find.previous", self._find_replace.previous_match)
+        )
+
+        edit_menu.addSeparator()
+        edit_menu.addAction(
             self._command_action("navigation.go_to_line", self.go_to_line_dialog)
         )
-        navigation_menu.addAction(
+        edit_menu.addAction(
             self._command_action("navigation.page_up", lambda: self._move_page(-1))
         )
-        navigation_menu.addAction(
+        edit_menu.addAction(
             self._command_action("navigation.page_down", lambda: self._move_page(1))
         )
-        navigation_menu.addAction(
+        edit_menu.addAction(
             self._command_action(
                 "navigation.document_start",
                 lambda: self._move_editor("move_document_start"),
             )
         )
-        navigation_menu.addAction(
+        edit_menu.addAction(
             self._command_action(
                 "navigation.document_end",
                 lambda: self._move_editor("move_document_end"),
             )
         )
-        navigation_menu.addAction(
+        edit_menu.addAction(
             self._command_action(
                 "navigation.word_left",
                 lambda: self._move_editor("move_word_left"),
             )
         )
-        navigation_menu.addAction(
+        edit_menu.addAction(
             self._command_action(
                 "navigation.word_right",
                 lambda: self._move_editor("move_word_right"),
@@ -811,9 +905,8 @@ class UNITIMainWindow(QMainWindow):
         )
 
         format_menu = self.menuBar().addMenu("F&ormat")
-        encoding_menu = format_menu.addMenu("&Encoding")
-        reinterpret_menu = encoding_menu.addMenu("Reinterpret As")
-        convert_menu = encoding_menu.addMenu("Convert on Save")
+        reinterpret_menu = format_menu.addMenu("Reinterpret As")
+        convert_menu = format_menu.addMenu("Convert on Save")
         for profile in encoding_profiles():
             reinterpret_menu.addAction(
                 self._action(
@@ -830,12 +923,12 @@ class UNITIMainWindow(QMainWindow):
                 )
             )
 
-        eol_menu = format_menu.addMenu("&Line Endings")
-        eol_menu.addAction(
+        format_menu.addSeparator()
+        format_menu.addAction(
             self._action("Keep Source", None, lambda: self.set_output_eol(None))
         )
         for eol in ("LF", "CRLF", "CR"):
-            eol_menu.addAction(
+            format_menu.addAction(
                 self._action(eol, None, lambda eol=eol: self.set_output_eol(eol))
             )
 
@@ -862,14 +955,14 @@ class UNITIMainWindow(QMainWindow):
         theme_menu.addAction(self._high_contrast_action)
         view_menu.addAction("Document Groups…", self.show_document_group_editor)
 
-        editor_view_menu = view_menu.addMenu("&Editor View")
-        editor_view_menu.addAction(
+        view_menu.addSeparator()
+        view_menu.addAction(
             self._command_action("editor.zoom_in", self.zoom_in_editor)
         )
-        editor_view_menu.addAction(
+        view_menu.addAction(
             self._command_action("editor.zoom_out", self.zoom_out_editor)
         )
-        editor_view_menu.addAction(
+        view_menu.addAction(
             self._command_action("editor.zoom_reset", self.reset_editor_zoom)
         )
         self._wrap_action = self._command_action(
@@ -878,8 +971,8 @@ class UNITIMainWindow(QMainWindow):
             checkable=True,
         )
         self._wrap_action.setChecked(self._settings.soft_wrap)
-        editor_view_menu.addAction(self._wrap_action)
-        whitespace_menu = editor_view_menu.addMenu("Whitespace")
+        view_menu.addAction(self._wrap_action)
+        whitespace_menu = view_menu.addMenu("Whitespace")
         whitespace_group = QActionGroup(self)
         whitespace_group.setExclusive(True)
         whitespace_labels = {
@@ -904,6 +997,34 @@ class UNITIMainWindow(QMainWindow):
             whitespace_menu.addAction(action)
             self._whitespace_actions[mode] = action
         self._whitespace_group = whitespace_group
+        tab_width_menu = view_menu.addMenu("Tab Width")
+        tab_width_group = QActionGroup(self)
+        tab_width_group.setExclusive(True)
+        self._tab_width_actions: dict[int, QAction] = {}
+        for width in (2, 4, 8):
+            action = QAction(str(width), self)
+            action.setCheckable(True)
+            action.setChecked(width == self._settings.editor_tab_width)
+            action.triggered.connect(
+                lambda _checked=False, width=width: self.set_tab_width(width)
+            )
+            tab_width_group.addAction(action)
+            tab_width_menu.addAction(action)
+            self._tab_width_actions[width] = action
+        tab_width_menu.addSeparator()
+        custom_tab_width_action = QAction("Custom…", self)
+        custom_tab_width_action.setCheckable(True)
+        custom_tab_width_action.setChecked(
+            self._settings.editor_tab_width not in self._tab_width_actions
+        )
+        custom_tab_width_action.triggered.connect(self._prompt_custom_tab_width)
+        tab_width_group.addAction(custom_tab_width_action)
+        tab_width_menu.addAction(custom_tab_width_action)
+        self._custom_tab_width_action = custom_tab_width_action
+        self._tab_width_group = tab_width_group
+        view_menu.addAction(
+            "Convert Tabs to Spaces", self.convert_tabs_to_spaces
+        )
         self._pause_background_action = self._command_action(
             "view.pause_background",
             lambda: self.set_pause_background(
@@ -914,57 +1035,45 @@ class UNITIMainWindow(QMainWindow):
         self._pause_background_action.setChecked(
             self._resources.tasks.snapshot().background_paused
         )
-        editor_view_menu.addAction(self._pause_background_action)
-        editor_view_menu.addSeparator()
-        editor_view_menu.addAction(
+        view_menu.addAction(self._pause_background_action)
+        view_menu.addSeparator()
+        view_menu.addAction(
             self._command_action("view.split_right", self.split_right)
         )
-        editor_view_menu.addAction(
+        view_menu.addAction(
             self._command_action("view.split_down", self.split_down)
         )
-        editor_view_menu.addAction(
+        view_menu.addAction(
             self._command_action("view.close_split", self.close_current_split)
         )
-        editor_view_menu.addAction(
+        view_menu.addAction(
             self._command_action(
                 "view.move_new_window",
                 self.move_current_to_new_window,
             )
         )
 
-        find_view_menu = view_menu.addMenu("F/R &View")
-        find_view_menu.addAction(
+        view_menu.addSeparator()
+        view_menu.addAction(
             self._command_action(
                 "find.toggle_attachment",
                 self.toggle_find_replace_attachment,
             )
         )
-        find_view_menu.addSeparator()
-        find_view_menu.addAction(
+        view_menu.addAction(
             self._command_action("find.zoom_in", self._find_replace.zoom_in)
         )
-        find_view_menu.addAction(
+        view_menu.addAction(
             self._command_action("find.zoom_out", self._find_replace.zoom_out)
         )
-        find_view_menu.addAction(
+        view_menu.addAction(
             self._command_action("find.zoom_reset", self._find_replace.reset_zoom)
         )
-        find_view_menu.addSeparator()
-        find_view_menu.addAction(
+        view_menu.addAction(
             self._command_action(
                 "find.report_cycle",
                 self._find_replace.toggle_report,
             )
-        )
-
-        find_menu = self.menuBar().addMenu("&Find")
-        find_menu.addAction(self._command_action("find.open", self.show_find))
-        find_menu.addAction(self._command_action("find.replace", self.show_replace))
-        find_menu.addAction(
-            self._command_action("find.next", self._find_replace.next_match)
-        )
-        find_menu.addAction(
-            self._command_action("find.previous", self._find_replace.previous_match)
         )
 
         tools_menu = self.menuBar().addMenu("&Tools")
@@ -1027,6 +1136,67 @@ class UNITIMainWindow(QMainWindow):
         window = self._service.new_window()
         window.show()
         return window
+
+    _UNTITLED_NAME_PATTERN = re.compile(r"^Untitled(?: (\d+))?\.txt$")
+
+    def _next_untitled_name(self) -> str:
+        used = set()
+        if self._service is not None:
+            for entry in self._service.documents.entries:
+                if not entry.is_untitled:
+                    continue
+                match = self._UNTITLED_NAME_PATTERN.match(entry.document.path.name)
+                if match:
+                    used.add(int(match.group(1) or "1"))
+        number = 1
+        while number in used:
+            number += 1
+        return "Untitled.txt" if number == 1 else f"Untitled {number}.txt"
+
+    def _is_untitled_view(self, view: UNITITextView) -> bool:
+        if self._service is None:
+            return False
+        entry = self._service.documents.entry_for_view(view.view_id)
+        return entry is not None and entry.is_untitled
+
+    def _save_as_initial_directory(self, view: UNITITextView) -> Path:
+        if not self._is_untitled_view(view):
+            return view.document.path.parent
+        return Path(self._settings.last_directory or Path.home())
+
+    def new_file(self) -> None:
+        """Open a new, unsaved plain-text document in this window (Ctrl/Cmd+N)."""
+
+        scratch_dir = Path(tempfile.mkdtemp(prefix="uniti-untitled-"))
+        path = scratch_dir / self._next_untitled_name()
+        try:
+            path.touch()
+            decision = self._inspect_open_path(path)
+            if decision is None:
+                shutil.rmtree(scratch_dir, ignore_errors=True)
+                return
+            selected, inspection = decision
+            document = Document.open(
+                path,
+                profile=selected,
+                resource_manager=self._resources,
+            )
+        except Exception:
+            shutil.rmtree(scratch_dir, ignore_errors=True)
+            raise
+        try:
+            self._add_document(
+                document,
+                attach_recovery=False,
+                initial_eol_report=inspection.eol,
+                initial_eol_complete=inspection.eol_complete,
+                observe_document_open=False,
+                is_untitled=True,
+            )
+        except Exception:
+            document.close()
+            shutil.rmtree(scratch_dir, ignore_errors=True)
+            raise
 
     def _quit_choice(self, entry):
         from uniti.app.service import QuitChoice
@@ -1123,6 +1293,28 @@ class UNITIMainWindow(QMainWindow):
             dock(view_id)
             return
         self._service.undock_view(view_id)
+
+    _EDITOR_CONTEXT_MENU_GROUPS = (
+        ("editing.undo", "editing.redo"),
+        ("editing.cut", "editing.copy", "editing.paste"),
+        ("editing.select_all",),
+        ("find.open", "find.replace"),
+        ("navigation.go_to_line",),
+    )
+
+    def _show_editor_context_menu(
+        self, view: UNITITextView, global_position: QPoint
+    ) -> None:
+        if not view.isEnabled():
+            return
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        for group in self._EDITOR_CONTEXT_MENU_GROUPS:
+            if menu.actions():
+                menu.addSeparator()
+            for command_id in group:
+                menu.addAction(self._command_actions[command_id])
+        menu.popup(global_position)
 
     def _show_assignment_menu(self, pane_id: str, position: QPoint) -> None:
         if self._service is None:
@@ -1441,6 +1633,11 @@ class UNITIMainWindow(QMainWindow):
                 selecting,
             )
         )
+        view.contextMenuRequested.connect(
+            lambda global_position, view=view: self._show_editor_context_menu(
+                view, global_position
+            )
+        )
         for definition in self._command_registry.definitions():
             if definition.scope == CommandScope.EDITOR:
                 view.addAction(self._command_actions[definition.command_id])
@@ -1485,19 +1682,22 @@ class UNITIMainWindow(QMainWindow):
         restore_record=None,
         select: bool = True,
         observe_document_open: bool = True,
+        is_untitled: bool = False,
     ) -> UNITITextView:
         entry = None
         adopted = False
         if self._service is not None:
             entry = self._service.documents.find_path(document.path)
             if entry is None:
-                entry = self._service.documents.adopt(document)
+                entry = self._service.documents.adopt(
+                    document, is_untitled=is_untitled
+                )
                 adopted = True
             elif entry.document is not document:
                 raise ValueError("document path already has another authority")
             if adopted and attach_recovery and self._recovery_manager is not None:
                 self._recovery_manager.attach(document)
-            if adopted:
+            if adopted and not is_untitled:
                 self._service.track_document(
                     entry,
                     observe_open=observe_document_open,
@@ -1509,6 +1709,12 @@ class UNITIMainWindow(QMainWindow):
         view.set_zoom_percent(self._settings.editor_zoom_percent)
         view.set_soft_wrap(self._settings.soft_wrap)
         view.set_whitespace_mode(self._settings.whitespace_mode)
+        view.set_tab_width(self._settings.editor_tab_width)
+        view.set_syntax_profile(
+            profile_for_extension(
+                document.path.suffix, self._settings.syntax_extension_overrides
+            )
+        )
         app = QApplication.instance()
         if isinstance(app, QApplication):
             view.set_theme_tokens(active_theme(app).editor)
@@ -1712,8 +1918,13 @@ class UNITIMainWindow(QMainWindow):
         for widget in self.views:
             widget.document.set_resource_active(widget is view)
         if view is None:
-            self._status.clear_document()
-            self.setWindowTitle("UNITI")
+            # The active pane may be a non-document view (e.g. the attached
+            # Find/Replace pane) while other document tabs are still open
+            # elsewhere in this window; only reset to the empty-window
+            # title/status when no documents remain at all.
+            if not self.views:
+                self._status.clear_document()
+                self.setWindowTitle("UNITI")
             return
         self._set_status_document(view)
         line = view.document.line_for_char(view.state.cursor)
@@ -1800,8 +2011,8 @@ class UNITIMainWindow(QMainWindow):
         def apply_policy(policy: EOLPolicy) -> None:
             if not self._contains_view(view):
                 return
-            current = view.document.output_format
-            view.document.set_output_format(OutputFormat(current.encoding, policy))
+            eol = None if policy is EOLPolicy.PRESERVE else policy.value
+            _convert_and_set_output_eol(view.document, eol)
             self._on_view_state_changed(view)
 
         dialog.policySelected.connect(apply_policy)
@@ -1855,7 +2066,7 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is None or not view.isEnabled():
             return
-        view.document.set_output_eol(eol)
+        _convert_and_set_output_eol(view.document, eol)
         self._on_view_state_changed(view)
 
     @staticmethod
@@ -2100,6 +2311,7 @@ class UNITIMainWindow(QMainWindow):
         *,
         initial_eol_report: EOLReport | None = None,
         initial_eol_complete: bool = True,
+        allow_path_change: bool = False,
     ) -> None:
         old_document = view.document
         if self._service is not None:
@@ -2126,6 +2338,7 @@ class UNITIMainWindow(QMainWindow):
             self._service.documents.replace_document(
                 entry.document_id,
                 replacement,
+                allow_path_change=allow_path_change,
             )
             self._service.track_document(entry)
             if initial_eol_report is not None:
@@ -2477,16 +2690,21 @@ class UNITIMainWindow(QMainWindow):
             except Exception:
                 document.close()
                 raise
+        was_untitled = self._is_untitled_view(existing_view)
+        old_scratch_dir = existing_view.document.path.parent if was_untitled else None
         try:
             self._replace_view_document(
                 existing_view,
                 document,
                 initial_eol_report=inspection.eol,
                 initial_eol_complete=inspection.eol_complete,
+                allow_path_change=was_untitled,
             )
         except Exception:
             document.close()
             raise
+        if old_scratch_dir is not None:
+            shutil.rmtree(old_scratch_dir, ignore_errors=True)
         owner = (
             self._service.windows.window_for_view(existing_view.view_id)
             if self._service is not None
@@ -2509,7 +2727,7 @@ class UNITIMainWindow(QMainWindow):
 
         if destination is None:
             dialog = SaveAsFormatDialog(
-                initial_directory=view.document.path.parent,
+                initial_directory=self._save_as_initial_directory(view),
                 initial_name=view.document.path.name,
                 initial_format=selected,
                 parent=self,
@@ -2641,6 +2859,8 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is None or not view.isEnabled():
             return None
+        if self._is_untitled_view(view):
+            return self.start_save_current_as()
         selected = view.document.output_format
         if not self._confirm_encoding_change(
             view.document.path,
@@ -2728,6 +2948,8 @@ class UNITIMainWindow(QMainWindow):
                     if job.target_view_ref is None
                     else job.target_view_ref()
                 )
+                if target_view is None and self._is_untitled_view(view):
+                    target_view = view
                 self._open_verified_export(
                     result,
                     job.output_format,
@@ -2768,6 +2990,8 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is None or not view.isEnabled():
             return None
+        if self._is_untitled_view(view):
+            return self.save_current_as()
         selected = view.document.output_format
         if not self._confirm_encoding_change(
             view.document.path,
@@ -2798,7 +3022,7 @@ class UNITIMainWindow(QMainWindow):
 
         if destination is None:
             dialog = SaveAsFormatDialog(
-                initial_directory=view.document.path.parent,
+                initial_directory=self._save_as_initial_directory(view),
                 initial_name=view.document.path.name,
                 initial_format=selected,
                 parent=self,
@@ -2894,6 +3118,8 @@ class UNITIMainWindow(QMainWindow):
         except Exception as exc:
             self._show_save_error(exc)
             return None
+        if target_view is None and self._is_untitled_view(view):
+            target_view = view
         try:
             self._open_verified_export(
                 result,
@@ -2967,6 +3193,7 @@ class UNITIMainWindow(QMainWindow):
     def _confirm_close(self, view: UNITITextView) -> bool:
         if not view.document.modified:
             return True
+        untitled = self._is_untitled_view(view)
         result = QMessageBox.warning(
             self,
             "Unsaved UNITI Document",
@@ -2979,15 +3206,23 @@ class UNITIMainWindow(QMainWindow):
         if result == QMessageBox.StandardButton.Cancel:
             return False
         if result == QMessageBox.StandardButton.Save:
-            try:
-                view.document.save()
-            except Exception as exc:
-                self._show_save_error(exc)
-                return False
+            if untitled:
+                self._select_view(view)
+                if self.save_current_as() is None:
+                    return False
+            else:
+                try:
+                    view.document.save()
+                except Exception as exc:
+                    self._show_save_error(exc)
+                    return False
         return True
 
     def _close_tab(self, index: int, *, force: bool = False) -> bool:
         widget = self._tabs.widget(index)
+        if widget is self._find_replace.content:
+            self._find_replace.close_attached_tab()
+            return True
         if not isinstance(widget, UNITITextView):
             return True
         if self._service is not None:
@@ -3068,6 +3303,9 @@ class UNITIMainWindow(QMainWindow):
         return True
 
     def _close_view_id(self, view_id: str, *, force: bool = False) -> bool:
+        if view_id == FIND_REPLACE_VIEW_ID:
+            self._find_replace.close_attached_tab()
+            return True
         view = self.view_for_id(view_id)
         return view is None or self._close_service_view(view, force=force)
 
@@ -3084,8 +3322,13 @@ class UNITIMainWindow(QMainWindow):
                     return False
             return True
         while self._tabs.count():
-            if not self._close_tab(self._tabs.count() - 1, force=force):
+            before = self._tabs.count()
+            if not self._close_tab(before - 1, force=force):
                 return False
+            if self._tabs.count() >= before:
+                raise RuntimeError(
+                    "close_all_documents made no progress on a tab it could not close"
+                )
         return True
 
     def show_find(self) -> None:
@@ -3108,13 +3351,28 @@ class UNITIMainWindow(QMainWindow):
         else:
             self._find_replace.attach_to(self)
 
+    def toggle_find_replace_visibility(self) -> None:
+        if self._service is not None:
+            self._service.toggle_find_replace_visibility()
+            return
+        panel = self._find_replace
+        if panel.is_visible():
+            if panel.placement == "attached":
+                panel.close_attached_tab()
+            else:
+                panel.reject()
+        else:
+            if panel.placement == "attached":
+                # Standalone mode has no service-level `_sync_find_replace_host`
+                # to re-insert a closed attached tab before `focus_find`'s
+                # `_reveal()` looks for it; do that step directly here.
+                panel.attach_to(self)
+            self.show_find()
+
     def host_find_replace(self, panel: FindReplaceWindow) -> None:
         if not isinstance(panel, FindReplaceWindow):
             raise TypeError("panel must be a FindReplaceWindow")
-        was_visible = not panel.isHidden()
         panel.attach_to(self)
-        if was_visible:
-            panel.show()
 
     def release_find_replace(self, panel: FindReplaceWindow) -> None:
         if not isinstance(panel, FindReplaceWindow):

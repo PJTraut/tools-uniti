@@ -354,9 +354,12 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         first_service.set_active_view(window.window_id, view.view_id)
         first_service.attach_find_replace()
         app.processEvents()
+        from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+
         find_replace_attached = (
             panel.placement == "attached"
-            and panel.parentWidget() is window
+            and panel._dock_host is window
+            and window.panes.contains_view(FIND_REPLACE_VIEW_ID)
         )
 
         follow_window = first_service.new_window()
@@ -365,7 +368,8 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
         find_replace_followed_window = (
             first_service.find_replace is panel
             and panel.placement == "attached"
-            and panel.parentWidget() is follow_window
+            and panel._dock_host is follow_window
+            and follow_window.panes.contains_view(FIND_REPLACE_VIEW_ID)
         )
         first_service.detach_find_replace()
         app.processEvents()

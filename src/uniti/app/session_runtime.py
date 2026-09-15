@@ -354,6 +354,12 @@ def _filter_pane_views(
     pane: PaneRecord,
     retained_view_ids: frozenset[str],
 ) -> PaneRecord:
+    """Strip un-restorable views (e.g. an unbound Find/Replace pane, which
+    is not a session ``ViewRecord`` — it persists separately via the
+    ``find_replace`` manifest field) from a captured pane tree, collapsing
+    any split whose child becomes an empty leaf as a result — mirrors
+    ``EditorPaneTree.close_leaf``'s collapse, but on the immutable record."""
+
     if pane.kind == "leaf":
         view_ids = tuple(
             view_id for view_id in pane.view_ids if view_id in retained_view_ids
@@ -367,6 +373,21 @@ def _filter_pane_views(
     children = tuple(
         _filter_pane_views(child, retained_view_ids) for child in pane.children
     )
+    non_empty = tuple(
+        child for child in children if child.kind != "leaf" or child.view_ids
+    )
+    if len(non_empty) == 1:
+        return non_empty[0]
+    if not non_empty:
+        return replace(
+            pane,
+            kind="leaf",
+            orientation=None,
+            proportions=None,
+            children=(),
+            view_ids=(),
+            selected_view_id=None,
+        )
     return replace(pane, children=children)
 
 

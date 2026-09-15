@@ -9,7 +9,7 @@ import math
 import uuid
 import weakref
 
-from PySide6.QtCore import QPointF, QRectF, Qt, Signal, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal, QTimer
 from PySide6.QtGui import (
     QFont,
     QFontMetrics,
@@ -27,8 +27,10 @@ from PySide6.QtWidgets import QAbstractScrollArea, QApplication, QFrame
 
 from uniti.app.editor_state import EditorState, EditorStateSnapshot
 from uniti.app.session import DockReturnRecord, ViewRecord
+from uniti.core.syntax_profiles import PLAIN_TEXT, SyntaxProfile
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
+from uniti.ui.syntax_theme import syntax_category_palette
 from uniti.ui.theme import EditorThemeTokens, active_theme
 from uniti.ui.font_policy import resolve_editor_font
 from uniti.ui.text_layout import ShapedWindow, Utf16Map
@@ -85,6 +87,7 @@ class UNITITextView(QAbstractScrollArea):
     wrapChanged = Signal(bool)
     navigationRequested = Signal(str, bool)
     viewFocused = Signal(str)
+    contextMenuRequested = Signal(QPoint)
     _documentRevisionChanged = Signal()
 
     def __init__(
@@ -114,6 +117,7 @@ class UNITITextView(QAbstractScrollArea):
             self._base_font.setPointSizeF(self._base_point_size)
         self._zoom_percent = 100
         self._soft_wrap = False
+        self._tab_width_chars = 4
         self._wrap_index: WrappedRowIndex | None = None
         self._wrap_signature: tuple[int, int, int] | None = None
         self.setFont(self._base_font)
@@ -152,6 +156,8 @@ class UNITITextView(QAbstractScrollArea):
         self._inspection = unicode_inspection(app)
         self._inspection.changed.connect(self.viewport().update)
         self._theme_tokens = active_theme(app).editor
+        self._syntax_profile: SyntaxProfile = PLAIN_TEXT
+        self._syntax_colors = syntax_category_palette(self._theme_tokens.base)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
         self.setMouseTracking(True)
@@ -240,6 +246,19 @@ class UNITITextView(QAbstractScrollArea):
         if tokens == self._theme_tokens:
             return
         self._theme_tokens = tokens
+        self._syntax_colors = syntax_category_palette(tokens.base)
+        self.viewport().update()
+
+    @property
+    def syntax_profile(self) -> SyntaxProfile:
+        return self._syntax_profile
+
+    def set_syntax_profile(self, profile: SyntaxProfile) -> None:
+        if not isinstance(profile, SyntaxProfile):
+            raise TypeError("syntax profile must be a SyntaxProfile")
+        if profile is self._syntax_profile:
+            return
+        self._syntax_profile = profile
         self.viewport().update()
 
     @property
@@ -281,11 +300,12 @@ class UNITITextView(QAbstractScrollArea):
             columns,
             self._wrap_width(),
             self.font().key(),
+            self._tab_width_chars,
         )
         if self._wrap_index is None or signature != self._wrap_signature:
             width = self._wrap_width()
             provider = ShapedRowProvider(
-                self.document, self.font(), width, self._cell_width * 4
+                self.document, self.font(), width, self._cell_width * self._tab_width_chars
             )
             self._wrap_index = WrappedRowIndex(
                 self.document, columns, row_provider=provider
@@ -304,6 +324,18 @@ class UNITITextView(QAbstractScrollArea):
         self.verticalScrollBar().setValue(0)
         self._refresh_scrollbars(advance_index=False)
         self.wrapChanged.emit(enabled)
+        self.viewport().update()
+
+    def set_tab_width(self, width: int) -> None:
+        width = max(1, int(width))
+        if width == self._tab_width_chars:
+            return
+        self._tab_width_chars = width
+        self._wrap_index = None
+        self._wrap_signature = None
+        self._horizontal_signature = None
+        self._shape_cache.clear()
+        self._refresh_scrollbars(advance_index=False)
         self.viewport().update()
 
     def _font_envelope(self):
@@ -488,6 +520,14 @@ class UNITITextView(QAbstractScrollArea):
         super().focusOutEvent(event)
         self.viewport().update()
 
+    def contextMenuEvent(self, event) -> None:
+        # Building the actual menu (its command set, ordering, and shared
+        # QAction reuse) is MainWindow's job, same as viewFocused/
+        # navigationRequested — this view only reports where and on which
+        # view a menu was requested (BF-024).
+        self.setFocus()
+        self.contextMenuRequested.emit(event.globalPos())
+
     def closeEvent(self, event) -> None:
         self.dispose()
         super().closeEvent(event)
@@ -501,6 +541,12 @@ class UNITITextView(QAbstractScrollArea):
 
     def _visible_line_capacity(self) -> int:
         return max(1, self.viewport().height() // self._line_height + 1)
+
+    def _visible_whole_line_capacity(self) -> int:
+        # Unlike `_visible_line_capacity`, no `+1` partial-row pad: used to cap
+        # scrolling so the true last row lands fully inside the viewport
+        # instead of straddling its bottom edge (BF-025).
+        return max(1, self.viewport().height() // self._line_height)
 
     def _on_scroll_changed(self, _value: int) -> None:
         self._refresh_scrollbars(advance_index=True)
@@ -537,7 +583,7 @@ class UNITITextView(QAbstractScrollArea):
             first_row = self.verticalScrollBar().value()
             index = self._prepare_wrapped_rows(first_row, visible)
             if index.complete:
-                maximum = max(0, index.known_count - visible)
+                maximum = max(0, index.known_count - self._visible_whole_line_capacity())
             else:
                 maximum = max(first_row, index.known_count - visible)
             self.verticalScrollBar().setPageStep(visible)
@@ -556,7 +602,7 @@ class UNITITextView(QAbstractScrollArea):
         self._update_gutter_width()
         known_lines = index.indexed_line_count
         if index.complete:
-            maximum = max(0, known_lines - visible)
+            maximum = max(0, known_lines - self._visible_whole_line_capacity())
         else:
             maximum = max(self.verticalScrollBar().value(), known_lines - 1)
         self.verticalScrollBar().setPageStep(visible)
@@ -580,10 +626,15 @@ class UNITITextView(QAbstractScrollArea):
         return start, self._gutter_width + offset - self.horizontalScrollBar().value()
 
     def _horizontal_geometry(self, line, *, column=None):
-        signature = (id(self.document), self.document.revision, self.font().key())
+        signature = (
+            id(self.document),
+            self.document.revision,
+            self.font().key(),
+            self._tab_width_chars,
+        )
         if signature != self._horizontal_signature:
             self._horizontal_layouts = HorizontalLayouts(
-                self.document, self.font(), self._cell_width * 4
+                self.document, self.font(), self._cell_width * self._tab_width_chars
             )
             self._horizontal_signature = signature
         result = self._horizontal_layouts.window(
@@ -618,13 +669,18 @@ class UNITITextView(QAbstractScrollArea):
             and self._window_owns_cursor(text, window_start)
         ):
             preedit = (self.state.cursor - window_start, self._preedit_text)
-        key = (text, self.font().key(), preedit, origin % (self._cell_width * 4))
+        key = (
+            text,
+            self.font().key(),
+            preedit,
+            origin % (self._cell_width * self._tab_width_chars),
+        )
         shaped = self._shape_cache.pop(key, None)
         if shaped is None:
             shaped = ShapedWindow(
                 text,
                 self.font(),
-                tab_stop_px=self._cell_width * 4,
+                tab_stop_px=self._cell_width * self._tab_width_chars,
                 preedit=preedit,
                 tab_origin=origin,
             )
@@ -698,6 +754,24 @@ class UNITITextView(QAbstractScrollArea):
         shaped = self._shape(text) if shaped is None else shaped
         layout = shaped.layout
         formats: list[QTextLayout.FormatRange] = []
+        if self._syntax_profile is not PLAIN_TEXT:
+            # Scoped to exactly this row/window's text — a construct
+            # spanning more than one visible row (e.g. a multi-line
+            # comment) will not highlight correctly across that boundary;
+            # see `uniti.core.syntax_profiles` (BF-027/BF-041).
+            for token in self._syntax_profile.tokenize(text):
+                color = self._syntax_colors.get(token.category)
+                if color is None:
+                    continue
+                syntax_format = QTextCharFormat()
+                syntax_format.setForeground(color)
+                syntax_range = QTextLayout.FormatRange()
+                syntax_range.start = shaped.unit_for_cp(token.start)
+                syntax_range.length = (
+                    shaped.unit_for_cp(token.end) - syntax_range.start
+                )
+                syntax_range.format = syntax_format
+                formats.append(syntax_range)
         if selection is not None:
             start, end = selection
             if 0 <= start < end <= len(text):

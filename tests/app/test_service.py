@@ -617,6 +617,29 @@ def test_find_replace_document_provider_lists_every_adopted_document(
         _stop_desktop_service(app, service)
 
 
+def test_group_provider_lists_documents_sharing_the_same_group(tmp_path: Path):
+    app, service, _recovery = _desktop_service(tmp_path)
+    try:
+        first = _document(tmp_path, "first.txt")
+        second = _document(tmp_path, "second.txt")
+        third = _document(tmp_path, "third.txt")
+        service.documents.adopt(first)
+        service.documents.adopt(second)
+        service.documents.adopt(third)
+        entry_first = service.documents.find_path(first.path)
+        entry_second = service.documents.find_path(second.path)
+        service.documents.set_group(entry_first.document_id, "A")
+        service.documents.set_group(entry_second.document_id, "A")
+
+        provider = service.find_replace._group_provider
+
+        assert set(provider(first)) == {first, second}
+        assert set(provider(second)) == {first, second}
+        assert provider(third) == []
+    finally:
+        _stop_desktop_service(app, service)
+
+
 def test_document_group_assignment_updates_registry_and_tab_icon(tmp_path: Path):
     from uniti.app.document_groups import DocumentGroup
 
@@ -754,6 +777,13 @@ def test_service_owns_one_lazy_find_replace_panel(tmp_path: Path):
 def test_global_find_replace_attachment_follows_active_window_and_survives_hosts(
     tmp_path: Path,
 ):
+    from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+
+    def _attached_to(window) -> bool:
+        return panel._dock_host is window and window.panes.contains_view(
+            FIND_REPLACE_VIEW_ID
+        )
+
     app, service, _recovery = _desktop_service(tmp_path)
     first = service.new_window()
     second = service.new_window()
@@ -765,7 +795,7 @@ def test_global_find_replace_attachment_follows_active_window_and_survives_hosts
         service.attach_find_replace()
         app.processEvents()
 
-        assert panel.parentWidget() is first
+        assert _attached_to(first)
         assert panel.placement == "attached"
         assert first.find_replace is second.find_replace is panel
 
@@ -773,7 +803,8 @@ def test_global_find_replace_attachment_follows_active_window_and_survives_hosts
         app.processEvents()
 
         assert service.find_replace is panel
-        assert panel.parentWidget() is second
+        assert _attached_to(second)
+        assert not first.panes.contains_view(FIND_REPLACE_VIEW_ID)
         assert panel.placement == "attached"
         assert panel.find_input.text() == "needle"
         assert panel.replace_input.text() == "replacement"
@@ -782,7 +813,7 @@ def test_global_find_replace_attachment_follows_active_window_and_survives_hosts
         app.processEvents()
 
         assert service.window_count == 1
-        assert panel.parentWidget() is first
+        assert _attached_to(first)
         assert panel.placement == "attached"
 
         first.close()
@@ -790,13 +821,13 @@ def test_global_find_replace_attachment_follows_active_window_and_survives_hosts
 
         assert service.window_count == 1
         assert first.isVisible()
-        assert panel.parentWidget() is first
+        assert _attached_to(first)
         assert panel.placement == "attached"
 
         replacement_host = service.new_window()
         service.set_active_view(replacement_host.window_id, None)
         app.processEvents()
-        assert panel.parentWidget() is replacement_host
+        assert _attached_to(replacement_host)
         assert panel.placement == "attached"
     finally:
         _stop_desktop_service(app, service)
@@ -1018,6 +1049,52 @@ def test_one_service_owns_two_windows_one_document_and_one_find_panel(
         assert second.views == ()
         assert service.is_running is True
         assert app.quitOnLastWindowClosed() is False
+    finally:
+        _stop_desktop_service(app, service)
+
+
+def test_zoom_shortcut_reaches_shared_panel_with_two_windows_open(tmp_path: Path):
+    """BF-017: with two windows sharing one Find/Replace panel, each window
+    registers its own `find.zoom_in` QAction onto that shared panel with an
+    identical shortcut. `set_active_view` (`service.py`) disables every
+    window's FIND_REPLACE-scope actions except the active window's to avoid
+    an ambiguous shortcut on the shared widget; this locks that behavior in
+    end-to-end via the real key-sequence delivery path (`QTest.keySequence`,
+    not `QTest.keyClick`, which does not exercise Qt's shortcut-override
+    dispatch and would falsely appear to reproduce a failure here)."""
+
+    from PySide6.QtGui import QKeySequence
+    from PySide6.QtTest import QTest
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    try:
+        first = service.new_window()
+        first.show()
+        QTest.qWaitForWindowExposed(first)
+        second = service.new_window()
+        second.show()
+        QTest.qWaitForWindowExposed(second)
+        app.processEvents()
+
+        second.show_find()
+        app.processEvents()
+        panel = service.find_replace
+        assert first.find_replace is panel
+
+        field = panel.find_input
+        field.setFocus()
+        app.processEvents()
+
+        first_action = first._command_actions["find.zoom_in"]
+        second_action = second._command_actions["find.zoom_in"]
+        assert first_action.isEnabled() is False
+        assert second_action.isEnabled() is True
+
+        before = panel.zoom_percent
+        QTest.keySequence(field, QKeySequence(QKeySequence.StandardKey.ZoomIn))
+        app.processEvents()
+
+        assert panel.zoom_percent > before
     finally:
         _stop_desktop_service(app, service)
 

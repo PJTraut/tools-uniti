@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QKeyEvent, QTextCursor
+from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtGui import QKeyEvent, QKeySequence, QTextCursor
 from PySide6.QtWidgets import QTextEdit
 
 from uniti.app.session import (
@@ -171,3 +171,17 @@ class BoundedSingleLineTextEdit(QTextEdit):
             event.accept()
             return
         super().keyPressEvent(event)
+
+    def event(self, event: QEvent) -> bool:
+        # QTextEdit's own ShortcutOverride handling silently claims the
+        # standard zoom key sequences for a private per-widget font zoom,
+        # which stops the panel-wide zoom action's shortcut from ever
+        # firing while this field has focus. Decline it here so the
+        # higher-level QAction shortcut on the panel receives it instead.
+        if event.type() == QEvent.Type.ShortcutOverride and (
+            event.matches(QKeySequence.StandardKey.ZoomIn)
+            or event.matches(QKeySequence.StandardKey.ZoomOut)
+        ):
+            event.ignore()
+            return True
+        return super().event(event)

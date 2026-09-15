@@ -4,7 +4,7 @@ This directory is the tool-neutral source of truth for UNITI's development state
 
 Current product identity: `v0.001b2` / `0.1b2`. Reviewed BF-001–BF-010 code is integrated on `main` through source candidate `3e20214`; B2 is the active source beta; qualified executable delivery remains gated by the outstanding checks in [ADR-0007](05_decisions/ADR-0007-beta-source-version-and-qualification.md). See [Current Status](01_current/STATUS.md) for the synchronized baseline and verification evidence.
 
-[Beta Feedback Log](BETA_FEEDBACK.md) records user observations, implemented corrections and features, verification, and remaining host qualification.
+[Beta Feedback Log](BETA_FEEDBACK.md) records user observations, implemented corrections and features, verification, and remaining host qualification. The [Feature Wishlist](FEATURE_WISHLIST.md) holds future ideas raised in passing that are not yet scoped or committed.
 
 User-facing instructions are in the [User Manual](../user-manual.md), [User Cheat Sheet](../user-cheat-sheet.md), and [Regex Flags Guide](../regex-flags.md). These describe the implemented B2 interface and link here for release qualification.
 

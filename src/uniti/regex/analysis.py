@@ -10,6 +10,34 @@ import regex
 
 MAX_EXPRESSION_CHARS = 65_536
 
+# Scripts conventionally written without spaces between words (BF-034).
+# There is no universal, reliable definition of "whole word" for these
+# without a segmentation dictionary this engine does not have, so — rather
+# than silently returning zero matches, as plain `\b` does whenever a term
+# in one of these scripts is embedded directly in more of the same script
+# with no delimiter — a literal "Whole word" search skips the boundary
+# requirement on whichever edge of the search term falls in one of these
+# scripts, while leaving it unchanged (plain `\b`) for every other script.
+_NO_SPACE_SCRIPTS = (
+    "Han",
+    "Hiragana",
+    "Katakana",
+    "Hangul",
+    "Thai",
+    "Lao",
+    "Khmer",
+    "Myanmar",
+)
+_NO_SPACE_SCRIPT_PATTERN = regex.compile(
+    "|".join(rf"\p{{Script={script}}}" for script in _NO_SPACE_SCRIPTS)
+)
+
+
+def _boundary_for_edge(char: str | None) -> str:
+    if char is not None and _NO_SPACE_SCRIPT_PATTERN.match(char):
+        return ""
+    return r"\b"
+
 
 class ExpressionRole(StrEnum):
     PATTERN = "pattern"
@@ -145,7 +173,9 @@ def _engine_expression(
         return expression, 0
     engine_pattern = regex.escape(expression)
     if whole_word:
-        engine_pattern = rf"\b(?:{engine_pattern})\b"
+        leading = _boundary_for_edge(expression[0]) if expression else r"\b"
+        trailing = _boundary_for_edge(expression[-1]) if expression else r"\b"
+        engine_pattern = f"{leading}(?:{engine_pattern}){trailing}"
     flags = 0 if case_sensitive else regex.IGNORECASE
     return engine_pattern, flags
 

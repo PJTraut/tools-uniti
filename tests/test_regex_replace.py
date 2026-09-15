@@ -1,8 +1,15 @@
 from pathlib import Path
 
+import pytest
+
 from uniti.core.document import Document
 from uniti.regex.engine import compile_pattern
-from uniti.regex.replace import collect_replacements, replace_all
+from uniti.regex.replace import (
+    collect_replacements,
+    convert_document_eol,
+    convert_document_tabs_to_spaces,
+    replace_all,
+)
 from uniti.regex.search import SearchOptions
 
 
@@ -63,6 +70,82 @@ def test_zero_width_replace_all_is_exact_once_and_one_undo(tmp_path: Path):
         assert document.read(0, document.total_chars()) == "XaXa"
         document.undo()
         assert document.read(0, document.total_chars()) == "aa"
+
+
+def test_convert_document_eol_normalizes_mixed_endings_as_one_undo_step(
+    tmp_path: Path,
+):
+    path = tmp_path / "mixed.txt"
+    with open(path, "wb") as handle:
+        handle.write(b"a\r\nb\nc\rd")
+    with Document.open(path) as document:
+        count = convert_document_eol(document, "LF")
+        assert count == 2
+        assert document.read(0, document.total_chars()) == "a\nb\nc\nd"
+        document.undo()
+        assert document.read(0, document.total_chars()) == "a\r\nb\nc\rd"
+
+
+def test_convert_document_eol_to_crlf_leaves_existing_crlf_pairs_untouched(
+    tmp_path: Path,
+):
+    path = tmp_path / "to-crlf.txt"
+    with open(path, "wb") as handle:
+        handle.write(b"a\r\nb\nc\rd")
+    with Document.open(path) as document:
+        count = convert_document_eol(document, "CRLF")
+        assert count == 2
+        assert document.read(0, document.total_chars()) == "a\r\nb\r\nc\r\nd"
+
+
+def test_convert_document_eol_to_cr_collapses_crlf_pairs(tmp_path: Path):
+    path = tmp_path / "to-cr.txt"
+    with open(path, "wb") as handle:
+        handle.write(b"a\r\nb\nc\rd")
+    with Document.open(path) as document:
+        count = convert_document_eol(document, "CR")
+        assert count == 2
+        assert document.read(0, document.total_chars()) == "a\rb\rc\rd"
+
+
+def test_convert_document_eol_already_matching_target_makes_no_replacements(
+    tmp_path: Path,
+):
+    path = tmp_path / "already-lf.txt"
+    path.write_text("a\nb\nc", encoding="utf-8", newline="")
+    with Document.open(path) as document:
+        count = convert_document_eol(document, "LF")
+        assert count == 0
+        assert not document.modified
+
+
+def test_convert_document_eol_rejects_an_unsupported_target(tmp_path: Path):
+    path = tmp_path / "invalid.txt"
+    path.write_text("a\nb", encoding="utf-8", newline="")
+    with Document.open(path) as document:
+        with pytest.raises(ValueError, match="unsupported EOL conversion target"):
+            convert_document_eol(document, "NONE")
+
+
+def test_convert_document_tabs_to_spaces_replaces_each_tab_as_one_undo_step(
+    tmp_path: Path,
+):
+    path = tmp_path / "tabs.txt"
+    path.write_text("a\tb\tc", encoding="utf-8", newline="")
+    with Document.open(path) as document:
+        count = convert_document_tabs_to_spaces(document, 4)
+        assert count == 2
+        assert document.read(0, document.total_chars()) == "a    b    c"
+        document.undo()
+        assert document.read(0, document.total_chars()) == "a\tb\tc"
+
+
+def test_convert_document_tabs_to_spaces_rejects_a_non_positive_width(tmp_path: Path):
+    path = tmp_path / "tabs-invalid.txt"
+    path.write_text("a\tb", encoding="utf-8", newline="")
+    with Document.open(path) as document:
+        with pytest.raises(ValueError, match="positive integer"):
+            convert_document_tabs_to_spaces(document, 0)
 
 
 def test_stream_replace_to_file_handles_many_matches_without_mutating_document(tmp_path: Path):

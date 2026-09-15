@@ -10,6 +10,7 @@ import regex
 
 from uniti.core.document import Document
 from uniti.core.offsets import ReadIntent
+from .engine import compile_pattern
 from .replacement_plan import Replacement, ReplacementPlan
 from .search import SearchOptions, _iter_engine_matches
 
@@ -129,6 +130,67 @@ def replace_all(
         )
     finally:
         plan.close()
+
+
+# Each pattern lists CRLF first so the alternation always consumes a CRLF
+# pair as one token before considering a lone CR or LF — that ordering is
+# what lets a lone "\n" right after an already-matched "\r\n" be told apart
+# from one that is part of a pair, with no lookaround required. Lookbehind
+# (the previous "(?<!\r)\n" formulation) makes `_needs_full_prefix` retain
+# the entire scanned prefix in memory instead of a bounded window, which
+# made converting to CRLF or CR quadratically slow on large documents while
+# LF — already lookaround-free — stayed instant. Matches equal to the
+# target are skipped below so an already-conforming pair still goes
+# untouched.
+_EOL_CONVERSIONS: dict[str, tuple[str, str]] = {
+    "LF": (r"\r\n|\r", "\n"),
+    "CRLF": (r"\r\n|\r|\n", "\r\n"),
+    "CR": (r"\r\n|\n", "\r"),
+}
+
+
+def convert_document_eol(document: Document, eol: str) -> int:
+    """Rewrite every line ending that differs from `eol` in place, as one
+    undoable edit (BF-023) — unlike `set_output_eol`, which only selects a
+    save-time output policy without touching live document content."""
+
+    try:
+        pattern, target = _EOL_CONVERSIONS[eol]
+    except KeyError:
+        raise ValueError(f"unsupported EOL conversion target: {eol}") from None
+
+    compiled = compile_pattern(pattern)
+    plan = ReplacementPlan(
+        memory_budget_bytes=8 << 20,
+        document_revision=document.revision,
+    )
+    try:
+        for record, match in _iter_engine_matches(
+            document, compiled, options=SearchOptions()
+        ):
+            if match.group() == target:
+                continue
+            plan.append(Replacement(record.start, record.end, target))
+        return document.apply_replacement_plan(
+            plan,
+            expected_revision=document.revision,
+            memory_limit_bytes=256 << 20,
+        )
+    finally:
+        plan.close()
+
+
+_TAB_PATTERN = compile_pattern(r"\t")
+
+
+def convert_document_tabs_to_spaces(document: Document, width: int) -> int:
+    """Replace every tab character with `width` literal spaces, as one
+    undoable edit (BF-028's explicit "convert existing tabs to spaces" ask,
+    distinct from the display-only tab-stop width)."""
+
+    if not isinstance(width, int) or isinstance(width, bool) or width < 1:
+        raise ValueError("tab width must be a positive integer")
+    return replace_all(document, _TAB_PATTERN, " " * width)
 
 
 @dataclass(frozen=True, slots=True)

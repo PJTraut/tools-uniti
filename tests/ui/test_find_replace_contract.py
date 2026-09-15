@@ -30,6 +30,8 @@ def _make_panel(
     *,
     dogfood_observer=None,
     document_provider=None,
+    group_provider=None,
+    recipe_store=None,
 ):
     from PySide6.QtWidgets import QApplication
 
@@ -46,7 +48,9 @@ def _make_panel(
     panel = FindReplacePanel(
         lambda: view,
         dogfood_observer=dogfood_observer,
+        group_provider=group_provider,
         document_provider=document_provider,
+        recipe_store=recipe_store,
     )
     return app, document, view, panel
 
@@ -74,17 +78,244 @@ def _run_regex_search(app, panel, pattern: str, *, expected: int):
     _wait_until(app, lambda: panel.result_count == expected and not panel.busy)
 
 
-def test_replace_scope_combo_has_three_options_defaulting_to_whole_document(
+def test_replace_scope_combo_has_four_options_defaulting_to_whole_document(
     tmp_path: Path,
 ):
     from uniti.ui.find_replace import ReplaceScope
 
     app, document, view, panel = _make_panel(tmp_path, "alpha")
     try:
-        assert panel.replace_scope_combo.count() == 3
+        assert panel.replace_scope_combo.count() == 4
         assert panel.replace_scope() == ReplaceScope.WHOLE_DOCUMENT
-        labels = [panel.replace_scope_combo.itemText(i) for i in range(3)]
-        assert labels == ["Whole Document", "Cursor to End", "All Open Documents"]
+        labels = [panel.replace_scope_combo.itemText(i) for i in range(4)]
+        assert labels == [
+            "Whole Document",
+            "Cursor to End",
+            "Current Group",
+            "All Open Documents",
+        ]
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_recipe_combo_lists_saved_recipes_after_placeholder(tmp_path: Path):
+    from uniti.app.find_replace_recipes import FindReplaceRecipe, FindReplaceRecipeStore
+
+    store = FindReplaceRecipeStore(tmp_path / "recipes.json")
+    recipe = FindReplaceRecipe("r1", "Trim spaces", r"\s+", " ", True, False, False)
+    store.save((recipe,))
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha", recipe_store=store)
+    try:
+        labels = [panel.recipe_combo.itemText(i) for i in range(panel.recipe_combo.count())]
+        assert labels == ["Recipes", "Trim spaces", "", "Save Current…", "Manage…"]
+        assert panel.recipe_combo.currentIndex() == 0
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_selecting_a_recipe_loads_its_fields_and_resets_the_combo(tmp_path: Path):
+    from uniti.app.find_replace_recipes import FindReplaceRecipe, FindReplaceRecipeStore
+
+    store = FindReplaceRecipeStore(tmp_path / "recipes.json")
+    recipe = FindReplaceRecipe("r1", "Trim spaces", r"\s+", " ", True, True, True)
+    store.save((recipe,))
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha", recipe_store=store)
+    try:
+        panel.recipe_combo.activated.emit(1)
+
+        assert panel.find_input.text() == r"\s+"
+        assert panel.replace_input.text() == " "
+        assert panel.regex_checkbox.isChecked() is True
+        assert panel.case_sensitive_checkbox.isChecked() is True
+        assert panel.whole_word_checkbox.isChecked() is True
+        assert panel.recipe_combo.currentIndex() == 0
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_save_current_as_recipe_persists_and_appears_in_the_combo(
+    tmp_path: Path, monkeypatch
+):
+    from PySide6.QtWidgets import QInputDialog
+
+    from uniti.app.find_replace_recipes import FindReplaceRecipeStore
+
+    store = FindReplaceRecipeStore(tmp_path / "recipes.json")
+    app, document, view, panel = _make_panel(tmp_path, "alpha", recipe_store=store)
+    try:
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        panel.regex_checkbox.setChecked(True)
+
+        monkeypatch.setattr(
+            QInputDialog, "getText", staticmethod(lambda *a, **k: ("My Recipe", True))
+        )
+        panel._save_current_as_recipe()
+
+        assert [recipe.name for recipe in panel._recipes] == ["My Recipe"]
+        saved = store.load()
+        assert len(saved) == 1
+        assert saved[0].name == "My Recipe"
+        assert saved[0].expression == "alpha"
+        assert saved[0].replacement == "omega"
+        assert saved[0].regex is True
+        labels = [panel.recipe_combo.itemText(i) for i in range(panel.recipe_combo.count())]
+        assert "My Recipe" in labels
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_manage_recipes_dialog_renames_and_removes(tmp_path: Path, monkeypatch):
+    from uniti.app.find_replace_recipes import FindReplaceRecipe, FindReplaceRecipeStore
+
+    store = FindReplaceRecipeStore(tmp_path / "recipes.json")
+    store.save(
+        (
+            FindReplaceRecipe("r1", "Keep me", "a", "b", False, False, False),
+            FindReplaceRecipe("r2", "Delete me", "c", "d", False, False, False),
+        )
+    )
+    app, document, view, panel = _make_panel(tmp_path, "alpha", recipe_store=store)
+    try:
+
+        class FakeEditor:
+            def __init__(self, recipes, parent=None) -> None:
+                self._recipes = recipes
+
+            def exec(self) -> bool:
+                return True
+
+            def recipes(self):
+                return (self._recipes[0],)
+
+        monkeypatch.setattr(
+            "uniti.ui.find_replace_recipe_editor.FindReplaceRecipeEditor", FakeEditor
+        )
+
+        panel._show_recipe_manager()
+
+        assert [recipe.name for recipe in panel._recipes] == ["Keep me"]
+        assert [recipe.name for recipe in store.load()] == ["Keep me"]
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_selection_only_checkbox_forces_and_disables_replace_scope_combo(
+    tmp_path: Path,
+):
+    from uniti.ui.find_replace import ReplaceScope
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha")
+    try:
+        panel.replace_scope_combo.setCurrentIndex(
+            panel.replace_scope_combo.findData(ReplaceScope.CURSOR_TO_END)
+        )
+        assert panel.replace_scope_combo.isEnabled()
+
+        panel.selection_only_checkbox.setChecked(True)
+
+        assert panel.replace_scope() == ReplaceScope.WHOLE_DOCUMENT
+        assert not panel.replace_scope_combo.isEnabled()
+
+        panel.selection_only_checkbox.setChecked(False)
+
+        assert panel.replace_scope_combo.isEnabled()
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_find_all_in_selection_only_returns_matches_within_the_selection(
+    tmp_path: Path,
+):
+    app, document, view, panel = _make_panel(tmp_path, "alpha alpha alpha")
+    try:
+        # Select the middle "alpha" only (offsets 6-11).
+        view.state.move_to(6)
+        view.state.move_to(11, selecting=True)
+        panel.selection_only_checkbox.setChecked(True)
+
+        panel.find_input.set_text("alpha")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count >= 0)
+
+        assert panel.result_count == 1
+        assert panel._results.records[0].span == (6, 11)
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_find_all_in_selection_without_a_selection_is_unavailable(tmp_path: Path):
+    from uniti.app.dogfood import Operation, Outcome
+
+    calls = []
+    app, document, view, panel = _make_panel(
+        tmp_path,
+        "alpha",
+        dogfood_observer=lambda operation, outcome, **facts: calls.append(
+            (operation, outcome, facts)
+        ),
+    )
+    try:
+        panel.selection_only_checkbox.setChecked(True)
+        panel.find_input.set_text("alpha")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+
+        panel.find_all()
+
+        assert not panel.busy
+        assert calls[-1][0] is Operation.FIND_ALL
+        assert calls[-1][1] is Outcome.UNAVAILABLE
+        assert panel.result_count == 0
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_replace_all_in_selection_only_replaces_matches_within_the_selection(
+    tmp_path: Path,
+):
+    app, document, view, panel = _make_panel(tmp_path, "alpha alpha alpha")
+    try:
+        view.state.move_to(6)
+        view.state.move_to(11, selecting=True)
+        panel.selection_only_checkbox.setChecked(True)
+
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+
+        panel.replace_all()
+        _wait_until(app, lambda: not panel.busy and "replaced" in panel.status_label.text())
+
+        assert document.read(0, document.total_chars()) == "alpha omega alpha"
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_find_all_in_selection_reruns_when_the_selection_changes(tmp_path: Path):
+    app, document, view, panel = _make_panel(tmp_path, "alpha alpha alpha")
+    try:
+        view.state.move_to(0)
+        view.state.move_to(5, selecting=True)
+        panel.selection_only_checkbox.setChecked(True)
+        panel.find_input.set_text("alpha")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 1)
+        assert panel._results.records[0].span == (0, 5)
+
+        view.state.move_to(6)
+        view.state.move_to(11, selecting=True)
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 1)
+
+        assert panel._results.records[0].span == (6, 11)
     finally:
         _close_panel(app, document, view, panel)
 
@@ -157,6 +388,90 @@ def test_replace_all_open_documents_replaces_every_document_once(tmp_path: Path)
         other_document.close()
 
 
+def test_replace_all_current_group_only_replaces_documents_in_that_group(
+    tmp_path: Path,
+):
+    from uniti.core.document import Document
+    from uniti.ui.find_replace import ReplaceScope
+
+    grouped_path = tmp_path / "grouped.txt"
+    grouped_path.write_text("alpha alpha", encoding="utf-8", newline="")
+    grouped_document = Document.open(grouped_path, encoding="utf-8")
+    ungrouped_path = tmp_path / "ungrouped.txt"
+    ungrouped_path.write_text("alpha alpha", encoding="utf-8", newline="")
+    ungrouped_document = Document.open(ungrouped_path, encoding="utf-8")
+
+    app, document, view, panel = _make_panel(
+        tmp_path,
+        "alpha alpha",
+        group_provider=lambda current: (
+            [document, grouped_document] if current is document else []
+        ),
+    )
+    try:
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+        panel.replace_scope_combo.setCurrentIndex(
+            panel.replace_scope_combo.findData(ReplaceScope.CURRENT_GROUP)
+        )
+
+        panel.replace_all()
+        _wait_until(
+            app,
+            lambda: not panel.busy and "replaced across" in panel.status_label.text(),
+        )
+
+        assert document.read(0, document.total_chars()) == "omega omega"
+        assert grouped_document.read(0, grouped_document.total_chars()) == "omega omega"
+        assert ungrouped_document.read(0, ungrouped_document.total_chars()) == "alpha alpha"
+        assert "2 document" in panel.status_label.text()
+    finally:
+        _close_panel(app, document, view, panel)
+        grouped_document.close()
+        ungrouped_document.close()
+
+
+def test_replace_all_current_group_is_unavailable_without_a_group_provider(
+    tmp_path: Path,
+):
+    from uniti.app.dogfood import Operation, Outcome
+    from uniti.ui.find_replace import ReplaceScope
+
+    calls = []
+    app, document, view, panel = _make_panel(
+        tmp_path,
+        "alpha",
+        dogfood_observer=lambda operation, outcome, **facts: calls.append(
+            (operation, outcome, facts)
+        ),
+    )
+    try:
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+        panel.replace_scope_combo.setCurrentIndex(
+            panel.replace_scope_combo.findData(ReplaceScope.CURRENT_GROUP)
+        )
+
+        panel.replace_all()
+
+        assert not panel.busy
+        assert calls[-1][0] is Operation.REPLACE_ALL
+        assert calls[-1][1] is Outcome.UNAVAILABLE
+        assert document.read(0, document.total_chars()) == "alpha"
+    finally:
+        _close_panel(app, document, view, panel)
+
+
 def test_replace_all_open_documents_is_unavailable_without_a_document_provider(
     tmp_path: Path,
 ):
@@ -189,6 +504,70 @@ def test_replace_all_open_documents_is_unavailable_without_a_document_provider(
         assert calls[-1][0] is Operation.REPLACE_ALL
         assert calls[-1][1] is Outcome.UNAVAILABLE
         assert document.read(0, document.total_chars()) == "alpha"
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_replace_and_find_next_confirms_then_advances_through_every_match(
+    tmp_path: Path,
+):
+    app, document, view, panel = _make_panel(tmp_path, "alpha alpha alpha")
+    try:
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 3)
+        assert panel._current_index == 0
+
+        panel.replace_and_find_next()
+        _wait_until(
+            app,
+            lambda: document.read(0, document.total_chars())
+            == "omega alpha alpha",
+        )
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 2)
+
+        panel.replace_and_find_next()
+        _wait_until(
+            app,
+            lambda: document.read(0, document.total_chars())
+            == "omega omega alpha",
+        )
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 1)
+
+        panel.replace_and_find_next()
+        _wait_until(
+            app,
+            lambda: document.read(0, document.total_chars())
+            == "omega omega omega",
+        )
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_skip_current_match_advances_without_changing_the_document(tmp_path: Path):
+    app, document, view, panel = _make_panel(tmp_path, "alpha alpha")
+    try:
+        panel.find_input.set_text("alpha")
+        panel.replace_input.set_text("omega")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 2)
+        assert panel._current_index == 0
+
+        panel.skip_current_match()
+        _wait_until(app, lambda: not panel.busy and panel._current_index == 1)
+
+        assert document.read(0, document.total_chars()) == "alpha alpha"
     finally:
         _close_panel(app, document, view, panel)
 
@@ -454,6 +833,68 @@ def test_capture_report_model_formats_rows_and_accessible_text():
     assert model.current_index is None
 
 
+def test_capture_view_minimum_height_never_grows_with_match_report_content(
+    tmp_path: Path,
+):
+    """The Find/Replace panel must not auto-expand to fit the match report:
+    `capture_view`'s minimum height sits in a horizontal `QSplitter` beside
+    the controls pane, so growing it directly grows the whole panel window.
+    It must stay tied only to the current zoom/font size, regardless of how
+    many matches or capture-group rows a search result contains — content
+    that needs more room scrolls instead of resizing the window."""
+
+    from uniti.regex.captures import (
+        CaptureGroupRow,
+        CaptureMatchReport,
+        CapturePreview,
+        CaptureReport,
+        CaptureReportRequest,
+    )
+    from uniti.regex.results import MatchRecord
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha")
+    try:
+
+        def group(number: int) -> CaptureGroupRow:
+            return CaptureGroupRow(
+                number, None, "value", 1, (CapturePreview(0, 1, "x", False),)
+            )
+
+        def report(*, huge: bool) -> CaptureReport:
+            groups = tuple(group(n) for n in range(1, 21)) if huge else (group(1),)
+            matches = (CaptureMatchReport(index=0, total=1, groups=groups),)
+            request = CaptureReportRequest(
+                pattern_generation=1,
+                pattern_text="pattern",
+                document_key="doc",
+                revision=1,
+                store_id="store",
+                requested_index=0,
+                match_count=1,
+                matches=((0, MatchRecord(0, 1)),),
+            )
+            return CaptureReport(request=request, matches=matches, payload_bytes=1024)
+
+        height_before_any_search = panel.capture_view.minimumHeight()
+
+        # A match with 20 capture-group rows must not inflate the minimum
+        # height — the panel's own size must not react to match content.
+        panel.capture_model.set_report(report(huge=True))
+        app.processEvents()
+        assert panel.capture_view.minimumHeight() == height_before_any_search
+
+        panel.capture_model.set_report(report(huge=False))
+        app.processEvents()
+        assert panel.capture_view.minimumHeight() == height_before_any_search
+
+        # Zoom, a deliberate user action, is still allowed to change it.
+        panel.set_zoom_percent(200)
+        app.processEvents()
+        assert panel.capture_view.minimumHeight() > height_before_any_search
+    finally:
+        _close_panel(app, document, view, panel)
+
+
 def test_text_view_paints_compact_match_index_intersections_only():
     source = VIEW.read_text(encoding="utf-8")
     assert "MatchIndex" in source
@@ -574,27 +1015,25 @@ def test_find_replace_state_round_trip_preserves_complete_panel_state(
         app.processEvents()
 
 
-def test_find_replace_is_bottom_only_dock_widget_and_attach_detach_preserves_state():
+def test_find_replace_attach_inserts_a_pane_tree_leaf_and_detach_preserves_state():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QApplication, QDockWidget, QMainWindow
+    from PySide6.QtWidgets import QApplication
 
-    from uniti.ui.find_replace import FindReplacePanel
+    from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+    from uniti.ui.main_window import UNITIMainWindow
 
     app = QApplication.instance() or QApplication([])
-    host = QMainWindow()
-    panel = FindReplacePanel(lambda: None)
+    host = UNITIMainWindow()
+    panel = host.find_replace
     placements: list[str] = []
     panel.placementChanged.connect(placements.append)
     try:
-        assert isinstance(panel, QDockWidget)
-        assert panel.allowedAreas() == Qt.DockWidgetArea.BottomDockWidgetArea
-        assert panel.widget() is not None
-        assert panel.widget().isAncestorOf(panel.find_input)
-        assert panel.widget().isAncestorOf(panel.replace_input)
+        assert panel.content.isAncestorOf(panel.find_input)
+        assert panel.content.isAncestorOf(panel.replace_input)
         assert panel.placement == "detached"
+        assert not host.panes.contains_view(FIND_REPLACE_VIEW_ID)
 
         panel.find_input.set_text("needle")
         panel.replace_input.set_text("replacement")
@@ -608,13 +1047,16 @@ def test_find_replace_is_bottom_only_dock_widget_and_attach_detach_preserves_sta
         app.processEvents()
 
         assert panel.placement == "attached"
-        assert panel.isFloating() is False
-        assert host.dockWidgetArea(panel) == Qt.DockWidgetArea.BottomDockWidgetArea
+        assert panel.isFloating() is True  # the (now hidden) shell's own flag; irrelevant while attached
+        assert host.panes.contains_view(FIND_REPLACE_VIEW_ID)
+        leaf = host.panes.leaf_for_view(FIND_REPLACE_VIEW_ID)
+        assert leaf.widget(leaf.index_of(FIND_REPLACE_VIEW_ID)) is panel.content
 
         panel.detach()
         app.processEvents()
 
         assert panel.placement == "detached"
+        assert not host.panes.contains_view(FIND_REPLACE_VIEW_ID)
         assert panel.isFloating() is True
         assert panel.find_input.export_history() == expected_find
         assert panel.replace_input.export_history() == expected_replace
@@ -635,25 +1077,32 @@ def test_find_replace_persists_placement_and_only_tracks_detached_geometry():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from dataclasses import replace
 
-    from PySide6.QtWidgets import QApplication, QMainWindow
+    from PySide6.QtWidgets import QApplication
 
     from uniti.ui.find_replace import FindReplacePanel
+    from uniti.ui.main_window import UNITIMainWindow
 
     app = QApplication.instance() or QApplication([])
-    host = QMainWindow()
     panel = FindReplacePanel(lambda: None)
     restored = FindReplacePanel(lambda: None)
     geometry_events: list[tuple[int, int, int, int]] = []
     panel.geometryChanged.connect(geometry_events.append)
+    host = None
     try:
         panel.setGeometry(23, 31, 760, 410)
         panel.show()
         app.processEvents()
         detached = panel.export_state("view-target")
         assert detached.placement == "detached"
-        assert detached.geometry == (23, 31, 760, 410)
+        # The offscreen QPA platform can nudge a freshly shown top-level
+        # window's position to avoid exactly overlapping another one already
+        # on screen (order-dependent on what other tests left behind), so
+        # the rest of this test compares round-trip preservation against
+        # whichever geometry was actually realized rather than asserting an
+        # exact absolute value here.
         assert geometry_events
 
+        host = UNITIMainWindow()
         panel.attach_to(host)
         app.processEvents()
         attached_event_count = len(geometry_events)
@@ -670,11 +1119,242 @@ def test_find_replace_persists_placement_and_only_tracks_detached_geometry():
         assert restored.export_state("view-target").placement == "attached"
         assert restored.export_state("view-target").geometry == detached.geometry
     finally:
+        panel.detach()
         for item in (panel, restored):
             item.shutdown()
             item.close()
+        if host is not None:
+            host.close()
+        app.processEvents()
+
+
+def test_find_replace_title_bar_has_no_attach_toggle_button(tmp_path: Path):
+    """The title-bar attach/detach toggle button was removed (it only ever
+    worked once a host had already been recorded via an explicit
+    ``attach_to`` call, so clicking it on a never-yet-attached panel was a
+    silent no-op) — attach/detach stays available via the View menu command
+    (``toggle_find_replace_attachment``) and the programmatic ``attach_to``/
+    ``detach`` API, which do not have that limitation."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    host = UNITIMainWindow()
+    panel = host.find_replace
+    try:
+        assert panel.titleBarWidget() is not None
+        assert not hasattr(panel, "attach_toggle_button")
+
+        assert panel.placement == "detached"
+        panel.attach_to(host)
+        assert panel.placement == "attached"
+        panel.detach()
+        assert panel.placement == "detached"
+    finally:
+        panel.shutdown()
+        panel.close()
         host.close()
         app.processEvents()
+
+
+def test_toggle_find_replace_visibility_shows_then_hides_a_detached_panel():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    host = UNITIMainWindow()
+    panel = host.find_replace
+    try:
+        assert panel.placement == "detached"
+        assert not panel.is_visible()
+
+        host.toggle_find_replace_visibility()
+        app.processEvents()
+        assert panel.is_visible()
+
+        host.toggle_find_replace_visibility()
+        app.processEvents()
+        assert not panel.is_visible()
+    finally:
+        panel.shutdown()
+        panel.close()
+        host.close()
+        app.processEvents()
+
+
+def test_toggle_find_replace_visibility_closes_and_reopens_an_attached_tab():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    host = UNITIMainWindow()
+    panel = host.find_replace
+    try:
+        panel.attach_to(host)
+        app.processEvents()
+        assert panel.placement == "attached"
+        assert panel.is_visible()
+
+        host.toggle_find_replace_visibility()
+        app.processEvents()
+        assert panel.placement == "attached"  # preference unchanged, just hidden
+        assert not panel.is_visible()
+        assert not host.panes.contains_view(FIND_REPLACE_VIEW_ID)
+
+        host.toggle_find_replace_visibility()
+        app.processEvents()
+        assert panel.placement == "attached"
+        assert panel.is_visible()
+        assert host.panes.contains_view(FIND_REPLACE_VIEW_ID)
+    finally:
+        panel.shutdown()
+        panel.close()
+        host.close()
+        app.processEvents()
+
+
+def _title_bar_mouse_event(kind, title_bar, local: "QPoint", *, button, buttons):
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    global_point = title_bar.mapToGlobal(local)
+    return QMouseEvent(
+        kind,
+        QPointF(local),
+        QPointF(global_point),
+        button,
+        buttons,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
+def test_find_replace_title_bar_drag_moves_a_floating_window(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtGui import QMouseEvent
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha")
+    try:
+        panel.show()
+        panel.move(100, 100)
+        app.processEvents()
+        assert panel.isFloating() is True
+        title_bar = panel.titleBarWidget()
+        start_pos = panel.pos()
+
+        press_local = QPoint(10, 5)
+        press = _title_bar_mouse_event(
+            QMouseEvent.Type.MouseButtonPress,
+            title_bar,
+            press_local,
+            button=Qt.MouseButton.LeftButton,
+            buttons=Qt.MouseButton.LeftButton,
+        )
+        title_bar.mousePressEvent(press)
+
+        move_local = press_local + QPoint(40, 25)
+        move = _title_bar_mouse_event(
+            QMouseEvent.Type.MouseMove,
+            title_bar,
+            move_local,
+            button=Qt.MouseButton.NoButton,
+            buttons=Qt.MouseButton.LeftButton,
+        )
+        title_bar.mouseMoveEvent(move)
+        app.processEvents()
+
+        assert panel.pos() == start_pos + QPoint(40, 25)
+
+        release = _title_bar_mouse_event(
+            QMouseEvent.Type.MouseButtonRelease,
+            title_bar,
+            move_local,
+            button=Qt.MouseButton.LeftButton,
+            buttons=Qt.MouseButton.NoButton,
+        )
+        title_bar.mouseReleaseEvent(release)
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_find_replace_title_bar_only_shows_while_floating(tmp_path: Path):
+    """Attaching now means inserting into the host's pane tree (see
+    ``test_find_replace_attach_inserts_a_pane_tree_leaf_...``), so the
+    floating shell's title bar has nothing left to drag-dock/undock onto —
+    it only ever needs to move the floating window, and it only appears
+    while detached."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha")
+    host = UNITIMainWindow()
+    try:
+        assert panel.isFloating() is True
+
+        panel.attach_to(host)
+        app.processEvents()
+
+        assert panel.placement == "attached"
+        assert panel.isHidden() is True
+    finally:
+        panel.detach()
+        _close_panel(app, document, view, panel)
+        host.close()
+
+
+def test_closing_the_panel_while_busy_cancels_the_running_job(
+    tmp_path: Path, monkeypatch
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    import uniti.ui.find_replace as find_replace
+
+    started = threading.Event()
+    release = threading.Event()
+    real = find_replace.search_document
+
+    def delayed(*args, **kwargs):
+        started.set()
+        release.wait(5)
+        yield from real(*args, **kwargs)
+
+    monkeypatch.setattr(find_replace, "search_document", delayed)
+    app, document, view, panel = _make_panel(tmp_path, "alpha")
+    try:
+        panel.find_input.set_text("alpha")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        panel.find_all()
+        _wait_until(app, started.is_set)
+        assert panel.busy
+
+        task_handle = panel._task_handle
+        panel.close()
+
+        assert task_handle.token.cancelled
+        release.set()
+    finally:
+        release.set()
+        _close_panel(app, document, view, panel)
 
 
 def test_find_replace_export_prunes_oldest_field_history_with_notice():
@@ -894,6 +1574,78 @@ def test_pattern_and_replacement_formats_share_group_color(tmp_path: Path):
         assert len(pattern_colors) == 1
         assert replacement_colors == pattern_colors
         assert len(panel.find_input.highlighter.group_palette) >= 8
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def _format_color_at(editor, position: int) -> str:
+    formats = editor.document().firstBlock().layout().formats()
+    for item in formats:
+        if item.start <= position < item.start + item.length:
+            return item.format.foreground().color().name()
+    raise AssertionError(f"no format covers position {position}")
+
+
+def test_find_input_distinguishes_capturing_and_non_capturing_brackets(
+    tmp_path: Path,
+):
+    # BF-052: non-capturing groups must render with a color different from
+    # every capturing group's own color. A capturing group's own brackets
+    # deliberately keep painting in that group's own identity color (same
+    # as its backreferences) — users rely on this to trace which parens
+    # belong to which group at a glance; an earlier pass here mistakenly
+    # moved capturing brackets to a neutral color reading BF-020's own
+    # wording too literally, which regressed to a real reported bug
+    # ("capturing groups all white").
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from uniti.ui.regex_input import group_palette, non_capturing_bracket_color
+
+    app, document, view, panel = _make_panel(tmp_path, "abcdef")
+    try:
+        panel.regex_checkbox.setChecked(True)
+        pattern = r"(abc)(?:def)"
+        panel.find_input.set_text(pattern)
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        app.processEvents()
+
+        base = panel.find_input.palette().base().color()
+        capturing_open = _format_color_at(panel.find_input, pattern.index("("))
+        non_capturing_open = _format_color_at(
+            panel.find_input, pattern.index("(?:")
+        )
+        group_one = group_palette(base)[0].name()
+
+        assert capturing_open == group_one
+        assert non_capturing_open == non_capturing_bracket_color(base).name()
+        assert non_capturing_open != group_one
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_find_input_colors_unicode_escapes_as_their_own_category(tmp_path: Path):
+    # BF-052: \uXXXX/\UXXXXXXXX/\xXX/\N{...} must be recognized as one
+    # distinct category, not the generic (and previously group-color-
+    # colliding) "escape" formatting.
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "abc")
+    try:
+        panel.regex_checkbox.setChecked(True)
+        pattern = "\\u00e9\\d"
+        panel.find_input.set_text(pattern)
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        app.processEvents()
+
+        unicode_escape_color = _format_color_at(panel.find_input, 0)
+        generic_escape_color = _format_color_at(
+            panel.find_input, pattern.index("\\d")
+        )
+        assert unicode_escape_color != generic_escape_color
     finally:
         _close_panel(app, document, view, panel)
 
@@ -1165,6 +1917,7 @@ def test_single_zero_width_result_wraps_to_itself(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtTest import QSignalSpy
 
     app, document, view, panel = _make_panel(tmp_path, "aa")
     try:
@@ -1173,12 +1926,17 @@ def test_single_zero_width_result_wraps_to_itself(tmp_path: Path):
         _wait_until(app, lambda: panel.compile_current() is not None)
         panel.find_all()
         _wait_until(app, lambda: panel.result_count == 1 and not panel.busy)
+        position_spy = QSignalSpy(panel.matchPositionChanged)
         panel.next_match()
         panel.previous_match()
 
         assert panel._current_index == 0
         assert view.state.selection is None
-        assert panel.status_label.text() == "match 1/1"
+        assert position_spy.count() >= 1
+        assert list(position_spy.at(position_spy.count() - 1)) == [
+            view.view_id,
+            "Match 1 of 1",
+        ]
     finally:
         _close_panel(app, document, view, panel)
 
@@ -1432,7 +2190,12 @@ def test_find_replace_actions_are_compact_accessible_and_on_one_line():
         ]
 
     assert button_names(panel.actions_widget) == [
-        "Find All", "Replace All", "Previous Match", "Next Match", "Replace Current Match"
+        "Find All",
+        "Replace All",
+        "Previous Match",
+        "Next Match",
+        "Replace Current Match",
+        "Replace & Find Next",
     ]
     expected_names = {
         panel.find_all_button: "Find All",
@@ -1440,6 +2203,7 @@ def test_find_replace_actions_are_compact_accessible_and_on_one_line():
         panel.previous_button: "Previous Match",
         panel.next_button: "Next Match",
         panel.replace_button: "Replace Current Match",
+        panel.replace_and_next_button: "Replace & Find Next",
     }
     for button, name in expected_names.items():
         assert not button.icon().isNull()
@@ -1695,6 +2459,58 @@ def test_navigation_publishes_loading_then_current_and_next_capture_report(
         assert panel.capture_view.accessibleName() == "Match Report"
     finally:
         release.set()
+        _close_panel(app, document, view, panel)
+
+
+def test_clicking_a_match_report_row_jumps_to_that_match(tmp_path: Path):
+    from uniti.ui.capture_report import CaptureReportModel
+
+    app, document, view, panel = _make_panel(tmp_path, "aaa bbb")
+    try:
+        _run_regex_search(app, panel, r"(?P<letter>[a-z])+", expected=2)
+        _wait_until(
+            app,
+            lambda: panel.capture_model.rows()
+            and "Match 2 of 2" in panel.capture_model.rows(),
+        )
+        assert panel._current_index == 0
+
+        rows = panel.capture_model.rows()
+        second_header_row = rows.index("Match 2 of 2")
+        index = panel.capture_model.index(second_header_row, 0)
+        assert index.data(CaptureReportModel.MatchIndexRole) == 1
+
+        panel.capture_view.clicked.emit(index)
+
+        assert panel._current_index == 1
+        assert view.state.selection == (4, 7)
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_match_report_shows_and_live_updates_the_replacement_preview(
+    tmp_path: Path,
+):
+    app, document, view, panel = _make_panel(tmp_path, "alpha beta")
+    try:
+        panel.regex_checkbox.setChecked(True)
+        panel.find_input.set_text(r"(?P<first>\w+) (?P<second>\w+)")
+        panel.replace_input.set_text(r"\2 \1")
+        _wait_until(
+            app,
+            lambda: panel.compile_current() is not None
+            and panel._replacement_is_current(),
+        )
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 1)
+        _wait_until(app, lambda: "→ beta alpha" in panel.capture_model.rows())
+
+        panel.replace_input.set_text(r"\1-\2")
+        _wait_until(app, lambda: "→ alpha-beta" in panel.capture_model.rows())
+        assert "→ beta alpha" not in panel.capture_model.rows()
+        # The preview must never mutate the document itself.
+        assert document.read(0, document.total_chars()) == "alpha beta"
+    finally:
         _close_panel(app, document, view, panel)
 
 
@@ -2061,12 +2877,12 @@ def test_find_replace_settings_are_startup_defaults_not_runtime_state(
     find_window.show()
     app.processEvents()
     find_window.move(60, 70)
-    find_window.resize(700, 330)
+    find_window.resize(800, 330)
     find_window.set_zoom_percent(170)
     find_window.set_report_location("Hidden")
     app.processEvents()
     actual = find_window.geometry()
-    assert (actual.width(), actual.height()) == (700, 330)
+    assert (actual.width(), actual.height()) == (800, 330)
     assert store.load() == defaults
     find_window.shutdown()
     find_window.close()

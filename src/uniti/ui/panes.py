@@ -531,6 +531,7 @@ class EditorPaneTree(QWidget):
         pane_id: str | None = None,
         index: int | None = None,
         select: bool = True,
+        title: str | None = None,
     ) -> PaneLeaf:
         view_id = _identifier(getattr(view, "view_id", None), "view ID")
         existing = self.leaf_for_view(view_id)
@@ -548,7 +549,7 @@ class EditorPaneTree(QWidget):
         if len(self.view_ids) >= MAX_VIEWS:
             raise ValueError(f"pane tree cannot exceed {MAX_VIEWS} views")
         leaf = self._active_leaf if pane_id is None else self._leaf(pane_id)
-        leaf.add_view(view, index=index, select=select)
+        leaf.add_view(view, index=index, select=select, title=title)
         self._connect_view_focus(view)
         return leaf
 

@@ -194,6 +194,65 @@ def test_replacing_document_authority_preserves_view_bindings(tmp_path: Path):
     registry.close_all()
 
 
+def test_adopt_marks_untitled_documents_and_replace_clears_it_on_a_real_path(
+    tmp_path: Path,
+):
+    scratch = _open_document(tmp_path, "Untitled.txt")
+    (tmp_path / "real.txt").write_text("x", encoding="utf-8")
+    real = Document.open(tmp_path / "real.txt")
+    registry = DocumentRegistry(clock=lambda: NOW)
+    entry = registry.adopt(scratch, is_untitled=True)
+    try:
+        assert entry.is_untitled is True
+
+        assert registry.replace_document(
+            entry.document_id, real, allow_path_change=True
+        ) is scratch
+        assert entry.is_untitled is False
+        assert entry.canonical_path == real.path.resolve()
+        assert registry.find_path(real.path) is entry
+    finally:
+        registry.close_all()
+
+
+def test_replace_document_rejects_a_path_change_without_the_explicit_flag(
+    tmp_path: Path,
+):
+    scratch = _open_document(tmp_path, "Untitled.txt")
+    (tmp_path / "real.txt").write_text("x", encoding="utf-8")
+    real = Document.open(tmp_path / "real.txt")
+    registry = DocumentRegistry(clock=lambda: NOW)
+    entry = registry.adopt(scratch, is_untitled=True)
+    try:
+        with pytest.raises(DuplicateDocumentError):
+            registry.replace_document(entry.document_id, real)
+        assert entry.document is scratch
+        assert entry.is_untitled is True
+    finally:
+        real.close()
+        registry.close_all()
+
+
+def test_replace_document_with_path_change_rejects_a_path_owned_elsewhere(
+    tmp_path: Path,
+):
+    scratch = _open_document(tmp_path, "Untitled.txt")
+    other = _open_document(tmp_path, "other.txt")
+    collider = Document.open(other.path)
+    registry = DocumentRegistry(clock=lambda: NOW)
+    entry = registry.adopt(scratch, is_untitled=True)
+    registry.adopt(other)
+    try:
+        with pytest.raises(DuplicateDocumentError):
+            registry.replace_document(
+                entry.document_id, collider, allow_path_change=True
+            )
+        assert entry.document is scratch
+    finally:
+        collider.close()
+        registry.close_all()
+
+
 def test_replacing_document_authority_accepts_a_hard_link_to_the_same_file(
     tmp_path: Path,
 ):

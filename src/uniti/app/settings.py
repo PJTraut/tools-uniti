@@ -11,7 +11,10 @@ from uniti.core.durability import DurabilityResult
 from .atomic_json import atomic_write_json, preserve_invalid
 from .inspection_shortcut import DEFAULT_INSPECTION_MODIFIERS, normalize_inspection_modifiers
 
-SETTINGS_SCHEMA = 3
+SETTINGS_SCHEMA = 5
+MIN_EDITOR_TAB_WIDTH = 1
+MAX_EDITOR_TAB_WIDTH = 16
+DEFAULT_EDITOR_TAB_WIDTH = 4
 
 
 class UnsupportedSettingsSchema(ValueError):
@@ -28,10 +31,12 @@ class Settings:
     theme_contrast: str = "Standard"
     whitespace_mode: str = "off"
     whitespace_inspect_modifiers: str = DEFAULT_INSPECTION_MODIFIERS
+    editor_tab_width: int = DEFAULT_EDITOR_TAB_WIDTH
     find_replace_zoom_percent: int = 100
     find_replace_report_location: str = "Right"
     find_replace_geometry: tuple[int, int, int, int] | None = None
     shortcut_overrides: dict[str, str] = field(default_factory=dict)
+    syntax_extension_overrides: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +91,13 @@ def _settings_from_payload(payload: object) -> Settings:
         )
     except (TypeError, ValueError):
         inspection_modifiers = DEFAULT_INSPECTION_MODIFIERS
+    editor_tab_width = payload.get("editor_tab_width", DEFAULT_EDITOR_TAB_WIDTH)
+    if (
+        not isinstance(editor_tab_width, int)
+        or isinstance(editor_tab_width, bool)
+        or not MIN_EDITOR_TAB_WIDTH <= editor_tab_width <= MAX_EDITOR_TAB_WIDTH
+    ):
+        editor_tab_width = DEFAULT_EDITOR_TAB_WIDTH
     find_replace_zoom_percent = payload.get("find_replace_zoom_percent", 100)
     if (
         not isinstance(find_replace_zoom_percent, int)
@@ -120,6 +132,15 @@ def _settings_from_payload(payload: object) -> Settings:
             for command_id, shortcut in raw_shortcut_overrides.items()
             if isinstance(command_id, str) and isinstance(shortcut, str)
         }
+    raw_syntax_extension_overrides = payload.get("syntax_extension_overrides", {})
+    if not isinstance(raw_syntax_extension_overrides, dict):
+        syntax_extension_overrides = {}
+    else:
+        syntax_extension_overrides = {
+            extension: profile_key
+            for extension, profile_key in raw_syntax_extension_overrides.items()
+            if isinstance(extension, str) and isinstance(profile_key, str)
+        }
     return Settings(
         last_directory=last_directory,
         performance_mode=performance_mode,
@@ -129,10 +150,12 @@ def _settings_from_payload(payload: object) -> Settings:
         theme_contrast=theme_contrast,
         whitespace_mode=whitespace_mode,
         whitespace_inspect_modifiers=inspection_modifiers,
+        editor_tab_width=editor_tab_width,
         find_replace_zoom_percent=find_replace_zoom_percent,
         find_replace_report_location=find_replace_report_location,
         find_replace_geometry=find_replace_geometry,
         shortcut_overrides=shortcut_overrides,
+        syntax_extension_overrides=syntax_extension_overrides,
     )
 
 
@@ -155,6 +178,12 @@ class SettingsStore:
         """The separate atomic authority for document group (tag) definitions."""
         from .document_groups import DocumentGroupStore
         return DocumentGroupStore(self.path.with_name("document-groups.json"))
+
+    @property
+    def find_replace_recipes(self):
+        """The separate atomic authority for saved Find/Replace recipes."""
+        from .find_replace_recipes import FindReplaceRecipeStore
+        return FindReplaceRecipeStore(self.path.with_name("find-replace-recipes.json"))
 
     def load(self) -> Settings:
         try:

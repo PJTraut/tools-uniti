@@ -57,6 +57,33 @@ def _reference_value(raw: str) -> int | str:
     return int(raw) if raw.isdigit() else raw
 
 
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+_UNICODE_ESCAPE_HEX_WIDTH = {"x": 2, "u": 4, "U": 8}
+
+
+def _consume_unicode_escape(pattern: str, start: int) -> int | None:
+    """Recognize `\\uHHHH`, `\\UHHHHHHHH`, `\\xHH`, and `\\N{...}` as one
+    unit (BF-052) — the actual Unicode-codepoint escape forms the `regex`
+    engine supports (unlike PCRE's `\\x{...}`, which it does not)."""
+
+    letter = pattern[start + 1]
+    if letter == "N":
+        if start + 2 >= len(pattern) or pattern[start + 2] != "{":
+            return None
+        close = pattern.find("}", start + 3)
+        return None if close < 0 else close + 1
+    width = _UNICODE_ESCAPE_HEX_WIDTH.get(letter)
+    if width is None:
+        return None
+    digits_start = start + 2
+    digits_end = digits_start + width
+    if digits_end > len(pattern) or any(
+        char not in _HEX_DIGITS for char in pattern[digits_start:digits_end]
+    ):
+        return None
+    return digits_end
+
+
 def scan_pattern(pattern: str) -> PatternStructure:
     if not isinstance(pattern, str):
         raise TypeError("pattern must be a string")
@@ -122,6 +149,15 @@ def scan_pattern(pattern: str) -> PatternStructure:
                     )
                 )
                 i = end
+                continue
+            unicode_escape_end = _consume_unicode_escape(pattern, i)
+            if unicode_escape_end is not None:
+                tokens.append(
+                    RegexToken(
+                        "unicode_escape", i, unicode_escape_end, pattern[i:unicode_escape_end]
+                    )
+                )
+                i = unicode_escape_end
                 continue
             tokens.append(RegexToken("escape", i, i + 2, pattern[i : i + 2]))
             i += 2
@@ -475,6 +511,16 @@ def tokenize_replacement(
                 )
             )
             i = end
+            continue
+
+        unicode_escape_end = _consume_unicode_escape(replacement, i)
+        if unicode_escape_end is not None:
+            tokens.append(
+                RegexToken(
+                    "unicode_escape", i, unicode_escape_end, replacement[i:unicode_escape_end]
+                )
+            )
+            i = unicode_escape_end
             continue
 
         end = i + 2

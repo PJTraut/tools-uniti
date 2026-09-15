@@ -42,6 +42,7 @@ class SearchOptions:
     progress_chars: int = 1_048_576
     include_captures: bool = True
     start: int = 0
+    end: int | None = None
 
     def __post_init__(self) -> None:
         if self.window_chars <= 0:
@@ -56,6 +57,8 @@ class SearchOptions:
             raise ValueError("progress_chars must be positive")
         if self.start < 0:
             raise ValueError("start must be non-negative")
+        if self.end is not None and self.end < self.start:
+            raise ValueError("end must not be before start")
 
 
 def _needs_full_prefix(compiled: regex.Pattern) -> bool:
@@ -127,6 +130,7 @@ def _iter_engine_matches(
     source_iter = iter(
         document.iter_text(
             options.start,
+            options.end,
             chunk_chars=options.window_chars,
             intent=ReadIntent.STREAMING,
         )

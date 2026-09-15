@@ -42,13 +42,17 @@ def test_status_bar_reports_saved_and_pending_exact_text_format(tmp_path: Path):
     assert view is not None
 
     assert window._status.format_label.text() == "UTF-8, CRLF"
+    # BF-023: an explicit EOL policy is treated as already applied to the
+    # live document (the sanctioned UI paths convert it immediately), so
+    # only the encoding half — genuinely still save-time-only — shows as
+    # pending here.
     view.document.set_output_format(
         OutputFormat(encoding_profile("utf-16-le-bom"), EOLPolicy.LF)
     )
     window._on_view_state_changed(view)
     assert (
         window._status.format_label.text()
-        == "UTF-8, CRLF (on save: UTF-16 LE BOM, LF)"
+        == "UTF-8, LF (on save: UTF-16 LE BOM, LF)"
     )
     window.close_all_documents(force=True)
     window.close()

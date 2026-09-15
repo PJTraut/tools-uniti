@@ -29,6 +29,44 @@ def test_find_input_keeps_only_the_latest_fifty_user_edits():
     field.close()
 
 
+@pytest.mark.parametrize(
+    "standard_key",
+    ["ZoomIn", "ZoomOut"],
+)
+def test_zoom_shortcut_override_is_declined_not_claimed(standard_key: str):
+    """BF-017: a bare QTextEdit claims the standard zoom key sequences for
+    its own private font zoom via ShortcutOverride, which stops a
+    higher-level QAction shortcut with the same sequence from ever firing
+    while the field has focus. The field must decline (ignore) that
+    override instead of accepting it."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QEvent
+    from PySide6.QtGui import QKeyEvent, QKeySequence
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.bounded_text_edit import BoundedSingleLineTextEdit
+
+    app = QApplication.instance() or QApplication([])
+    key_combination = QKeySequence(getattr(QKeySequence.StandardKey, standard_key))[0]
+    field = BoundedSingleLineTextEdit()
+    try:
+        event = QKeyEvent(
+            QEvent.Type.ShortcutOverride,
+            key_combination.key(),
+            key_combination.keyboardModifiers(),
+        )
+
+        result = field.event(event)
+
+        assert result is True
+        assert event.isAccepted() is False
+    finally:
+        field.close()
+
+
 def test_find_and_replace_input_histories_are_independent():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

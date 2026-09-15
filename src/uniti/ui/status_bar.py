@@ -18,6 +18,7 @@ class UNITIStatusBar(QStatusBar):
         self._size = QLabel("0 B")
         self._task = QLabel("")
         self._resources = QLabel("Resources: Normal")
+        self._match = QLabel("")
         self._eol_report: EOLReport | None = None
         self._active_task: TaskProgress | None = None
         for label in (
@@ -28,6 +29,7 @@ class UNITIStatusBar(QStatusBar):
         ):
             self.addWidget(label)
         self.addWidget(self._task, 1)
+        self.addPermanentWidget(self._match)
         self.addPermanentWidget(self._resources)
         self.addPermanentWidget(self._size)
 
@@ -119,17 +121,18 @@ class UNITIStatusBar(QStatusBar):
             self._eol_report = eol_report
         source_eol = self._source_eol_label(self._eol_report)
         saved = document.saved_output_format
-        saved_text = format_summary(saved.encoding, source_eol)
-
         pending = document.output_format
-        pending_eol = (
-            source_eol
-            if pending.eol is EOLPolicy.PRESERVE
-            else pending.eol.value
-        )
-        pending_text = format_summary(pending.encoding, pending_eol)
+        # BF-023: choosing an EOL policy converts the live document
+        # immediately, so the EOL half of "current" always reflects that
+        # choice — never a still-pending save-time conversion. Only the
+        # encoding can still genuinely differ until the next save.
+        current_eol = source_eol if pending.eol is EOLPolicy.PRESERVE else pending.eol.value
+        current_text = format_summary(saved.encoding, current_eol)
+        pending_text = format_summary(pending.encoding, current_eol)
         self._format.setText(
-            saved_text if pending == saved else f"{saved_text} (on save: {pending_text})"
+            current_text
+            if pending.encoding == saved.encoding
+            else f"{current_text} (on save: {pending_text})"
         )
 
         try:
@@ -140,6 +143,16 @@ class UNITIStatusBar(QStatusBar):
 
     def update_cursor(self, line: int, column: int) -> None:
         self._position.setText(f"Ln {line + 1}:{column + 1}")
+
+    def update_match_position(self, text: str) -> None:
+        self._match.setText(text)
+
+    def clear_match_position(self) -> None:
+        self._match.setText("")
+
+    @property
+    def match_label(self) -> QLabel:
+        return self._match
 
     def update_view(self, zoom_percent: int, *, soft_wrap: bool) -> None:
         self._zoom.setText(f"{zoom_percent}%")
@@ -152,3 +165,4 @@ class UNITIStatusBar(QStatusBar):
         self._zoom.setText("—")
         self._wrap.setText("—")
         self._size.setText("0 B")
+        self._match.setText("")

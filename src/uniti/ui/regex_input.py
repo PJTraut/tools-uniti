@@ -43,6 +43,96 @@ def _group_color(base: QColor, key: int) -> QColor:
     return color
 
 
+def group_palette(base: QColor) -> tuple[QColor, ...]:
+    """Per-capture-group colors, shared by the Find input and Match Report."""
+
+    return tuple(_group_color(base, index) for index in range(1, len(_GROUP_HUES) + 1))
+
+
+def bracket_color(base: QColor) -> QColor:
+    """One distinct, neutral (desaturated) color for capturing-group parentheses.
+
+    Deliberately not one of the per-group hues in `_GROUP_HUES`, so a group's
+    own color (used for its `\\N :` label in the Match Report, and for its
+    backreferences here) never doubles as the bracket color.
+    """
+
+    dark_base = base.lightnessF() < 0.5
+    lightness = 200 if dark_base else 70
+    direction = 8 if dark_base else -8
+    color = QColor.fromHsl(0, 0, lightness)
+    while _contrast_ratio(color, base) < 4.5 and 8 <= lightness <= 247:
+        lightness += direction
+        color = QColor.fromHsl(0, 0, max(0, min(255, lightness)))
+    return color
+
+
+def non_capturing_bracket_color(base: QColor) -> QColor:
+    """A distinct neutral shade for non-capturing/lookaround/atomic group
+    parentheses (BF-052) — the same desaturated "structural, not content"
+    family as `bracket_color`, so it still visually reads as a bracket, but
+    at a different lightness so it never paints identically to a real
+    capturing group's parens.
+    """
+
+    capturing = bracket_color(base)
+    dark_base = base.lightnessF() < 0.5
+    lightness = 140 if dark_base else 115
+    direction = 8 if dark_base else -8
+    color = QColor.fromHsl(0, 0, lightness)
+    while (
+        (_contrast_ratio(color, base) < 4.5 or _contrast_ratio(color, capturing) < 1.5)
+        and 8 <= lightness <= 247
+    ):
+        lightness += direction
+        color = QColor.fromHsl(0, 0, max(0, min(255, lightness)))
+    return color
+
+
+# Hues chosen to maximize angular separation from every `_GROUP_HUES` value
+# (minimum 15 degrees) and from each other (minimum 21 degrees), so no
+# regex-syntax category can be mistaken for an actual capturing group's
+# color (BF-052) — unlike the previous design, which reused
+# `_group_color(base, 2)`/`_group_color(base, 3)` (literally Group 2's and
+# Group 3's own colors) for most non-group token kinds.
+_CATEGORY_HUES = {
+    "escape": 90,
+    "unicode_property": 111,
+    "unicode_escape": 234,
+    "char_class": 308,
+    "anchor": 33,
+    "quantifier": 69,
+    "alternation": 192,
+    "backreference": 354,
+    "invalid": 153,
+}
+
+
+def _category_color(base: QColor, hue: int) -> QColor:
+    dark_base = base.lightnessF() < 0.5
+    lightness = 170 if dark_base else 95
+    direction = 8 if dark_base else -8
+    # Lower saturation than `_group_color`'s 190: category colors are a
+    # deliberately muted "syntax" family, visually distinct from the vivid
+    # capture-group identity colors even before considering hue.
+    color = QColor.fromHsl(hue, 130, lightness)
+    while _contrast_ratio(color, base) < 4.5 and 8 <= lightness <= 247:
+        lightness += direction
+        color = QColor.fromHsl(hue, 130, max(0, min(255, lightness)))
+    return color
+
+
+def category_palette(base: QColor) -> dict[str, QColor]:
+    """Distinct, non-group colors for regex syntax categories (BF-052),
+    keyed by `RegexToken.kind` (plus `"invalid"` for the underline color) —
+    reviewed and given a unique color per type, replacing the previous
+    design where most non-group kinds shared just two colors, both
+    borrowed from the group palette itself.
+    """
+
+    return {kind: _category_color(base, hue) for kind, hue in _CATEGORY_HUES.items()}
+
+
 def _format(color: QColor, *, bold: bool = False) -> QTextCharFormat:
     result = QTextCharFormat()
     result.setForeground(color)
@@ -65,28 +155,30 @@ class _AnalysisHighlighter(QSyntaxHighlighter):
         palette = self._owner.palette()
         base = palette.base().color()
         text = palette.text().color()
-        self.group_palette = tuple(
-            _group_color(base, index) for index in range(1, len(_GROUP_HUES) + 1)
-        )
-        structural = _group_color(base, 1)
-        secondary = _group_color(base, 2)
-        tertiary = _group_color(base, 3)
+        self.group_palette = group_palette(base)
+        self.bracket_color = bracket_color(base)
+        self.non_capturing_bracket_color = non_capturing_bracket_color(base)
+        categories = category_palette(base)
         self._formats = {
             "literal": _format(text),
-            "escape": _format(secondary),
-            "unicode_property": _format(tertiary),
-            "char_class": _format(tertiary),
-            "anchor": _format(secondary, bold=True),
-            "quantifier": _format(secondary, bold=True),
-            "alternation": _format(tertiary, bold=True),
-            "group_open": _format(structural, bold=True),
-            "group_close": _format(structural, bold=True),
-            "group_name": _format(structural, bold=True),
+            "escape": _format(categories["escape"]),
+            "unicode_escape": _format(categories["unicode_escape"], bold=True),
+            "unicode_property": _format(categories["unicode_property"]),
+            "char_class": _format(categories["char_class"]),
+            "anchor": _format(categories["anchor"], bold=True),
+            "quantifier": _format(categories["quantifier"], bold=True),
+            "alternation": _format(categories["alternation"], bold=True),
+            "group_open": _format(self.bracket_color, bold=True),
+            "group_close": _format(self.bracket_color, bold=True),
+            "group_name": _format(self.bracket_color, bold=True),
             "flag": _format(text),
             "special": _format(text),
-            "backreference": _format(tertiary, bold=True),
+            "backreference": _format(categories["backreference"], bold=True),
         }
-        self._invalid_color = _group_color(base, 2)
+        self._non_capturing_bracket_format = _format(
+            self.non_capturing_bracket_color, bold=True
+        )
+        self._invalid_color = categories["invalid"]
         self.rehighlight()
 
     def set_analysis(self, analysis: RegexAnalysis) -> None:
@@ -139,7 +231,23 @@ class _AnalysisHighlighter(QSyntaxHighlighter):
             if token.end <= token.start or token.start >= len(text):
                 continue
             length = min(len(text), token.end) - token.start
-            if token.color_key is not None:
+            if (
+                token.kind in ("group_open", "group_close")
+                and token.group_number is None
+            ):
+                # A non-capturing/lookaround/atomic group's brackets have no
+                # group identity to color with — use the dedicated neutral
+                # non-capturing color (BF-052) so they still read as
+                # distinct from every capturing group's own color below.
+                fmt = self._non_capturing_bracket_format
+            elif token.color_key is not None:
+                # A capturing group's own brackets/name paint in that
+                # group's own color too, same as its backreferences — users
+                # rely on this to visually trace which parens belong to
+                # which group at a glance (confirmed directly: reverting
+                # this to a neutral bracket color, as an earlier pass here
+                # mistakenly did reading BF-020's own wording too literally,
+                # regressed the visible bug "capturing groups all white").
                 color = self.group_palette[
                     (token.color_key - 1) % len(self.group_palette)
                 ]

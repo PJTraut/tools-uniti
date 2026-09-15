@@ -31,6 +31,38 @@ def test_pattern_lexer_handles_classes_escapes_alternation_and_flags():
     assert any(token.kind == "escape" and token.text == r"\?" for token in tokens)
 
 
+def test_pattern_lexer_recognizes_unicode_escapes_as_one_token():
+    pattern = "\\u00e9" + r"\U0001F600\x41\N{LATIN SMALL LETTER A}"
+    tokens = tokenize_pattern(pattern)
+    unicode_escapes = [token for token in tokens if token.kind == "unicode_escape"]
+    assert [token.text for token in unicode_escapes] == [
+        "\\u00e9",
+        r"\U0001F600",
+        r"\x41",
+        r"\N{LATIN SMALL LETTER A}",
+    ]
+    assert not any(token.kind == "escape" for token in tokens)
+    assert not any(token.kind == "literal" for token in tokens)
+
+
+def test_pattern_lexer_falls_back_to_generic_escape_for_malformed_unicode_escapes():
+    tokens = tokenize_pattern(r"\u12\N\x")
+    assert not any(token.kind == "unicode_escape" for token in tokens)
+    assert any(token.kind == "escape" and token.text == r"\u" for token in tokens)
+    assert any(token.kind == "escape" and token.text == r"\N" for token in tokens)
+    assert any(token.kind == "escape" and token.text == r"\x" for token in tokens)
+
+
+def test_replacement_lexer_recognizes_unicode_escapes():
+    tokens = tokenize_replacement("\\u00e9" + r"\x41\N{LATIN SMALL LETTER A}")
+    unicode_escapes = [token for token in tokens if token.kind == "unicode_escape"]
+    assert [token.text for token in unicode_escapes] == [
+        "\\u00e9",
+        r"\x41",
+        r"\N{LATIN SMALL LETTER A}",
+    ]
+
+
 def test_pattern_lexer_marks_unclosed_class_and_group_invalid():
     tokens = tokenize_pattern("(abc[def")
     assert any(token.kind == "invalid" and token.text == "[def" for token in tokens)

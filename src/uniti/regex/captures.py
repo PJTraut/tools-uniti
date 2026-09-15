@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Callable
 
 import regex
 
+from .lexer import tokenize_replacement
 from .results import MatchRecord
 from .search import RegexSearchCancelled, RegexSearchTimeout
 
@@ -19,6 +20,7 @@ MAX_CAPTURE_CONTEXT_CHARS = 65_536
 MAX_CAPTURE_PREVIEWS = 5
 MAX_CAPTURE_PREVIEW_CHARS = 80
 MAX_CAPTURE_REPORT_BYTES = 1 << 20
+MAX_CAPTURE_REPORT_MATCHES = 3
 
 _RECORD_PAYLOAD_BYTES = 64
 _CAPTURE_TIMEOUT_SECONDS = 0.25
@@ -52,8 +54,10 @@ class CaptureReportRequest:
             raise ValueError("requested index must be non-negative")
         if self.matches and self.matches[0][0] != self.requested_index:
             raise ValueError("the requested match must be first")
-        if len(self.matches) > 2:
-            raise ValueError("capture reports contain at most two matches")
+        if len(self.matches) > MAX_CAPTURE_REPORT_MATCHES:
+            raise ValueError(
+                f"capture reports contain at most {MAX_CAPTURE_REPORT_MATCHES} matches"
+            )
         for index, record in self.matches:
             if index < 0 or index >= self.match_count:
                 raise ValueError("capture-report match index is out of range")
@@ -86,6 +90,11 @@ class CaptureMatchReport:
     total: int
     groups: tuple[CaptureGroupRow, ...]
     unavailable_reason: str | None = None
+    replacement_preview: str | None = None
+    # (start, end, group_number) for each span of `replacement_preview` that
+    # came from a capturing-group backreference — BF-052 item 5, lets the
+    # Match Report color those spans like the referenced group elsewhere.
+    replacement_preview_group_spans: tuple[tuple[int, int, int], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +144,8 @@ def _match_payload_size(match: CaptureMatchReport) -> int:
     return (
         _RECORD_PAYLOAD_BYTES
         + _utf8_size(match.unavailable_reason)
+        + _utf8_size(match.replacement_preview)
+        + _RECORD_PAYLOAD_BYTES * len(match.replacement_preview_group_spans)
         + sum(_group_payload_size(row) for row in match.groups)
     )
 
@@ -294,6 +305,42 @@ def _resolve_exact_match(
     return _ExactMatchResolution(match, context_start, window)
 
 
+def _replacement_preview(
+    match: object,
+    replacement: str | None,
+    compiled: regex.Pattern,
+) -> tuple[str | None, tuple[tuple[int, int, int], ...]]:
+    if replacement is None:
+        return None, ()
+    try:
+        tokens = tokenize_replacement(
+            replacement,
+            group_count=compiled.groups,
+            group_names=compiled.groupindex,
+        )
+        pieces: list[str] = []
+        spans: list[tuple[int, int, int]] = []
+        offset = 0
+        for token in tokens:
+            # Delegate all actual escape/backreference decoding to the
+            # engine itself (one call per token) rather than reimplementing
+            # escape semantics here — this only tracks where each piece
+            # lands in the concatenated output (BF-052 item 5).
+            piece = match.expand(token.text)
+            if (
+                token.kind == "backreference"
+                and token.valid
+                and token.group_number is not None
+                and token.group_number != 0
+            ):
+                spans.append((offset, offset + len(piece), token.group_number))
+            pieces.append(piece)
+            offset += len(piece)
+        return "".join(pieces), tuple(spans)
+    except (regex.error, IndexError):
+        return None, ()
+
+
 def _resolve_match(
     snapshot: DocumentReadSnapshot,
     compiled: regex.Pattern,
@@ -303,6 +350,7 @@ def _resolve_match(
     *,
     max_payload_bytes: int,
     cancelled: Callable[[], bool] | None,
+    replacement: str | None = None,
 ) -> CaptureMatchReport:
     resolution = _resolve_exact_match(
         snapshot,
@@ -370,10 +418,17 @@ def _resolve_match(
         rows.append(row)
         match_payload += row_payload
 
+    preview, preview_group_spans = _replacement_preview(match, replacement, compiled)
+    if match_payload + _utf8_size(preview) > max_payload_bytes:
+        preview = None
+        preview_group_spans = ()
+
     return CaptureMatchReport(
         index=index,
         total=total,
         groups=tuple(rows),
+        replacement_preview=preview,
+        replacement_preview_group_spans=preview_group_spans,
     )
 
 
@@ -383,8 +438,10 @@ def resolve_capture_report(
     request: CaptureReportRequest,
     *,
     cancelled: Callable[[], bool] | None = None,
+    replacement: str | None = None,
 ) -> CaptureReport:
-    """Resolve at most two exact stored matches into a bounded capture report."""
+    """Resolve at most `MAX_CAPTURE_REPORT_MATCHES` exact stored matches into a
+    bounded capture report."""
 
     payload_bytes = _request_payload_size(request)
     if payload_bytes > MAX_CAPTURE_REPORT_BYTES:
@@ -415,6 +472,7 @@ def resolve_capture_report(
             record,
             max_payload_bytes=max(0, available),
             cancelled=cancelled,
+            replacement=replacement,
         )
         reports.append(report)
         payload_bytes += _match_payload_size(report)

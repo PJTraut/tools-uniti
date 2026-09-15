@@ -28,7 +28,7 @@ def test_setup_state_round_trips_and_fills_schema_sections(tmp_path: Path):
 
     loaded = store.prepare()
     assert loaded["startup"] == {"ok": True, "stage": "READY"}
-    assert loaded["schemas"] == {"settings": 3, "recovery": 3, "session": 4}
+    assert loaded["schemas"] == {"settings": 5, "recovery": 3, "session": 4}
     assert loaded["last_bootstrap"] is None
 
 
@@ -54,7 +54,7 @@ def test_setup_state_refreshes_supported_schema_versions(tmp_path: Path):
 
     loaded = SetupStateStore(path).prepare()
 
-    assert loaded["schemas"] == {"settings": 3, "recovery": 3, "session": 4}
+    assert loaded["schemas"] == {"settings": 5, "recovery": 3, "session": 4}
 
 
 def test_setup_state_preserves_malformed_before_using_defaults(tmp_path: Path):

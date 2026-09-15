@@ -245,17 +245,21 @@ def test_a21_editor_docking_preserves_authority_layout_and_bytes(tmp_path: Path)
             original_bytes.decode("utf-8")
         )
 
+        from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+
         panel = service.find_replace
         panel.find_input.set_text("beta")
         service.set_active_view(window.window_id, original.view_id)
         service.attach_find_replace()
-        assert panel.parentWidget() is window
+        assert panel._dock_host is window
+        assert window.panes.contains_view(FIND_REPLACE_VIEW_ID)
         assert panel.placement == "attached"
 
         second = service.new_window()
         service.set_active_view(second.window_id, None)
         assert service.find_replace is panel
-        assert panel.parentWidget() is second
+        assert panel._dock_host is second
+        assert second.panes.contains_view(FIND_REPLACE_VIEW_ID)
         assert panel.find_input.text() == "beta"
 
         service.detach_find_replace()

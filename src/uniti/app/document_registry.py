@@ -33,6 +33,7 @@ class DocumentEntry:
     last_active_at: datetime
     closed_at: datetime | None
     group_id: str | None = None
+    is_untitled: bool = False
 
 
 def _utc_now() -> datetime:
@@ -115,6 +116,7 @@ class DocumentRegistry:
         *,
         document_id: str | None = None,
         saved_stamp: SavedFileStamp | None = None,
+        is_untitled: bool = False,
     ) -> DocumentEntry:
         if not isinstance(document, Document):
             raise TypeError("document must be a Document")
@@ -149,6 +151,8 @@ class DocumentRegistry:
             saved_stamp,
             now,
             None,
+            None,
+            is_untitled,
         )
         self._entries[selected_id] = entry
         self._documents[id(document)] = selected_id
@@ -244,8 +248,16 @@ class DocumentRegistry:
         self,
         document_id: str,
         replacement: Document,
+        *,
+        allow_path_change: bool = False,
     ) -> Document:
-        """Atomically replace one authority while retaining its view bindings."""
+        """Atomically replace one authority while retaining its view bindings.
+
+        ``allow_path_change`` permits the replacement to target a different
+        path than the current authority — used when an untitled document is
+        saved for the first time to a real destination — and clears
+        ``is_untitled`` once that happens.
+        """
 
         if not isinstance(replacement, Document):
             raise TypeError("replacement must be a Document")
@@ -253,8 +265,15 @@ class DocumentRegistry:
         if id(replacement) in self._documents:
             raise DuplicateDocumentError("replacement document is already owned")
         canonical_path = normalize_native_path(replacement.path).path
-        if not native_paths_equal(canonical_path, entry.canonical_path):
+        path_changed = not native_paths_equal(canonical_path, entry.canonical_path)
+        if path_changed and not allow_path_change:
             raise DuplicateDocumentError("replacement path does not match the authority")
+        if path_changed:
+            existing = self.find_path(canonical_path)
+            if existing is not None and existing is not entry:
+                raise DuplicateDocumentError(
+                    f"document path is already owned by {existing.document_id}"
+                )
         original = entry.document
         self._documents.pop(id(original), None)
         self._documents[id(replacement)] = entry.document_id
@@ -262,6 +281,8 @@ class DocumentRegistry:
         entry.canonical_path = canonical_path
         entry.saved_stamp = None
         entry.last_active_at = _datetime(self._clock(), "clock result")
+        if path_changed:
+            entry.is_untitled = False
         original.close()
         return original
 

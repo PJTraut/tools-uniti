@@ -134,6 +134,37 @@ def test_literal_pattern_analysis_keeps_engine_syntax_out_of_user_tokens():
     assert "(?:" not in "".join(token.text for token in analysis.tokens)
 
 
+def test_whole_word_matches_cjk_terms_embedded_in_continuous_cjk_text():
+    # BF-034: plain `\b` never fires between two Han/Hiragana/etc. characters
+    # (both are Unicode "word" characters), so "Whole word" previously
+    # returned zero matches for a CJK term with no space/punctuation
+    # neighbor — a real malfunction, not merely "as designed" for scripts
+    # without word-delimiting whitespace.
+    analysis = analyze_pattern("中文", generation=1, literal=True, whole_word=True)
+    assert analysis.compiled.search("中文测试") is not None
+    assert analysis.compiled.search("中文 测试") is not None
+
+
+def test_whole_word_matches_thai_terms_embedded_in_continuous_thai_text():
+    analysis = analyze_pattern("ทดสอบ", generation=1, literal=True, whole_word=True)
+    assert analysis.compiled.search("กทดสอบข") is not None
+
+
+def test_whole_word_still_enforces_boundaries_for_space_delimited_scripts():
+    analysis = analyze_pattern("cat", generation=1, literal=True, whole_word=True)
+    assert analysis.compiled.search("category") is None
+    assert analysis.compiled.search("concatenate") is None
+    assert analysis.compiled.search("the cat sat") is not None
+
+
+def test_whole_word_relaxes_only_the_cjk_edge_of_a_mixed_script_term():
+    analysis = analyze_pattern("abc中文", generation=1, literal=True, whole_word=True)
+    # Left edge is Latin: a real word boundary is still required there.
+    assert analysis.compiled.search("xabc中文") is None
+    # Right edge is Han: no boundary is required there.
+    assert analysis.compiled.search("abc中文测") is not None
+
+
 def test_pattern_analysis_enforces_length_limit_before_compilation():
     at_limit = "(?x)#" + "x" * (MAX_EXPRESSION_CHARS - 5)
     assert analyze_pattern(at_limit, 1).state is AnalysisState.VALID

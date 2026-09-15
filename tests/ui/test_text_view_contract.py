@@ -54,6 +54,76 @@ def test_text_view_offscreen_smoke_when_pyside6_is_available(tmp_path: Path):
         view.close()
 
 
+def test_scrolling_to_the_end_fully_reveals_the_last_line(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "view.txt"
+    path.write_text(
+        "\n".join(f"line {i}" for i in range(40)), encoding="utf-8", newline=""
+    )
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        try:
+            # A height deliberately not a whole multiple of the row height —
+            # a scroll maximum padded for a partial extra row leaves the
+            # true last line straddling the viewport's bottom edge (BF-025).
+            view.resize(320, view._line_height * 10 + view._line_height // 2)
+            view.show()
+            app.processEvents()
+
+            scrollbar = view.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
+            app.processEvents()
+
+            first_line = scrollbar.value()
+            known_lines = document.document_line_index.indexed_line_count
+            assert document.document_line_index.complete
+            last_row = known_lines - 1 - first_line
+            assert (last_row + 1) * view._line_height <= view.viewport().height()
+        finally:
+            view.close()
+
+
+def test_set_tab_width_changes_visible_tab_stop_width(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "tabs.txt"
+    path.write_text("\tX", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        try:
+            view.resize(640, 200)
+            assert view._tab_width_chars == 4
+
+            view.set_tab_width(2)
+            narrow = view._shape("\tX").width
+
+            view.set_tab_width(8)
+            wide = view._shape("\tX").width
+
+            assert wide > narrow
+        finally:
+            view.close()
+
+
 def test_text_view_pages_horizontally_by_character_window():
     source = SOURCE.read_text(encoding="utf-8")
     assert "def _horizontal_window" in source
@@ -360,6 +430,121 @@ def test_selected_text_uses_highlighted_text_palette_role(
         view.close()
         view.deleteLater()
         app.processEvents()
+
+
+def test_syntax_profile_paints_a_token_in_its_category_color(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.core.syntax_profiles import profile_for_extension
+    from uniti.ui.syntax_theme import syntax_category_palette
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "sample.json"
+    text = '{"key": 1}'
+    path.write_text(text, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            view.set_syntax_profile(profile_for_extension("json"))
+            view.resize(320, 100)
+            view.show()
+            app.processEvents()
+            view.viewport().repaint()
+            app.processEvents()
+
+            image = view.viewport().grab().toImage()
+            # `"key"` spans text[1:6]; sample across its rendered width.
+            x_start = view._gutter_width + view._metrics.horizontalAdvance(text[:1])
+            x_end = view._gutter_width + view._metrics.horizontalAdvance(text[:6])
+            y = view._line_height // 2
+
+            expected_color = syntax_category_palette(view.theme_tokens.base)["string"]
+            text_color = view.theme_tokens.text
+
+            def distance(left: QColor, right: QColor) -> int:
+                return sum(
+                    (a - b) ** 2 for a, b in zip(left.getRgb()[:3], right.getRgb()[:3])
+                )
+
+            closest = min(
+                (image.pixelColor(x, y) for x in range(x_start, x_end)),
+                key=lambda color: distance(color, expected_color),
+            )
+            assert distance(closest, expected_color) < distance(closest, text_color)
+        finally:
+            view.close()
+
+
+def test_plain_text_syntax_profile_leaves_rendering_unaffected(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "sample.txt"
+    text = '{"key": 1}'
+    path.write_text(text, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            view.resize(320, 100)
+            view.show()
+            app.processEvents()
+            view.viewport().repaint()
+            app.processEvents()
+            before = view.viewport().grab().toImage()
+
+            from uniti.core.syntax_profiles import PLAIN_TEXT
+
+            assert view.syntax_profile is PLAIN_TEXT
+            view.viewport().repaint()
+            app.processEvents()
+            after = view.viewport().grab().toImage()
+            assert before == after
+        finally:
+            view.close()
+
+
+def test_syntax_highlighting_never_changes_document_content(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.core.syntax_profiles import profile_for_extension
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "sample.xml"
+    text = '<a b="c">text</a>'
+    path.write_text(text, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            view.set_syntax_profile(profile_for_extension("xml"))
+            view.resize(320, 100)
+            view.show()
+            app.processEvents()
+            view.viewport().repaint()
+            app.processEvents()
+            assert document.read(0, document.total_chars()) == text
+            assert not document.modified
+        finally:
+            view.close()
 
 
 def test_zero_width_marker_row_ownership_is_unambiguous():

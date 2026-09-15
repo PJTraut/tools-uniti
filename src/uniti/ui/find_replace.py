@@ -7,11 +7,13 @@ from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import Enum
 import time
+import uuid
 import weakref
 
-from PySide6.QtCore import QEvent, QPointF, QTimer, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, QTimer, Qt, Signal
 from PySide6.QtGui import (
     QFont,
+    QFontMetrics,
     QGuiApplication,
     QIcon,
     QPainter,
@@ -30,6 +32,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListView,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSplitter,
@@ -53,6 +56,7 @@ from uniti.regex.analysis import (
     pending_pattern_analysis,
 )
 from uniti.regex.captures import (
+    MAX_CAPTURE_REPORT_MATCHES,
     CaptureMatchReport,
     CaptureReport,
     CaptureReportRequest,
@@ -89,10 +93,13 @@ from uniti.ui.regex_input import RegexInput, ReplacementInput
 
 _FIND_RESULT_MEMORY_BYTES = 1 << 20
 
+FIND_REPLACE_VIEW_ID = "uniti-find-replace"
+
 
 class ReplaceScope(Enum):
     WHOLE_DOCUMENT = "whole_document"
     CURSOR_TO_END = "cursor_to_end"
+    CURRENT_GROUP = "current_group"
     ALL_OPEN_DOCUMENTS = "all_open_documents"
 
 
@@ -110,6 +117,7 @@ class FindRequest:
     seal: OperationSeal
     direction: int
     origin: int
+    region: tuple[int, int] | None = None
 
 
 class _IconLabel(QWidget):
@@ -136,6 +144,65 @@ class _IconLabel(QWidget):
         )
 
 
+class _FindReplaceTitleBar(QWidget):
+    """Custom title bar installed via ``setTitleBarWidget`` on the detached
+    floating shell. Qt's built-in drag-to-move gesture is wired to the
+    *native* title bar area; installing a custom title bar widget disables
+    it, since the custom widget now consumes the mouse events that
+    machinery relied on. This widget reimplements drag-to-move directly.
+    Attaching/detaching is no longer a drag gesture (see ``attach_to``) —
+    this title bar only ever appears while floating, so it only needs to
+    reposition the floating window.
+    """
+
+    def __init__(self, dock: QDockWidget) -> None:
+        super().__init__(dock)
+        self._dock = dock
+        self._drag_offset: QPoint | None = None
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self._dock.pos()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            global_pos = event.globalPosition().toPoint()
+            self._dock.move(global_pos - self._drag_offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self._drag_offset is not None:
+            self._drag_offset = None
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
+class _FindReplaceContentHost(QWidget):
+    """Wraps the Find/Replace content so it can be inserted as a real leaf
+    in an ``EditorPaneTree`` (the same pane-splitting system text views use)
+    when attached, instead of docking via Qt's native ``QDockWidget`` area
+    mechanism. ``EditorPaneTree``/``PaneLeaf`` only require a ``QWidget``
+    with a ``view_id`` attribute, plus an optional ``viewFocused`` signal for
+    focus-follow (``panes.py``'s ``_connect_view_focus``) — this is the
+    minimal adapter satisfying that contract."""
+
+    viewFocused = Signal(str)
+
+    def __init__(self, view_id: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.view_id = view_id
+
+    def focusInEvent(self, event) -> None:
+        super().focusInEvent(event)
+        self.viewFocused.emit(self.view_id)
+
+
 class FindReplaceWindow(QDockWidget):
     """Modeless Find/Replace utility; match records never become document state."""
 
@@ -143,6 +210,7 @@ class FindReplaceWindow(QDockWidget):
     reportLocationChanged = Signal(str)
     geometryChanged = Signal(tuple)
     placementChanged = Signal(str)
+    matchPositionChanged = Signal(str, object)
     _jobCompleted = Signal()
     _analysisCompleted = Signal(int, object)
     _captureCompleted = Signal(int, object)
@@ -155,11 +223,15 @@ class FindReplaceWindow(QDockWidget):
         resource_manager: ResourceManager | None = None,
         dogfood_observer: Callable[..., None] | None = None,
         document_provider: Callable[[], object] | None = None,
+        group_provider: Callable[[object], object] | None = None,
+        recipe_store: object | None = None,
     ) -> None:
         if dogfood_observer is not None and not callable(dogfood_observer):
             raise TypeError("dogfood observer must be callable or None")
         if document_provider is not None and not callable(document_provider):
             raise TypeError("document provider must be callable or None")
+        if group_provider is not None and not callable(group_provider):
+            raise TypeError("group provider must be callable or None")
         super().__init__("Find / Replace", parent)
         self.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
         self.setFeatures(
@@ -170,14 +242,17 @@ class FindReplaceWindow(QDockWidget):
         self._placement = "detached"
         self._changing_placement = False
         self._dock_host: QMainWindow | None = None
-        self._detached_geometry = (0, 0, 720, 320)
+        self._detached_geometry = (0, 0, 820, 320)
         self._restoring_state = False
         self.setWindowFlag(Qt.WindowType.Tool, True)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
-        self.resize(720, 320)
+        self.resize(820, 320)
         self._view_provider = view_provider
         self._document_provider = document_provider
+        self._group_provider = group_provider
+        self._recipe_store = recipe_store
+        self._recipes: tuple = tuple(recipe_store.load()) if recipe_store is not None else ()
         self._dogfood_observer = dogfood_observer
         self._shutdown = False
         self._owns_resources = resource_manager is None
@@ -192,6 +267,7 @@ class FindReplaceWindow(QDockWidget):
         self._job_edit_listener_remove = None
         self._results = MatchIndex(())
         self._results_view = None
+        self._results_region: tuple[int, int] | None = None
         self._result_listener_remove = None
         self._current_index: int | None = None
         self._results_compiled = None
@@ -240,7 +316,8 @@ class FindReplaceWindow(QDockWidget):
             capture_finished,
         )
 
-        content = QWidget(self)
+        content = _FindReplaceContentHost(FIND_REPLACE_VIEW_ID, self)
+        self.content = content
         self.setWidget(content)
         self.find_input = RegexInput(content)
         self.replace_input = ReplacementInput(content)
@@ -250,9 +327,12 @@ class FindReplaceWindow(QDockWidget):
         self.capture_view.setModel(self.capture_model)
         self.capture_view.setItemDelegate(CaptureReportDelegate(self.capture_view))
         self.capture_view.setAccessibleName("Match Report")
+        self.capture_view.clicked.connect(self._jump_to_report_row)
+        self._update_capture_view_minimum_height()
         self.regex_checkbox = QCheckBox("Regex", content)
         self.case_sensitive_checkbox = QCheckBox("Case", content)
         self.whole_word_checkbox = QCheckBox("Whole word", content)
+        self.selection_only_checkbox = QCheckBox("In Selection", content)
 
         self.find_clear_button = self._clear_button("Clear Find", self.find_input)
         self.replace_clear_button = self._clear_button(
@@ -292,6 +372,7 @@ class FindReplaceWindow(QDockWidget):
         self.replace_scope_combo.setToolTip("Replace Scope")
         self.replace_scope_combo.addItem("Whole Document", ReplaceScope.WHOLE_DOCUMENT)
         self.replace_scope_combo.addItem("Cursor to End", ReplaceScope.CURSOR_TO_END)
+        self.replace_scope_combo.addItem("Current Group", ReplaceScope.CURRENT_GROUP)
         self.replace_scope_combo.addItem(
             "All Open Documents", ReplaceScope.ALL_OPEN_DOCUMENTS
         )
@@ -299,11 +380,20 @@ class FindReplaceWindow(QDockWidget):
             QComboBox.SizeAdjustPolicy.AdjustToContents
         )
 
+        self.recipe_combo = QComboBox(content)
+        self.recipe_combo.setAccessibleName("Find/Replace Recipes")
+        self.recipe_combo.setToolTip("Find/Replace Recipes")
+        self.recipe_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToContents
+        )
+
         options_row = QHBoxLayout()
         options_row.addWidget(self.regex_checkbox)
         options_row.addWidget(self.case_sensitive_checkbox)
         options_row.addWidget(self.whole_word_checkbox)
+        options_row.addWidget(self.selection_only_checkbox)
         options_row.addWidget(self.replace_scope_combo)
+        options_row.addWidget(self.recipe_combo)
         options_row.addStretch(1)
         self.report_toggle_button = QPushButton(self)
         self.report_toggle_button.setSizePolicy(
@@ -332,12 +422,19 @@ class FindReplaceWindow(QDockWidget):
         self.replace_button = self._compact_button(
             "replace", "Replace Current Match", self.actions_widget, width=34
         )
+        self.replace_and_next_button = self._compact_button(
+            self._replace_and_advance_icon(),
+            "Replace & Find Next",
+            self.actions_widget,
+            width=34,
+        )
         actions.addWidget(self.find_all_button)
         actions.addWidget(self.replace_all_button)
         actions.addStretch(1)
         actions.addWidget(self.previous_button)
         actions.addWidget(self.next_button)
         actions.addWidget(self.replace_button)
+        actions.addWidget(self.replace_and_next_button)
 
         self.cancel_button = QPushButton("Cancel", content)
         self.cancel_button.setIcon(lucide_icon("circle-stop"))
@@ -389,6 +486,7 @@ class FindReplaceWindow(QDockWidget):
         self.previous_button.clicked.connect(self.previous_match)
         self.next_button.clicked.connect(self.next_match)
         self.replace_button.clicked.connect(self.replace_current)
+        self.replace_and_next_button.clicked.connect(self.replace_and_find_next)
         self.replace_all_button.clicked.connect(self.replace_all)
         self.cancel_button.clicked.connect(self.cancel_search)
         self.find_input.returnPressed.connect(self.next_match)
@@ -398,7 +496,10 @@ class FindReplaceWindow(QDockWidget):
         self.regex_checkbox.toggled.connect(self._search_mode_changed)
         self.case_sensitive_checkbox.toggled.connect(self._pattern_changed)
         self.whole_word_checkbox.toggled.connect(self._pattern_changed)
+        self.selection_only_checkbox.toggled.connect(self._selection_only_toggled)
         self.report_toggle_button.clicked.connect(self.toggle_report)
+        self.recipe_combo.activated.connect(self._recipe_combo_activated)
+        self._refresh_recipe_combo()
 
         # Worker futures may finish before the next Qt timer tick.  Deliver
         # completion through a queued Qt signal so result application happens
@@ -415,11 +516,25 @@ class FindReplaceWindow(QDockWidget):
             Qt.ConnectionType.QueuedConnection,
         )
         self._analysis_timer.timeout.connect(self._submit_pattern_analysis)
-        self.topLevelChanged.connect(self._top_level_changed)
         self._search_mode_changed(False)
         self._report_open = True
         self._report_width = 260
         self.set_report_location("Right")
+
+        title_bar = _FindReplaceTitleBar(self)
+        title_bar_layout = QHBoxLayout(title_bar)
+        title_bar_layout.setContentsMargins(6, 2, 2, 2)
+        title_bar_label = QLabel("Find / Replace", title_bar)
+        title_bar_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        title_bar_layout.addWidget(title_bar_label)
+        title_bar_layout.addStretch(1)
+        self.setTitleBarWidget(title_bar)
+        # setTitleBarWidget rebuilds the floating window frame, which can
+        # reset the window flags applied above; reassert them.
+        self.setWindowFlag(Qt.WindowType.Tool, True)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
+
         for widget in self.findChildren(QWidget):
             widget.installEventFilter(self)
         self._position_clear_buttons()
@@ -448,6 +563,17 @@ class FindReplaceWindow(QDockWidget):
     def placement(self) -> str:
         return self._placement
 
+    def is_visible(self) -> bool:
+        """Whether the panel is currently visible to the user (BF-054),
+        accounting for both placements: attached (its pane-tree tab exists
+        in its host) and detached (the floating window's own visibility)."""
+
+        if self._placement == "attached":
+            return self._dock_host is not None and self._dock_host.panes.contains_view(
+                self.content.view_id
+            )
+        return self.isVisible()
+
     def _set_placement(self, placement: str) -> None:
         if placement not in {"attached", "detached"}:
             raise ValueError(f"unsupported find/replace placement: {placement}")
@@ -462,33 +588,113 @@ class FindReplaceWindow(QDockWidget):
         geometry = widget.geometry()
         return geometry.x(), geometry.y(), geometry.width(), geometry.height()
 
-    def _top_level_changed(self, floating: bool) -> None:
-        if self._changing_placement:
+    def _remove_content_from_pane_tree(self, host: QMainWindow) -> None:
+        """Take the content widget out of ``host``'s pane tree, collapsing
+        the split it lived in if that leaf is now empty (mirrors
+        ``EditorPaneTree.remove_shell_view``'s take-then-collapse pattern,
+        ``panes.py``)."""
+
+        tree = host.panes
+        view_id = self.content.view_id
+        leaf = tree.leaf_for_view(view_id)
+        if leaf is None:
             return
-        self._set_placement("detached" if floating else "attached")
+        leaf.take_view(view_id)
+        if leaf.count() == 0 and tree.leaf_count > 1:
+            tree.close_leaf(leaf.pane_id)
+
+    def _insert_content_into_pane_tree(self, host: QMainWindow, *, select: bool) -> None:
+        """Insert the content widget as a new split leaf in ``host``'s pane
+        tree, anchored below the current document view (or added directly
+        if the window has no views open yet). Splitting always makes the
+        new leaf the tree's active leaf (``EditorPaneTree.split_view``), so
+        unless ``select`` asks for Find/Replace to become focused, the
+        previously active document tab is restored afterward."""
+
+        tree = host.panes
+        view_id = self.content.view_id
+        if tree.contains_view(view_id):
+            return
+        previous_leaf = tree.active_leaf
+        previous_view_id = (
+            previous_leaf.selected_view_id if previous_leaf is not None else None
+        )
+        anchor = host.active_view_id
+        if anchor is None and tree.view_ids:
+            anchor = tree.view_ids[0]
+        if anchor is None:
+            tree.add_view(self.content, select=select, title="Find / Replace")
+        else:
+            new_leaf = tree.split_view(anchor, Qt.Orientation.Vertical)
+            tree.add_view(
+                self.content,
+                pane_id=new_leaf.pane_id,
+                select=select,
+                title="Find / Replace",
+            )
+        if not select and previous_view_id is not None:
+            tree.activate_view(previous_view_id)
+
+    def _reveal(self) -> None:
+        if self._placement == "attached" and self._dock_host is not None:
+            host = self._dock_host
+            if host.panes.contains_view(self.content.view_id):
+                host.panes.activate_view(self.content.view_id)
+        else:
+            self.show()
 
     def attach_to(self, host: QMainWindow) -> None:
         if not isinstance(host, QMainWindow):
             raise TypeError("find/replace host must be a QMainWindow")
+        if self._changing_placement:
+            # Removing content from a pane tree (``take_view``) synchronously
+            # fires focus/active-view Qt signals that can cascade back into
+            # application-level code (``set_active_view`` ->
+            # ``_sync_find_replace_host`` -> ``attach_to``) before this call
+            # finishes; ignore the reentrant call rather than recursing.
+            return
         if self._placement == "detached":
             self._detached_geometry = self._geometry_tuple(self)
         previous_host = self._dock_host
         self._changing_placement = True
         try:
-            if previous_host is not None and previous_host is not host:
-                previous_host.removeDockWidget(self)
-            host.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self)
-            self.setFloating(False)
+            if self._placement == "attached" and previous_host is not None and previous_host is not host:
+                self._remove_content_from_pane_tree(previous_host)
+            self.setWidget(None)
+            self.hide()
+            self._insert_content_into_pane_tree(host, select=False)
             self._dock_host = host
         finally:
             self._changing_placement = False
         self._set_placement("attached")
 
+    def close_attached_tab(self) -> None:
+        """Handle the pane-tree tab's own close button: park the content
+        back in the (unshown) floating shell without forcing it to float
+        visibly or changing the user's attached/detached preference —
+        mirrors a native ``QDockWidget``'s own close button, which just
+        hides it rather than undocking it. A later ``attach_to`` re-inserts
+        it, honoring the preserved "attached" placement."""
+
+        if self._changing_placement:
+            return
+        if self._placement == "attached" and self._dock_host is not None:
+            self._changing_placement = True
+            try:
+                self._remove_content_from_pane_tree(self._dock_host)
+                self.setWidget(self.content)
+            finally:
+                self._changing_placement = False
+
     def detach(self) -> None:
+        if self._changing_placement:
+            return
         geometry = self._detached_geometry
         self._changing_placement = True
         try:
-            self.setFloating(True)
+            if self._placement == "attached" and self._dock_host is not None:
+                self._remove_content_from_pane_tree(self._dock_host)
+            self.setWidget(self.content)
             self.setWindowFlag(Qt.WindowType.Tool, True)
             self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
             self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
@@ -499,31 +705,25 @@ class FindReplaceWindow(QDockWidget):
         self.show()
 
     def release_from(self, host: QMainWindow) -> None:
+        """Sever ties with a host that is going away (e.g. its last window
+        closing) without another host to move to. Unlike ``detach()``, this
+        does not change the user's "attached"/"detached" preference — it
+        just parks the content safely in this shell (unshown) so it is not
+        destroyed along with ``host``; a later ``attach_to`` honors the
+        preserved placement once a host becomes available again."""
+
         if not isinstance(host, QMainWindow):
             raise TypeError("find/replace host must be a QMainWindow")
-        if self.parentWidget() is not host and self._dock_host is not host:
+        if self._dock_host is not host or self._changing_placement:
             return
-        was_visible = not self.isHidden()
-        if self._placement == "detached":
-            self._detached_geometry = self._geometry_tuple(self)
         self._changing_placement = True
         try:
-            self.hide()
-            host.removeDockWidget(self)
-            self.setParent(None)
+            if self._placement == "attached":
+                self._remove_content_from_pane_tree(host)
+                self.setWidget(self.content)
             self._dock_host = None
-            if self._placement == "detached":
-                self.setWindowFlag(Qt.WindowType.Tool, True)
-                self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
-                self.setAttribute(
-                    Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow,
-                    True,
-                )
-                self.setGeometry(*self._detached_geometry)
         finally:
             self._changing_placement = False
-        if was_visible and self._placement == "detached":
-            self.show()
 
     @property
     def zoom_percent(self) -> int:
@@ -535,14 +735,14 @@ class FindReplaceWindow(QDockWidget):
 
     @staticmethod
     def _compact_button(
-        icon_name: str,
+        icon_name: str | QIcon,
         accessible_name: str,
         parent: QWidget,
         *,
         width: int = 40,
     ) -> QPushButton:
         button = QPushButton(parent)
-        button.setIcon(lucide_icon(icon_name))
+        button.setIcon(icon_name if isinstance(icon_name, QIcon) else lucide_icon(icon_name))
         button.setAccessibleName(accessible_name)
         button.setToolTip(accessible_name)
         button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -586,6 +786,31 @@ class FindReplaceWindow(QDockWidget):
             )
             painter.drawLine(QPointF(5, 10), QPointF(8, 7.5))
             painter.drawLine(QPointF(5, 10), QPointF(8, 12.5))
+        finally:
+            painter.end()
+        return QIcon(pixmap)
+
+    @staticmethod
+    def _replace_and_advance_icon() -> QIcon:
+        """Theme-aware checkmark-then-arrow glyph for step-through replace."""
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        try:
+            color = QGuiApplication.palette().color(
+                QPalette.ColorGroup.Active, QPalette.ColorRole.ButtonText
+            )
+            pen = QPen(color, 1.4)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.drawPolyline(
+                (QPointF(2, 8), QPointF(5.5, 11.5), QPointF(9, 4))
+            )
+            painter.drawLine(QPointF(9, 8), QPointF(14, 8))
+            painter.drawLine(QPointF(11, 5.5), QPointF(14, 8))
+            painter.drawLine(QPointF(11, 10.5), QPointF(14, 8))
         finally:
             painter.end()
         return QIcon(pixmap)
@@ -649,7 +874,32 @@ class FindReplaceWindow(QDockWidget):
             widget.setFont(font)
         for field in (self.find_input, self.replace_input):
             field.setMinimumHeight(field.minimum_content_height())
+        self._update_capture_view_minimum_height()
         self.zoomChanged.emit(percent)
+
+    _CAPTURE_VIEW_MIN_VISIBLE_ROWS = MAX_CAPTURE_REPORT_MATCHES
+
+    def _update_capture_view_minimum_height(self) -> None:
+        """Keep the match report's minimum height tied only to the current
+        zoom/font size, never to search-result content.
+
+        A prior version (BF-050) grew this minimum to fit the first
+        `_CAPTURE_VIEW_MIN_VISIBLE_ROWS` whole matches without scrolling,
+        recomputed on every new search result. Because `capture_view` sits
+        beside the controls pane in a horizontal `QSplitter`, that minimum
+        became the splitter's (and so the whole panel window's) own minimum
+        height — a match with many capture-group rows would silently grow
+        the panel itself. Per explicit feedback the panel must not
+        auto-expand to fit the match report, so this now only reflects a
+        fixed row count at the current font size; a match report needing
+        more room than that scrolls instead of resizing the window.
+        """
+
+        view = self.capture_view
+        fallback_height = (
+            QFontMetrics(view.font()).height() + 4
+        ) * self._CAPTURE_VIEW_MIN_VISIBLE_ROWS
+        view.setMinimumHeight(fallback_height)
 
     def zoom_in(self) -> None:
         self.set_zoom_percent(self._zoom_percent + 10)
@@ -736,6 +986,101 @@ class FindReplaceWindow(QDockWidget):
         self.whole_word_checkbox.setEnabled(not regex_mode)
         self._pattern_changed()
 
+    def _selection_only_toggled(self, checked: bool) -> None:
+        # "In Selection" and the Replace Scope combo are separate axes — a
+        # selection region and "all open documents"/"cursor to end" don't
+        # compose meaningfully, so selection scope wins outright while
+        # checked, and the combo is unavailable rather than silently ignored.
+        if checked:
+            self.replace_scope_combo.setCurrentIndex(
+                self.replace_scope_combo.findData(ReplaceScope.WHOLE_DOCUMENT)
+            )
+        self.replace_scope_combo.setEnabled(not checked)
+        self._clear_results()
+
+    def _search_region(self, view) -> tuple[int, int] | None:
+        """The active selection's bounds when "In Selection" is checked, or
+        None for an unrestricted (whole-document) search."""
+
+        if not self.selection_only_checkbox.isChecked():
+            return None
+        return view.state.selection
+
+    def _refresh_recipe_combo(self) -> None:
+        blocked = self.recipe_combo.blockSignals(True)
+        try:
+            self.recipe_combo.clear()
+            self.recipe_combo.addItem("Recipes", None)
+            for recipe in self._recipes:
+                self.recipe_combo.addItem(recipe.name, recipe)
+            self.recipe_combo.insertSeparator(self.recipe_combo.count())
+            self.recipe_combo.addItem("Save Current…", "__save__")
+            self.recipe_combo.addItem("Manage…", "__manage__")
+            self.recipe_combo.setCurrentIndex(0)
+        finally:
+            self.recipe_combo.blockSignals(blocked)
+
+    def _recipe_combo_activated(self, index: int) -> None:
+        data = self.recipe_combo.itemData(index)
+        if data == "__save__":
+            self._save_current_as_recipe()
+        elif data == "__manage__":
+            self._show_recipe_manager()
+        elif data is not None:
+            self._load_recipe(data)
+        self.recipe_combo.setCurrentIndex(0)
+
+    def _load_recipe(self, recipe) -> None:
+        self.find_input.set_text(recipe.expression)
+        self.replace_input.set_text(recipe.replacement)
+        self.regex_checkbox.setChecked(recipe.regex)
+        self.case_sensitive_checkbox.setChecked(recipe.case_sensitive)
+        self.whole_word_checkbox.setChecked(recipe.whole_word)
+
+    def _save_current_as_recipe(self) -> None:
+        if self._recipe_store is None:
+            return
+        from PySide6.QtWidgets import QInputDialog
+
+        from uniti.app.find_replace_recipes import FindReplaceRecipe
+
+        name, ok = QInputDialog.getText(self, "Save Recipe", "Recipe name:")
+        if not ok or not name.strip():
+            return
+        try:
+            recipe = FindReplaceRecipe(
+                uuid.uuid4().hex,
+                name.strip(),
+                self.find_input.text(),
+                self.replace_input.text(),
+                self.regex_checkbox.isChecked(),
+                self.case_sensitive_checkbox.isChecked(),
+                self.whole_word_checkbox.isChecked(),
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "Save Recipe", str(exc))
+            return
+        recipes = (*self._recipes, recipe)
+        try:
+            self._recipe_store.save(recipes)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Save Recipe", str(exc))
+            return
+        self._recipes = recipes
+        self._refresh_recipe_combo()
+
+    def _show_recipe_manager(self) -> None:
+        if self._recipe_store is None:
+            return
+        from uniti.ui.find_replace_recipe_editor import FindReplaceRecipeEditor
+
+        editor = FindReplaceRecipeEditor(self._recipes, self)
+        if editor.exec():
+            recipes = editor.recipes()
+            self._recipe_store.save(recipes)
+            self._recipes = recipes
+            self._refresh_recipe_combo()
+
     @property
     def result_count(self) -> int:
         return len(self._results)
@@ -748,12 +1093,12 @@ class FindReplaceWindow(QDockWidget):
         return self._future is not None
 
     def focus_find(self) -> None:
-        self.show()
+        self._reveal()
         self.find_input.setFocus()
         self.find_input.selectAll()
 
     def focus_replace(self) -> None:
-        self.show()
+        self._reveal()
         self.replace_input.setFocus()
         self.replace_input.selectAll()
 
@@ -774,6 +1119,17 @@ class FindReplaceWindow(QDockWidget):
         self._document_provider = provider
         self._update_actions()
 
+    def set_group_provider(self, provider: Callable[[object], object] | None) -> None:
+        if provider is not None and not callable(provider):
+            raise TypeError("group provider must be callable or None")
+        self._group_provider = provider
+        self._update_actions()
+
+    def set_recipe_store(self, store: object | None) -> None:
+        self._recipe_store = store
+        self._recipes = tuple(store.load()) if store is not None else ()
+        self._refresh_recipe_combo()
+
     def target_changed(self) -> None:
         if self.busy:
             self.cancel_search()
@@ -793,7 +1149,7 @@ class FindReplaceWindow(QDockWidget):
             regex=self.regex_checkbox.isChecked(),
             case_sensitive=self.case_sensitive_checkbox.isChecked(),
             whole_word=self.whole_word_checkbox.isChecked(),
-            visible=not self.isHidden(),
+            visible=True if self._placement == "attached" else not self.isHidden(),
             geometry=self._detached_geometry,
             zoom_percent=self.zoom_percent,
             report_visible=self._report_open,
@@ -839,7 +1195,8 @@ class FindReplaceWindow(QDockWidget):
             self._find_wrap_toggled(record.find_wrap)
             self._replace_wrap_toggled(record.replace_wrap)
             self._set_placement(record.placement)
-            self.show() if record.visible else self.hide()
+            if record.placement != "attached":
+                self.show() if record.visible else self.hide()
         finally:
             self._restoring_state = False
             for widget, was_blocked in zip(widgets, blocked):
@@ -915,6 +1272,9 @@ class FindReplaceWindow(QDockWidget):
         self._reanalyze_replacement()
         self._refresh_analysis_status()
         self._update_actions()
+        view = self._current_view()
+        if view is not None and self._current_index is not None:
+            self._request_capture_report(view, self._current_index)
 
     def _reanalyze_replacement(self) -> None:
         self._replacement_generation += 1
@@ -1050,6 +1410,9 @@ class FindReplaceWindow(QDockWidget):
         self.replace_button.setEnabled(
             idle and results_current and replacement_valid
         )
+        self.replace_and_next_button.setEnabled(
+            idle and results_current and replacement_valid
+        )
         self.replace_all_button.setEnabled(idle and replacement_valid)
         self.cancel_button.setEnabled(not idle)
 
@@ -1058,16 +1421,20 @@ class FindReplaceWindow(QDockWidget):
         if self._result_listener_remove is not None:
             self._result_listener_remove()
             self._result_listener_remove = None
-        if self._results_view is not None:
-            self._results_view.set_match_index(None)
+        previous_view = self._results_view
+        if previous_view is not None:
+            previous_view.set_match_index(None)
         if isinstance(self._results, MatchStore):
             self._results.close()
         self._results = MatchIndex(())
         self._results_view = None
+        self._results_region = None
         self._result_listener_remove = None
         self._current_index = None
         self._results_compiled = None
         self._update_actions()
+        if previous_view is not None:
+            self.matchPositionChanged.emit(previous_view.view_id, None)
 
     def _cancel_capture_report(self, *, clear: bool) -> None:
         self._capture_generation += 1
@@ -1192,6 +1559,15 @@ class FindReplaceWindow(QDockWidget):
         dogfood_operation: Operation,
         started_at: float,
     ) -> None:
+        region = self._search_region(view)
+        if self.selection_only_checkbox.isChecked() and region is None:
+            self._record_dogfood(
+                dogfood_operation,
+                Outcome.UNAVAILABLE,
+                started_at=started_at,
+            )
+            return
+        region_start, region_end = region if region is not None else (0, None)
         seal = self._operation_seal(view)
         revision = seal.revision
         snapshot = view.document.snapshot()
@@ -1206,7 +1582,12 @@ class FindReplaceWindow(QDockWidget):
                     for record in search_document(
                         snapshot,
                         compiled,
-                        options=SearchOptions(timeout=0.5, include_captures=False),
+                        options=SearchOptions(
+                            timeout=0.5,
+                            include_captures=False,
+                            start=region_start,
+                            end=region_end,
+                        ),
                         cancelled=lambda: context.token.cancelled,
                         progress=lambda completed, total: context.report(
                             "Searching",
@@ -1227,7 +1608,7 @@ class FindReplaceWindow(QDockWidget):
             task_kind=TaskKind.SEARCH,
             dogfood_operation=dogfood_operation,
             started_at=started_at,
-            context=FindRequest(compiled, seal, direction, origin),
+            context=FindRequest(compiled, seal, direction, origin, region),
             rejected_cleanup=snapshot.close,
         )
 
@@ -1242,7 +1623,11 @@ class FindReplaceWindow(QDockWidget):
                 started_at=started_at,
             )
             return
-        if len(self._results) and self._results_are_current(view):
+        if (
+            len(self._results)
+            and self._results_are_current(view)
+            and self._results_region == self._search_region(view)
+        ):
             self.status_label.setText(f"{len(self._results):,} matches")
             self._record_dogfood(
                 Operation.FIND_ALL,
@@ -1259,7 +1644,7 @@ class FindReplaceWindow(QDockWidget):
             started_at=started_at,
         )
 
-    def replace_current(self) -> None:
+    def replace_current(self, *, advance: bool = False) -> None:
         started_at = time.monotonic()
         view = self._current_view()
         compiled = self.compile_current()
@@ -1308,9 +1693,25 @@ class FindReplaceWindow(QDockWidget):
             task_kind=TaskKind.REPLACE,
             dogfood_operation=Operation.REPLACE,
             started_at=started_at,
-            context=(target_index, seal),
+            context=(target_index, seal, advance),
             rejected_cleanup=snapshot.close,
         )
+
+    def replace_and_find_next(self) -> None:
+        """Step-through: confirm (replace) the current match, then advance.
+
+        Per the BF-039 descope, this does not try to keep the old match list
+        valid after a mutation — it replaces one match, then lets the normal
+        `next_match` path re-search fresh from the post-replacement cursor
+        position once the replace job completes.
+        """
+
+        self.replace_current(advance=True)
+
+    def skip_current_match(self) -> None:
+        """Step-through: leave the current match unchanged and advance."""
+
+        self.next_match()
 
     def replace_scope(self) -> ReplaceScope:
         data = self.replace_scope_combo.currentData()
@@ -1321,13 +1722,18 @@ class FindReplaceWindow(QDockWidget):
         if scope is ReplaceScope.ALL_OPEN_DOCUMENTS:
             self._replace_all_open_documents()
             return
+        if scope is ReplaceScope.CURRENT_GROUP:
+            self._replace_all_in_group()
+            return
         started_at = time.monotonic()
         view = self._current_view()
         compiled = self.compile_current()
+        region = None if view is None else self._search_region(view)
         if (
             view is None
             or compiled is None
             or not self._replacement_is_current()
+            or (self.selection_only_checkbox.isChecked() and region is None)
         ):
             self._record_dogfood(
                 Operation.REPLACE_ALL,
@@ -1339,9 +1745,11 @@ class FindReplaceWindow(QDockWidget):
         seal = self._operation_seal(view)
         revision = seal.revision
         replacement_text = self._replacement_expression()
-        search_start = (
-            view.state.cursor if scope is ReplaceScope.CURSOR_TO_END else 0
-        )
+        if region is not None:
+            search_start, search_end = region
+        else:
+            search_start = view.state.cursor if scope is ReplaceScope.CURSOR_TO_END else 0
+            search_end = None
         snapshot = view.document.snapshot()
 
         def work(context: TaskContext):
@@ -1351,7 +1759,9 @@ class FindReplaceWindow(QDockWidget):
                     compiled,
                     replacement_text,
                     document_revision=revision,
-                    options=SearchOptions(timeout=0.5, start=search_start),
+                    options=SearchOptions(
+                        timeout=0.5, start=search_start, end=search_end
+                    ),
                     cancelled=lambda: context.token.cancelled,
                     progress=lambda completed, total: context.report(
                         "Planning replacements",
@@ -1372,6 +1782,24 @@ class FindReplaceWindow(QDockWidget):
         )
 
     def _replace_all_open_documents(self) -> None:
+        self._replace_all_in_documents(
+            provider=self._document_provider,
+            provider_args=(),
+        )
+
+    def _replace_all_in_group(self) -> None:
+        view = self._current_view()
+        self._replace_all_in_documents(
+            provider=self._group_provider,
+            provider_args=(None if view is None else view.document,),
+        )
+
+    def _replace_all_in_documents(
+        self,
+        *,
+        provider: Callable[..., object] | None,
+        provider_args: tuple,
+    ) -> None:
         started_at = time.monotonic()
         view = self._current_view()
         compiled = self.compile_current()
@@ -1379,7 +1807,7 @@ class FindReplaceWindow(QDockWidget):
             view is None
             or compiled is None
             or not self._replacement_is_current()
-            or self._document_provider is None
+            or provider is None
         ):
             self._record_dogfood(
                 Operation.REPLACE_ALL,
@@ -1387,7 +1815,7 @@ class FindReplaceWindow(QDockWidget):
                 started_at=started_at,
             )
             return
-        documents = list(self._document_provider())
+        documents = list(provider(*provider_args))
         if not documents:
             self._record_dogfood(
                 Operation.REPLACE_ALL,
@@ -1435,6 +1863,8 @@ class FindReplaceWindow(QDockWidget):
             self.status_label.setText("Cancelling…")
 
     def _poll_job(self) -> None:
+        if self._shutdown:
+            return
         future = self._future
         if future is None or not future.done():
             return
@@ -1508,11 +1938,19 @@ class FindReplaceWindow(QDockWidget):
                 else:
                     operation_outcome = Outcome.UNAVAILABLE
             elif kind == "replace_current":
-                operation_outcome = (
-                    Outcome.SUCCESS
-                    if self._apply_current_replacement(view, payload, context)
-                    else Outcome.UNAVAILABLE
+                advance = (
+                    isinstance(context, tuple)
+                    and len(context) == 3
+                    and bool(context[2])
                 )
+                applied = self._apply_current_replacement(
+                    view,
+                    payload,
+                    context[:2] if isinstance(context, tuple) else context,
+                )
+                operation_outcome = Outcome.SUCCESS if applied else Outcome.UNAVAILABLE
+                if applied and advance:
+                    self.next_match()
             elif kind == "replace_all":
                 operation_outcome = self._apply_replace_all(view, payload, context)
             elif kind == "replace_all_documents":
@@ -1542,6 +1980,7 @@ class FindReplaceWindow(QDockWidget):
         self._clear_results()
         self._results = store
         self._results_view = view
+        self._results_region = context.region
         self._results_compiled = context.compiled
         self._result_listener_remove = view.document.add_edit_listener(
             lambda _operation, view=view: self._invalidate_results_for_edit(view)
@@ -1719,7 +2158,11 @@ class FindReplaceWindow(QDockWidget):
                 started_at=started_at,
             )
             return
-        if len(self._results) and self._results_are_current(view):
+        if (
+            len(self._results)
+            and self._results_are_current(view)
+            and self._results_region == self._search_region(view)
+        ):
             index = self._navigation_index(view, direction)
             if index is not None:
                 self._navigate_to(index)
@@ -1746,6 +2189,11 @@ class FindReplaceWindow(QDockWidget):
     def previous_match(self) -> None:
         self._navigate_match(-1)
 
+    def _jump_to_report_row(self, index) -> None:
+        match_index = index.data(CaptureReportModel.MatchIndexRole)
+        if isinstance(match_index, int):
+            self._navigate_to(match_index)
+
     def _navigate_to(self, index: int) -> None:
         view = self._current_view()
         if view is None or not len(self._results):
@@ -1760,8 +2208,8 @@ class FindReplaceWindow(QDockWidget):
         if record.end > record.start:
             view.state.move_to(record.end, selecting=True)
         view._state_changed()
-        self.status_label.setText(
-            f"match {index + 1:,}/{len(self._results):,}"
+        self.matchPositionChanged.emit(
+            view.view_id, f"Match {index + 1:,} of {len(self._results):,}"
         )
         self._request_capture_report(view, index)
 
@@ -1774,7 +2222,10 @@ class FindReplaceWindow(QDockWidget):
             self._cancel_capture_report(clear=True)
             return
         count = len(self._results)
-        indices = (index,) if count == 1 else (index, (index + 1) % count)
+        window = min(count, MAX_CAPTURE_REPORT_MATCHES)
+        indices = tuple(
+            dict.fromkeys((index + offset) % count for offset in range(window))
+        )
         request = CaptureReportRequest(
             pattern_generation=self._pattern_generation,
             pattern_text=self.find_input.text(),
@@ -1807,6 +2258,8 @@ class FindReplaceWindow(QDockWidget):
             estimated_memory_bytes=2 << 20,
         )
 
+        replacement_text = self._replacement_expression()
+
         def work(context: TaskContext) -> CaptureReport:
             with snapshot:
                 return resolve_capture_report(
@@ -1814,6 +2267,7 @@ class FindReplaceWindow(QDockWidget):
                     compiled,
                     request,
                     cancelled=lambda: context.token.cancelled,
+                    replacement=replacement_text,
                 )
 
         panel_ref = weakref.ref(self)
@@ -1903,10 +2357,14 @@ class FindReplaceWindow(QDockWidget):
             self.capture_model.set_report(report)
 
     def reject(self) -> None:
+        if self.busy:
+            self.cancel_search()
         self._cancel_capture_report(clear=True)
         self.hide()
 
     def closeEvent(self, event) -> None:
+        if self.busy:
+            self.cancel_search()
         self._cancel_capture_report(clear=True)
         super().closeEvent(event)
 

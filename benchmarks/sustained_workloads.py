@@ -1527,15 +1527,23 @@ def _run_session_lifecycle(
             panel.regex_checkbox.setChecked(True)
             panel.show()
 
+            from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+
             first.panes.activate_view(shared_a.view_id)
             harness.service.set_active_view(first.window_id, shared_a.view_id)
             harness.service.attach_find_replace()
             harness.application.processEvents()
-            attached = panel.placement == "attached" and panel.parentWidget() is first
+            attached = (
+                panel.placement == "attached"
+                and panel._dock_host is first
+                and first.panes.contains_view(FIND_REPLACE_VIEW_ID)
+            )
             second.panes.activate_view(shared_b.view_id)
             harness.service.set_active_view(second.window_id, shared_b.view_id)
             harness.application.processEvents()
-            followed = panel.parentWidget() is second
+            followed = panel._dock_host is second and second.panes.contains_view(
+                FIND_REPLACE_VIEW_ID
+            )
             harness.service.detach_find_replace()
             harness.application.processEvents()
             detached = panel.placement == "detached" and panel.isFloating()

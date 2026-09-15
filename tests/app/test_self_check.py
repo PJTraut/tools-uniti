@@ -73,7 +73,7 @@ def test_human_report_names_mode_status_and_checks(tmp_path: Path):
 
 def test_schema_check_reports_the_current_settings_schema(tmp_path: Path):
     paths = _paths(tmp_path)
-    paths.settings_file.write_text('{"schema":3}', encoding="utf-8")
+    paths.settings_file.write_text('{"schema":5}', encoding="utf-8")
     runner = SelfCheckRunner(
         paths, marker_path=_marker(tmp_path), runtime_python=Path(sys.executable)
     )
@@ -83,7 +83,7 @@ def test_schema_check_reports_the_current_settings_schema(tmp_path: Path):
     assert summary == "setup and settings schemas are readable"
     assert details == {
         "setup": 1,
-        "settings": 3,
+        "settings": 5,
         "settings_migrated": False,
     }
 

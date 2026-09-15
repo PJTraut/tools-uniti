@@ -40,16 +40,32 @@ def test_menu_bar_uses_compact_coteditor_reference_structure():
         "Edit",
         "Format",
         "View",
-        "Find",
         "Tools",
         "Hotkeys",
     ]
     edit_menu = _top_level_action(window, "Edit").menu()
     format_menu = _top_level_action(window, "Format").menu()
     view_menu = _top_level_action(window, "View").menu()
-    assert "Navigation" in _menu_labels(edit_menu)
-    assert {"Encoding", "Line Endings"} <= set(_menu_labels(format_menu))
-    assert {"Editor View", "F/R View"} <= set(_menu_labels(view_menu))
+    # Find/Replace and Navigation are flat blocks inside Edit, not their own
+    # top-level menu or submenu (menus restructured 2026-09-15: prefer
+    # separated blocks within a parent menu over another submenu level).
+    assert {"Find", "Replace", "Find Next", "Find Previous"} <= set(
+        _menu_labels(edit_menu)
+    )
+    assert "Navigation" not in _menu_labels(edit_menu)
+    assert "Go to Line…" in _menu_labels(edit_menu)
+    # Reinterpret As / Convert on Save stay as submenus (11 encoding
+    # profiles each is too many to flatten); the "Encoding" wrapper around
+    # them and the small "Line Endings" submenu are both flattened.
+    assert {"Reinterpret As", "Convert on Save"} <= set(_menu_labels(format_menu))
+    assert "Encoding" not in _menu_labels(format_menu)
+    assert "Line Endings" not in _menu_labels(format_menu)
+    assert {"LF", "CRLF", "CR", "Keep Source"} <= set(_menu_labels(format_menu))
+    # Whitespace/Tab Width stay as submenus (exclusive-choice pickers); the
+    # "Editor View" and "F/R View" wrappers around them are flattened.
+    assert {"Whitespace", "Tab Width"} <= set(_menu_labels(view_menu))
+    assert "Editor View" not in _menu_labels(view_menu)
+    assert "F/R View" not in _menu_labels(view_menu)
 
     reachable = {
         action

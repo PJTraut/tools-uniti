@@ -18,6 +18,39 @@ from uniti.app.startup import (
 )
 
 
+def test_parse_args_strips_python_dash_m_argv0_instead_of_opening_it():
+    # `python -m uniti` (the production launch path via
+    # `bootstrap/cli.py`'s `managed_command`) sets argv[0] to the resolved
+    # path of `uniti/__main__.py`, not "uniti" — this must not be swept
+    # into `files` and opened as a document on every startup.
+    main_module_path = str(Path("/some/install/lib/uniti/__main__.py"))
+
+    request = application.parse_args([main_module_path])
+
+    assert request.files == ()
+
+
+@pytest.mark.parametrize(
+    "argv0",
+    ["uniti", "/usr/local/bin/uniti", "uniti.exe"],
+)
+def test_parse_args_still_strips_every_known_program_name_shape(argv0):
+    request = application.parse_args([argv0, "document.txt"])
+
+    assert request.files == (Path("document.txt"),)
+
+
+def test_parse_args_does_not_strip_an_unrelated_main_py_file():
+    # Only `.../uniti/__main__.py` is the program's own entry point; a
+    # user-supplied file that happens to be named `__main__.py` elsewhere
+    # must still open normally.
+    unrelated_main = str(Path("/home/user/project/__main__.py"))
+
+    request = application.parse_args([unrelated_main])
+
+    assert request.files == (Path(unrelated_main),)
+
+
 def test_version_does_not_require_qt(monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "PySide6", None)
 

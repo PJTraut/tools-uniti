@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import shutil
 import threading
 import time
 from collections.abc import Callable
@@ -21,6 +22,21 @@ from .window_manager import ViewLocation, WindowManager
 
 
 _UNCHANGED_DOCK_RETURN = object()
+
+
+def _cleanup_untitled_backing_file(entry: DocumentEntry) -> None:
+    """Remove an untitled document's private scratch directory on close.
+
+    Untitled documents are backed by a real temp file (each in its own
+    freshly created scratch directory, see ``UNITIMainWindow.new_file``) so
+    they can flow through the normal open/save pipeline unchanged; once the
+    tab closes without ever being saved for real, nothing else references
+    that directory.
+    """
+
+    if not entry.is_untitled:
+        return
+    shutil.rmtree(entry.document.path.parent, ignore_errors=True)
 
 if TYPE_CHECKING:
     from uniti.app.recovery_manager import RecoveryManager
@@ -256,6 +272,7 @@ class UNITIService:
         self.sessions = session_store
         self.recovery = recovery_manager
         self.documents = documents or DocumentRegistry()
+        self.documents.add_remove_listener(_cleanup_untitled_backing_file)
         self.windows = windows or WindowManager()
         self._instance_service = instance_service
         self._session_capture = session_capture
@@ -410,6 +427,17 @@ class UNITIService:
             window.restore_window_record(record)
         return window
 
+    def _documents_in_same_group(self, document) -> list:
+        """Every open document sharing `document`'s group, `document` included."""
+
+        entries = self.documents.entries
+        current = next((entry for entry in entries if entry.document is document), None)
+        if current is None or current.group_id is None:
+            return []
+        return [
+            entry.document for entry in entries if entry.group_id == current.group_id
+        ]
+
     @property
     def find_replace(self) -> FindReplaceWindow:
         if self._find_replace is None:
@@ -431,6 +459,8 @@ class UNITIService:
                 document_provider=lambda: [
                     entry.document for entry in self.documents.entries
                 ],
+                group_provider=self._documents_in_same_group,
+                recipe_store=getattr(self.settings, "find_replace_recipes", None),
             )
             self._find_replace.placementChanged.connect(
                 self._record_find_replace_placement
@@ -503,6 +533,20 @@ class UNITIService:
         panel = self.find_replace
         self._sync_find_replace_host()
         panel.focus_replace()
+
+    def is_find_replace_visible(self) -> bool:
+        panel = self._find_replace
+        return panel is not None and panel.is_visible()
+
+    def toggle_find_replace_visibility(self) -> None:
+        if self.is_find_replace_visible():
+            panel = self._find_replace
+            if panel.placement == "attached":
+                panel.close_attached_tab()
+            else:
+                panel.reject()
+        else:
+            self.focus_find()
 
     @property
     def last_publication_error(self) -> Exception | None:

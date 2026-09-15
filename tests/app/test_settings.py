@@ -49,7 +49,7 @@ def test_settings_store_round_trips_and_replaces_atomically(tmp_path: Path):
     store.save(settings)
     assert store.load() == settings
     payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["schema"] == 3
+    assert payload["schema"] == 5
     assert payload["last_directory"] == str(tmp_path / "docs")
     assert payload["editor_zoom_percent"] == 130
     assert payload["soft_wrap"] is True
@@ -79,6 +79,26 @@ def test_settings_reject_invalid_editor_view_state(tmp_path: Path):
 
     assert settings.editor_zoom_percent == 100
     assert settings.soft_wrap is False
+
+
+@pytest.mark.parametrize("value", [0, -1, 17, "4", True, 4.0])
+def test_editor_tab_width_rejects_out_of_range_or_wrong_type_values(
+    tmp_path: Path, value
+):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps({"schema": 5, "editor_tab_width": value}), encoding="utf-8"
+    )
+
+    assert SettingsStore(path).load().editor_tab_width == 4
+
+
+def test_editor_tab_width_round_trips_within_bounds(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.save(Settings(editor_tab_width=8))
+
+    assert store.load().editor_tab_width == 8
 
 
 def test_find_replace_view_state_round_trips(tmp_path: Path):
@@ -135,6 +155,22 @@ def test_shortcut_overrides_round_trip_and_invalid_entries_are_dropped(tmp_path:
     }
 
 
+def test_syntax_extension_overrides_round_trip_and_invalid_entries_are_dropped(
+    tmp_path: Path,
+):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    store.save(Settings(syntax_extension_overrides={"usj": "json"}))
+    assert store.load().syntax_extension_overrides == {"usj": "json"}
+
+    path.write_text(
+        '{"schema":1,"syntax_extension_overrides":'
+        '{"ok":"xml","bad":42,"alsobad":null}}',
+        encoding="utf-8",
+    )
+    assert store.load().syntax_extension_overrides == {"ok": "xml"}
+
+
 def test_settings_store_ignores_unknown_keys_for_forward_compatibility(tmp_path: Path):
     path = tmp_path / "settings.json"
     path.write_text('{"last_directory":"/tmp","future":42}', encoding="utf-8")
@@ -159,7 +195,7 @@ def test_prepare_migrates_legacy_settings_to_current_schema(tmp_path: Path):
     assert result.migrated is True
     assert result.preserved_path is None
     assert result.settings.last_directory == "/tmp"
-    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == 3
+    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == 5
 
 
 def test_prepare_migrates_schema_one_panel_values_with_current_defaults(
@@ -185,7 +221,7 @@ def test_prepare_migrates_schema_one_panel_values_with_current_defaults(
     assert result.settings.find_replace_report_location == "Hidden"
     assert result.settings.find_replace_geometry == (20, 30, 700, 360)
     payload = json.loads(path.read_text(encoding="utf-8"))
-    assert payload["schema"] == 3
+    assert payload["schema"] == 5
     assert payload["find_replace_zoom_percent"] == 140
     assert payload["find_replace_report_location"] == "Hidden"
     assert payload["find_replace_geometry"] == [20, 30, 700, 360]
@@ -202,14 +238,16 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
     assert result.preserved_path.read_text(encoding="utf-8") == "broken"
     assert json.loads(path.read_text(encoding="utf-8")) == {
         "editor_zoom_percent": 100,
+        "editor_tab_width": 4,
         "find_replace_geometry": None,
         "find_replace_report_location": "Right",
         "find_replace_zoom_percent": 100,
         "last_directory": None,
         "performance_mode": "Automatic",
-        "schema": 3,
+        "schema": 5,
         "shortcut_overrides": {},
         "soft_wrap": False,
+        "syntax_extension_overrides": {},
         "theme_contrast": "Standard",
         "theme_mode": "System",
         "whitespace_mode": "off",
@@ -227,7 +265,7 @@ def test_schema_two_settings_migrate_visibility_defaults(tmp_path: Path):
     assert prepared.settings.theme_mode == "Dark"
     assert prepared.settings.theme_contrast == "Standard"
     assert prepared.settings.whitespace_mode == "off"
-    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == 3
+    assert json.loads(path.read_text(encoding="utf-8"))["schema"] == 5
 
 
 def test_invalid_new_fields_do_not_erase_valid_theme_mode(tmp_path: Path):
@@ -294,4 +332,16 @@ def test_document_groups_store_is_a_separate_atomic_file_beside_settings(tmp_pat
     assert store.document_groups.load() == default_groups()
     assert store.document_groups.path.parent == store.path.parent
     assert store.document_groups.path.name == 'document-groups.json'
+    assert store.path.read_bytes() == before
+
+
+def test_find_replace_recipes_store_is_a_separate_atomic_file_beside_settings(tmp_path):
+    from uniti.app.settings import Settings, SettingsStore
+    store = SettingsStore(tmp_path / 'settings.json')
+    store.save(Settings(theme_mode='Dark', soft_wrap=True))
+    before = store.path.read_bytes()
+
+    assert store.find_replace_recipes.load() == ()
+    assert store.find_replace_recipes.path.parent == store.path.parent
+    assert store.find_replace_recipes.path.name == 'find-replace-recipes.json'
     assert store.path.read_bytes() == before

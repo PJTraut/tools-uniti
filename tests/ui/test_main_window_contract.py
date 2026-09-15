@@ -264,6 +264,41 @@ def test_main_window_applies_and_preserves_editor_view_settings(tmp_path: Path):
     window.close()
 
 
+def test_opening_a_document_assigns_its_syntax_profile_by_extension(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import Settings, SettingsStore
+    from uniti.core.syntax_profiles import JSON, PLAIN_TEXT
+    from uniti.ui.main_window import UNITIMainWindow
+
+    json_path = tmp_path / "data.json"
+    json_path.write_text("{}", encoding="utf-8")
+    plain_path = tmp_path / "notes.txt"
+    plain_path.write_text("hello", encoding="utf-8")
+    usj_path = tmp_path / "book.usj"
+    usj_path.write_text("{}", encoding="utf-8")
+
+    store = SettingsStore(tmp_path / "settings.json")
+    store.save(Settings(syntax_extension_overrides={"usj": "json"}))
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+
+    json_view = window.open_path(json_path)
+    plain_view = window.open_path(plain_path)
+    usj_view = window.open_path(usj_path)
+    app.processEvents()
+
+    assert json_view.syntax_profile is JSON
+    assert plain_view.syntax_profile is PLAIN_TEXT
+    assert usj_view.syntax_profile is JSON
+
+    window.close_all_documents(force=True)
+    window.close()
+
+
 def test_pane_split_clones_view_state_and_assignment_is_non_destructive(
     tmp_path: Path,
 ):
@@ -363,6 +398,58 @@ def test_go_to_line_moves_to_one_based_line_and_rejects_invalid_target(tmp_path:
     window.close_all_documents(force=True)
     window.close()
     app.processEvents()
+
+
+def test_right_click_in_editor_shows_a_context_menu_and_focuses_that_view(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QPoint
+    from PySide6.QtGui import QContextMenuEvent
+    from PySide6.QtWidgets import QApplication, QMenu
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "context-menu.txt"
+    source.write_text("abc\n", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    window.show()
+    window.activateWindow()
+    app.processEvents()
+
+    captured_menus: list[QMenu] = []
+    original_popup = QMenu.popup
+
+    def capture_popup(self, _position):
+        captured_menus.append(self)
+
+    QMenu.popup = capture_popup
+    try:
+        event = QContextMenuEvent(
+            QContextMenuEvent.Reason.Mouse, QPoint(5, 5), QPoint(100, 100)
+        )
+        view.contextMenuEvent(event)
+    finally:
+        QMenu.popup = original_popup
+
+    assert view.hasFocus()
+    assert window.current_view is view
+    assert len(captured_menus) == 1
+    labels = [
+        action.text()
+        for action in captured_menus[0].actions()
+        if not action.isSeparator()
+    ]
+    for expected in ("Undo", "Redo", "Cut", "Copy", "Paste", "Select All"):
+        assert any(label.startswith(expected) for label in labels), labels
+    assert any("Go to Line" in label for label in labels)
+    assert any(label.startswith("Find") for label in labels)
+    window.close_all_documents(force=True)
+    window.close()
 
 
 def test_reload_cancel_preserves_modified_document(tmp_path: Path, monkeypatch):
@@ -631,7 +718,7 @@ def test_explicit_profile_still_reports_malformed_preview(tmp_path: Path, monkey
     app.processEvents()
 
 
-def test_mixed_eol_report_is_modeless_and_only_changes_pending_metadata(tmp_path: Path):
+def test_mixed_eol_report_is_modeless_and_converts_the_live_document(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -659,7 +746,107 @@ def test_mixed_eol_report_is_modeless_and_only_changes_pending_metadata(tmp_path
     dialog.select_policy(EOLPolicy.CRLF)
     assert view.document.output_format.eol is EOLPolicy.CRLF
     assert view.document.modified is True
+    # BF-023: the dialog's chosen policy converts the live document
+    # immediately too, exactly like the Editor View menu's EOL commands —
+    # only the on-disk bytes remain untouched until an actual save.
+    assert view.document.read(0, view.document.total_chars()) == (
+        "one\r\ntwo\r\nthree\r\n"
+    )
     assert source.read_bytes() == original
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def test_set_tab_width_persists_and_propagates_to_open_views(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "tab-width.txt"
+    source.write_text("a\tb", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    assert view is not None
+    assert view._tab_width_chars == 4
+    assert window._tab_width_actions[4].isChecked()
+
+    window.set_tab_width(8)
+
+    assert window._settings.editor_tab_width == 8
+    assert view._tab_width_chars == 8
+    assert window._tab_width_actions[8].isChecked()
+
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def test_convert_tabs_to_spaces_mutates_the_live_document(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "convert-tabs.txt"
+    source.write_text("a\tb", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    assert view is not None
+    window.set_tab_width(2)
+
+    window.convert_tabs_to_spaces()
+
+    assert view.document.read(0, view.document.total_chars()) == "a  b"
+    assert view.document.modified is True
+    view.document.undo()
+    assert view.document.read(0, view.document.total_chars()) == "a\tb"
+
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def test_set_output_eol_converts_the_live_document_immediately(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "convert-eol.txt"
+    original = b"one\ntwo\nthree\n"
+    source.write_bytes(original)
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    assert view is not None
+    assert view.document.modified is False
+
+    window.set_output_eol("CRLF")
+
+    # BF-023: the visible characters change immediately, not only on save.
+    assert view.document.read(0, view.document.total_chars()) == (
+        "one\r\ntwo\r\nthree\r\n"
+    )
+    assert view.document.modified is True
+    assert source.read_bytes() == original
+
+    # A newly typed line must use the just-chosen EOL, not the stale
+    # originally-detected one.
+    assert view.document.insertion_eol == "CRLF"
+
+    view.document.undo()
+    assert view.document.read(0, view.document.total_chars()) == "one\ntwo\nthree\n"
+
     window.close_all_documents(force=True)
     window.close()
     app.processEvents()
@@ -858,6 +1045,73 @@ def test_whitespace_menu_persists_and_propagates_with_theme_tokens(tmp_path: Pat
         window.close()
         app.setPalette(original_palette)
         apply_theme(app, "System")
+        app.processEvents()
+
+
+def test_zoom_shortcut_reaches_the_panel_while_find_input_has_focus(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QKeySequence
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "zoom-shortcut.txt"
+    source.write_text("abc", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        window.open_path(source)
+        window.show_find()
+        field = window._find_replace.find_input
+        field.setFocus()
+        app.processEvents()
+        before = window._find_replace.zoom_percent
+
+        QTest.keySequence(field, QKeySequence(QKeySequence.StandardKey.ZoomIn))
+        app.processEvents()
+
+        assert window._find_replace.zoom_percent > before
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_status_bar_shows_and_clears_match_position_for_its_own_view(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "match-position.txt"
+    path.write_text("alpha", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        view = window.open_path(path)
+        assert view is not None
+        assert window._status.match_label.text() == ""
+
+        window._find_replace.matchPositionChanged.emit(view.view_id, "Match 1 of 2")
+        assert window._status.match_label.text() == "Match 1 of 2"
+
+        window._find_replace.matchPositionChanged.emit("unowned-view-id", "Match 9 of 9")
+        assert window._status.match_label.text() == "Match 1 of 2"
+
+        window._find_replace.matchPositionChanged.emit(view.view_id, None)
+        assert window._status.match_label.text() == ""
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
         app.processEvents()
 
 

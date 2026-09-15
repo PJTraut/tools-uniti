@@ -50,6 +50,7 @@ def test_standard_commands_use_qt_resolved_portable_sequences(qapp):
     build_shortcut_policy = shortcut_policy.build_shortcut_policy
 
     standards = {
+        "file.new": QKeySequence.StandardKey.New,
         "file.open": QKeySequence.StandardKey.Open,
         "file.save": QKeySequence.StandardKey.Save,
         "file.save_as": QKeySequence.StandardKey.SaveAs,
@@ -69,7 +70,6 @@ def test_standard_commands_use_qt_resolved_portable_sequences(qapp):
         "editor.zoom_out": QKeySequence.StandardKey.ZoomOut,
         "find.zoom_in": QKeySequence.StandardKey.ZoomIn,
         "find.zoom_out": QKeySequence.StandardKey.ZoomOut,
-        "window.new": QKeySequence.StandardKey.New,
         "navigation.page_up": QKeySequence.StandardKey.MoveToPreviousPage,
         "navigation.page_down": QKeySequence.StandardKey.MoveToNextPage,
         "navigation.document_start": QKeySequence.StandardKey.MoveToStartOfDocument,
@@ -103,6 +103,10 @@ def test_standard_commands_use_qt_resolved_portable_sequences(qapp):
         "view.pause_background",
         "find.report_cycle",
     }
+    # "New" (Ctrl/Cmd+N) is claimed by file.new (new plain-text file); New
+    # Window keeps its own dedicated shortcut so the two never collide.
+    assert definitions["window.new"].default_shortcut == "Ctrl+Shift+N"
+    assert definitions["file.new"].default_shortcut != definitions["window.new"].default_shortcut
 
 
 def test_portable_overrides_normalize_and_clear_differs_from_reset(qapp):
