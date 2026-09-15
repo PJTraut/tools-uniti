@@ -29,8 +29,8 @@ def test_project_versions_are_canonical():
     display = Path("VERSION").read_text(encoding="utf-8").strip()
     assert project["project"]["version"] == uniti.__version__
     assert uniti.__display_version__ == display
-    assert uniti.__version__ == "0.1b2"
-    assert display == "v0.001b2"
+    assert uniti.__version__ == "0.1b3"
+    assert display == "v0.001b3"
 
 
 def test_packaged_performance_policy_uses_schema_2():

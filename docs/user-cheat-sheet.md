@@ -1,6 +1,6 @@
 # UNITI User Cheat Sheet
 
-**v0.001b2** · [User Manual](user-manual.md) · [Regex Flags Guide](regex-flags.md)
+**v0.001b3** · [User Manual](user-manual.md) · [Regex Flags Guide](regex-flags.md)
 
 ## Everyday actions
 
@@ -14,11 +14,11 @@ Common defaults below use **Ctrl on Windows/Linux** and **Cmd on macOS**. Check 
 | Undo | Ctrl/Cmd+Z · Edit → Undo |
 | Cut / Copy / Paste | Ctrl/Cmd+X / C / V |
 | Select All | Ctrl/Cmd+A |
-| Find | Ctrl/Cmd+F · Find → Find |
-| Replace / Next / Previous | Find menu; hover over panel icons for action names |
-| Go to Line | Edit → Navigation → Go to Line… |
-| Wrap / Zoom / Split | View → Editor View |
-| Attach or detach Find/Replace | View → F/R View |
+| Find | Ctrl/Cmd+F (toggles the panel) · Edit → Find |
+| Replace / Next / Previous | Edit menu; hover over panel icons for action names |
+| Go to Line | Edit → Go to Line… |
+| Wrap / Zoom / Split | View |
+| Attach or detach Find/Replace | View |
 | Exit | Quit; on macOS, check the UNITI application menu |
 
 **Remember:** Closing the last window keeps an empty editor available; Quit exits. Save As to another path creates a copy and keeps the original's editing state. Undo acts on the focused document or Find/Replace field.
@@ -30,7 +30,7 @@ Common defaults below use **Ctrl on Windows/Linux** and **Cmd on macOS**. Check 
 3. Run **Find All**, inspect matches, then **Replace Current Match** or **Replace All**.
 4. Click the document and Undo to reverse Replace All in one step. Save when ready.
 
-**View → F/R View → Toggle Match Report** shows capture groups. Next/Previous also work before Find All. After editing text or changing the pattern, search again.
+**View → Toggle Match Report** shows capture groups. Next/Previous also work before Find All. After editing text or changing the pattern, search again.
 
 ## Regex essentials
 
@@ -60,10 +60,10 @@ Replace: Item \1: \2
 
 | Need | Action |
 |---|---|
-| Correct a wrong decoding | Format → Encoding → Reinterpret As |
-| Write another encoding | Format → Encoding → Convert on Save |
-| Preserve / convert EOLs | Format → Line Endings → Keep Source / LF / CRLF / CR |
-| Show hidden characters | View → Editor View → Whitespace |
+| Correct a wrong decoding | Format → Reinterpret As |
+| Write another encoding | Format → Convert on Save |
+| Preserve / convert EOLs | Format → Keep Source / LF / CRLF / CR |
+| Show hidden characters | View → Whitespace |
 | Temporary Unicode details | Hold Cmd+Option (Mac) / Ctrl+Alt (Windows/Linux) |
 | Inspect one code point | Tools → Character Inspector… |
 | Theme / contrast / colors | View → Theme → select profile / High Contrast / Edit Themes… |

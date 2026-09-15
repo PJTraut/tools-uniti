@@ -1,10 +1,10 @@
 # UNITI Parked Capability Catalog
 
-Last reviewed: 2026-09-08
+Last reviewed: 2026-09-15
 
 These capabilities are intentionally outside the lean editor boundary described by [Current Scope](../01_current/SCOPE.md). They are recorded for later re-evaluation, not promised delivery.
 
-Current identity is `v0.001b2` / `0.1b2`, with feedback source candidate `3e20214` integrated on `main`. Bounded multi-window/document ownership and durable session restoration were implemented in A20 and are no longer parked. Bundled Indic/CJK fallback, shaped LTR editing, and focused theme editing are also implemented; remaining native input qualification is tracked in [Current Status](../01_current/STATUS.md).
+Current identity is `v0.001b3` / `0.1b3`, with feedback code through BF-057 integrated on `main`. Bounded multi-window/document ownership and durable session restoration were implemented in A20 and are no longer parked. Bundled Indic/CJK fallback, shaped LTR editing, focused theme editing, and a bounded file-type syntax-highlighting extension point are also implemented; remaining native input qualification is tracked in [Current Status](../01_current/STATUS.md).
 
 ## Project and workspace concepts
 

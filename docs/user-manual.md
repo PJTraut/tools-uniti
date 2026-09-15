@@ -1,6 +1,6 @@
 # UNITI User Manual
 
-For **v0.001b2 — Feedback Refinement Beta** · Updated 2026-09-08
+For **v0.001b3 — Find/Replace Rework & Editor Refinement Beta** · Updated 2026-09-15
 
 UNITI is a text editor for Unicode, explicit encoding and line-ending control, large files, and regex search/replace. This manual describes the current source beta. Native executable distribution and some platform/input qualification remain pending; see [current release status](project/01_current/STATUS.md).
 
@@ -58,11 +58,11 @@ Closing the last window leaves an empty editor available. It does not exit UNITI
 
 Use **Edit** for Undo, Redo, Cut, Copy, Paste, and Select All. Undo/Redo applies to the focused editor, Find field, or Replace field. Click the document before undoing document changes.
 
-Use **Edit → Navigation** for Go to Line, document start/end, word movement, and page movement. Double-click selects a word; triple-click selects a visual row; quadruple-click selects a logical line including its line ending. A wrapped visual row may be only part of one logical line.
+Use **Edit** for Go to Line, document start/end, word movement, and page movement. Double-click selects a word; triple-click selects a visual row; quadruple-click selects a logical line including its line ending. A wrapped visual row may be only part of one logical line.
 
 ## Find and replace
 
-Choose **Find → Find** or **Find → Replace**. The panel belongs to the application and follows the active document/view. Hover over an icon to see its action name.
+Choose **Edit → Find** (toggles the panel open/closed) or **Edit → Replace**. The panel belongs to the application and follows the active document/view. Hover over an icon to see its action name.
 
 ### Literal search
 
@@ -97,7 +97,7 @@ Combine flags as `(?im)`. See the [Regex Flags Guide](regex-flags.md) for scopin
 
 1. Enter the Find expression and wait for the valid-pattern status.
 2. Run Find All and inspect the matches.
-3. Open **View → F/R View → Toggle Match Report** to inspect capture groups. The right-hand report's `\1 :`, `\2 :`, and similar labels identify capture groups, not match numbers.
+3. Open **View → Toggle Match Report** to inspect capture groups. The right-hand report's `\1 :`, `\2 :`, and similar labels identify capture groups, not match numbers.
 4. Enter replacement text. In Regex mode, use `\1` or `\g<name>` to insert captured text.
 5. Use **Replace Current Match** for the selected result, or **Replace All** for every match.
 6. Inspect the result, then Save when satisfied. Replace All is one document Undo operation.
@@ -119,10 +119,10 @@ These are separate settings. Changing how bytes are interpreted is different fro
 
 | Menu | Use it when… |
 |---|---|
-| **Format → Encoding → Reinterpret As** | Existing text was decoded using the wrong encoding. This rereads the source bytes under the chosen interpretation; handle any unsaved-change prompt first. |
-| **Format → Encoding → Convert on Save** | Text already reads correctly, but the output file needs another encoding. |
-| **Format → Line Endings → Keep Source** | Preserve existing line-ending choices, including mixed endings. |
-| **Format → Line Endings → LF / CRLF / CR** | Convert line endings when the file is saved. |
+| **Format → Reinterpret As** | Existing text was decoded using the wrong encoding. This rereads the source bytes under the chosen interpretation; handle any unsaved-change prompt first. |
+| **Format → Convert on Save** | Text already reads correctly, but the output file needs another encoding. |
+| **Format → Keep Source** | Preserve existing line-ending choices, including mixed endings. |
+| **Format → LF / CRLF / CR** | Convert line endings when the file is saved. |
 
 Supported profiles include UTF-8, Windows-1252, UTF-16 LE/BE, and UTF-32 LE/BE, with explicit BOM choices where available. Read the complete profile label: byte order and BOM presence matter.
 
@@ -132,21 +132,21 @@ For mixed line endings, the dialog offers **Keep** or conversion to LF, CRLF, or
 
 ## Read and inspect text
 
-Use **View → Editor View → Whitespace** to choose **Off**, **EOL**, **Spaces & Tabs**, **Invisible Unicode**, or **All**. Markers are display aids; they do not insert characters or change file bytes.
+Use **View → Whitespace** to choose **Off**, **EOL**, **Spaces & Tabs**, **Invisible Unicode**, or **All**. Markers are display aids; they do not insert characters or change file bytes.
 
 For temporary details, hold **Cmd+Option** on macOS or **Ctrl+Alt** on Windows/Linux. This reveals details for the selected whitespace mode; selecting one Unicode code point also gives its inspection readout. Release the modifiers to hide the details. Customize the hold under **Hotkeys → Editor View → Hold to inspect Unicode**.
 
 For a dedicated readout, place the cursor at the character or select it and choose **Tools → Character Inspector…**. A visible character may contain several Unicode code points; the inspector describes one code point at a time.
 
-**View → Editor View → Soft Line Wrap** wraps the display without inserting line endings. Zoom controls in **Editor View** affect the editor; those in **F/R View** affect Find/Replace independently.
+**View → Soft Line Wrap** wraps the display without inserting line endings. The editor's own zoom controls (also in **View**) are independent of the Find/Replace panel's zoom, which lives in the panel's own controls and affects only that panel.
 
 ## Arrange your workspace
 
-Use **File → New Window** for another window. Use **View → Editor View → Split Right / Split Down** to create another view, or **Close Split** to remove one. Pane controls also provide **Assign Document**, **Dock/Undock**, and splitting. **Move Tab to New Window** moves the active tab.
+Use **File → New Window** for another window. Use **View → Split Right / Split Down** to create another view, or **Close Split** to remove one. Pane controls also provide **Assign Document**, **Dock/Undock**, and splitting. **Move Tab to New Window** moves the active tab.
 
 Views of the same file share edits and Undo/Redo history, while keeping independent cursor and scroll positions. A split is another view, not a copy of the file.
 
-Use **View → F/R View → Attach/Detach Find & Replace** to switch between the full-width bottom panel and a detached tool window. There is one shared Find/Replace panel; its state follows you across editor windows.
+Use **View → Attach/Detach Find & Replace** to switch between the full-width bottom panel and a detached tool window. There is one shared Find/Replace panel; its state follows you across editor windows.
 
 ## Appearance and shortcuts
 
@@ -174,7 +174,7 @@ Choose **Continue** after making the decisions. Available choices depend on the 
 
 ## Large files and troubleshooting
 
-Large-file indexing, analysis, and navigation can complete progressively. The status bar shows active work. **View → Editor View → Pause Background Work** pauses background work; Save remains available. Resume it when background analysis is wanted again.
+Large-file indexing, analysis, and navigation can complete progressively. The status bar shows active work. **View → Pause Background Work** pauses background work; Save remains available. Resume it when background analysis is wanted again.
 
 | What you see | What to check or do |
 |---|---|

@@ -1,13 +1,13 @@
 # UNITI Current Scope
 
-Date: 2026-09-08
-Version: `v0.001b2` / `0.1b2`
+Date: 2026-09-15
+Version: `v0.001b3` / `0.1b3`
 
 ## Product boundary
 
 UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
 
-The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, and a21 Cross-Platform Alpha are implemented and verified. B2 Feedback Refinement Beta is active. All reviewed BF-001–BF-010 feedback code through `3e20214` is committed and integrated on GitHub `main` and is now identified as B2 under [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md). Outstanding release gates remain open. The earlier `aab3f3c` remains the latest hosted-green feedback checkpoint.
+The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, and a21 Cross-Platform Alpha are implemented and verified. B3 Find/Replace Rework & Editor Refinement Beta is active. All reviewed BF-012–BF-057 feedback code is committed and integrated on GitHub `main` and is now identified as B3 under [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md). Outstanding release gates remain open. The earlier `aab3f3c` remains the latest hosted-green feedback checkpoint; no hosted run exists yet for the B3 candidate.
 
 ## Included lifecycle capabilities
 
@@ -105,7 +105,7 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 
 ## Approved future scope
 
-`v0.001a21` is implemented and retained in the historical records. `v0.001b2` is the active source beta; the unfinished A22 real-use, A23 Executable Health & Recovery, A24 Beta Candidate, and B1 Real-World Feedback requirements remain open release qualification. BF-006 implementation is present in candidate `3e20214`; physical Windows/macOS/Linux Chinese/Korean IME qualification remains open. See the [LTR text layout contract](../../../docs/ltr-text-layout.md) and [Ordered Roadmap](../02_plans/ROADMAP.md).
+`v0.001a21` is implemented and retained in the historical records. `v0.001b3` is the active source beta; the unfinished A22 real-use, A23 Executable Health & Recovery, A24 Beta Candidate, and B1 Real-World Feedback requirements remain open release qualification, alongside B2's own still-open native/hosted evidence for BF-001–BF-010. BF-006 implementation is present in candidate `3e20214`; physical Windows/macOS/Linux Chinese/Korean IME qualification remains open. See the [LTR text layout contract](../../../docs/ltr-text-layout.md) and [Ordered Roadmap](../02_plans/ROADMAP.md).
 
 ## Parked outside the approved roadmap
 

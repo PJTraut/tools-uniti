@@ -1,9 +1,9 @@
 # UNITI Current Architecture
 
-Date: 2026-09-08
-Baseline: B2 source identity; complete reviewed feedback code candidate `3e20214`; latest hosted-green checkpoint `aab3f3c`
+Date: 2026-09-15
+Baseline: B3 source identity; complete reviewed feedback code through BF-057; latest hosted-green checkpoint `aab3f3c` (no hosted run yet exists for the B3 candidate)
 
-Display/package version: `v0.001b2` / `0.1b2`. The feedback candidate is integrated on GitHub `main`; [Current Status](STATUS.md) owns synchronization and qualification evidence.
+Display/package version: `v0.001b3` / `0.1b3`. The feedback code is integrated on GitHub `main`; [Current Status](STATUS.md) owns synchronization and qualification evidence.
 
 ## Lifecycle boundary
 

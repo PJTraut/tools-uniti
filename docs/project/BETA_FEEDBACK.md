@@ -6,9 +6,9 @@ This log records summarized user observations, implementation dispositions, veri
 
 The B2 anchor report is resolved as expected engine behavior in [BF-011](#bf-011--make-raw-regex-flags-and-line-anchors-explicit); the resulting [regex guide](../regex-flags.md) explains the defaults.
 
-Current identity: `v0.001b2` / `0.1b2`, advanced from A22 at the user's direction under [ADR-0007](05_decisions/ADR-0007-beta-source-version-and-qualification.md). All reviewed BF-001–BF-010 source changes through `3e20214` are committed and integrated on GitHub `main`. The [feedback transition plan](02_plans/2026-09-08-b1-feedback-b2-transition-plan.md) records implementation and remaining checks.
+Current identity: `v0.001b3` / `0.1b3`, advanced from B2 at the user's direction under [ADR-0008](05_decisions/ADR-0008-b3-version-and-qualification.md), which continues [ADR-0007](05_decisions/ADR-0007-beta-source-version-and-qualification.md)'s A22→B2 pattern. All reviewed BF-001–BF-057 source changes are committed and integrated on GitHub `main`. The [feedback transition plan](02_plans/2026-09-08-b1-feedback-b2-transition-plan.md) records the B1→B2 implementation and remaining checks; the [B3 milestone](02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md) records B2→B3 scope.
 
-B2 is the active source beta. A22 real-use, A23 executable/health delivery, A24 stabilization, and B1 independent executable feedback remain open release qualification. Version promotion does not close affected-host or native input checks. [Current Status](01_current/STATUS.md) owns the exact baseline and latest evidence.
+B3 is the active source beta. A22 real-use, A23 executable/health delivery, A24 stabilization, and B1 independent executable feedback remain open release qualification, alongside B2's own still-open native-host and hosted-CI evidence for BF-001–BF-010. Version promotion does not close affected-host or native input checks. [Current Status](01_current/STATUS.md) owns the exact baseline and latest evidence.
 
 ## 2026-09-08 execution and evidence map
 

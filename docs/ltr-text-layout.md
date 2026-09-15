@@ -1,6 +1,6 @@
 # LTR text layout and editing
 
-Current implementation: `v0.001b2` / `0.1b2`, including reviewed feedback source candidate `3e20214` integrated on `main`. See [current status](project/01_current/STATUS.md) for verification and remaining native input qualification.
+Current implementation: `v0.001b3` / `0.1b3`. This LTR layout work itself landed unchanged since reviewed feedback source candidate `3e20214`, integrated on `main`. See [current status](project/01_current/STATUS.md) for verification and remaining native input qualification.
 
 UNITI registers its pinned Noto fonts inside the application. It does not install
 fonts into the operating system or download fonts at runtime. The primary face's

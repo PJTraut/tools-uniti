@@ -1,24 +1,35 @@
 # UNITI Current Status
 
-Date: 2026-09-08
+Date: 2026-09-15
 
 ## Canonical baseline
 
 | Item | Current value |
 |---|---|
-| Current source identity | `v0.001b2` / `0.1b2` in `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` |
-| Active development milestone | B2 Feedback Refinement Beta |
-| Implemented feedback | All reviewed BF-001–BF-010 source changes through `3e20214`, integrated on GitHub `main` |
-| Pre-promotion baseline | `33c71d3`, synchronized on `main`; changes from source candidate `3e20214` to that checkpoint were documentation-only |
+| Current source identity | `v0.001b3` / `0.1b3` in `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` |
+| Active development milestone | B3 Find/Replace Rework & Editor Refinement Beta |
+| Implemented feedback | All reviewed BF-001–BF-057 source changes, integrated on GitHub `main` at `ca05d0b` (local `main`, one commit ahead of `origin/main` as of this capture) |
+| Pre-promotion baseline | `596c88f` ("1b2 feedback implementation"), the B2-era commit through which the B2 promotion below was verified |
 | Promotion scope | Version metadata and project records; existing document, settings, session, and recovery schemas remain unchanged |
-| Latest complete hosted feedback pass | `aab3f3c`, [run `34253008439`](https://github.com/PJTraut/tools-uniti/actions/runs/34253008439), all four lanes |
+| Latest complete hosted feedback pass | `aab3f3c`, [run `34253008439`](https://github.com/PJTraut/tools-uniti/actions/runs/34253008439), all four lanes (no hosted run yet exists for the B3 candidate) |
 | Last recorded hosted account block | [Run `34259043043`](https://github.com/PJTraut/tools-uniti/actions/runs/34259043043) on `33c71d3`: zero executed steps in all four jobs; GitHub annotations cite failed payments or spending limits |
 | Latest completed milestone | A21 Cross-Platform Alpha at hosted-proven `8b24f4b` |
 | Latest immutable release tag | `v0.001a15` at `10f419e`; no beta tag or native distribution is created by this source promotion |
 
-The user directed the project to move beyond A22 after the beta feedback work was implemented. [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md) advances the source identity and activates B2 while preserving unfinished release qualification. A22 real-use days, A23 executable health/recovery delivery, A24 stabilization, and B1 independent executable feedback remain open. Those historical milestone names identify outstanding requirements, not the currently installed source version.
+The user directed the project to move beyond A22 after the beta feedback work was implemented, then again beyond B2 after this further batch. [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md) advanced the source identity and activated B2; [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md) advances it again to B3, in both cases while preserving unfinished release qualification. A22 real-use days, A23 executable health/recovery delivery, A24 stabilization, and B1 independent executable feedback remain open, as does B2's own BF-001–BF-010 native-host and hosted-CI evidence. Those historical milestone names and the B2 label identify outstanding requirements, not the currently installed source version.
 
 The critical BF-002 affected-host confirmation, physical Chinese/Korean IME qualification, and same-commit hosted validation also remain open. Source integration and version advancement do not supply those results. The [Roadmap](../02_plans/ROADMAP.md) records the revised development and qualification order.
+
+## B3 source promotion
+
+Fresh local validation on the B3 promotion working tree, 2026-09-15:
+
+- The owned development installation was refreshed through `scripts/bootstrap.py --dev --no-launch`; `--version` reports `v0.001b3`.
+- Local full suite at `ca05d0b` (this promotion's tip): **1,830 passed, 6 expected platform skips**, including new regressions for BF-017 (single- and two-window Find/Replace zoom-shortcut delivery, using `QTest.keySequence`), BF-056 (match-report content no longer changes the panel's minimum size), and a rewritten BF-057 menu-structure test. One order-dependent flaky failure, `test_palette_change_rebuilds_group_formats_with_accessible_contrast`, was confirmed present on the pre-session code as well when the full file runs in a particular order, and passes in isolation; it is unrelated to this batch.
+- All **21 deep self-checks** (`--self-check --deep --json`) passed, reporting identity `display_version: v0.001b3`, `package_version: 0.1b3`, confirming source/display/package/installed metadata agreement.
+- `git diff --check` passed (no whitespace errors) and the new/edited cross-referenced documents (ADR-0008, the B3 milestone plan) resolve to real files.
+
+This validates the local source promotion only. Same-commit hosted, physical input, affected-host, and executable qualification remain pending — none has been attempted on `ca05d0b`. No historical performance or wheel result is relabelled as a fresh B3 measurement. The B2 source promotion verification below remains valid evidence for the commit it was captured on, not for this tip.
 
 ## B2 source promotion verification
 
@@ -140,6 +151,6 @@ Documentation verification found [BF-012](../BETA_FEEDBACK.md#bf-012--full-unico
 
 Before that new finding, recorded local and four-lane hosted evidence identified no shared-code session-writer race, silent admitted-history loss, external-file overwrite, recovery-evidence loss, unsafe instance takeover, cursor-navigation dependency on Find All, GUI freeze, unbounded allocation, platform launcher corruption, native-path defect, or inherited text-integrity/regex blocker. BF-002 nevertheless remains a critical user-testing blocker until the integrated shutdown/relaunch corrections are distributed and confirmed on the affected Windows and Mac hosts.
 
-UNITI does not install a permanent OS daemon. The desktop service retains an empty visible editor window when the user closes the last window, and exits on explicit Quit, logout, shutdown, or process termination. Legacy zero-window sessions remain restorable. Project/workspace semantics, cloud sync, collaboration, plugins, LSP, syntax highlighting, permanent background services, polished installers, multi-code-point grapheme inspection, and RTL/mixed-direction editing remain outside the implemented boundary. User-authored theme profiles and configurable held single-code-point Unicode inspection are implemented.
+UNITI does not install a permanent OS daemon. The desktop service retains an empty visible editor window when the user closes the last window, and exits on explicit Quit, logout, shutdown, or process termination. Legacy zero-window sessions remain restorable. Project/workspace semantics, cloud sync, collaboration, plugins, LSP, permanent background services, polished installers, multi-code-point grapheme inspection, and RTL/mixed-direction editing remain outside the implemented boundary. User-authored theme profiles, configurable held single-code-point Unicode inspection, and a bounded file-type syntax-highlighting extension point (BF-027, BF-041) are implemented; cross-row/multiline-aware highlighting and a syntax-color theme editor remain parked.
 
-The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). B2 Feedback Refinement Beta is active. Outstanding A22, A23, A24, and B1 release qualification remains recorded under ADR-0007. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
+The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). B3 Find/Replace Rework & Editor Refinement Beta is active. Outstanding A22, A23, A24, and B1 release qualification remains recorded under ADR-0007; B3's own advancement is recorded under ADR-0008. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).

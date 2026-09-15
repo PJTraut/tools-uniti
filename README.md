@@ -2,7 +2,7 @@
 
 **Unicode Intelligent Text Interchange** — a focused cross-platform power text editor built around text correctness, explicit encoding/EOL state, large-file editing, and Python `regex`.
 
-UNITI is a private source beta, currently `v0.001b2` (`0.1b2` in Python packaging). All reviewed BF-001–BF-010 feedback changes are committed and integrated on GitHub `main` through source candidate `3e20214`. B2 Feedback Refinement Beta is active. Native input, affected-host, executable, and release qualification remain open; see the [source-version decision](docs/project/05_decisions/ADR-0007-beta-source-version-and-qualification.md). The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
+UNITI is a private source beta, currently `v0.001b3` (`0.1b3` in Python packaging). All reviewed BF-001–BF-057 feedback changes are committed and integrated on GitHub `main`. B3 Find/Replace Rework & Editor Refinement Beta is active. Native input, affected-host, executable, and release qualification remain open; see the [source-version decision](docs/project/05_decisions/ADR-0008-b3-version-and-qualification.md). The canonical project/display version is stored in `VERSION`; Python packaging uses the PEP 440-normalized equivalent.
 
 ## User documentation
 
