@@ -9,7 +9,7 @@ import math
 import uuid
 import weakref
 
-from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, Signal, QTimer
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal, QTimer
 from PySide6.QtGui import (
     QFont,
     QFontMetrics,
@@ -33,7 +33,7 @@ from uniti.regex.results import MatchIndex
 from uniti.ui.syntax_theme import syntax_category_palette
 from uniti.ui.theme import EditorThemeTokens, active_theme
 from uniti.ui.font_policy import resolve_editor_font
-from uniti.ui.text_layout import ShapedWindow, Utf16Map
+from uniti.ui.text_layout import ShapedWindow, Utf16Map, direction_for_text
 from uniti.ui.horizontal_layout import HorizontalLayouts
 from uniti.ui.shaped_wrap import ShapedRowProvider
 from uniti.ui.whitespace import (
@@ -68,6 +68,15 @@ def _consume_marker(budget: _MarkerBudget) -> bool:
     return False
 
 
+FONT_WEIGHT_STEPS = (100, 200, 300, 400, 500, 600, 700, 800, 900)
+DEFAULT_FONT_WEIGHT = 400
+
+
+def _nearest_font_weight(value: int) -> int:
+    """Snap an arbitrary host-reported weight onto Qt's nine named steps."""
+    return min(FONT_WEIGHT_STEPS, key=lambda step: abs(step - value))
+
+
 def _zero_width_visible(
     position: int,
     row_start: int,
@@ -84,6 +93,7 @@ class UNITITextView(QAbstractScrollArea):
     stateChanged = Signal()
     cursorPositionChanged = Signal(int, int)
     zoomChanged = Signal(int)
+    fontWeightChanged = Signal(int)
     wrapChanged = Signal(bool)
     navigationRequested = Signal(str, bool)
     viewFocused = Signal(str)
@@ -116,6 +126,7 @@ class UNITITextView(QAbstractScrollArea):
             self._base_point_size = 12.0
             self._base_font.setPointSizeF(self._base_point_size)
         self._zoom_percent = 100
+        self._font_weight = _nearest_font_weight(self._base_font.weight())
         self._soft_wrap = False
         self._tab_width_chars = 4
         self._wrap_index: WrappedRowIndex | None = None
@@ -142,6 +153,13 @@ class UNITITextView(QAbstractScrollArea):
         self._preedit_formats = ()
         self._preedit_cursor_visible = True
         self._shape_cache = OrderedDict()
+        # BF-064: one detected base direction per logical line, reused by
+        # every window belonging to that line (a window frequently starts
+        # mid-line — a wrapped continuation row, a horizontal-scroll
+        # checkpoint — and detecting from just that fragment could misjudge
+        # a paragraph whose first strong character came earlier). Cleared
+        # on every document edit in `refresh_document_revision`.
+        self._line_directions: dict[int, object] = {}
         self._horizontal_layouts = None
         self._horizontal_signature = None
         self.geometry_pending = False
@@ -201,6 +219,10 @@ class UNITITextView(QAbstractScrollArea):
     @property
     def zoom_percent(self) -> int:
         return self._zoom_percent
+
+    @property
+    def font_weight(self) -> int:
+        return self._font_weight
 
     @property
     def soft_wrap(self) -> bool:
@@ -376,15 +398,21 @@ class UNITITextView(QAbstractScrollArea):
         self._refresh_scrollbars(advance_index=False)
         self.viewport().update()
 
+    def _apply_font(self) -> None:
+        # Shared by zoom and weight so neither change discards the other —
+        # both are rebuilt from the same immutable `_base_font` every time.
+        font = QFont(self._base_font)
+        font.setPointSizeF(self._base_point_size * self._zoom_percent / 100.0)
+        font.setWeight(QFont.Weight(self._font_weight))
+        self.setFont(font)
+        self._rebuild_metrics()
+
     def set_zoom_percent(self, percent: int) -> None:
         percent = max(50, min(300, int(percent)))
         if percent == self._zoom_percent:
             return
         self._zoom_percent = percent
-        font = QFont(self._base_font)
-        font.setPointSizeF(self._base_point_size * percent / 100.0)
-        self.setFont(font)
-        self._rebuild_metrics()
+        self._apply_font()
         self.zoomChanged.emit(percent)
 
     def zoom_in(self) -> None:
@@ -395,6 +423,25 @@ class UNITITextView(QAbstractScrollArea):
 
     def reset_zoom(self) -> None:
         self.set_zoom_percent(100)
+
+    def set_font_weight(self, weight: int) -> None:
+        weight = _nearest_font_weight(int(weight))
+        if weight == self._font_weight:
+            return
+        self._font_weight = weight
+        self._apply_font()
+        self.fontWeightChanged.emit(weight)
+
+    def increase_font_weight(self) -> None:
+        index = FONT_WEIGHT_STEPS.index(self._font_weight)
+        self.set_font_weight(FONT_WEIGHT_STEPS[min(index + 1, len(FONT_WEIGHT_STEPS) - 1)])
+
+    def decrease_font_weight(self) -> None:
+        index = FONT_WEIGHT_STEPS.index(self._font_weight)
+        self.set_font_weight(FONT_WEIGHT_STEPS[max(index - 1, 0)])
+
+    def reset_font_weight(self) -> None:
+        self.set_font_weight(DEFAULT_FONT_WEIGHT)
 
     @property
     def document(self):
@@ -415,6 +462,7 @@ class UNITITextView(QAbstractScrollArea):
             self._soft_wrap,
             self._zoom_percent,
             self._dock_return,
+            self._font_weight,
         )
 
     def _restore_vertical_scroll(self, requested: int) -> None:
@@ -456,6 +504,7 @@ class UNITITextView(QAbstractScrollArea):
             raise ValueError("view record ID does not match this view")
         self.set_dock_return(record.dock_return)
         self.set_zoom_percent(record.zoom_percent)
+        self.set_font_weight(record.font_weight)
         self.set_soft_wrap(record.soft_wrap)
         self.state.restore_state(
             EditorStateSnapshot(
@@ -492,6 +541,7 @@ class UNITITextView(QAbstractScrollArea):
         self._wrap_index = None
         self._wrap_signature = None
         self._match_index = MatchIndex(())
+        self._line_directions.clear()
         self._refresh_scrollbars(advance_index=False)
         line = self.document.line_for_char(self.state.cursor)
         column = self.state.cursor - self.document.line_start(line)
@@ -661,6 +711,30 @@ class UNITITextView(QAbstractScrollArea):
             return True
         return following[:1] in {"\r", "\n"}
 
+    def _direction_for_window(self, text: str, window_start: int):
+        """The base direction for `window_start`'s logical line (BF-064),
+        detected once per line and cached. A window starting at the line's
+        own start already has the needed text; a mid-line window (a
+        wrapped continuation row, a horizontal-scroll checkpoint) triggers
+        one small bounded probe read from the line's true start instead of
+        guessing from its own fragment, which could belong to an embedded
+        run in the opposite direction from the paragraph as a whole."""
+
+        line = self.document.line_for_char(window_start)
+        cached = self._line_directions.get(line)
+        if cached is not None:
+            return cached
+        line_start = self.document.line_start(line)
+        if window_start == line_start:
+            probe = text
+        else:
+            line_end = self.document.line_end(line)
+            probe_end = min(line_start + 256, line_end)
+            probe = self.document.read(line_start, probe_end) if probe_end > line_start else ""
+        direction = direction_for_text(probe)
+        self._line_directions[line] = direction
+        return direction
+
     def _shape(self, text, window_start=None, *, origin=0):
         preedit = None
         if (
@@ -669,11 +743,25 @@ class UNITITextView(QAbstractScrollArea):
             and self._window_owns_cursor(text, window_start)
         ):
             preedit = (self.state.cursor - window_start, self._preedit_text)
+        direction = (
+            direction_for_text(text)
+            if window_start is None
+            else self._direction_for_window(text, window_start)
+        )
+        # BF-064: this window is never itself wrapping (its text is already
+        # exactly one row's worth), so it has no `width_px` of its own —
+        # but a right-to-left row still needs a real anchor to grow
+        # leftward from as it's typed/composed into, rather than Qt's
+        # left-anchored default (see `ShapedWindow`'s docstring comment).
+        # The available text-area width is a harmless no-op for LTR text.
+        align_width_px = self._wrap_width()
         key = (
             text,
             self.font().key(),
             preedit,
             origin % (self._cell_width * self._tab_width_chars),
+            direction,
+            align_width_px,
         )
         shaped = self._shape_cache.pop(key, None)
         if shaped is None:
@@ -683,6 +771,8 @@ class UNITITextView(QAbstractScrollArea):
                 tab_stop_px=self._cell_width * self._tab_width_chars,
                 preedit=preedit,
                 tab_origin=origin,
+                direction=direction,
+                align_width_px=align_width_px,
             )
         self._shape_cache[key] = shaped
         while len(self._shape_cache) > 64:
@@ -714,6 +804,57 @@ class UNITITextView(QAbstractScrollArea):
     def _line_text(self, line: int, column_start: int) -> str:
         return self._line_content(line, column_start).text
 
+    @staticmethod
+    def _span_rect(x1: float, x2: float, y: int, height: int, *, min_width: int = 1) -> QRect:
+        """A rect spanning two x-coordinates from `shaped.x_for_cp`, in
+        whichever order they come.
+
+        BF-064: `x_for_cp` is monotonically *increasing* with logical
+        position on a left-to-right line but monotonically *decreasing* on
+        a right-to-left one — so a logically-ordered pair (`a < b`) can
+        have `x_for_cp(a) > x_for_cp(b)`. Callers used to assume the LTR
+        ordering and pass `(x1, x2)` straight to `fillRect`, which on an
+        RTL line produced a negative width clamped to 1 pixel — a highlight
+        rect a hairline wide, sitting at the wrong edge of the true span,
+        instead of covering it. This does not attempt full multi-rect
+        splitting for a span crossing an embedded direction boundary within
+        one line (Qt's own `QTextLayout` format-range painting can do that,
+        confirmed by direct testing, but switching to it changes highlight
+        height to the text's natural ascent/descent instead of the
+        editor's unified multi-script row height — a separate, undecided
+        trade-off); the single bounding box below is still correct for the
+        common case of a span entirely within one direction and, worst
+        case, only overcovers the gap between two runs, no longer produces
+        a broken/invisible highlight.
+        """
+
+        left = min(x1, x2)
+        right = max(x1, x2)
+        return QRect(int(left), y, max(min_width, int(right - left)), height)
+
+    def _span_rects(
+        self,
+        shaped,
+        x_base: float,
+        a: int,
+        b: int,
+        y: int,
+        height: int,
+        *,
+        min_width: int = 1,
+    ) -> list[QRect]:
+        """One rect per bidi/shaping run within local span [a, b), using
+        `ShapedWindow.run_spans` (Qt's own glyph-run geometry) instead of
+        `_span_rect`'s single bounding box — correctly splits a
+        selection/match/invalid-byte span that crosses an embedded
+        direction boundary within one line, rather than overcovering the
+        unselected gap between runs (BF-064)."""
+
+        return [
+            self._span_rect(x_base + left, x_base + right, y, height, min_width=min_width)
+            for left, right in shaped.run_spans(a, b)
+        ]
+
     def _paint_invalid_byte_annotations(
         self,
         painter: QPainter,
@@ -735,10 +876,9 @@ class UNITITextView(QAbstractScrollArea):
             x1 = text_x + shaped.x_for_cp(local)
             x2 = text_x + shaped.x_for_cp(local + 1)
             painter.drawRect(
-                int(x1),
-                y + 1,
-                max(2, int(x2 - x1)),
-                max(2, self._line_height - 3),
+                self._span_rect(
+                    x1, x2, y + 1, max(2, self._line_height - 3), min_width=2
+                )
             )
 
     def _paint_line_text(
@@ -828,7 +968,11 @@ class UNITITextView(QAbstractScrollArea):
     ) -> None:
         tokens = self._theme_tokens
         baseline = y + self._row_ascent
-        left = int(round(x1))
+        # BF-064: `x1`/`x2` come from `x_for_cp`, whose ordering flips on a
+        # right-to-left line (see `_span_rect`) — the visual left edge of
+        # the marker's span is whichever of the two is smaller, not always
+        # x1 (the character's *logical* start).
+        left = int(round(min(x1, x2)))
         if kind == "overflow":
             painter.setPen(tokens.invisible_marker)
             painter.drawText(left + 3, baseline, label)
@@ -940,7 +1084,7 @@ class UNITITextView(QAbstractScrollArea):
                 index = group_end
             else:
                 index += 1
-            if x2 < viewport_left or x1 > viewport_right:
+            if max(x1, x2) < viewport_left or min(x1, x2) > viewport_right:
                 continue
             budget.last_position = (x1, x2, y)
             if _consume_marker(budget):
@@ -1160,14 +1304,10 @@ class UNITITextView(QAbstractScrollArea):
                             match_color,
                         )
                     elif b > a:
-                        x2 = text_x + shaped.x_for_cp(b)
-                        painter.fillRect(
-                            int(x1),
-                            y,
-                            max(1, int(x2 - x1)),
-                            self._line_height,
-                            match_color,
-                        )
+                        for rect in self._span_rects(
+                            shaped, text_x, a, b, y, self._line_height
+                        ):
+                            painter.fillRect(rect, match_color)
 
             selected_range: tuple[int, int] | None = None
             if selection is not None:
@@ -1177,15 +1317,10 @@ class UNITITextView(QAbstractScrollArea):
                 if visible_start < visible_end:
                     a = visible_start - line_window_start
                     b = visible_end - line_window_start
-                    x1 = text_x + shaped.x_for_cp(a)
-                    x2 = text_x + shaped.x_for_cp(b)
-                    painter.fillRect(
-                        int(x1),
-                        y,
-                        max(1, int(x2 - x1)),
-                        self._line_height,
-                        tokens.selection,
-                    )
+                    for rect in self._span_rects(
+                        shaped, text_x, a, b, y, self._line_height
+                    ):
+                        painter.fillRect(rect, tokens.selection)
                     selected_range = (a, b)
 
             self._paint_invalid_byte_annotations(
@@ -1691,6 +1826,78 @@ class UNITITextView(QAbstractScrollArea):
             return surrounding
         return super().inputMethodQuery(query)
 
+    def _move_visual_char(self, *, want_increase_x: bool, selecting: bool) -> None:
+        """Embedding-level-aware visual left/right movement (BF-064).
+
+        `EditorState.move_visual_left/right` only knows the cursor's
+        *paragraph* direction (no layout access there — Qt-free by
+        design) so it is wrong inside an embedded run whose own direction
+        differs from its paragraph's (the limitation characterized by
+        `test_visual_movement_known_limitation_uses_paragraph_direction_not_local_run`).
+        Here, with the real shaped line available, the fix does not need
+        to reimplement bidi levels at all: it shapes the cursor's whole
+        logical line once, reads the actual pixel x-coordinate of the
+        cursor and of its two grapheme-cluster neighbors from
+        `ShapedWindow.x_for_cp` (Qt's own authoritative shaping/reordering
+        geometry — the same source already trusted for painting and for
+        the multi-rect highlight fix), and picks whichever logical
+        neighbor actually sits in the requested visual direction. This is
+        correct for arbitrary embedding depth within one line, not just
+        the paragraph-level cases the old heuristic got right.
+
+        Deliberately still falls back to the paragraph-level heuristic in
+        two bounded cases, each a deliberate scope line rather than an
+        oversight: at a line's own start/end (no in-line neighbor to
+        compare against — the adjacent logical line is a different
+        paragraph, out of scope here), and for a line too long to shape
+        within `ShapedWindow`'s bounded 8192-code-point cap.
+        """
+
+        def fallback() -> None:
+            if want_increase_x:
+                self.state.move_visual_right(selecting=selecting)
+            else:
+                self.state.move_visual_left(selecting=selecting)
+
+        cursor = self.state.cursor
+        line_number = self.document.line_for_char(cursor)
+        line_start = self.document.line_start(line_number)
+        line_end = self.document.line_end(line_number)
+        if line_end - line_start > 8192:
+            fallback()
+            return
+        local_cursor = cursor - line_start
+        line_text = self.document.read(line_start, line_end) if line_end > line_start else ""
+        if local_cursor <= 0 or local_cursor >= len(line_text):
+            fallback()
+            return
+        direction = self._direction_for_window(line_text, line_start)
+        shaped = ShapedWindow(line_text, self.font(), direction=direction)
+        boundaries = shaped.boundaries
+        if local_cursor not in boundaries:
+            fallback()
+            return
+        index = boundaries.index(local_cursor)
+        if index <= 0 or index >= len(boundaries) - 1:
+            fallback()
+            return
+        current_x = shaped.x_for_cp(local_cursor)
+        candidates = (
+            (shaped.x_for_cp(boundaries[index - 1]), -1),
+            (shaped.x_for_cp(boundaries[index + 1]), 1),
+        )
+        eligible = [
+            (x, step) for x, step in candidates if (x > current_x) == want_increase_x
+        ]
+        if not eligible:
+            fallback()
+            return
+        _, step = min(eligible, key=lambda item: abs(item[0] - current_x))
+        if step > 0:
+            self.state.move_right(selecting=selecting)
+        else:
+            self.state.move_left(selecting=selecting)
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
         modifiers = event.modifiers()
@@ -1713,9 +1920,9 @@ class UNITITextView(QAbstractScrollArea):
             event.accept()
             return
         elif primary and key == Qt.Key.Key_Left:
-            self.state.move_word_left(selecting=selecting)
+            self.state.move_visual_word_left(selecting=selecting)
         elif primary and key == Qt.Key.Key_Right:
-            self.state.move_word_right(selecting=selecting)
+            self.state.move_visual_word_right(selecting=selecting)
         elif primary and key in (Qt.Key.Key_Home, Qt.Key.Key_Up):
             self.state.move_document_start(selecting=selecting)
         elif primary and key in (Qt.Key.Key_End, Qt.Key.Key_Down):
@@ -1735,9 +1942,9 @@ class UNITITextView(QAbstractScrollArea):
                 selecting=selecting,
             )
         elif key == Qt.Key.Key_Left:
-            self.state.move_left(selecting=selecting)
+            self._move_visual_char(want_increase_x=False, selecting=selecting)
         elif key == Qt.Key.Key_Right:
-            self.state.move_right(selecting=selecting)
+            self._move_visual_char(want_increase_x=True, selecting=selecting)
         elif key == Qt.Key.Key_Up:
             self.state.move_up(selecting=selecting)
         elif key == Qt.Key.Key_Down:

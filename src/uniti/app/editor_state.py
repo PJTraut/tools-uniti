@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from uniti.core.bidi import is_rtl_paragraph
 from uniti.core.document import Document
 from uniti.app.graphemes import neighbor_boundary, deletion_span
+
+# BF-064: bounded enough to reliably reach a paragraph's first strong
+# character (see `uniti.core.bidi`) without reading an entire huge line
+# just to decide arrow-key direction.
+_DIRECTION_PROBE_CHARS = 256
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +134,60 @@ class EditorState:
         result = neighbor_boundary(self.document, target, 1, inclusive=True)
         if result.complete:
             self._set_cursor(result.position, selecting=selecting)
+
+    def _cursor_line_is_rtl(self) -> bool:
+        """BF-064: whether the cursor's logical line reads right-to-left,
+        by the same paragraph-level (first-strong-character) rule used to
+        render it — see `uniti.core.bidi.is_rtl_paragraph`.
+
+        This is deliberately paragraph-level, not per-character bidi
+        embedding level: within a predominantly-RTL line's embedded
+        left-to-right run (e.g. an English term inside Arabic text), arrow
+        keys will use the paragraph's direction rather than that run's own
+        — a known, documented limitation. Full embedding-level-aware caret
+        affinity is a materially larger, separately-scoped effort (the
+        "caret affinity" problem flagged in BF-043/BF-064's plan).
+        """
+
+        line = self.document.line_for_char(self.cursor)
+        line_start = self.document.line_start(line)
+        line_end = self.document.line_end(line)
+        probe_end = min(line_start + _DIRECTION_PROBE_CHARS, line_end)
+        text = self.document.read(line_start, probe_end) if probe_end > line_start else ""
+        return is_rtl_paragraph(text)
+
+    def move_visual_left(self, *, selecting: bool = False) -> None:
+        """Move toward the visual left edge — logically backward in a
+        left-to-right line, logically forward in a right-to-left one."""
+
+        if self._cursor_line_is_rtl():
+            self.move_right(selecting=selecting)
+        else:
+            self.move_left(selecting=selecting)
+
+    def move_visual_right(self, *, selecting: bool = False) -> None:
+        """Move toward the visual right edge — the mirror of `move_visual_left`."""
+
+        if self._cursor_line_is_rtl():
+            self.move_left(selecting=selecting)
+        else:
+            self.move_right(selecting=selecting)
+
+    def move_visual_word_left(self, *, selecting: bool = False) -> None:
+        """Word-wise counterpart to `move_visual_left` (Ctrl/Cmd+Left)."""
+
+        if self._cursor_line_is_rtl():
+            self.move_word_right(selecting=selecting)
+        else:
+            self.move_word_left(selecting=selecting)
+
+    def move_visual_word_right(self, *, selecting: bool = False) -> None:
+        """Word-wise counterpart to `move_visual_right` (Ctrl/Cmd+Right)."""
+
+        if self._cursor_line_is_rtl():
+            self.move_word_left(selecting=selecting)
+        else:
+            self.move_word_right(selecting=selecting)
 
     def _column(self) -> int:
         line = self.document.line_for_char(self.cursor)

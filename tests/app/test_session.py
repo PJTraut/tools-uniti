@@ -300,7 +300,7 @@ def test_dock_return_record_rejects_untrusted_values(kwargs):
 def test_schema_one_manifest_migrates_new_presentation_fields():
     restored = manifest_from_payload(_schema_one_payload_fixture())
 
-    assert restored.schema == SESSION_SCHEMA == 4
+    assert restored.schema == SESSION_SCHEMA == 5
     assert all(view.dock_return is None for view in restored.views)
     assert restored.find_replace.placement == "detached"
     assert restored.find_replace.find_wrap is False
@@ -319,7 +319,7 @@ def _schema_two_payload_fixture() -> dict[str, object]:
 def test_schema_two_manifest_migrates_wrap_fields():
     restored = manifest_from_payload(_schema_two_payload_fixture())
 
-    assert restored.schema == SESSION_SCHEMA == 4
+    assert restored.schema == SESSION_SCHEMA == 5
     assert restored.find_replace.placement == "attached"
     assert restored.find_replace.find_wrap is False
     assert restored.find_replace.replace_wrap is False
@@ -337,7 +337,7 @@ def _schema_three_payload_fixture() -> dict[str, object]:
 def test_schema_three_manifest_migrates_document_group_id():
     restored = manifest_from_payload(_schema_three_payload_fixture())
 
-    assert restored.schema == SESSION_SCHEMA == 4
+    assert restored.schema == SESSION_SCHEMA == 5
     assert restored.find_replace.find_wrap is True
     assert all(document.group_id is None for document in restored.documents)
 
@@ -496,6 +496,12 @@ def test_manifest_rejects_invalid_references_and_duplicate_ids():
             "cursor",
         ),
         (
+            lambda: ViewRecord(
+                "view", "doc", 0, 0, None, 0, 0, 0, False, 100, None, 350
+            ),
+            "font_weight",
+        ),
+        (
             lambda: WindowRecord(
                 "window", (0, 0, 0, 600), "normal", PaneRecord("leaf", "pane")
             ),
@@ -561,7 +567,7 @@ def test_pack_decoder_rejects_checksum_mismatch():
 
 def test_manifest_and_pack_reject_unsupported_schemas():
     manifest_payload = manifest_to_payload(_manifest())
-    manifest_payload["schema"] = 5
+    manifest_payload["schema"] = 6
     with pytest.raises(UnsupportedSessionSchema):
         manifest_from_payload(manifest_payload)
 

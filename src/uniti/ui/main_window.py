@@ -63,6 +63,11 @@ from uniti.core.document import Document
 from uniti.core.durability import DurabilityLevel
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
+from uniti.core.reformatters import (
+    MAX_REFORMAT_CHARS,
+    ReformatFailure,
+    reformatter_for_key,
+)
 from uniti.core.syntax_profiles import profile_for_extension
 from uniti.core.index_jobs import (
     LineNavigationResult,
@@ -835,6 +840,11 @@ class UNITIMainWindow(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction(self._command_action("file.open", self.open_dialog))
         file_menu.addAction(
+            self._command_action(
+                "file.open_folder_by_type", self.open_folder_by_type
+            )
+        )
+        file_menu.addAction(
             self._command_action("file.save", self.start_save_current)
         )
         file_menu.addAction(
@@ -894,13 +904,13 @@ class UNITIMainWindow(QMainWindow):
         edit_menu.addAction(
             self._command_action(
                 "navigation.word_left",
-                lambda: self._move_editor("move_word_left"),
+                lambda: self._move_editor("move_visual_word_left"),
             )
         )
         edit_menu.addAction(
             self._command_action(
                 "navigation.word_right",
-                lambda: self._move_editor("move_word_right"),
+                lambda: self._move_editor("move_visual_word_right"),
             )
         )
 
@@ -931,6 +941,17 @@ class UNITIMainWindow(QMainWindow):
             format_menu.addAction(
                 self._action(eol, None, lambda eol=eol: self.set_output_eol(eol))
             )
+
+        format_menu.addSeparator()
+        self._format_document_action = self._action(
+            "Format Document", None, self.format_current_document
+        )
+        self._minify_document_action = self._action(
+            "Minify Document", None, self.minify_current_document
+        )
+        format_menu.addAction(self._format_document_action)
+        format_menu.addAction(self._minify_document_action)
+        self._refresh_reformat_actions()
 
         view_menu = self.menuBar().addMenu("&View")
         theme_menu = view_menu.addMenu("&Theme")
@@ -964,6 +985,21 @@ class UNITIMainWindow(QMainWindow):
         )
         view_menu.addAction(
             self._command_action("editor.zoom_reset", self.reset_editor_zoom)
+        )
+        view_menu.addAction(
+            self._command_action(
+                "editor.weight_increase", self.increase_editor_font_weight
+            )
+        )
+        view_menu.addAction(
+            self._command_action(
+                "editor.weight_decrease", self.decrease_editor_font_weight
+            )
+        )
+        view_menu.addAction(
+            self._command_action(
+                "editor.weight_reset", self.reset_editor_font_weight
+            )
         )
         self._wrap_action = self._command_action(
             "editor.wrap",
@@ -1469,6 +1505,7 @@ class UNITIMainWindow(QMainWindow):
             view.stateChanged,
             view.cursorPositionChanged,
             view.zoomChanged,
+            view.fontWeightChanged,
             view.wrapChanged,
             view.navigationRequested,
         ):
@@ -1616,12 +1653,168 @@ class UNITIMainWindow(QMainWindow):
                     f"{filename}\n\n{exc}",
                 )
 
+    _OPEN_FOLDER_WARN_THRESHOLD = 100
+
+    _OPEN_FOLDER_GROUP_PALETTE = (
+        "#e06c75",
+        "#61afef",
+        "#98c379",
+        "#e5c07b",
+        "#c678dd",
+        "#56b6c2",
+        "#d19a66",
+    )
+
+    def _next_group_color(self) -> str:
+        used = {group.color for group in self._groups}
+        for color in self._OPEN_FOLDER_GROUP_PALETTE:
+            if color not in used:
+                return color
+        return self._OPEN_FOLDER_GROUP_PALETTE[
+            len(self._groups) % len(self._OPEN_FOLDER_GROUP_PALETTE)
+        ]
+
+    def _unique_group_id(self, name: str) -> str:
+        base = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-")[:64] or "group"
+        existing = {group.id for group in self._groups}
+        candidate = base
+        suffix = 2
+        while candidate in existing:
+            candidate = f"{base}-{suffix}"[:64]
+            suffix += 1
+        return candidate
+
+    def open_folder_by_type(self) -> None:
+        """BF-029/ADR-0009: open every file of one chosen type from a folder
+        (non-recursive, top-level files only) as independent documents,
+        optionally assigned to one document group. This is a one-shot batch
+        convenience over the existing per-file open pipeline — UNITI does
+        not retain the folder as project/workspace state afterward."""
+
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Open Folder by Type",
+            self._settings.last_directory or "",
+        )
+        if not folder:
+            return
+        folder_path = Path(folder)
+        try:
+            entries = [entry for entry in folder_path.iterdir() if entry.is_file()]
+        except OSError as exc:
+            QMessageBox.critical(self, "Open Folder Failed", f"{folder}\n\n{exc}")
+            return
+        if not entries:
+            QMessageBox.information(
+                self, "Open Folder by Type", "This folder has no files."
+            )
+            return
+
+        counts: dict[str, int] = {}
+        for entry in entries:
+            extension = entry.suffix.lower() or "(no extension)"
+            counts[extension] = counts.get(extension, 0) + 1
+        ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+        labels = [
+            f"{extension} — {count} file{'s' if count != 1 else ''}"
+            for extension, count in ordered
+        ]
+        label, accepted = QInputDialog.getItem(
+            self, "Open Folder by Type", "File type:", labels, editable=False
+        )
+        if not accepted or not label:
+            return
+        chosen_extension = ordered[labels.index(label)][0]
+        matching = sorted(
+            entry
+            for entry in entries
+            if (entry.suffix.lower() or "(no extension)") == chosen_extension
+        )
+
+        if len(matching) > self._OPEN_FOLDER_WARN_THRESHOLD:
+            proceed = QMessageBox.question(
+                self,
+                "Open Many Files",
+                f"This opens {len(matching)} files at once. Concurrent-document "
+                "performance at this scale is not yet benchmarked (BF-030). "
+                "Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if proceed != QMessageBox.StandardButton.Yes:
+                return
+
+        group_id: str | None = None
+        if self._service is not None:
+            no_group_label = "No Group"
+            new_group_label = "New Group…"
+            options = (
+                [no_group_label]
+                + [group.name for group in self._groups]
+                + [new_group_label]
+            )
+            choice, accepted = QInputDialog.getItem(
+                self,
+                "Assign to Group",
+                "Assign the opened documents to a group:",
+                options,
+                editable=False,
+            )
+            if accepted and choice == new_group_label:
+                name, name_accepted = QInputDialog.getText(
+                    self, "New Group", "Group name:"
+                )
+                name = name.strip() if name_accepted else ""
+                if name:
+                    from uniti.app.document_groups import DocumentGroup
+
+                    new_group = DocumentGroup(
+                        self._unique_group_id(name), name, self._next_group_color()
+                    )
+                    self._groups = self._groups + (new_group,)
+                    if self._group_store is not None:
+                        self._group_store.save(self._groups)
+                    group_id = new_group.id
+            elif accepted and choice != no_group_label:
+                existing_group = next(
+                    (group for group in self._groups if group.name == choice), None
+                )
+                if existing_group is not None:
+                    group_id = existing_group.id
+
+        opened = 0
+        failures: list[str] = []
+        for path in matching:
+            try:
+                view = self.open_path(path)
+            except Exception as exc:
+                failures.append(f"{path.name}: {exc}")
+                continue
+            if view is None:
+                continue
+            opened += 1
+            if group_id is not None and self._service is not None:
+                entry = self._service.documents.entry_for_view(view.view_id)
+                if entry is not None:
+                    self._set_document_group(entry.document_id, group_id)
+
+        if failures:
+            QMessageBox.warning(
+                self,
+                "Some Files Did Not Open",
+                f"Opened {opened} of {len(matching)} files.\n\n"
+                + "\n".join(failures[:20]),
+            )
+
     def _connect_view(self, view: UNITITextView) -> None:
         view.set_progressive_navigation(True)
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
         view.cursorPositionChanged.connect(self._status.update_cursor)
         view.zoomChanged.connect(
             lambda percent, view=view: self._on_view_zoom_changed(view, percent)
+        )
+        view.fontWeightChanged.connect(
+            lambda weight, view=view: self._on_view_font_weight_changed(view, weight)
         )
         view.wrapChanged.connect(
             lambda enabled, view=view: self._on_view_wrap_changed(view, enabled)
@@ -1707,6 +1900,7 @@ class UNITIMainWindow(QMainWindow):
         state = EditorState(document)
         view = UNITITextView(state, view_id=view_id)
         view.set_zoom_percent(self._settings.editor_zoom_percent)
+        view.set_font_weight(self._settings.editor_font_weight)
         view.set_soft_wrap(self._settings.soft_wrap)
         view.set_whitespace_mode(self._settings.whitespace_mode)
         view.set_tab_width(self._settings.editor_tab_width)
@@ -1872,6 +2066,13 @@ class UNITIMainWindow(QMainWindow):
         )
         self._save_settings()
 
+    def _on_view_font_weight_changed(self, view: UNITITextView, weight: int) -> None:
+        self._settings = dataclass_replace(
+            self._settings,
+            editor_font_weight=weight,
+        )
+        self._save_settings()
+
     def _on_view_wrap_changed(self, view: UNITITextView, enabled: bool) -> None:
         if view is self.current_view:
             self._status.update_view(view.zoom_percent, soft_wrap=enabled)
@@ -1895,6 +2096,21 @@ class UNITIMainWindow(QMainWindow):
         if view is not None and view.isEnabled():
             view.reset_zoom()
 
+    def increase_editor_font_weight(self) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.increase_font_weight()
+
+    def decrease_editor_font_weight(self) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.decrease_font_weight()
+
+    def reset_editor_font_weight(self) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.reset_font_weight()
+
     def set_editor_wrap(self, enabled: bool) -> None:
         view = self.current_view
         if view is not None and view.isEnabled():
@@ -1917,6 +2133,7 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         for widget in self.views:
             widget.document.set_resource_active(widget is view)
+        self._refresh_reformat_actions()
         if view is None:
             # The active pane may be a non-document view (e.g. the attached
             # Find/Replace pane) while other document tabs are still open
@@ -2068,6 +2285,66 @@ class UNITIMainWindow(QMainWindow):
             return
         _convert_and_set_output_eol(view.document, eol)
         self._on_view_state_changed(view)
+
+    def _refresh_reformat_actions(self) -> None:
+        format_action = getattr(self, "_format_document_action", None)
+        if format_action is None:
+            # Menus (and these actions) are built after the pane tree, whose
+            # construction can synchronously fire the active-view-changed
+            # signal that reaches this method first.
+            return
+        view = self.current_view
+        reformatter = (
+            None if view is None else reformatter_for_key(view.syntax_profile.key)
+        )
+        format_action.setEnabled(reformatter is not None)
+        self._minify_document_action.setEnabled(
+            reformatter is not None and reformatter.can_minify
+        )
+
+    def _reformat_current_document(self, *, minify: bool) -> None:
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        reformatter = reformatter_for_key(view.syntax_profile.key)
+        if reformatter is None or (minify and not reformatter.can_minify):
+            return
+        document = view.document
+        total_chars = document.total_chars()
+        if total_chars > MAX_REFORMAT_CHARS:
+            QMessageBox.warning(
+                self,
+                "Document Too Large",
+                "This document is larger than "
+                f"{MAX_REFORMAT_CHARS:,} characters. Formatting requires "
+                "reading the whole document into memory, so it is not "
+                "offered above that size.",
+            )
+            return
+        text = document.read(0, total_chars)
+        action = reformatter.minify if minify else reformatter.format
+        try:
+            formatted = action(text)
+        except ReformatFailure as exc:
+            error = exc.error
+            location = (
+                f" (line {error.line}, column {error.column})"
+                if error.line is not None
+                else ""
+            )
+            QMessageBox.critical(
+                self,
+                "Minify Failed" if minify else "Format Failed",
+                f"{error.message}{location}",
+            )
+            return
+        document.replace(0, total_chars, formatted)
+
+    def format_current_document(self) -> None:
+        self._reformat_current_document(minify=False)
+
+    def minify_current_document(self) -> None:
+        self._reformat_current_document(minify=True)
 
     @staticmethod
     def _exact_profile(profile: EncodingProfile | str) -> EncodingProfile:

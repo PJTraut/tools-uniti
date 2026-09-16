@@ -81,6 +81,31 @@ def test_settings_reject_invalid_editor_view_state(tmp_path: Path):
     assert settings.soft_wrap is False
 
 
+def test_editor_font_weight_round_trips(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    settings = Settings(editor_font_weight=700)
+
+    store.save(settings)
+
+    assert store.load().editor_font_weight == 700
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["editor_font_weight"] == 700
+
+
+@pytest.mark.parametrize("value", [0, -1, 350, "700", True, 700.0, 1000])
+def test_editor_font_weight_rejects_values_outside_qts_nine_named_steps(
+    tmp_path: Path, value
+):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps({"schema": 5, "editor_font_weight": value}),
+        encoding="utf-8",
+    )
+
+    assert SettingsStore(path).load().editor_font_weight == 400
+
+
 @pytest.mark.parametrize("value", [0, -1, 17, "4", True, 4.0])
 def test_editor_tab_width_rejects_out_of_range_or_wrong_type_values(
     tmp_path: Path, value
@@ -238,6 +263,7 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
     assert result.preserved_path.read_text(encoding="utf-8") == "broken"
     assert json.loads(path.read_text(encoding="utf-8")) == {
         "editor_zoom_percent": 100,
+        "editor_font_weight": 400,
         "editor_tab_width": 4,
         "find_replace_geometry": None,
         "find_replace_report_location": "Right",

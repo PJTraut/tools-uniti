@@ -9,6 +9,7 @@ Common defaults below use **Ctrl on Windows/Linux** and **Cmd on macOS**. Check 
 | Action | Shortcut / location |
 |---|---|
 | Open | Ctrl/Cmd+O · File → Open… |
+| Open all files of one type in a folder | File → Open Folder by Type… |
 | Save | Ctrl/Cmd+S · File → Save |
 | Save a copy with format options | Ctrl/Cmd+Shift+S · File → Save As… |
 | Undo | Ctrl/Cmd+Z · Edit → Undo |
@@ -63,6 +64,8 @@ Replace: Item \1: \2
 | Correct a wrong decoding | Format → Reinterpret As |
 | Write another encoding | Format → Convert on Save |
 | Preserve / convert EOLs | Format → Keep Source / LF / CRLF / CR |
+| Pretty-print JSON/XML/Markdown | Format → Format Document |
+| Compact JSON/XML to one line | Format → Minify Document |
 | Show hidden characters | View → Whitespace |
 | Temporary Unicode details | Hold Cmd+Option (Mac) / Ctrl+Alt (Windows/Linux) |
 | Inspect one code point | Tools → Character Inspector… |

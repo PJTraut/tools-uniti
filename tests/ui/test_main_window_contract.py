@@ -241,7 +241,7 @@ def test_main_window_applies_and_preserves_editor_view_settings(tmp_path: Path):
     source = tmp_path / "configured.txt"
     source.write_text("Привет", encoding="utf-8")
     store = SettingsStore(tmp_path / "settings.json")
-    store.save(Settings(editor_zoom_percent=130, soft_wrap=True))
+    store.save(Settings(editor_zoom_percent=130, editor_font_weight=600, soft_wrap=True))
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow(settings_store=store)
 
@@ -249,14 +249,24 @@ def test_main_window_applies_and_preserves_editor_view_settings(tmp_path: Path):
     app.processEvents()
 
     assert view.zoom_percent == 130
+    assert view.font_weight == 600
     assert view.soft_wrap is True
     assert store.load().editor_zoom_percent == 130
+    assert store.load().editor_font_weight == 600
     status_text = {label.text() for label in window.statusBar().findChildren(QLabel)}
     assert "130%" in status_text
     assert "Wrap" in status_text
     window.zoom_in_editor()
     assert view.zoom_percent == 140
     assert store.load().editor_zoom_percent == 140
+    window.increase_editor_font_weight()
+    assert view.font_weight == 700
+    assert store.load().editor_font_weight == 700
+    window.decrease_editor_font_weight()
+    assert view.font_weight == 600
+    window.reset_editor_font_weight()
+    assert view.font_weight == 400
+    assert store.load().editor_font_weight == 400
     window.set_editor_wrap(False)
     assert view.soft_wrap is False
     assert store.load().soft_wrap is False
@@ -1076,6 +1086,195 @@ def test_zoom_shortcut_reaches_the_panel_while_find_input_has_focus(
         app.processEvents()
 
         assert window._find_replace.zoom_percent > before
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_font_weight_hotkeys_reach_the_focused_editor(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QKeySequence
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "weight-shortcut.txt"
+    source.write_text("abc", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        view = window.open_path(source)
+        view.setFocus()
+        window.show()
+        app.processEvents()
+        assert view.font_weight == 400
+
+        QTest.keySequence(view, QKeySequence("Ctrl+Shift+="))
+        app.processEvents()
+        assert view.font_weight == 500
+
+        QTest.keySequence(view, QKeySequence("Ctrl+Shift+-"))
+        app.processEvents()
+        assert view.font_weight == 400
+
+        QTest.keySequence(view, QKeySequence("Ctrl+Shift+="))
+        QTest.keySequence(view, QKeySequence("Ctrl+Shift+0"))
+        app.processEvents()
+        assert view.font_weight == 400
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_format_document_actions_enable_only_for_recognized_syntax_types(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    json_path = tmp_path / "data.json"
+    json_path.write_text('{"a": 1}', encoding="utf-8")
+    md_path = tmp_path / "notes.md"
+    md_path.write_text("# hi\n", encoding="utf-8")
+    txt_path = tmp_path / "plain.txt"
+    txt_path.write_text("hello", encoding="utf-8")
+
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        json_view = window.open_path(json_path)
+        assert window._format_document_action.isEnabled() is True
+        assert window._minify_document_action.isEnabled() is True
+
+        md_view = window.open_path(md_path)
+        assert window._format_document_action.isEnabled() is True
+        assert window._minify_document_action.isEnabled() is False
+
+        window.open_path(txt_path)
+        assert window._format_document_action.isEnabled() is False
+        assert window._minify_document_action.isEnabled() is False
+
+        window._select_view(json_view)
+        assert window._format_document_action.isEnabled() is True
+        window._select_view(md_view)
+        assert window._minify_document_action.isEnabled() is False
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_format_document_applies_as_one_undo_step(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "data.json"
+    original = '{"b": 1, "a": [3, 2, 1]}'
+    path.write_text(original, encoding="utf-8")
+
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        view = window.open_path(path)
+        window.format_current_document()
+        formatted = view.document.read(0, view.document.total_chars())
+        assert formatted != original
+        assert formatted.startswith('{\n  "b": 1,')
+
+        window.minify_current_document()
+        minified = view.document.read(0, view.document.total_chars())
+        assert minified == '{"b":1,"a":[3,2,1]}'
+
+        view.document.undo()
+        assert view.document.read(0, view.document.total_chars()) == formatted
+        view.document.undo()
+        assert view.document.read(0, view.document.total_chars()) == original
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_format_document_rejects_invalid_json_and_leaves_document_unchanged(
+    tmp_path: Path, monkeypatch
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "bad.json"
+    path.write_text("{invalid", encoding="utf-8")
+
+    shown = {}
+    monkeypatch.setattr(
+        QMessageBox,
+        "critical",
+        lambda self, title, text, *a, **k: shown.update(title=title, text=text),
+    )
+
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        view = window.open_path(path)
+        window.format_current_document()
+
+        assert shown["title"] == "Format Failed"
+        assert "line 1" in shown["text"]
+        assert view.document.read(0, view.document.total_chars()) == "{invalid"
+        assert view.document.modified is False
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_format_document_declines_documents_over_the_size_cap(
+    tmp_path: Path, monkeypatch
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    import uniti.ui.main_window as main_window_module
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "data.json"
+    path.write_text('{"a": 1}', encoding="utf-8")
+
+    monkeypatch.setattr(main_window_module, "MAX_REFORMAT_CHARS", 4)
+    shown = {}
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda self, title, text, *a, **k: shown.update(title=title, text=text),
+    )
+
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        view = window.open_path(path)
+        window.format_current_document()
+
+        assert shown["title"] == "Document Too Large"
+        assert view.document.read(0, view.document.total_chars()) == '{"a": 1}'
+        assert view.document.modified is False
     finally:
         window.close_all_documents(force=True)
         window.close()

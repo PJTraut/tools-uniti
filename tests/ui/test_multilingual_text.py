@@ -686,3 +686,61 @@ def test_logical_eol_keeps_one_composition_owner(qapp, tmp_path, monkeypatch, te
             assert owners == pytest.approx([(caret.top(), caret.left())])
         finally:
             view.close()
+
+
+def test_ime_composition_commits_and_cancels_on_an_rtl_document(qapp, tmp_path):
+    """BF-064: extends BF-006's synthetic IME coverage (commit/cancel via
+    QInputMethodEvent, not physical native input) to a right-to-left
+    document. Preedit positioning already reuses the same `_shape`/
+    `ShapedWindow` machinery fixed for direction-awareness, so this mainly
+    confirms nothing about the RTL context makes IME commit/cancel corrupt
+    the document or crash — physical native Arabic/Hebrew IME qualification
+    remains open, exactly like BF-006's native Chinese/Korean qualification."""
+
+    from uniti.ui.text_view import UNITITextView
+
+    p = tmp_path / "ime-rtl"
+    arabic = "مرحبا"  # "مرحبا"
+    p.write_text(arabic, encoding="utf-8")
+    with Document.open(p, encoding="utf-8") as doc:
+        view = UNITITextView(EditorState(doc))
+        view.state.move_to(2)
+        before_revision = doc.revision
+
+        # Composing (not yet committed) must not touch the document.
+        hebrew_preedit = "שלום"  # "שלום"
+        view.inputMethodEvent(QInputMethodEvent(hebrew_preedit, []))
+        assert doc.revision == before_revision
+        assert doc.read(0, doc.total_chars()) == arabic
+
+        # Cancelling (empty preedit, no commit) leaves the document alone.
+        view.inputMethodEvent(QInputMethodEvent("", []))
+        assert doc.revision == before_revision
+        assert doc.read(0, doc.total_chars()) == arabic
+
+        # Committing actually inserts the composed text.
+        commit = QInputMethodEvent()
+        commit.setCommitString(hebrew_preedit)
+        view.inputMethodEvent(commit)
+        assert doc.read(0, doc.total_chars()) == arabic[:2] + hebrew_preedit + arabic[2:]
+        view.close()
+
+
+def test_ime_preedit_moves_the_caret_on_an_rtl_line_without_editing(qapp, tmp_path):
+    from uniti.ui.text_view import UNITITextView
+
+    p = tmp_path / "ime-rtl-caret"
+    arabic = "مرحبا"
+    p.write_text(arabic, encoding="utf-8")
+    with Document.open(p, encoding="utf-8") as doc:
+        view = UNITITextView(EditorState(doc))
+        view.state.move_to(2)
+        before = view._cursor_rectangle().x()
+
+        view.inputMethodEvent(QInputMethodEvent("بك", []))
+        assert view._cursor_rectangle().x() != before
+        assert doc.read(0, doc.total_chars()) == arabic
+
+        view.inputMethodEvent(QInputMethodEvent("", []))
+        assert view._cursor_rectangle().x() == before
+        view.close()

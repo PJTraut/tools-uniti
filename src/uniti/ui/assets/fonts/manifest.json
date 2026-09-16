@@ -283,6 +283,50 @@
       "licenseURL": "https://openfontlicense.org",
       "noticePath": "licenses/NotoSansCJK-LICENSE",
       "noticeSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+    },
+    {
+      "path": "NotoNaskhArabic-Regular.otf",
+      "family": "Noto Naskh Arabic",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Arabic"
+      ],
+      "sample": "مرحبا",
+      "sourceRepository": "https://github.com/notofonts/arabic",
+      "sourceTag": "NotoNaskhArabic-v2.021",
+      "sourceRevision": "59f5a3fd985bf24858915c3dddfc51a537640965",
+      "sourceArchiveURL": "https://github.com/notofonts/arabic/releases/download/NotoNaskhArabic-v2.021/NotoNaskhArabic-v2.021.zip",
+      "sourceArchivePath": "NotoNaskhArabic/unhinted/otf/NotoNaskhArabic-Regular.otf",
+      "sourceArchiveSha256": "6c050ab9bd087d69b733c505a7576e60c528c2f33cd7b91005a5bd7da4514032",
+      "bytes": 129440,
+      "sha256": "06f5e69cffb92bb0e08564718cd7ac2353a6c9305782f41b07b9e6ee3e3f4583",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoNaskhArabic-OFL.txt",
+      "noticeSha256": "a7a5a25eb188bf1cd96982030d53e23c33485c69b1044a562254226857ee13af"
+    },
+    {
+      "path": "NotoSansHebrew-Regular.otf",
+      "family": "Noto Sans Hebrew",
+      "style": "Regular",
+      "weight": 400,
+      "coverage": [
+        "Hebrew"
+      ],
+      "sample": "שלום",
+      "sourceRepository": "https://github.com/notofonts/hebrew",
+      "sourceTag": "NotoSansHebrew-v3.001",
+      "sourceRevision": "036f3206f67caac235cf8546a7751d3440771a7e",
+      "sourceArchiveURL": "https://github.com/notofonts/hebrew/releases/download/NotoSansHebrew-v3.001/NotoSansHebrew-v3.001.zip",
+      "sourceArchivePath": "NotoSansHebrew/unhinted/otf/NotoSansHebrew-Regular.otf",
+      "sourceArchiveSha256": "df0a71814b4e63644cf40fcc4529111b61266b7a2dafbe95068b29a7520cc3cb",
+      "bytes": 13840,
+      "sha256": "2551f8af9ede3cf55c4c975eec5fd743fed0722067a6b36494ec12c508ae103c",
+      "license": "OFL-1.1",
+      "licenseURL": "https://openfontlicense.org",
+      "noticePath": "licenses/NotoSansHebrew-OFL.txt",
+      "noticeSha256": "9b9fe028b5ba74d231659a1bbaf0ed09b11e759d1ca6a070999e16d151616b47"
     }
   ]
 }

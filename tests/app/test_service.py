@@ -1053,6 +1053,158 @@ def test_one_service_owns_two_windows_one_document_and_one_find_panel(
         _stop_desktop_service(app, service)
 
 
+def test_open_folder_by_type_opens_matching_files_and_assigns_a_new_group(
+    tmp_path: Path, monkeypatch
+):
+    """BF-029/ADR-0009: a bounded, one-shot batch-open of one file type from
+    a folder, optionally assigned to a document group in the same action."""
+
+    from PySide6.QtWidgets import QFileDialog, QInputDialog
+
+    folder = tmp_path / "books"
+    folder.mkdir()
+    for name in ("gen.sfm", "exo.sfm", "lev.sfm"):
+        (folder / name).write_text(f"content of {name}", encoding="utf-8")
+    (folder / "notes.txt").write_text("not sfm", encoding="utf-8")
+    (folder / "subdir").mkdir()
+    (folder / "subdir" / "deep.sfm").write_text("nested", encoding="utf-8")
+
+    def fake_get_item(_self, _title, _label, items, editable=False):
+        if _title == "Assign to Group":
+            return "New Group…", True
+        return next(label for label in items if label.startswith(".sfm")), True
+
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(folder))
+    monkeypatch.setattr(QInputDialog, "getItem", fake_get_item)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *a, **k: ("Bible", True))
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    try:
+        window = service.new_window()
+        window.open_folder_by_type()
+
+        opened_names = sorted(Path(v.document.path).name for v in window.views)
+        assert opened_names == ["exo.sfm", "gen.sfm", "lev.sfm"]
+
+        groups = {group.name: group for group in window._groups}
+        assert "Bible" in groups
+        bible_group_id = groups["Bible"].id
+        for view in window.views:
+            entry = service.documents.entry_for_view(view.view_id)
+            assert entry.group_id == bible_group_id
+    finally:
+        _stop_desktop_service(app, service)
+
+
+def test_open_folder_by_type_with_blank_group_name_leaves_documents_ungrouped(
+    tmp_path: Path, monkeypatch
+):
+    from PySide6.QtWidgets import QFileDialog, QInputDialog
+
+    folder = tmp_path / "notes"
+    folder.mkdir()
+    (folder / "a.md").write_text("a", encoding="utf-8")
+    (folder / "b.md").write_text("b", encoding="utf-8")
+
+    def fake_get_item(_self, _title, _label, items, editable=False):
+        if _title == "Assign to Group":
+            return "No Group", True
+        return items[0], True
+
+    def fail_get_text(*_args, **_kwargs):
+        raise AssertionError("must not prompt for a new group name after choosing No Group")
+
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(folder))
+    monkeypatch.setattr(QInputDialog, "getItem", fake_get_item)
+    monkeypatch.setattr(QInputDialog, "getText", fail_get_text)
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    try:
+        window = service.new_window()
+        groups_before = window._groups
+        window.open_folder_by_type()
+
+        assert len(window.views) == 2
+        assert window._groups == groups_before
+        for view in window.views:
+            entry = service.documents.entry_for_view(view.view_id)
+            assert entry.group_id is None
+    finally:
+        _stop_desktop_service(app, service)
+
+
+def test_open_folder_by_type_assigns_to_an_existing_group_by_name(
+    tmp_path: Path, monkeypatch
+):
+    from PySide6.QtWidgets import QFileDialog, QInputDialog
+
+    folder = tmp_path / "books"
+    folder.mkdir()
+    (folder / "gen.sfm").write_text("gen", encoding="utf-8")
+    (folder / "exo.sfm").write_text("exo", encoding="utf-8")
+
+    def fake_get_item(_self, _title, _label, items, editable=False):
+        if _title == "Assign to Group":
+            assert items[0] == "No Group"
+            assert items[-1] == "New Group…"
+            return "A", True  # one of the three default groups
+        return items[0], True
+
+    def fail_get_text(*_args, **_kwargs):
+        raise AssertionError("must not prompt for a new name when reusing an existing group")
+
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(folder))
+    monkeypatch.setattr(QInputDialog, "getItem", fake_get_item)
+    monkeypatch.setattr(QInputDialog, "getText", fail_get_text)
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    try:
+        window = service.new_window()
+        groups_before = window._groups
+        window.open_folder_by_type()
+
+        assert window._groups == groups_before  # no new group created
+        group_a_id = next(g.id for g in window._groups if g.name == "A")
+        assert len(window.views) == 2
+        for view in window.views:
+            entry = service.documents.entry_for_view(view.view_id)
+            assert entry.group_id == group_a_id
+    finally:
+        _stop_desktop_service(app, service)
+
+
+def test_open_folder_by_type_declines_past_the_many_files_warning_threshold(
+    tmp_path: Path, monkeypatch
+):
+    from PySide6.QtWidgets import QFileDialog, QInputDialog, QMessageBox
+
+    folder = tmp_path / "huge"
+    folder.mkdir()
+    for i in range(101):
+        (folder / f"f{i}.txt").write_text(str(i), encoding="utf-8")
+
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(folder))
+    monkeypatch.setattr(
+        QInputDialog, "getItem", lambda _s, _t, _l, items, editable=False: (items[0], True)
+    )
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.No
+    )
+
+    def fail_get_text(*_args, **_kwargs):
+        raise AssertionError("must not prompt for a group after declining to proceed")
+
+    monkeypatch.setattr(QInputDialog, "getText", fail_get_text)
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    try:
+        window = service.new_window()
+        window.open_folder_by_type()
+        assert window.views == ()
+    finally:
+        _stop_desktop_service(app, service)
+
+
 def test_zoom_shortcut_reaches_shared_panel_with_two_windows_open(tmp_path: Path):
     """BF-017: with two windows sharing one Find/Replace panel, each window
     registers its own `find.zoom_in` QAction onto that shared panel with an

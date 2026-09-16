@@ -17,10 +17,15 @@ class BundledFontCapability:
     families: tuple[str, ...]
     failures: tuple[str, ...]
     font_ids: tuple[int, ...] = ()
+    expected: int = 0
 
     @property
     def complete(self) -> bool:
-        return not self.failures and len(self.families) == 13
+        # ADR-0010: derived from the manifest's own entry count at
+        # registration time rather than a hardcoded literal, so adding a
+        # bundled face only means adding its manifest entry/asset/notice —
+        # not also updating a magic number here in lockstep.
+        return not self.failures and len(self.families) == self.expected and self.expected > 0
 
 
 def register_bundled_fonts(*, root: Path = FONT_ROOT) -> BundledFontCapability:
@@ -36,8 +41,8 @@ def register_bundled_fonts(*, root: Path = FONT_ROOT) -> BundledFontCapability:
         if manifest_path.stat().st_size > 32768:
             raise ValueError('oversized manifest')
         entries = json.loads(manifest_path.read_text(encoding='utf-8'))['fonts']
-        if len(entries) != 13:
-            raise ValueError('expected thirteen faces')
+        if not entries or not isinstance(entries, list):
+            raise ValueError('manifest declares no faces')
     except (OSError, ValueError, KeyError, TypeError):
         return BundledFontCapability((), ('manifest.json: unavailable',))
     families, failures, ids = [], [], []
@@ -58,7 +63,7 @@ def register_bundled_fonts(*, root: Path = FONT_ROOT) -> BundledFontCapability:
             families.append(entry['family'])
         except (OSError, ValueError, KeyError, TypeError, RuntimeError):
             failures.append(f'{str(name)[:80]}: unavailable')
-    capability = BundledFontCapability(tuple(families), tuple(failures), tuple(ids))
+    capability = BundledFontCapability(tuple(families), tuple(failures), tuple(ids), len(entries))
     if root == FONT_ROOT:
         application._uniti_bundled_fonts = capability
     return capability

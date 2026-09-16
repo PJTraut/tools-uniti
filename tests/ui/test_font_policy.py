@@ -303,7 +303,7 @@ def test_bundled_faces_cover_each_declared_sample_without_system_fallback(qapp):
     root = Path('src/uniti/ui/assets/fonts')
     assert (root / 'manifest.json').is_file()
     manifest = json.loads((root / 'manifest.json').read_text())
-    assert len(manifest['fonts']) == 13
+    assert len(manifest['fonts']) == 15
     for entry in manifest['fonts']:
         path = root / entry['path']
         assert hashlib.sha256(path.read_bytes()).hexdigest() == entry['sha256']

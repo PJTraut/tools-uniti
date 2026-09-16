@@ -15,6 +15,10 @@ SETTINGS_SCHEMA = 5
 MIN_EDITOR_TAB_WIDTH = 1
 MAX_EDITOR_TAB_WIDTH = 16
 DEFAULT_EDITOR_TAB_WIDTH = 4
+# Qt's nine named QFont::Weight values (Thin..Black); duplicated here rather
+# than imported from `uniti.ui.text_view` so this module stays Qt-free.
+FONT_WEIGHT_STEPS = (100, 200, 300, 400, 500, 600, 700, 800, 900)
+DEFAULT_EDITOR_FONT_WEIGHT = 400
 
 
 class UnsupportedSettingsSchema(ValueError):
@@ -26,6 +30,7 @@ class Settings:
     last_directory: str | None = None
     performance_mode: str = "Automatic"
     editor_zoom_percent: int = 100
+    editor_font_weight: int = 400
     soft_wrap: bool = False
     theme_mode: str = "System"
     theme_contrast: str = "Standard"
@@ -67,6 +72,13 @@ def _settings_from_payload(payload: object) -> Settings:
         or not 50 <= editor_zoom_percent <= 300
     ):
         editor_zoom_percent = 100
+    editor_font_weight = payload.get("editor_font_weight", DEFAULT_EDITOR_FONT_WEIGHT)
+    if (
+        not isinstance(editor_font_weight, int)
+        or isinstance(editor_font_weight, bool)
+        or editor_font_weight not in FONT_WEIGHT_STEPS
+    ):
+        editor_font_weight = DEFAULT_EDITOR_FONT_WEIGHT
     soft_wrap = payload.get("soft_wrap", False)
     if not isinstance(soft_wrap, bool):
         soft_wrap = False
@@ -145,6 +157,7 @@ def _settings_from_payload(payload: object) -> Settings:
         last_directory=last_directory,
         performance_mode=performance_mode,
         editor_zoom_percent=editor_zoom_percent,
+        editor_font_weight=editor_font_weight,
         soft_wrap=soft_wrap,
         theme_mode=theme_mode,
         theme_contrast=theme_contrast,

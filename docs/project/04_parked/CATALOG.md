@@ -11,6 +11,7 @@ Current identity is `v0.001b3` / `0.1b3`, with feedback code through BF-057 inte
 - **Why parked:** Multi-file project state, discovery, persistence, and project-level commands would shift UNITI from a focused editor toward an IDE/workspace platform.
 - **Known dependencies/risks:** workspace schema, file watching at directory scale, trust boundaries, session persistence, and interaction with large-file resource priorities.
 - **Re-evaluation trigger:** sustained workflows that cannot be served safely by opening independent files and tabs.
+- **Narrow exception, [ADR-0009](../05_decisions/ADR-0009-bounded-open-folder-by-type.md):** **File → Open Folder by Type…** is implemented — a one-shot, non-recursive batch-open of one file extension from a folder, with optional document-group assignment (BF-029). The folder is not retained as project state; no persistent project file, recursion, file-watching, or workspace session concept exists. Everything else in this entry remains parked.
 
 ## Plugin system
 

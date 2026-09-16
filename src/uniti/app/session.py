@@ -26,7 +26,10 @@ from uniti.core.history import (
 )
 
 
-SESSION_SCHEMA = 4
+SESSION_SCHEMA = 5
+# Qt's nine named QFont::Weight values (Thin..Black); duplicated here rather
+# than imported from `uniti.ui.text_view` so this module stays Qt-free.
+FONT_WEIGHT_STEPS = (100, 200, 300, 400, 500, 600, 700, 800, 900)
 HISTORY_PACK_SCHEMA = 1
 MAX_MANIFEST_BYTES = 1 << 20
 MAX_PACK_ENCODED_BYTES = 32 << 20
@@ -381,6 +384,7 @@ class ViewRecord:
     soft_wrap: bool
     zoom_percent: int
     dock_return: DockReturnRecord | None = None
+    font_weight: int = 400
 
     def __post_init__(self) -> None:
         _require_identifier(self.view_id, "view ID")
@@ -400,6 +404,8 @@ class ViewRecord:
             self.dock_return, DockReturnRecord
         ):
             raise ValueError("view dock return is invalid")
+        if self.font_weight not in FONT_WEIGHT_STEPS:
+            raise ValueError("view font_weight must be one of Qt's nine named weights")
 
 
 @dataclass(frozen=True, slots=True)
@@ -915,6 +921,7 @@ def manifest_to_payload(manifest: SessionManifest) -> dict[str, object]:
                 "anchor": item.anchor,
                 "cursor": item.cursor,
                 "document_id": item.document_id,
+                "font_weight": item.font_weight,
                 "dock_return": (
                     None
                     if item.dock_return is None
@@ -1089,7 +1096,7 @@ def manifest_from_payload(value: object) -> SessionManifest:
     }
     _keys(payload, required, "session manifest")
     source_schema = payload.get("schema")
-    if type(source_schema) is not int or source_schema not in {1, 2, 3, SESSION_SCHEMA}:
+    if type(source_schema) is not int or source_schema not in {1, 2, 3, 4, SESSION_SCHEMA}:
         raise UnsupportedSessionSchema(
             f"unsupported session schema: {source_schema}"
         )
@@ -1137,6 +1144,8 @@ def manifest_from_payload(value: object) -> SessionManifest:
         if source_schema == 1
         else view_fields_v1 | {"dock_return"}
     )
+    if source_schema >= 5:
+        view_fields = view_fields | {"font_weight"}
     for value in views_payload:
         item = _mapping(value, "view")
         _keys(item, view_fields, "view")
@@ -1146,6 +1155,8 @@ def manifest_from_payload(value: object) -> SessionManifest:
             if source_schema == 1
             else _dock_return_from_payload(item["dock_return"])
         )
+        if source_schema < 5:
+            view_values["font_weight"] = 400
         views.append(ViewRecord(**view_values))
 
     documents = []

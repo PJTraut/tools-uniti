@@ -331,3 +331,120 @@ def test_editor_state_restore_breaks_typing_coalescing(tmp_path: Path):
         state.undo()
 
         assert document.read(0, document.total_chars()) == "a"
+
+
+def test_visual_left_right_move_logically_forward_on_an_rtl_line(tmp_path: Path):
+    """BF-064: on a right-to-left line, the physical Left/Right arrow keys
+    must move toward the visual edge they're labeled for, which is the
+    opposite logical direction from a left-to-right line."""
+
+    # Logical position 0 sits at the *visual right* edge of an RTL line
+    # (reading starts there); higher logical positions sit further left.
+    arabic = "مرحبا"  # "مرحبا", 5 characters
+    with _open(tmp_path, arabic) as document:
+        state = EditorState(document, cursor=3, anchor=3)
+
+        # Visual-right moves toward smaller logical positions (toward the
+        # line's start) — the mirror of an LTR line, where visual-right
+        # moves toward *larger* logical positions.
+        state.move_visual_right()
+        assert state.cursor == 2
+        state.move_visual_right()
+        assert state.cursor == 1
+
+        # Visual-left then moves back the other way (logically forward).
+        state.move_visual_left()
+        assert state.cursor == 2
+
+
+def test_visual_left_right_match_plain_left_right_on_an_ltr_line(tmp_path: Path):
+    with _open(tmp_path, "hello") as document:
+        state = EditorState(document, cursor=2, anchor=2)
+
+        state.move_visual_right()
+        assert state.cursor == 3
+        state.move_visual_left()
+        assert state.cursor == 2
+        state.move_visual_left()
+        assert state.cursor == 1
+
+
+def test_visual_movement_extends_selection_when_selecting(tmp_path: Path):
+    arabic = "مرحبا"
+    with _open(tmp_path, arabic) as document:
+        state = EditorState(document, cursor=2, anchor=2)
+        # Visual-right on this RTL line moves the cursor logically backward.
+        state.move_visual_right(selecting=True)
+        assert state.selection == (1, 2)
+        assert state.cursor == 1
+
+
+def test_visual_word_movement_is_direction_aware_on_an_rtl_line(tmp_path: Path):
+    arabic_words = "مرحبا بك"  # two words, 8 characters total
+    with _open(tmp_path, arabic_words) as document:
+        state = EditorState(document, cursor=len(arabic_words), anchor=len(arabic_words))
+
+        # Visual-word-right on an RTL line moves toward the line's start —
+        # logically backward, matching ordinary (logical) word-left.
+        state.move_visual_word_right()
+        backward_cursor = state.cursor
+        assert 0 < backward_cursor < len(arabic_words)
+
+        # Visual-word-left then moves the other way, back to the end.
+        state.move_visual_word_left()
+        assert state.cursor == len(arabic_words)
+
+    with _open(tmp_path, arabic_words) as document:
+        reference_state = EditorState(
+            document, cursor=len(arabic_words), anchor=len(arabic_words)
+        )
+        reference_state.move_word_left()
+        assert reference_state.cursor == backward_cursor
+
+
+def test_visual_word_movement_matches_plain_word_movement_on_an_ltr_line(
+    tmp_path: Path,
+):
+    with _open(tmp_path, "one two three") as document:
+        state = EditorState(document, cursor=0, anchor=0)
+        state.move_visual_word_right()
+        assert state.cursor == 4
+        state.move_visual_word_right()
+        assert state.cursor == 8
+        state.move_visual_word_left()
+        assert state.cursor == 4
+
+
+def test_visual_movement_known_limitation_uses_paragraph_direction_not_local_run(
+    tmp_path: Path,
+):
+    """Characterizes a known, deliberately scoped limitation of the
+    Qt-free `EditorState` API specifically: with no layout access here,
+    visual movement can only use the cursor's *paragraph* direction, not
+    the bidi embedding level at its exact position. Inside an embedded
+    left-to-right run within a right-to-left paragraph, this means
+    visual-right still moves logically *backward* (matching the
+    paragraph) rather than forward (matching the local run).
+
+    The real editing path no longer has this limitation:
+    `UNITITextView._move_visual_char` (BF-064) uses the cursor line's
+    actual shaped pixel positions to resolve this correctly for arbitrary
+    embedding depth — see
+    `test_visual_right_moves_forward_inside_an_embedded_ltr_run` in
+    `tests/ui/test_text_view_contract.py`. This test still locks in the
+    Qt-free fallback's own behavior (used at a line's own start/end and
+    for lines too long to shape, where the view falls back to exactly
+    this method) so a future change to *it* is a deliberate, visible
+    decision, not a silent regression in either direction."""
+
+    arabic_prefix = "مرحبا "  # "مرحبا " — RTL paragraph start
+    text = arabic_prefix + "hello"
+    with _open(tmp_path, text) as document:
+        inside_hello = len(arabic_prefix) + 2  # cursor inside the embedded "hello"
+        state = EditorState(document, cursor=inside_hello, anchor=inside_hello)
+
+        state.move_visual_right()
+
+        # Known-limited: moves backward (paragraph is RTL), not forward
+        # (which the local "hello" run's own direction would suggest).
+        assert state.cursor == inside_hello - 1

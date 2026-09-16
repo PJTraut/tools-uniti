@@ -717,6 +717,82 @@ def test_text_view_zoom_is_clamped_to_supported_range(tmp_path: Path):
         app.processEvents()
 
 
+def test_font_weight_steps_independently_of_zoom_and_clamps_at_the_edges(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "weight.txt"
+    path.write_text("text", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        assert view.font_weight == 400
+        assert view.font().weight() == 400
+
+        view.set_zoom_percent(150)
+        view.increase_font_weight()
+        assert view.font_weight == 500
+        # Changing weight must not undo the zoom, and vice versa — both are
+        # rebuilt from the same base font on every change (BF-067).
+        assert view.zoom_percent == 150
+        assert view.font().weight() == 500
+
+        view.set_zoom_percent(80)
+        assert view.font_weight == 500
+        assert view.font().weight() == 500
+
+        for _ in range(10):
+            view.increase_font_weight()
+        assert view.font_weight == 900
+        for _ in range(10):
+            view.decrease_font_weight()
+        assert view.font_weight == 100
+
+        view.reset_font_weight()
+        assert view.font_weight == 400
+        assert view.zoom_percent == 80
+
+        view.set_font_weight(560)
+        assert view.font_weight == 600
+        view.close()
+        app.processEvents()
+
+
+def test_font_weight_round_trips_through_export_and_restore_state(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "weight-state.txt"
+    path.write_text("text", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        original = UNITITextView(EditorState(document), view_id="weight-view")
+        original.set_font_weight(700)
+        record = original.export_state("doc-weight")
+        assert record.font_weight == 700
+
+        restored = UNITITextView(EditorState(document), view_id="weight-view")
+        restored.restore_state(record)
+        assert restored.font_weight == 700
+        assert restored.font().weight() == 700
+
+        original.close()
+        restored.close()
+        app.processEvents()
+
+
 def test_primary_modifier_wheel_changes_editor_zoom_instead_of_scrolling(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
@@ -1327,3 +1403,631 @@ def test_canvas_inset_scales_with_zoom_and_keeps_hit_testing_correct(
 
         view.close()
         app.processEvents()
+
+
+def test_rtl_line_hit_testing_maps_visual_left_to_logical_end(tmp_path: Path):
+    """BF-064: a pure-RTL logical line must render with logical position 0
+    (the start of reading order) at the visual right edge, and later
+    logical positions further left — the opposite of an LTR line."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "rtl.txt"
+    arabic = "مرحبا بك"  # "مرحبا بك"
+    path.write_text(arabic, encoding="utf-8", newline="")
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(600, 120)
+        view.set_soft_wrap(False)
+        view.show()
+        app.processEvents()
+
+        # The row is now right-anchored within the available text area
+        # (see `ShapedWindow`'s `align_width_px`), so "near the right edge"
+        # means near the right edge of that area, not an arbitrary point.
+        far_right = view._gutter_width + view._wrap_width() - 1
+        left_edge_offset = view._char_for_point(view._gutter_width + 1, view._line_height // 2)
+        right_edge_offset = view._char_for_point(far_right, view._line_height // 2)
+
+        # Clicking near the left edge must land near the *end* of the
+        # line's reading order; clicking near the right edge must land
+        # near its *start* — inverted from an LTR line.
+        assert left_edge_offset > len(arabic) // 2
+        assert right_edge_offset <= 1
+
+        view.close()
+        app.processEvents()
+
+
+def test_ltr_line_hit_testing_is_unaffected_by_rtl_support(tmp_path: Path):
+    """Guards against a direction-detection regression breaking the
+    overwhelmingly common LTR case."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "ltr.txt"
+    path.write_text("hello world", encoding="utf-8", newline="")
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(600, 120)
+        view.set_soft_wrap(False)
+        view.show()
+        app.processEvents()
+
+        left_edge_offset = view._char_for_point(view._gutter_width + 1, view._line_height // 2)
+        right_edge_offset = view._char_for_point(view._gutter_width + 400, view._line_height // 2)
+
+        assert left_edge_offset <= 1
+        assert right_edge_offset >= len("hello world") - 1
+
+        view.close()
+        app.processEvents()
+
+
+def test_line_direction_is_detected_once_and_reused_for_mid_line_windows(tmp_path: Path):
+    """BF-064: a window starting mid-line (e.g. a wrapped continuation row)
+    must reuse the paragraph's own detected direction rather than
+    misjudging one from its own possibly-unrepresentative fragment."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "mixed.txt"
+    # An RTL paragraph whose tail is a pure-Latin fragment: if direction
+    # were (mis)detected fresh from just that tail, it would read LTR.
+    arabic = "مرحبا "
+    text = arabic + "hello world"
+    path.write_text(text, encoding="utf-8", newline="")
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(600, 120)
+        view.show()
+        app.processEvents()
+
+        line_start = document.line_start(0)
+        whole_line_direction = view._direction_for_window(text, line_start)
+        assert whole_line_direction == Qt.LayoutDirection.RightToLeft
+
+        tail_start = line_start + len(arabic)
+        tail_text = "hello world"
+        reused_direction = view._direction_for_window(tail_text, tail_start)
+        assert reused_direction == Qt.LayoutDirection.RightToLeft
+
+        view.close()
+        app.processEvents()
+
+
+def test_line_direction_cache_is_cleared_on_edit(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "changing.txt"
+    arabic = "مرحبا"
+    path.write_text(arabic, encoding="utf-8", newline="")
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(600, 120)
+        view.show()
+        app.processEvents()
+
+        assert view._direction_for_window(arabic, 0) == Qt.LayoutDirection.RightToLeft
+        assert 0 in view._line_directions
+
+        document.replace(0, len(arabic), "hello")
+        app.processEvents()
+
+        assert view._line_directions == {}
+        assert view._direction_for_window("hello", 0) == Qt.LayoutDirection.LeftToRight
+
+        view.close()
+        app.processEvents()
+
+
+def test_arrow_keys_move_visually_on_an_rtl_line(tmp_path: Path):
+    """BF-064: real Right/Left arrow key presses on an RTL line must move
+    the cursor toward the visual edge they're labeled for, not always
+    logically forward/backward."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "arrow-rtl.txt"
+    arabic = "مرحبا"  # 5 characters
+    path.write_text(arabic, encoding="utf-8", newline="")
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(600, 120)
+        view.show()
+        view.setFocus()
+        app.processEvents()
+
+        state.move_to(3)
+
+        QTest.keyClick(view, Qt.Key.Key_Right)
+        assert state.cursor == 2
+
+        QTest.keyClick(view, Qt.Key.Key_Left)
+        assert state.cursor == 3
+
+        view.close()
+        app.processEvents()
+
+
+def test_visual_right_moves_forward_inside_an_embedded_ltr_run(tmp_path: Path):
+    """BF-064: fixes the embedding-level caret-affinity gap characterized
+    at the `EditorState` level by
+    `test_visual_movement_known_limitation_uses_paragraph_direction_not_local_run`
+    (`tests/app/test_editor_state.py`) — that test's own paragraph-level
+    heuristic gets this wrong (moves backward) because it has no layout
+    access. Through the real view, a Right-arrow keypress with the cursor
+    inside an embedded left-to-right run ("hello") within a right-to-left
+    paragraph must move forward (matching the local run's own direction),
+    using the cursor line's actual shaped pixel positions rather than
+    just the paragraph's overall direction."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "arrow-embedded-run.txt"
+    arabic_prefix = "مرحبا "
+    text = arabic_prefix + "hello"
+    path.write_text(text, encoding="utf-8", newline="")
+    inside_hello = len(arabic_prefix) + 2
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document, cursor=inside_hello, anchor=inside_hello)
+        view = UNITITextView(state)
+        view.resize(600, 120)
+        view.show()
+        view.setFocus()
+        app.processEvents()
+
+        QTest.keyClick(view, Qt.Key.Key_Right)
+        assert state.cursor == inside_hello + 1
+
+        QTest.keyClick(view, Qt.Key.Key_Left)
+        assert state.cursor == inside_hello
+
+        view.close()
+        app.processEvents()
+
+
+def test_visual_movement_at_a_line_boundary_still_falls_back_to_paragraph_direction(
+    tmp_path: Path,
+):
+    """The embedding-level fix (`_move_visual_char`) deliberately only
+    resolves direction using an in-line neighbor; at a line's own
+    start/end there is none, so it falls back to the existing
+    paragraph-level heuristic — which already correctly crosses to the
+    adjacent logical line. Locks in that this bounded fallback still
+    works, not just the in-line case."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "arrow-line-boundary.txt"
+    arabic = "مرحبا"
+    text = arabic + "\nsecond"
+    path.write_text(text, encoding="utf-8", newline="")
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document, cursor=0, anchor=0)
+        view = UNITITextView(state)
+        view.resize(600, 120)
+        view.show()
+        view.setFocus()
+        app.processEvents()
+
+        # Logical position 0 is the RTL line's own visual *right* edge, so
+        # visual-right there has nowhere further right to go (correctly a
+        # no-op — not exercised further here). Visual-*left* at the same
+        # position has no in-line neighbor either, but the paragraph
+        # fallback still resolves it (RTL: visual-left is logically
+        # forward) and must move, not silently no-op.
+        QTest.keyClick(view, Qt.Key.Key_Left)
+        assert state.cursor == 1
+
+        # From the RTL line's own end, visual-left (still logically
+        # forward for RTL) must cross the line break into "second".
+        state.move_to(len(arabic))
+        QTest.keyClick(view, Qt.Key.Key_Left)
+        assert state.cursor == len(arabic) + 1
+
+        view.close()
+        app.processEvents()
+
+
+def test_arrow_keys_move_logically_on_an_ltr_line(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "arrow-ltr.txt"
+    path.write_text("hello", encoding="utf-8", newline="")
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(600, 120)
+        view.show()
+        view.setFocus()
+        app.processEvents()
+
+        state.move_to(2)
+
+        QTest.keyClick(view, Qt.Key.Key_Right)
+        assert state.cursor == 3
+
+        QTest.keyClick(view, Qt.Key.Key_Left)
+        assert state.cursor == 2
+
+        view.close()
+        app.processEvents()
+
+
+def test_span_rect_normalizes_reversed_x_coordinates():
+    """BF-064: `_span_rect` must produce a correct-width, correctly-placed
+    rect regardless of whether x1 < x2 (LTR ordering) or x1 > x2 (RTL
+    ordering, since `x_for_cp` decreases with logical position there)."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.text_view import UNITITextView
+
+    QApplication.instance() or QApplication([])
+
+    ltr_rect = UNITITextView._span_rect(10.0, 40.0, y=5, height=20)
+    assert (ltr_rect.left(), ltr_rect.top(), ltr_rect.width(), ltr_rect.height()) == (
+        10,
+        5,
+        30,
+        20,
+    )
+
+    rtl_rect = UNITITextView._span_rect(40.0, 10.0, y=5, height=20)
+    assert (rtl_rect.left(), rtl_rect.top(), rtl_rect.width(), rtl_rect.height()) == (
+        10,
+        5,
+        30,
+        20,
+    )
+
+
+def test_selection_into_an_embedded_run_does_not_overcover_the_unselected_remainder(
+    tmp_path: Path,
+):
+    """BF-064: a highlighted span that ends partway *into* an embedded
+    direction run must not paint the unselected rest of that run.
+    `_span_rect`'s single bounding box (`min(x1, x2)` to `max(x1, x2)`)
+    is correct for a span entirely within one direction, but for a span
+    that starts in the LTR paragraph and ends partway into an embedded
+    RTL run, the bounding box between the two endpoints' x-coordinates
+    sweeps across the *unselected* remainder of that run too — confirmed
+    directly below by computing what the old single-box approach would
+    have produced and showing it wrongly covers that remainder, while
+    `_span_rects` (backed by `ShapedWindow.run_spans`, i.e. Qt's own
+    glyph-run geometry) correctly excludes it."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    text = "AB مرحبا CD"
+    path = tmp_path / "embedded-run-selection.txt"
+    path.write_text(text, encoding="utf-8", newline="")
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        shaped = view._shape(text)
+
+        # Select "B مر" (indices 1..5) — only the first two Arabic letters
+        # of "مرحبا"; "حبا" (indices 5..8) must stay unhighlighted.
+        a, b = 1, 5
+        unselected_midpoint = sum(shaped.run_spans(5, 8)[0]) / 2
+
+        old_x1, old_x2 = shaped.x_for_cp(a), shaped.x_for_cp(b)
+        old_box = view._span_rect(old_x1, old_x2, 0, view._line_height)
+        assert old_box.left() <= unselected_midpoint <= old_box.right(), (
+            "fixture assumption failed: the old bounding box was expected "
+            "to (incorrectly) cover the unselected remainder"
+        )
+
+        rects = view._span_rects(shaped, 0, a, b, 0, view._line_height)
+        assert len(rects) >= 2
+        assert not any(
+            rect.left() <= unselected_midpoint <= rect.right() for rect in rects
+        )
+        view.close()
+        app.processEvents()
+
+
+def test_rtl_selection_paints_a_full_width_highlight_not_a_hairline(tmp_path: Path):
+    """BF-064: before this fix, selecting an entire pure-RTL line painted a
+    1-pixel-wide highlight at the wrong edge instead of covering the span —
+    `x_for_cp` decreases with logical position on an RTL line, so the old
+    unconditional `x2 - x1` width went negative and got clamped to 1."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QPixmap
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "rtl-selection.txt"
+    arabic = "مرحبا بك"  # "مرحبا بك"
+    path.write_text(arabic, encoding="utf-8", newline="")
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(400, 120)
+        view.set_soft_wrap(False)
+        view.show()
+        app.processEvents()
+
+        state.move_to(0)
+        state.move_to(len(arabic), selecting=True)
+        app.processEvents()
+
+        pixmap = QPixmap(view.viewport().size())
+        view.viewport().render(pixmap)
+        image = pixmap.toImage()
+
+        selection_color = view._theme_tokens.selection
+
+        y = view._line_height // 2
+        highlighted_x = [
+            x
+            for x in range(view.viewport().width())
+            if image.pixelColor(x, y) == selection_color
+        ]
+        assert highlighted_x, "expected some highlighted pixels on the selection row"
+        span = max(highlighted_x) - min(highlighted_x)
+        # A hairline (the pre-fix bug) is 0-1px wide; a real selection over
+        # a 7-character Arabic line at this font size spans many pixels.
+        assert span > 10
+
+        view.close()
+        app.processEvents()
+
+
+def test_whitespace_marker_glyph_draws_at_the_visual_left_regardless_of_x_order(
+    tmp_path: Path,
+):
+    """BF-064: tab/EOL/overflow marker glyphs are drawn starting at
+    `min(x1, x2)` — the span's actual visual left edge — rather than always
+    `x1`, which is the character's *logical* start and sits at the visual
+    *right* edge of its span on a right-to-left line."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QPainter, QPixmap
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+    from uniti.ui.whitespace import WhitespaceKind
+
+    app = QApplication.instance() or QApplication([])
+    path = tmp_path / "marker-order.txt"
+    path.write_text("a\tb", encoding="utf-8")
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        view.resize(300, 80)
+        view.show()
+        app.processEvents()
+
+        def ink_bounds(x1: float, x2: float) -> tuple[int, int]:
+            pixmap = QPixmap(200, 40)
+            pixmap.fill(view._theme_tokens.base)
+            painter = QPainter(pixmap)
+            view._paint_whitespace_marker(painter, WhitespaceKind.TAB, "TAB", x1, x2, 0.0)
+            painter.end()
+            image = pixmap.toImage()
+            ink_x = [
+                x
+                for x in range(image.width())
+                for y in range(image.height())
+                if image.pixelColor(x, y) != view._theme_tokens.base
+            ]
+            return min(ink_x), max(ink_x)
+
+        ltr_min, ltr_max = ink_bounds(20.0, 40.0)
+        rtl_min, rtl_max = ink_bounds(40.0, 20.0)
+
+        # The glyph must land in the same place whichever order the span's
+        # two edges were passed in.
+        assert (ltr_min, ltr_max) == (rtl_min, rtl_max)
+        assert ltr_min >= 20
+
+        view.close()
+        app.processEvents()
+
+
+def test_typing_into_an_rtl_line_advances_the_caret_visually(tmp_path: Path):
+    """BF-064: found while finishing the RTL work — Qt anchors a QTextLine
+    flush-*left* within its line width by default, regardless of paragraph
+    direction (direction only reorders glyphs inside the box). For a
+    right-to-left line growing at its logical end (ordinary typing, or IME
+    composition), the box just widens rightward from that fixed left
+    anchor, so the caret — which sits at the logical end — never visually
+    moved. Reproduced directly: typing five Arabic characters left the
+    caret frozen at the exact same pixel every time, in both wrapped and
+    non-wrapped mode, before this test's fix (`ShapedWindow`'s
+    `align_width_px` / right-alignment)."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    arabic = "مرحبا"
+    app = QApplication.instance() or QApplication([])
+    for soft_wrap in (True, False):
+        path = tmp_path / f"typing-rtl-{soft_wrap}.txt"
+        path.write_text("", encoding="utf-8")
+        with Document.open(path, encoding="utf-8") as document:
+            view = UNITITextView(EditorState(document))
+            view.resize(400, 100)
+            view.set_soft_wrap(soft_wrap)
+            view.show()
+            app.processEvents()
+
+            positions = []
+            for character in arabic:
+                view.state.insert_text(character)
+                app.processEvents()
+                positions.append(view._cursor_rectangle().x())
+
+            # Each new character must move the caret — no two consecutive
+            # positions equal, which is what the freeze bug produced.
+            assert len(set(positions)) == len(positions), (
+                soft_wrap,
+                positions,
+            )
+            # Arabic joining forms can *shrink* a previous letter's glyph
+            # once a new letter is appended after it — e.g. "ب" loses its
+            # isolated/final terminal tail and takes a narrower medial form
+            # when "ا" joins after it (confirmed directly: the real bundled
+            # Noto Naskh Arabic font shapes "مرحب" at 55.9px natural width
+            # but "مرحبا" at only 49.3px). That is genuine contextual
+            # reshaping from the real Arabic font now bundled (BF-066), not
+            # a caret bug, so individual steps are not required to be
+            # strictly monotonic — only that the caret is never frozen
+            # (checked above) and ends up net further left than it started.
+            assert positions[-1] < positions[0], (soft_wrap, positions)
+
+            view.close()
+            app.processEvents()
+
+
+def test_typing_into_an_ltr_line_still_advances_the_caret_forward(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    app = QApplication.instance() or QApplication([])
+    for soft_wrap in (True, False):
+        path = tmp_path / f"typing-ltr-{soft_wrap}.txt"
+        path.write_text("", encoding="utf-8")
+        with Document.open(path, encoding="utf-8") as document:
+            view = UNITITextView(EditorState(document))
+            view.resize(400, 100)
+            view.set_soft_wrap(soft_wrap)
+            view.show()
+            app.processEvents()
+
+            positions = []
+            for character in "hello":
+                view.state.insert_text(character)
+                app.processEvents()
+                positions.append(view._cursor_rectangle().x())
+
+            assert all(
+                later > earlier for earlier, later in zip(positions, positions[1:])
+            ), (soft_wrap, positions)
+
+            view.close()
+            app.processEvents()

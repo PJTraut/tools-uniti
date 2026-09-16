@@ -2,7 +2,7 @@
 
 from collections import OrderedDict
 import regex
-from uniti.ui.text_layout import ShapedWindow
+from uniti.ui.text_layout import ShapedWindow, direction_for_text
 
 
 class ShapedRowProvider:
@@ -12,6 +12,14 @@ class ShapedRowProvider:
         self.cache = OrderedDict()
         self.read_chars = 0
         self.blocked = False
+        # BF-064: direction is a per-logical-line property, detected once
+        # from the line's true start (column 0) and reused for every later
+        # window of that line — a continuation window starting mid-line
+        # would misjudge a paragraph whose first strong character came
+        # earlier. This provider is recreated on every document edit (its
+        # signature includes `document.revision` in `text_view.py`), so no
+        # separate invalidation is needed here.
+        self.directions: dict[int, object] = {}
 
     def __call__(self, line, column):
         key = line, column
@@ -36,8 +44,18 @@ class ShapedRowProvider:
                 self.blocked = limit == 8192
                 raise ValueError("grapheme exceeds layout budget")
             text = text[:stop]
+        if column == 0:
+            self.directions[line] = direction_for_text(text)
+        cached_direction = self.directions.get(line)
+        direction = (
+            direction_for_text(text) if cached_direction is None else cached_direction
+        )
         shaped = ShapedWindow(
-            text, self.font, width_px=self.width_px, tab_stop_px=self.tab_stop_px
+            text,
+            self.font,
+            width_px=self.width_px,
+            tab_stop_px=self.tab_stop_px,
+            direction=direction,
         )
         for i in range(len(shaped.lines)):
             start, end = shaped.row_span(i)

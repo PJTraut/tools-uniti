@@ -40,6 +40,8 @@ For updates, save your work and use **Quit**. Update the source checkout through
 4. Choose **File → Save** to write changes to the current file.
 5. Choose **Quit** when finished. On macOS, Quit can appear in the native UNITI application menu.
 
+Use **File → Open Folder by Type…** to open every file of one chosen extension from a folder at once (top-level files only, not subfolders) — for example, every `.sfm` file in a translation project. A follow-up prompt lets you assign all of them to no group, an existing group, or a newly named group, in the same step. UNITI does not remember the folder afterward; it is a one-time batch convenience, not a project or workspace.
+
 ### Saving choices
 
 | Action | What it does |
@@ -129,6 +131,12 @@ Supported profiles include UTF-8, Windows-1252, UTF-16 LE/BE, and UTF-32 LE/BE, 
 The status bar distinguishes the current format from **on save** changes. Selecting an output conversion does not immediately rewrite the file or change the visible committed EOL markers. After a successful Save, the views and markers reflect the written format.
 
 For mixed line endings, the dialog offers **Keep** or conversion to LF, CRLF, or CR. Choose deliberately; opening a mixed file does not silently normalize it. If output characters cannot be represented in the chosen encoding, address the reported problem or select an appropriate Unicode profile.
+
+### Format Document and Minify Document
+
+For JSON, XML, and Markdown files (detected by extension), **Format → Format Document** re-indents and normalizes whitespace as one Undo step — pretty-printing JSON and XML, and lightly normalizing Markdown heading spacing, list bullets, blank lines, and trailing whitespace. **Format → Minify Document** (JSON and XML only) collapses the document to a compact form. Both are disabled for file types without a formatter.
+
+This is text reformatting only, not a structural refactor: it never reorders JSON keys, renames XML tags, or reflows Markdown paragraphs. JSON must parse and XML must be well-formed first; an invalid document is refused with the reported line and column, left completely unchanged. XML comments, CDATA sections, and any element containing mixed text-and-element content are preserved exactly as written — only purely structural (element-only) nesting gets re-indented. Markdown code fences are left untouched. Very large documents (above roughly 16 million characters) are declined, since formatting needs the whole document in memory rather than UNITI's usual streaming approach for large files.
 
 ## Read and inspect text
 
