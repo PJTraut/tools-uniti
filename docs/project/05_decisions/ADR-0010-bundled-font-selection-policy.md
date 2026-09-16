@@ -26,5 +26,5 @@ Future font additions (this ADR's immediate motivating case is Arabic + Hebrew f
 ## Affected records
 
 - [BF-064](../BETA_FEEDBACK.md#bf-064--rtlbidi-content-support-arabic--hebrew)
-- [Arabic/Hebrew font bundling plan](../02_plans/2026-09-16-arabic-hebrew-font-bundling-plan.md) — the first application of this policy
+- [Arabic/Hebrew font bundling plan](../03_implemented/milestones/2026-09-16-arabic-hebrew-font-bundling-plan.md) — the first application of this policy
 - `src/uniti/ui/bundled_fonts.py`, `src/uniti/ui/assets/fonts/manifest.json`, `tests/ui/test_font_policy.py`

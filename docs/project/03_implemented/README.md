@@ -15,6 +15,16 @@ Historical plans may contain unchecked task boxes because they are retained as o
 
 An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. a16's startup/bootstrap foundation and a21's Editor Layout and Visibility workstream were retained here before their parent gates closed; the complete a16 through a21 product milestones are now implemented.
 
+## v0.001b3 workstream records
+
+Retained here individually while their parent [B3 milestone](../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md) is still active, per the same pattern as a16/a21 below.
+
+- [B2 Find/Replace rework implementation plan](milestones/2026-09-13-b2-find-replace-rework-implementation.md) (BF-039 plus 12 consolidated Find/Replace-panel items) — archived 2026-09-16 after this review found its status line stale; all phases were already complete.
+- [Format Document / Minify Document plan](milestones/2026-09-15-format-document-plan.md) (BF-061)
+- [Arabic + Hebrew font bundling plan](milestones/2026-09-16-arabic-hebrew-font-bundling-plan.md) (BF-066)
+
+The [RTL/bidi support plan](../02_plans/2026-09-15-rtl-bidi-support-plan.md) (BF-064) stays in `02_plans/` — most of its scope is implemented, but it still names real, non-hardware-dependent unfinished work of its own (the non-wrapped/horizontal-scroll multi-checkpoint case), not just an external gate.
+
 ## v0.001a21 records
 
 - [Cross-Platform Alpha milestone](milestones/2026-09-05-uniti-v0.001a21-cross-platform-alpha.md)

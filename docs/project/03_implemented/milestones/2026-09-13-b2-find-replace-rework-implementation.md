@@ -1,7 +1,7 @@
 # B2 Find/Replace Rework Implementation Plan
 
 Date: 2026-09-13
-Status: active
+Status: implemented, integrated on `main`. All 13 consolidated P1 items complete (see "Verification" below); archived here 2026-09-16 after this review found the status line stale (all phases had long been checked off).
 Feedback: [Beta Feedback Log](../BETA_FEEDBACK.md), consolidated P1 scope
 
 ## Goal
