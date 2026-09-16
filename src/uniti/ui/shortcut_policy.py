@@ -32,6 +32,7 @@ _UNITI_FALLBACKS = {
     "editor.wrap": "Ctrl+Alt+W",
     "view.pause_background": "",
     "find.report_cycle": "Ctrl+Alt+R",
+    "editing.unicode_hex_toggle": "",
 }
 
 
@@ -109,6 +110,13 @@ def _definitions() -> tuple[CommandDefinition, ...]:
         ("editing.copy", "Copy", category.EDITING, scope.WINDOW, standard.Copy),
         ("editing.paste", "Paste", category.EDITING, scope.WINDOW, standard.Paste),
         ("editing.select_all", "Select All", category.EDITING, scope.WINDOW, standard.SelectAll),
+        (
+            "editing.unicode_hex_toggle",
+            "Convert Unicode Hex ↔ Character",
+            category.EDITING,
+            scope.EDITOR,
+            "editing.unicode_hex_toggle",
+        ),
         ("navigation.go_to_line", "Go to Line…", category.NAVIGATION, scope.EDITOR, None),
         (
             "navigation.page_up",

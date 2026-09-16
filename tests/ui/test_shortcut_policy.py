@@ -105,6 +105,7 @@ def test_standard_commands_use_qt_resolved_portable_sequences(qapp):
         "editor.wrap",
         "view.pause_background",
         "find.report_cycle",
+        "editing.unicode_hex_toggle",
     }
     # "New" (Ctrl/Cmd+N) is claimed by file.new (new plain-text file); New
     # Window keeps its own dedicated shortcut so the two never collide.

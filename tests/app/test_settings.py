@@ -266,6 +266,7 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
         "editor_font_weight": 400,
         "editor_tab_width": 4,
         "find_replace_geometry": None,
+        "find_replace_attached_height": None,
         "find_replace_report_location": "Right",
         "find_replace_zoom_percent": 100,
         "last_directory": None,

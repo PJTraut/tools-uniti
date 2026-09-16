@@ -1341,3 +1341,327 @@ def test_system_theme_refreshes_when_the_platform_palette_changes():
     finally:
         app.setPalette(original_palette)
         app.processEvents()
+
+
+def test_recent_files_menu_lists_opened_files_most_recent_first(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    first_path = tmp_path / "first.txt"
+    second_path = tmp_path / "second.txt"
+    first_path.write_text("first", encoding="utf-8")
+    second_path.write_text("second", encoding="utf-8")
+
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        window.open_path(first_path)
+        window.open_path(second_path)
+        app.processEvents()
+
+        assert store.recent_files.load() == (str(second_path), str(first_path))
+
+        window._populate_recent_files_menu()
+        labels = [action.text() for action in window._recent_files_menu.actions()]
+        assert labels[0] == second_path.name
+        assert labels[1] == first_path.name
+        assert "Clear Recent Files" in labels
+
+        window._clear_recent_files()
+        assert store.recent_files.load() == ()
+        window._populate_recent_files_menu()
+        empty_labels = [action.text() for action in window._recent_files_menu.actions()]
+        assert empty_labels == ["(No Recent Files)"]
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_recent_files_menu_disambiguates_same_named_files_by_parent_directory(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    first_dir = tmp_path / "one"
+    second_dir = tmp_path / "two"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    first_path = first_dir / "notes.txt"
+    second_path = second_dir / "notes.txt"
+    first_path.write_text("first", encoding="utf-8")
+    second_path.write_text("second", encoding="utf-8")
+
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        window.open_path(first_path)
+        window.open_path(second_path)
+        app.processEvents()
+
+        window._populate_recent_files_menu()
+        labels = [action.text() for action in window._recent_files_menu.actions()]
+        assert labels[0] == f"notes.txt  ({second_dir})"
+        assert labels[1] == f"notes.txt  ({first_dir})"
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_unicode_hex_toggle_command_converts_hex_run_in_current_view(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "hex.txt"
+    path.write_text("type 48", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        assert view is not None
+        view.state.move_to(view.document.total_chars())
+
+        window.toggle_unicode_hex()
+
+        assert view.document.read(0, view.document.total_chars()) == "type H"
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_extension_profile_editor_updates_settings_and_refreshes_open_views(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from unittest.mock import patch
+
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    from uniti.app.settings import SettingsStore
+    from uniti.core.syntax_profiles import JSON, PLAIN_TEXT
+    from uniti.ui.main_window import UNITIMainWindow
+
+    usj_path = tmp_path / "book.usj"
+    usj_path.write_text("{}", encoding="utf-8")
+
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(usj_path)
+        assert view.syntax_profile is PLAIN_TEXT
+
+        with patch(
+            "uniti.ui.extension_profile_editor.ExtensionProfileEditor.exec",
+            return_value=QDialog.DialogCode.Accepted,
+        ), patch(
+            "uniti.ui.extension_profile_editor.ExtensionProfileEditor.overrides",
+            return_value={"usj": "json"},
+        ):
+            window.show_extension_profile_editor()
+
+        assert view.syntax_profile is JSON
+        assert store.load().syntax_extension_overrides == {"usj": "json"}
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_markdown_preview_toggle_opens_split_and_renders_current_document(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    md_path = tmp_path / "doc.md"
+    md_path.write_text("# Hello", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        window.open_path(md_path)
+        app.processEvents()
+
+        assert window._markdown_preview_action.isEnabled() is True
+        assert window._markdown_preview_action.isChecked() is False
+
+        window.toggle_markdown_preview()
+        app.processEvents()
+
+        assert window._markdown_preview is not None
+        assert window._markdown_preview_action.isChecked() is True
+        assert "Hello" in window._markdown_preview._browser.toPlainText()
+
+        window.toggle_markdown_preview()
+
+        assert window._markdown_preview is None
+        assert window._markdown_preview_action.isChecked() is False
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_markdown_preview_disabled_for_non_markdown_document(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "doc.txt"
+    path.write_text("hello", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        window.open_path(path)
+        app.processEvents()
+
+        assert window._markdown_preview_action.isEnabled() is False
+        window.toggle_markdown_preview()
+        assert window._markdown_preview is None
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_markdown_preview_updates_on_edit_after_debounce(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    md_path = tmp_path / "doc.md"
+    md_path.write_text("# Hello", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(md_path)
+        window.toggle_markdown_preview()
+        app.processEvents()
+
+        view.state.move_to(view.document.total_chars())
+        view.state.insert_text(" World")
+        view._state_changed()
+        assert window._markdown_preview_timer.isActive()
+
+        window._markdown_preview_timer.timeout.emit()
+        app.processEvents()
+
+        assert "World" in window._markdown_preview._browser.toPlainText()
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_markdown_preview_retargets_on_tab_switch_and_closes_when_target_closes(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    first_path = tmp_path / "first.md"
+    second_path = tmp_path / "second.md"
+    first_path.write_text("# First", encoding="utf-8")
+    second_path.write_text("# Second", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        first_view = window.open_path(first_path)
+        window.toggle_markdown_preview()
+        app.processEvents()
+        assert "First" in window._markdown_preview._browser.toPlainText()
+
+        second_view = window.open_path(second_path)
+        app.processEvents()
+        assert window._markdown_preview_target_view is second_view
+        assert "Second" in window._markdown_preview._browser.toPlainText()
+
+        window._select_view(second_view)
+        app.processEvents()
+        window.close_current()
+        app.processEvents()
+
+        assert window._markdown_preview is None
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_character_inspector_shows_selection_table_for_multi_character_selection(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from unittest.mock import patch
+
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "doc.txt"
+    path.write_text("Hello", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        view.state.move_to(0)
+        view.state.move_to(5, selecting=True)
+
+        captured = {}
+
+        class _RecordingDialog(QDialog):
+            def __init__(self, text, *, output_encoding, invalid_bytes=None, parent=None):
+                super().__init__(parent)
+                captured["text"] = text
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+        with patch("uniti.ui.main_window.CharacterInspectorDialog", _RecordingDialog):
+            window.show_character_inspector()
+
+        assert captured["text"] == "Hello"
+    finally:
+        window.close_all_documents(force=True)
+        window.close()

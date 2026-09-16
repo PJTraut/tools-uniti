@@ -475,8 +475,12 @@ class UNITIService:
                     settings.find_replace_report_location
                 )
                 if settings.find_replace_geometry is not None:
-                    self._find_replace.setGeometry(
-                        *settings.find_replace_geometry
+                    self._find_replace.set_detached_geometry(
+                        settings.find_replace_geometry
+                    )
+                if settings.find_replace_attached_height is not None:
+                    self._find_replace.set_attached_height(
+                        settings.find_replace_attached_height
                     )
             self._find_replace.hide()
         return self._find_replace

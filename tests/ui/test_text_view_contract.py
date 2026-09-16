@@ -603,13 +603,24 @@ def test_wrapped_zero_width_marker_is_painted_on_only_its_owning_row(
 
         image = view.viewport().grab().toImage()
         base = QColor("#ffffff")
+        tint = view.theme_tokens.current_line
+        alpha = tint.alphaF()
+        current_line_over_base = QColor(
+            round(tint.red() * alpha + base.red() * (1 - alpha)),
+            round(tint.green() * alpha + base.green() * (1 - alpha)),
+            round(tint.blue() * alpha + base.blue() * (1 - alpha)),
+        )
         first_row_x = view._gutter_width + view._metrics.horizontalAdvance("ab")
         second_row_x = view._gutter_width
         first = image.pixelColor(first_row_x, view._line_height - 2)
         second = image.pixelColor(second_row_x, view._line_height * 2 - 2)
 
-        assert first.name() == base.name()
+        # Both wrapped rows belong to the same logical (cursor) line, so the
+        # otherwise-unmarked first row now carries the BF-060 current-line
+        # tint rather than the raw base color.
+        assert first.name() == current_line_over_base.name()
         assert second.name() != base.name()
+        assert second.name() != current_line_over_base.name()
         view.close()
 
 
@@ -2031,3 +2042,49 @@ def test_typing_into_an_ltr_line_still_advances_the_caret_forward(tmp_path: Path
 
             view.close()
             app.processEvents()
+
+
+def test_current_line_tint_paints_gutter_and_full_text_line_only_for_cursor_line(
+    tmp_path: Path,
+):
+    """BF-060: a slight tint highlights the current line's gutter number and
+    the full width of its text, but not other lines."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "current-line.txt"
+    path.write_text("first\nsecond\nthird\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        state.move_to(document.line_start(1))
+        view = UNITITextView(state)
+        view.resize(400, 200)
+        view.show()
+        app.processEvents()
+        view.viewport().repaint()
+        app.processEvents()
+
+        image = view.viewport().grab().toImage()
+        base = view.theme_tokens.base
+
+        cursor_line_gutter = image.pixelColor(4, view._line_height + 2)
+        other_line_gutter = image.pixelColor(4, 2)
+        cursor_line_far_right_text = image.pixelColor(
+            view.viewport().width() - 4, view._line_height + 2
+        )
+        other_line_far_right_text = image.pixelColor(
+            view.viewport().width() - 4, 2
+        )
+
+        assert cursor_line_gutter.name() != other_line_gutter.name()
+        assert cursor_line_far_right_text.name() != other_line_far_right_text.name()
+        assert other_line_far_right_text.name() == base.name()
+        view.close()

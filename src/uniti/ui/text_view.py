@@ -1192,6 +1192,12 @@ class UNITITextView(QAbstractScrollArea):
 
             y = row * self._line_height
             baseline = y + self._row_ascent
+            is_cursor_line = line_number == cursor_line
+            if is_cursor_line and (not self._soft_wrap or column_start == 0):
+                painter.fillRect(
+                    QRectF(0, float(y), float(self._gutter_width), float(self._line_height)),
+                    tokens.current_line,
+                )
             painter.setPen(tokens.gutter_text)
             if not self._soft_wrap or column_start == 0:
                 label = str(line_number + 1)
@@ -1238,6 +1244,16 @@ class UNITITextView(QAbstractScrollArea):
                     self.viewport().height(),
                 )
             )
+            if is_cursor_line:
+                painter.fillRect(
+                    QRectF(
+                        float(self._gutter_width),
+                        float(y),
+                        max(0.0, self.viewport().width() - self._gutter_width),
+                        float(self._line_height),
+                    ),
+                    tokens.current_line,
+                )
             width = shaped.width
             if shaped.preedit is not None:
                 width = self._shape(

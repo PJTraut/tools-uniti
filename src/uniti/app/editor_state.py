@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from uniti.core.bidi import is_rtl_paragraph
 from uniti.core.document import Document
+from uniti.core.unicode_hex import LOOKBACK_WINDOW, hex_notation, hex_run_before_cursor
 from uniti.app.graphemes import neighbor_boundary, deletion_span
 
 # BF-064: bounded enough to reliably reach a paragraph's first strong
@@ -342,6 +343,32 @@ class EditorState:
             self.document.delete(*span, coalesce="delete_forward")
             self.cursor = self.anchor = span[0]
         self._preferred_column = None
+
+    def toggle_unicode_hex(self) -> bool:
+        """BF-053: convert a hex codepoint run just before the cursor into
+        its character (mirrors Microsoft Word's Alt+X), or reverse a single
+        character back into `U+XXXX` hex notation when no valid hex run
+        precedes the cursor. A no-op (returns False) with an active
+        selection, at the document start, or when the preceding text is an
+        out-of-range/surrogate hex value. Always one undoable edit."""
+
+        if self.selection is not None or self.cursor == 0:
+            return False
+        window_start = max(0, self.cursor - LOOKBACK_WINDOW)
+        text_before = self.document.read(window_start, self.cursor)
+        match = hex_run_before_cursor(text_before)
+        if match is not None:
+            run_length, code_point = match
+            replacement = chr(code_point)
+            start = self.cursor - run_length
+        else:
+            replacement = hex_notation(self.document.read(self.cursor - 1, self.cursor))
+            start = self.cursor - 1
+        self.document.replace(start, self.cursor, replacement)
+        self.cursor = start + len(replacement)
+        self.anchor = self.cursor
+        self._preferred_column = None
+        return True
 
     def undo(self) -> None:
         self.document.undo()

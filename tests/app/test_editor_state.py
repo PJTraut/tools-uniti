@@ -448,3 +448,81 @@ def test_visual_movement_known_limitation_uses_paragraph_direction_not_local_run
         # Known-limited: moves backward (paragraph is RTL), not forward
         # (which the local "hello" run's own direction would suggest).
         assert state.cursor == inside_hello - 1
+
+
+def test_toggle_unicode_hex_converts_plain_hex_run_to_character(tmp_path: Path):
+    with _open(tmp_path, "type 48") as document:
+        state = EditorState(document)
+        state.move_to(document.total_chars())
+        assert state.toggle_unicode_hex() is True
+        assert document.read(0, document.total_chars()) == "type H"
+        assert state.cursor == 6
+        assert state.selection is None
+
+
+def test_toggle_unicode_hex_converts_u_plus_prefixed_run(tmp_path: Path):
+    with _open(tmp_path, "before U+0041") as document:
+        state = EditorState(document)
+        state.move_to(document.total_chars())
+        assert state.toggle_unicode_hex() is True
+        assert document.read(0, document.total_chars()) == "before A"
+
+
+def test_toggle_unicode_hex_reverses_a_character_to_hex_notation(tmp_path: Path):
+    # "Z" (unlike A-F) is never itself a valid hex digit, so this
+    # unambiguously exercises the reverse (character -> hex) direction.
+    with _open(tmp_path, "before Z") as document:
+        state = EditorState(document)
+        state.move_to(document.total_chars())
+        assert state.toggle_unicode_hex() is True
+        assert document.read(0, document.total_chars()) == "before U+005A"
+        assert state.cursor == document.total_chars()
+
+
+def test_toggle_unicode_hex_round_trips_back_and_forth(tmp_path: Path):
+    with _open(tmp_path, "48") as document:
+        state = EditorState(document)
+        state.move_to(document.total_chars())
+        state.toggle_unicode_hex()
+        assert document.read(0, document.total_chars()) == "H"
+        state.toggle_unicode_hex()
+        assert document.read(0, document.total_chars()) == "U+0048"
+        state.toggle_unicode_hex()
+        assert document.read(0, document.total_chars()) == "H"
+
+
+def test_toggle_unicode_hex_is_one_undoable_edit(tmp_path: Path):
+    with _open(tmp_path, "48") as document:
+        state = EditorState(document)
+        state.move_to(document.total_chars())
+        state.toggle_unicode_hex()
+        assert document.read(0, document.total_chars()) == "H"
+        document.undo()
+        assert document.read(0, document.total_chars()) == "48"
+
+
+def test_toggle_unicode_hex_is_noop_with_active_selection(tmp_path: Path):
+    with _open(tmp_path, "48") as document:
+        state = EditorState(document)
+        state.move_to(0)
+        state.move_to(2, selecting=True)
+        assert state.toggle_unicode_hex() is False
+        assert document.read(0, document.total_chars()) == "48"
+
+
+def test_toggle_unicode_hex_is_noop_at_document_start(tmp_path: Path):
+    with _open(tmp_path, "48") as document:
+        state = EditorState(document)
+        state.move_to(0)
+        assert state.toggle_unicode_hex() is False
+
+
+def test_toggle_unicode_hex_falls_back_to_reversal_for_out_of_range_run(tmp_path: Path):
+    with _open(tmp_path, "D800") as document:
+        state = EditorState(document)
+        state.move_to(document.total_chars())
+        assert state.toggle_unicode_hex() is True
+        # "D800" isn't a valid code point (surrogate), so the reverse
+        # direction applies instead: the single character before the
+        # cursor ("0") is converted to its own hex notation.
+        assert document.read(0, document.total_chars()) == "D80U+0030"

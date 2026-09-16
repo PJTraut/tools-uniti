@@ -417,6 +417,8 @@ class EditorPaneTree(QWidget):
         *,
         split_id: str | None = None,
         proportions: tuple[float, float] = (0.5, 0.5),
+        stretch: tuple[int, int] | None = None,
+        fixed_sizes: tuple[int, int] | None = None,
     ) -> _SplitNode:
         widget = QSplitter(orientation)
         node = _SplitNode(
@@ -430,8 +432,25 @@ class EditorPaneTree(QWidget):
         self._set_parent(second, node)
         widget.addWidget(self._widget(first))
         widget.addWidget(self._widget(second))
-        widget.setSizes([max(1, round(value * 10_000)) for value in proportions])
-        widget.splitterMoved.connect(lambda _position, _index: self._sync_sizes(node))
+        if fixed_sizes is not None:
+            # A fixed-role split (e.g. the Find/Replace attach, BF-059):
+            # literal starting pixel sizes rather than a proportion of a
+            # not-yet-laid-out widget's (unreliable) current height. Paired
+            # with `stretch`, Qt gives the stretch-0 pane exactly this size
+            # and hands any surplus/deficit to the stretch-1 pane instead of
+            # scaling both proportionally.
+            widget.setSizes([max(1, round(value)) for value in fixed_sizes])
+        else:
+            widget.setSizes([max(1, round(value * 10_000)) for value in proportions])
+        if stretch is not None:
+            # One pane absorbs every later window-resize delta, the other's
+            # size is left untouched by it. Ordinary user-created splits
+            # (Split Right/Down) never pass this, so their proportional
+            # resize behavior is unchanged.
+            widget.setStretchFactor(0, stretch[0])
+            widget.setStretchFactor(1, stretch[1])
+        else:
+            widget.splitterMoved.connect(lambda _position, _index: self._sync_sizes(node))
         return node
 
     @staticmethod
@@ -583,6 +602,10 @@ class EditorPaneTree(QWidget):
         self,
         view_id: str,
         orientation: Qt.Orientation,
+        *,
+        proportions: tuple[float, float] = (0.5, 0.5),
+        stretch: tuple[int, int] | None = None,
+        fixed_sizes: tuple[int, int] | None = None,
     ) -> PaneLeaf:
         if orientation not in (
             Qt.Orientation.Horizontal,
@@ -601,13 +624,27 @@ class EditorPaneTree(QWidget):
         if parent is None:
             self._layout.removeWidget(leaf)
             leaf.setParent(None)
-            branch = self._make_split(orientation, leaf, new_leaf)
+            branch = self._make_split(
+                orientation,
+                leaf,
+                new_leaf,
+                proportions=proportions,
+                stretch=stretch,
+                fixed_sizes=fixed_sizes,
+            )
             self._root = branch
             self._layout.addWidget(branch.widget)
         else:
             index = parent.children.index(leaf)
             leaf.setParent(None)
-            branch = self._make_split(orientation, leaf, new_leaf)
+            branch = self._make_split(
+                orientation,
+                leaf,
+                new_leaf,
+                proportions=proportions,
+                stretch=stretch,
+                fixed_sizes=fixed_sizes,
+            )
             branch.parent = parent
             parent.children[index] = branch
             parent.widget.insertWidget(index, branch.widget)

@@ -2887,3 +2887,214 @@ def test_find_replace_settings_are_startup_defaults_not_runtime_state(
     find_window.shutdown()
     find_window.close()
     window.close()
+
+
+def test_attached_find_replace_uses_remembered_height_not_fifty_percent(
+    tmp_path: Path,
+):
+    """BF-059: attaching must not default to a 50/50 split of the window."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    host = UNITIMainWindow()
+    panel = host.find_replace
+    try:
+        path = tmp_path / "doc.txt"
+        path.write_text("hello", encoding="utf-8")
+        host.open_path(path)
+        host.resize(900, 700)
+        host.show()
+        app.processEvents()
+
+        panel.set_attached_height(250)
+        panel.attach_to(host)
+        app.processEvents()
+
+        leaf = host.panes.leaf_for_view(FIND_REPLACE_VIEW_ID)
+        branch = leaf._parent_branch
+        sizes = branch.widget.sizes()
+        assert abs(sizes[1] - 250) <= 4
+        assert sizes[1] < host.panes.height() * 0.4
+    finally:
+        panel.detach()
+        host.close_all_documents(force=True)
+        host.close()
+
+
+def test_attached_find_replace_panel_height_is_unaffected_by_window_resize(
+    tmp_path: Path,
+):
+    """BF-059: the attached panel must not resize when the main window does;
+    the editor pane absorbs the resize delta instead (stretch factors)."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    host = UNITIMainWindow()
+    panel = host.find_replace
+    try:
+        path = tmp_path / "doc.txt"
+        path.write_text("hello", encoding="utf-8")
+        host.open_path(path)
+        host.resize(900, 700)
+        host.show()
+        app.processEvents()
+
+        panel.set_attached_height(150)
+        panel.attach_to(host)
+        app.processEvents()
+
+        leaf = host.panes.leaf_for_view(FIND_REPLACE_VIEW_ID)
+        branch = leaf._parent_branch
+        before = branch.widget.sizes()[1]
+
+        host.resize(900, 1100)
+        app.processEvents()
+
+        after = branch.widget.sizes()[1]
+        assert after == before
+    finally:
+        panel.detach()
+        host.close_all_documents(force=True)
+        host.close()
+
+
+def test_manually_resizing_attached_panel_is_remembered_for_next_attach(
+    tmp_path: Path,
+):
+    """BF-059: dragging the attached splitter updates the remembered
+    height, which the next attach (e.g. after detach/reattach) honors."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    host = UNITIMainWindow()
+    panel = host.find_replace
+    changes: list[int] = []
+    panel.attachedHeightChanged.connect(changes.append)
+    try:
+        path = tmp_path / "doc.txt"
+        path.write_text("hello", encoding="utf-8")
+        host.open_path(path)
+        host.resize(900, 700)
+        host.show()
+        app.processEvents()
+
+        panel.set_attached_height(150)
+        panel.attach_to(host)
+        app.processEvents()
+
+        leaf = host.panes.leaf_for_view(FIND_REPLACE_VIEW_ID)
+        branch = leaf._parent_branch
+        splitter = branch.widget
+        splitter.setSizes([host.panes.height() - 220, 220])
+        splitter.splitterMoved.emit(0, 1)
+
+        assert panel.attached_height == 220
+        assert changes and changes[-1] == 220
+
+        panel.detach()
+        panel.attach_to(host)
+        app.processEvents()
+
+        leaf = host.panes.leaf_for_view(FIND_REPLACE_VIEW_ID)
+        branch = leaf._parent_branch
+        assert abs(branch.widget.sizes()[1] - 220) <= 4
+    finally:
+        panel.detach()
+        host.close_all_documents(force=True)
+        host.close()
+
+
+def test_detach_clamps_a_geometry_from_a_since_removed_screen():
+    """If the panel was last detached on an external monitor that has
+    since been unplugged, re-detaching must not restore a position that's
+    now off every connected screen."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    try:
+        panel.show()
+        app.processEvents()
+        panel._detached_geometry = (2200, 200, 820, 320)
+
+        import uniti.ui.find_replace as find_replace_module
+
+        original = find_replace_module.current_screen_geometries
+        find_replace_module.current_screen_geometries = lambda: ((0, 0, 1920, 1080),)
+        try:
+            panel.detach()
+        finally:
+            find_replace_module.current_screen_geometries = original
+        app.processEvents()
+
+        x, y, width, height = panel._detached_geometry
+        assert 0 <= x <= 1920 - width
+        assert 0 <= y <= 1080 - height
+    finally:
+        panel.shutdown()
+        panel.close()
+
+
+def test_restore_state_clamps_a_geometry_from_a_since_removed_screen():
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    try:
+        panel.show()
+        app.processEvents()
+        record = replace(
+            panel.export_state("view-target"),
+            geometry=(2200, 200, 820, 320),
+        )
+
+        import uniti.ui.find_replace as find_replace_module
+
+        original = find_replace_module.current_screen_geometries
+        find_replace_module.current_screen_geometries = lambda: ((0, 0, 1920, 1080),)
+        try:
+            panel.restore_state(record)
+        finally:
+            find_replace_module.current_screen_geometries = original
+        app.processEvents()
+
+        x, y, width, height = panel._detached_geometry
+        assert 0 <= x <= 1920 - width
+        assert 0 <= y <= 1080 - height
+    finally:
+        panel.shutdown()
+        panel.close()

@@ -40,6 +40,7 @@ class Settings:
     find_replace_zoom_percent: int = 100
     find_replace_report_location: str = "Right"
     find_replace_geometry: tuple[int, int, int, int] | None = None
+    find_replace_attached_height: int | None = None
     shortcut_overrides: dict[str, str] = field(default_factory=dict)
     syntax_extension_overrides: dict[str, str] = field(default_factory=dict)
 
@@ -135,6 +136,13 @@ def _settings_from_payload(payload: object) -> Settings:
         find_replace_geometry = None
     else:
         find_replace_geometry = tuple(geometry)
+    find_replace_attached_height = payload.get("find_replace_attached_height")
+    if (
+        not isinstance(find_replace_attached_height, int)
+        or isinstance(find_replace_attached_height, bool)
+        or find_replace_attached_height <= 0
+    ):
+        find_replace_attached_height = None
     raw_shortcut_overrides = payload.get("shortcut_overrides", {})
     if not isinstance(raw_shortcut_overrides, dict):
         shortcut_overrides = {}
@@ -167,6 +175,7 @@ def _settings_from_payload(payload: object) -> Settings:
         find_replace_zoom_percent=find_replace_zoom_percent,
         find_replace_report_location=find_replace_report_location,
         find_replace_geometry=find_replace_geometry,
+        find_replace_attached_height=find_replace_attached_height,
         shortcut_overrides=shortcut_overrides,
         syntax_extension_overrides=syntax_extension_overrides,
     )
@@ -197,6 +206,12 @@ class SettingsStore:
         """The separate atomic authority for saved Find/Replace recipes."""
         from .find_replace_recipes import FindReplaceRecipeStore
         return FindReplaceRecipeStore(self.path.with_name("find-replace-recipes.json"))
+
+    @property
+    def recent_files(self):
+        """The separate atomic authority for the process-wide Recent Files list."""
+        from .recent_files import RecentFilesStore
+        return RecentFilesStore(self.path.with_name("recent-files.json"))
 
     def load(self) -> Settings:
         try:

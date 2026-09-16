@@ -89,11 +89,16 @@ from uniti.ui.capture_report import CaptureReportModel
 from uniti.ui.capture_report_delegate import CaptureReportDelegate
 from uniti.ui.icons import lucide_icon
 from uniti.ui.regex_input import RegexInput, ReplacementInput
+from uniti.ui.screen_geometry import clamp_geometry_to_screens, current_screen_geometries
 
 
 _FIND_RESULT_MEMORY_BYTES = 1 << 20
 
 FIND_REPLACE_VIEW_ID = "uniti-find-replace"
+
+# BF-059: a compact, reasonable default for the very first attach — not a
+# proportion of the main window's height, which is the behavior being fixed.
+DEFAULT_ATTACHED_HEIGHT = 280
 
 
 class ReplaceScope(Enum):
@@ -209,6 +214,7 @@ class FindReplaceWindow(QDockWidget):
     zoomChanged = Signal(int)
     reportLocationChanged = Signal(str)
     geometryChanged = Signal(tuple)
+    attachedHeightChanged = Signal(int)
     placementChanged = Signal(str)
     matchPositionChanged = Signal(str, object)
     _jobCompleted = Signal()
@@ -243,6 +249,8 @@ class FindReplaceWindow(QDockWidget):
         self._changing_placement = False
         self._dock_host: QMainWindow | None = None
         self._detached_geometry = (0, 0, 820, 320)
+        self._attached_height = DEFAULT_ATTACHED_HEIGHT
+        self._attached_splitter: QSplitter | None = None
         self._restoring_state = False
         self.setWindowFlag(Qt.WindowType.Tool, True)
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
@@ -588,6 +596,18 @@ class FindReplaceWindow(QDockWidget):
         geometry = widget.geometry()
         return geometry.x(), geometry.y(), geometry.width(), geometry.height()
 
+    def set_detached_geometry(self, geometry: tuple[int, int, int, int]) -> None:
+        """Set this window's geometry to `geometry`, first clamping it back
+        onto a currently connected screen if it no longer overlaps any
+        (e.g. it was saved while on an external monitor that has since
+        been unplugged) — otherwise it would restore to a position that is
+        practically unreachable rather than merely off the panel's
+        preferred spot."""
+
+        clamped = clamp_geometry_to_screens(geometry, current_screen_geometries())
+        self._detached_geometry = clamped
+        self.setGeometry(*clamped)
+
     def _remove_content_from_pane_tree(self, host: QMainWindow) -> None:
         """Take the content widget out of ``host``'s pane tree, collapsing
         the split it lived in if that leaf is now empty (mirrors
@@ -625,15 +645,57 @@ class FindReplaceWindow(QDockWidget):
         if anchor is None:
             tree.add_view(self.content, select=select, title="Find / Replace")
         else:
-            new_leaf = tree.split_view(anchor, Qt.Orientation.Vertical)
+            # BF-059: attach at the remembered last-used height (never a
+            # hardcoded 50%, and not computed as a proportion of the pane
+            # tree's current height, which is unreliable before a layout
+            # pass has run) and pin it against window-resize deltas via
+            # stretch factors (1 for the editor pane, 0 for this one) rather
+            # than the ordinary proportional-resize behavior `split_view`
+            # gives user-created Split Right/Down panes.
+            new_leaf = tree.split_view(
+                anchor,
+                Qt.Orientation.Vertical,
+                stretch=(1, 0),
+                fixed_sizes=(1, self._attached_height),
+            )
             tree.add_view(
                 self.content,
                 pane_id=new_leaf.pane_id,
                 select=select,
                 title="Find / Replace",
             )
+            self._track_attached_split(new_leaf)
         if not select and previous_view_id is not None:
             tree.activate_view(previous_view_id)
+
+    def _track_attached_split(self, leaf) -> None:
+        branch = leaf._parent_branch
+        if branch is None:
+            return
+        splitter = branch.widget
+        self._attached_splitter = splitter
+
+        def _on_moved(_position: int, _index: int) -> None:
+            if self._attached_splitter is not splitter:
+                return
+            sizes = splitter.sizes()
+            if len(sizes) == 2 and sizes[1] > 0:
+                self._attached_height = sizes[1]
+                self.attachedHeightChanged.emit(sizes[1])
+
+        splitter.splitterMoved.connect(_on_moved)
+
+    def set_attached_height(self, height: int) -> None:
+        """Seed the remembered attached-panel height (BF-059), e.g. from
+        persisted settings on startup. Only affects the *next* attach."""
+
+        if not isinstance(height, int) or isinstance(height, bool) or height <= 0:
+            raise ValueError("attached height must be a positive integer")
+        self._attached_height = height
+
+    @property
+    def attached_height(self) -> int:
+        return self._attached_height
 
     def _reveal(self) -> None:
         if self._placement == "attached" and self._dock_host is not None:
@@ -698,7 +760,7 @@ class FindReplaceWindow(QDockWidget):
             self.setWindowFlag(Qt.WindowType.Tool, True)
             self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
             self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
-            self.setGeometry(*geometry)
+            self.set_detached_geometry(geometry)
         finally:
             self._changing_placement = False
         self._set_placement("detached")
@@ -1177,8 +1239,7 @@ class FindReplaceWindow(QDockWidget):
         self._restoring_state = True
         try:
             if record.geometry is not None:
-                self._detached_geometry = record.geometry
-                self.setGeometry(*record.geometry)
+                self.set_detached_geometry(record.geometry)
             self.set_zoom_percent(record.zoom_percent)
             self.set_report_location("Right" if record.report_visible else "Hidden")
             self.find_input.restore_history(record.find)

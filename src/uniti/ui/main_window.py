@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QSplitter,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -68,7 +69,7 @@ from uniti.core.reformatters import (
     ReformatFailure,
     reformatter_for_key,
 )
-from uniti.core.syntax_profiles import profile_for_extension
+from uniti.core.syntax_profiles import MARKDOWN, profile_for_extension
 from uniti.core.index_jobs import (
     LineNavigationResult,
     build_line_index_batch,
@@ -227,6 +228,11 @@ class UNITIMainWindow(QMainWindow):
         self._groups = (
             self._group_store.load() if self._group_store is not None else default_groups()
         )
+        self._recent_files_store = (
+            self._settings_store.recent_files
+            if self._settings_store is not None
+            else None
+        )
         app = QApplication.instance()
         if isinstance(app, QApplication) and not preview_active(app):
             profile = self._theme_state.resolve()
@@ -296,7 +302,15 @@ class UNITIMainWindow(QMainWindow):
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
-        central_layout.addWidget(self._panes, 1)
+        self._central_splitter = QSplitter(Qt.Orientation.Horizontal, central)
+        self._central_splitter.addWidget(self._panes)
+        central_layout.addWidget(self._central_splitter, 1)
+        self._markdown_preview: MarkdownPreviewPane | None = None
+        self._markdown_preview_target_view: UNITITextView | None = None
+        self._markdown_preview_timer = QTimer(self)
+        self._markdown_preview_timer.setSingleShot(True)
+        self._markdown_preview_timer.setInterval(300)
+        self._markdown_preview_timer.timeout.connect(self._refresh_markdown_preview_now)
         self._find_replace = (
             service.find_replace
             if service is not None
@@ -313,6 +327,13 @@ class UNITIMainWindow(QMainWindow):
             field.installEventFilter(self)
             field.viewport().installEventFilter(self)
         self._find_replace.matchPositionChanged.connect(self._on_match_position_changed)
+        self._find_replace.attachedHeightChanged.connect(
+            self._on_find_replace_attached_height_changed
+        )
+        if self._settings.find_replace_attached_height is not None:
+            self._find_replace.set_attached_height(
+                self._settings.find_replace_attached_height
+            )
         if service is None:
             self._find_replace.hide()
             self._find_replace.set_zoom_percent(
@@ -322,7 +343,9 @@ class UNITIMainWindow(QMainWindow):
                 self._settings.find_replace_report_location
             )
             if self._settings.find_replace_geometry is not None:
-                self._find_replace.setGeometry(*self._settings.find_replace_geometry)
+                self._find_replace.set_detached_geometry(
+                    self._settings.find_replace_geometry
+                )
         self.setCentralWidget(central)
         self._status = UNITIStatusBar(self)
         self.setStatusBar(self._status)
@@ -844,6 +867,9 @@ class UNITIMainWindow(QMainWindow):
                 "file.open_folder_by_type", self.open_folder_by_type
             )
         )
+        self._recent_files_menu = file_menu.addMenu("Recent Files")
+        self._recent_files_menu.aboutToShow.connect(self._populate_recent_files_menu)
+        file_menu.addSeparator()
         file_menu.addAction(
             self._command_action("file.save", self.start_save_current)
         )
@@ -865,6 +891,11 @@ class UNITIMainWindow(QMainWindow):
         edit_menu.addSeparator()
         edit_menu.addAction(
             self._command_action("editing.select_all", self.select_all)
+        )
+        edit_menu.addAction(
+            self._command_action(
+                "editing.unicode_hex_toggle", self.toggle_unicode_hex
+            )
         )
 
         edit_menu.addSeparator()
@@ -975,6 +1006,14 @@ class UNITIMainWindow(QMainWindow):
         )
         theme_menu.addAction(self._high_contrast_action)
         view_menu.addAction("Document Groups…", self.show_document_group_editor)
+        view_menu.addAction(
+            "Text-Type Profiles…", self.show_extension_profile_editor
+        )
+        self._markdown_preview_action = QAction("Markdown Preview", self)
+        self._markdown_preview_action.setCheckable(True)
+        self._markdown_preview_action.triggered.connect(self.toggle_markdown_preview)
+        view_menu.addAction(self._markdown_preview_action)
+        self._refresh_markdown_preview_action()
 
         view_menu.addSeparator()
         view_menu.addAction(
@@ -1165,6 +1204,10 @@ class UNITIMainWindow(QMainWindow):
         directory = str(Path(path).parent)
         self._settings = dataclass_replace(self._settings, last_directory=directory)
         self._save_settings()
+
+    def _record_recent_file(self, path: str | Path) -> None:
+        if self._recent_files_store is not None:
+            self._recent_files_store.record_opened(str(Path(path)))
 
     def new_window(self):
         if self._service is None:
@@ -1500,6 +1543,30 @@ class UNITIMainWindow(QMainWindow):
                         self._service.documents.set_group(entry.document_id, None)
             self._refresh_all_group_indicators()
 
+    def show_extension_profile_editor(self) -> None:
+        from uniti.ui.extension_profile_editor import ExtensionProfileEditor
+
+        editor = ExtensionProfileEditor(self._settings.syntax_extension_overrides, self)
+        if editor.exec():
+            overrides = editor.overrides()
+            self._settings = dataclass_replace(
+                self._settings, syntax_extension_overrides=overrides
+            )
+            self._save_settings()
+            self._refresh_all_syntax_profiles()
+
+    def _refresh_all_syntax_profiles(self) -> None:
+        for view_id in self._panes.view_ids:
+            view = self.view_for_id(view_id)
+            if view is None:
+                continue
+            view.set_syntax_profile(
+                profile_for_extension(
+                    view.document.path.suffix,
+                    self._settings.syntax_extension_overrides,
+                )
+            )
+
     def _disconnect_view(self, view: UNITITextView) -> None:
         for signal in (
             view.stateChanged,
@@ -1652,6 +1719,42 @@ class UNITIMainWindow(QMainWindow):
                     "Open Failed",
                     f"{filename}\n\n{exc}",
                 )
+
+    def _populate_recent_files_menu(self) -> None:
+        menu = self._recent_files_menu
+        menu.clear()
+        paths = (
+            self._recent_files_store.load()
+            if self._recent_files_store is not None
+            else ()
+        )
+        if not paths:
+            empty_action = menu.addAction("(No Recent Files)")
+            empty_action.setEnabled(False)
+            return
+        names = [Path(path).name for path in paths]
+        duplicated_names = {name for name in names if names.count(name) > 1}
+        for path, name in zip(paths, names):
+            label = (
+                f"{name}  ({Path(path).parent})" if name in duplicated_names else name
+            )
+            action = menu.addAction(label)
+            action.setToolTip(path)
+            action.triggered.connect(
+                lambda _checked=False, path=path: self._open_recent_file(path)
+            )
+        menu.addSeparator()
+        menu.addAction("Clear Recent Files", self._clear_recent_files)
+
+    def _open_recent_file(self, path: str) -> None:
+        try:
+            self.open_path(path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Open Failed", f"{path}\n\n{exc}")
+
+    def _clear_recent_files(self) -> None:
+        if self._recent_files_store is not None:
+            self._recent_files_store.clear()
 
     _OPEN_FOLDER_WARN_THRESHOLD = 100
 
@@ -1985,6 +2088,7 @@ class UNITIMainWindow(QMainWindow):
             if existing is not None:
                 focused = self._service.focus_document(existing.document_id)
                 if isinstance(focused, UNITITextView):
+                    self._record_recent_file(path)
                     self._service.record_dogfood(
                         Operation.DOCUMENT_OPEN,
                         Outcome.SUCCESS,
@@ -1992,6 +2096,7 @@ class UNITIMainWindow(QMainWindow):
                     )
                     return focused
                 reopened = self.open_existing_document(existing.document)
+                self._record_recent_file(path)
                 self._service.record_dogfood(
                     Operation.DOCUMENT_OPEN,
                     Outcome.SUCCESS,
@@ -2039,6 +2144,7 @@ class UNITIMainWindow(QMainWindow):
                 )
             raise
         self._remember_directory(path)
+        self._record_recent_file(path)
         if self._service is not None:
             self._service.record_dogfood(
                 Operation.DOCUMENT_OPEN,
@@ -2070,6 +2176,12 @@ class UNITIMainWindow(QMainWindow):
         self._settings = dataclass_replace(
             self._settings,
             editor_font_weight=weight,
+        )
+        self._save_settings()
+
+    def _on_find_replace_attached_height_changed(self, height: int) -> None:
+        self._settings = dataclass_replace(
+            self._settings, find_replace_attached_height=height
         )
         self._save_settings()
 
@@ -2127,6 +2239,8 @@ class UNITIMainWindow(QMainWindow):
             leaf.setTabText(leaf.index_of(view.view_id), self._tab_label(view))
         if view is self.current_view:
             self._set_status_document(view)
+        if view is self._markdown_preview_target_view:
+            self._markdown_preview_timer.start()
 
     def _on_current_changed(self, _index: int) -> None:
         self._find_replace.document_changed()
@@ -2134,6 +2248,19 @@ class UNITIMainWindow(QMainWindow):
         for widget in self.views:
             widget.document.set_resource_active(widget is view)
         self._refresh_reformat_actions()
+        if self._markdown_preview is not None:
+            target = self._markdown_preview_target_view
+            if target is not None and not self._contains_view(target):
+                # The tab this preview was tracking got closed elsewhere.
+                self._close_markdown_preview()
+            elif (
+                view is not None
+                and view.syntax_profile is MARKDOWN
+                and view is not target
+            ):
+                self._markdown_preview_target_view = view
+                self._refresh_markdown_preview_now()
+        self._refresh_markdown_preview_action()
         if view is None:
             # The active pane may be a non-document view (e.g. the attached
             # Find/Replace pane) while other document tabs are still open
@@ -2301,6 +2428,54 @@ class UNITIMainWindow(QMainWindow):
         self._minify_document_action.setEnabled(
             reformatter is not None and reformatter.can_minify
         )
+
+    def toggle_markdown_preview(self) -> None:
+        """BF-062: open/close a read-only Markdown preview split beside the
+        editor, tracking whichever Markdown tab is active."""
+
+        if self._markdown_preview is not None:
+            self._close_markdown_preview()
+            return
+        view = self.current_view
+        if view is None or view.syntax_profile is not MARKDOWN:
+            return
+        from uniti.ui.markdown_preview import MarkdownPreviewPane
+
+        self._markdown_preview = MarkdownPreviewPane(self._central_splitter)
+        self._central_splitter.addWidget(self._markdown_preview)
+        # Literal starting sizes (not proportions), same trick as BF-059's
+        # attached Find/Replace split: gives an even side-by-side split
+        # regardless of the splitter's not-yet-laid-out current width.
+        self._central_splitter.setSizes([1, 1])
+        self._markdown_preview_target_view = view
+        self._refresh_markdown_preview_now()
+        self._refresh_markdown_preview_action()
+
+    def _close_markdown_preview(self) -> None:
+        if self._markdown_preview is None:
+            return
+        self._markdown_preview_timer.stop()
+        self._markdown_preview.setParent(None)
+        self._markdown_preview.deleteLater()
+        self._markdown_preview = None
+        self._markdown_preview_target_view = None
+        self._refresh_markdown_preview_action()
+
+    def _refresh_markdown_preview_now(self) -> None:
+        view = self._markdown_preview_target_view
+        if view is None or self._markdown_preview is None:
+            return
+        text = view.document.read(0, view.document.total_chars())
+        self._markdown_preview.set_text(text)
+
+    def _refresh_markdown_preview_action(self) -> None:
+        action = getattr(self, "_markdown_preview_action", None)
+        if action is None:
+            return
+        view = self.current_view
+        is_markdown = view is not None and view.syntax_profile is MARKDOWN
+        action.setEnabled(is_markdown or self._markdown_preview is not None)
+        action.setChecked(self._markdown_preview is not None)
 
     def _reformat_current_document(self, *, minify: bool) -> None:
         view = self.current_view
@@ -2715,6 +2890,9 @@ class UNITIMainWindow(QMainWindow):
         if view is None or not view.isEnabled():
             return
         selection = view.state.selection
+        if selection is not None and selection[1] - selection[0] > 1:
+            self._show_inspect_selection(view, selection)
+            return
         position = selection[0] if selection is not None else view.state.cursor
         invalid_bytes = None
         try:
@@ -2740,6 +2918,31 @@ class UNITIMainWindow(QMainWindow):
             output_encoding=view.document.output_encoding,
             invalid_bytes=invalid_bytes,
             parent=self,
+        )
+        dialog.exec()
+
+    def _show_inspect_selection(
+        self, view: UNITITextView, selection: tuple[int, int]
+    ) -> None:
+        """BF-065: the whole-selection counterpart to the single-character
+        inspector above — same dialog class, a per-character table instead
+        of one character's form."""
+
+        from uniti.ui.character_inspector import MAX_INSPECT_SELECTION_CHARACTERS
+
+        start, end = selection
+        bounded_end = min(end, start + MAX_INSPECT_SELECTION_CHARACTERS)
+        try:
+            text = view.document.read(start, bounded_end)
+        except ValueError:
+            text = ""
+        if not text:
+            QMessageBox.information(
+                self, "Character Inspector", "No characters in selection."
+            )
+            return
+        dialog = CharacterInspectorDialog(
+            text, output_encoding=view.document.output_encoding, parent=self
         )
         dialog.exec()
 
@@ -3466,6 +3669,16 @@ class UNITIMainWindow(QMainWindow):
             return
         view.state.select_all()
         view._state_changed()
+
+    def toggle_unicode_hex(self) -> None:
+        """BF-053: convert a hex codepoint run before the cursor into its
+        character, or reverse a character back into hex notation."""
+
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        if view.state.toggle_unicode_hex():
+            view._state_changed()
 
     def _confirm_close(self, view: UNITITextView) -> bool:
         if not view.document.modified:

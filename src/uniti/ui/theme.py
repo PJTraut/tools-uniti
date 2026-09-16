@@ -30,6 +30,7 @@ class EditorThemeTokens:
     invisible_marker: QColor
     invisible_background: QColor
     invisible_border: QColor
+    current_line: QColor
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +207,20 @@ def _relative_luminance(color: QColor) -> float:
     return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
 
 
+def _current_line_tint(base: QColor, text: QColor) -> QColor:
+    """A slight background tint for the current-line highlight (BF-060),
+    derived algorithmically (like `syntax_category_palette`) rather than
+    stored per-profile, so no theme schema/migration is needed for it: an
+    alpha-blended `text` tone lightens a dark base and darkens a light one
+    by construction, and stays subordinate to selection/match highlighting
+    which are painted on top of it.
+    """
+
+    tint = QColor(text)
+    tint.setAlpha(16)
+    return tint
+
+
 def _editor_tokens(
     palette: QPalette,
     *,
@@ -230,9 +245,11 @@ def _editor_tokens(
     match = role(QPalette.ColorRole.Highlight)
     match.setAlpha(120)
     current_match = QColor("#ffbf00" if dark else "#b54708")
+    base_color = role(QPalette.ColorRole.Base)
+    text_color = role(QPalette.ColorRole.Text)
     return EditorThemeTokens(
-        base=role(QPalette.ColorRole.Base),
-        text=role(QPalette.ColorRole.Text),
+        base=base_color,
+        text=text_color,
         gutter_base=role(QPalette.ColorRole.AlternateBase),
         gutter_text=role(QPalette.ColorRole.PlaceholderText),
         selection=role(QPalette.ColorRole.Highlight),
@@ -246,6 +263,7 @@ def _editor_tokens(
         invisible_marker=QColor(markers[3]),
         invisible_background=invisible_background,
         invisible_border=QColor(markers[3]),
+        current_line=_current_line_tint(base_color, text_color),
     )
 
 
@@ -360,6 +378,7 @@ def build_profile_theme(system_palette: QPalette, profile, contrast='Standard', 
         palette.setColor(QPalette.ColorGroup.Disabled, getattr(QPalette.ColorRole, role), QColor(profile.colors['disabled.' + role]))
     tokens = {r: QColor(profile.colors['editor.' + r]) for r in EDITOR_ROLES}
     tokens['match'].setAlpha(120)
+    tokens['current_line'] = _current_line_tint(tokens['base'], tokens['text'])
     spec = ThemeSpec(profile.id, contrast, palette, EditorThemeTokens(**tokens))
     if contrast == 'High Contrast' and overlay and any(r < t for _, r, t in contrast_feedback(spec)):
         # Preserve the independently selected profile while supplying the validated
