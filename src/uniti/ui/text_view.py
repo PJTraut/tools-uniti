@@ -30,7 +30,6 @@ from uniti.app.session import DockReturnRecord, ViewRecord
 from uniti.core.syntax_profiles import PLAIN_TEXT, SyntaxProfile
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
-from uniti.ui.syntax_theme import syntax_category_palette
 from uniti.ui.theme import EditorThemeTokens, active_theme
 from uniti.ui.font_policy import resolve_editor_font
 from uniti.ui.text_layout import ShapedWindow, Utf16Map, direction_for_text
@@ -175,7 +174,7 @@ class UNITITextView(QAbstractScrollArea):
         self._inspection.changed.connect(self.viewport().update)
         self._theme_tokens = active_theme(app).editor
         self._syntax_profile: SyntaxProfile = PLAIN_TEXT
-        self._syntax_colors = syntax_category_palette(self._theme_tokens.base)
+        self._syntax_colors = self._theme_tokens.syntax
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
         self.setMouseTracking(True)
@@ -268,7 +267,7 @@ class UNITITextView(QAbstractScrollArea):
         if tokens == self._theme_tokens:
             return
         self._theme_tokens = tokens
-        self._syntax_colors = syntax_category_palette(tokens.base)
+        self._syntax_colors = tokens.syntax
         self.viewport().update()
 
     @property

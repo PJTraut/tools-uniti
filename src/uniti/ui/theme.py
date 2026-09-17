@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 import weakref
 
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
+
+from uniti.ui.syntax_theme import syntax_category_palette
 
 
 THEME_MODES = ("System", "Light", "Dark")
@@ -31,6 +35,7 @@ class EditorThemeTokens:
     invisible_background: QColor
     invisible_border: QColor
     current_line: QColor
+    syntax: Mapping[str, QColor]
 
 
 @dataclass(frozen=True, slots=True)
@@ -264,6 +269,7 @@ def _editor_tokens(
         invisible_background=invisible_background,
         invisible_border=QColor(markers[3]),
         current_line=_current_line_tint(base_color, text_color),
+        syntax=MappingProxyType(syntax_category_palette(base_color)),
     )
 
 
@@ -357,20 +363,28 @@ def contrast_feedback(spec: ThemeSpec) -> tuple[tuple[str, float, float], ...]:
                       spec.palette.color(getattr(QPalette.ColorRole, bg)), 4.5))
     for role in ('space_marker', 'tab_marker', 'eol_marker', 'invisible_marker', 'invisible_border', 'invalid_byte', 'current_match'):
         pairs.append((role.replace('_', ' ').capitalize(), getattr(e, role), e.base, marker_threshold))
+    for category, color in e.syntax.items():
+        # Syntax highlighting is secondary color-coding, not primary body
+        # text, so it's held to the same bar as the editor's other markers
+        # (4.5:1 Standard / High Contrast) rather than the stricter 7:1
+        # High Contrast body-text threshold — `syntax_category_palette`'s
+        # own derivation loop only ever targets 4.5:1 regardless of mode.
+        pairs.append(('Syntax ' + category, color, e.base, marker_threshold))
     return tuple((label, ratio(fg, bg), threshold) for label, fg, bg, threshold in pairs)
 
 
 def profile_from_spec(spec: ThemeSpec, profile_id: str, name: str, base_mode: str):
-    from uniti.app.theme_profiles import ThemeProfile, PALETTE_ROLES, EDITOR_ROLES
+    from uniti.app.theme_profiles import ThemeProfile, PALETTE_ROLES, EDITOR_ROLES, SYNTAX_ROLES
     colors = {'palette.' + r: spec.palette.color(getattr(QPalette.ColorRole, r)).name() for r in PALETTE_ROLES}
     colors.update({'disabled.' + r: spec.palette.color(QPalette.ColorGroup.Disabled, getattr(QPalette.ColorRole, r)).name()
                    for r in ('Text', 'WindowText', 'ButtonText')})
     colors.update({'editor.' + r: getattr(spec.editor, r).name() for r in EDITOR_ROLES})
+    colors.update({'syntax.' + r: spec.editor.syntax[r].name() for r in SYNTAX_ROLES})
     return ThemeProfile(profile_id, name, base_mode, colors)
 
 
 def build_profile_theme(system_palette: QPalette, profile, contrast='Standard', *, overlay=True) -> ThemeSpec:
-    from uniti.app.theme_profiles import PALETTE_ROLES, EDITOR_ROLES
+    from uniti.app.theme_profiles import PALETTE_ROLES, EDITOR_ROLES, SYNTAX_ROLES
     palette = QPalette(system_palette)
     for role in PALETTE_ROLES:
         palette.setColor(getattr(QPalette.ColorRole, role), QColor(profile.colors['palette.' + role]))
@@ -379,6 +393,7 @@ def build_profile_theme(system_palette: QPalette, profile, contrast='Standard', 
     tokens = {r: QColor(profile.colors['editor.' + r]) for r in EDITOR_ROLES}
     tokens['match'].setAlpha(120)
     tokens['current_line'] = _current_line_tint(tokens['base'], tokens['text'])
+    tokens['syntax'] = MappingProxyType({r: QColor(profile.colors['syntax.' + r]) for r in SYNTAX_ROLES})
     spec = ThemeSpec(profile.id, contrast, palette, EditorThemeTokens(**tokens))
     if contrast == 'High Contrast' and overlay and any(r < t for _, r, t in contrast_feedback(spec)):
         # Preserve the independently selected profile while supplying the validated

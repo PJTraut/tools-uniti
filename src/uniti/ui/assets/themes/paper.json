@@ -34,6 +34,14 @@
     "editor.eol_marker": "#075fd8",
     "editor.invisible_marker": "#7a271a",
     "editor.invisible_background": "#fffaeb",
-    "editor.invisible_border": "#7a271a"
+    "editor.invisible_border": "#7a271a",
+    "syntax.keyword": "#4a298b",
+    "syntax.string": "#257f34",
+    "syntax.number": "#8b5a29",
+    "syntax.tag": "#295a8b",
+    "syntax.attribute": "#8b296a",
+    "syntax.heading": "#8b2929",
+    "syntax.comment": "#696969",
+    "syntax.punctuation": "#414141"
   }
 }

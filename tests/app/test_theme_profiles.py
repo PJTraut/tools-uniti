@@ -25,6 +25,32 @@ def test_packaged_complete_immutable_and_round_trip(tmp_path):
     assert loaded.active_id == custom.id
 
 
+def test_schema_1_profile_migrates_by_freezing_todays_syntax_colors(tmp_path):
+    """BF-063: a file written before syntax colors existed must not be
+    dropped just because it predates `syntax.*` roles entirely.
+    """
+    from uniti.app.theme_profiles import ThemeProfileStore, THEME_SCHEMA
+
+    paper = profiles()[0]
+    legacy_colors = {k: v for k, v in paper.colors.items() if not k.startswith('syntax.')}
+    payload = {
+        'schema': 1,
+        'profiles': [{'id': 'legacy-one', 'name': 'Legacy', 'base_mode': 'Light', 'colors': legacy_colors}],
+        'active_id': 'legacy-one',
+    }
+    store = ThemeProfileStore(tmp_path / 'themes.json')
+    store.path.write_text(json.dumps(payload))
+
+    loaded = store.load('Light')
+
+    assert not loaded.error
+    migrated = loaded.profiles[0]
+    assert all(migrated.colors[role] == paper.colors[role]
+               for role in paper.colors if role.startswith('syntax.'))
+    store.save(loaded.profiles, loaded.active_id)
+    assert json.loads(store.path.read_text())['schema'] == THEME_SCHEMA == 2
+
+
 @pytest.mark.parametrize('mutation', [
     lambda p: p.update(extra=True),
     lambda p: p.update(base_mode='System'),
@@ -33,6 +59,7 @@ def test_packaged_complete_immutable_and_round_trip(tmp_path):
     lambda p: p['colors'].update({'editor.base': 'red'}),
     lambda p: p['colors'].update({'unsupported': '#ffffff'}),
     lambda p: p['colors'].pop('editor.text'),
+    lambda p: p['colors'].pop('syntax.keyword'),
 ])
 def test_profile_validation(mutation):
     from uniti.app.theme_profiles import ThemeProfile

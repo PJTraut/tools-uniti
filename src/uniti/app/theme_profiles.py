@@ -19,11 +19,17 @@ EDITOR_ROLES = ('base', 'text', 'gutter_base', 'gutter_text', 'selection',
                 'selected_text', 'match', 'current_match', 'invalid_byte',
                 'space_marker', 'tab_marker', 'eol_marker', 'invisible_marker',
                 'invisible_background', 'invisible_border')
+# BF-063: matches `uniti.ui.syntax_theme`'s tokenizer categories exactly.
+SYNTAX_ROLES = ('keyword', 'string', 'number', 'tag', 'attribute', 'heading',
+                 'comment', 'punctuation')
 COLOR_ROLES = tuple('palette.' + r for r in PALETTE_ROLES) + (
     'disabled.Text', 'disabled.WindowText', 'disabled.ButtonText',
-) + tuple('editor.' + r for r in EDITOR_ROLES)
+) + tuple('editor.' + r for r in EDITOR_ROLES) + tuple('syntax.' + r for r in SYNTAX_ROLES)
 MAX_PROFILES = 32
 MAX_BYTES = 128 * 1024
+# Schema 2 added the `syntax.*` roles above (BF-063); a schema-1 file on disk
+# predates them entirely, not merely omits optional fields.
+THEME_SCHEMA = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,11 +107,14 @@ class ThemeProfileStore:
             if len(raw) > MAX_BYTES:
                 raise ValueError('Theme file exceeds 128 KiB')
             payload = json.loads(raw, object_pairs_hook=_unique_object)
-            if not isinstance(payload, dict) or set(payload) != {'schema', 'profiles', 'active_id'} or type(payload['schema']) is not int or payload['schema'] != 1:
+            if not isinstance(payload, dict) or set(payload) != {'schema', 'profiles', 'active_id'} or type(payload['schema']) is not int or payload['schema'] not in (1, THEME_SCHEMA):
                 raise ValueError('Unsupported theme profile schema')
             if not isinstance(payload['profiles'], list) or len(payload['profiles']) > MAX_PROFILES:
                 raise ValueError('At most 32 custom profiles are supported')
-            profiles = tuple(ThemeProfile.from_dict(p) for p in payload['profiles'])
+            raw_profiles = payload['profiles']
+            if payload['schema'] == 1:
+                raw_profiles = [self._migrate_schema_1_profile(p) for p in raw_profiles]
+            profiles = tuple(ThemeProfile.from_dict(p) for p in raw_profiles)
             self._validate(profiles)
             selected = payload['active_id']
             if not isinstance(selected, str):
@@ -125,11 +134,44 @@ class ThemeProfileStore:
         for p in profiles:
             ThemeProfile.from_dict(p.as_dict())
 
+    @staticmethod
+    def _migrate_schema_1_profile(payload):
+        """Freeze in schema 1's live-derived syntax colors (BF-063).
+
+        A schema-1 file predates the `syntax.*` roles entirely, so this
+        computes what `syntax_category_palette` would already have shown for
+        that profile's own background and saves it as this profile's
+        explicit starting colors — identical to today's look, editable from
+        here on. `syntax_category_palette` needs a `QColor`, so Qt is
+        imported here, deferred, rather than at module level: every other
+        path through this otherwise Qt-free module (loading or saving a
+        current-schema file) never needs it. If PySide6 isn't installed at
+        all (this module's own Qt-free design allows that), the profile is
+        left as-is and fails `ThemeProfile` validation normally, which
+        `ThemeProfileStore.load()` already handles like any other damaged
+        file — a graceful degradation, not a crash.
+        """
+        if not isinstance(payload, dict) or not isinstance(payload.get('colors'), dict):
+            return payload
+        colors = payload['colors']
+        base = colors.get('editor.base')
+        if not isinstance(base, str) or any(role in colors for role in COLOR_ROLES if role.startswith('syntax.')):
+            return payload
+        try:
+            from PySide6.QtGui import QColor
+            from uniti.ui.syntax_theme import syntax_category_palette
+        except ImportError:
+            return payload
+        derived = syntax_category_palette(QColor(base))
+        migrated = dict(colors)
+        migrated.update({'syntax.' + role: derived[role].name() for role in SYNTAX_ROLES})
+        return {**payload, 'colors': migrated}
+
     def save(self, profiles: tuple[ThemeProfile, ...], active_id: str):
         self._validate(profiles)
         if active_id not in (*BUILTIN_IDS, *(p.id for p in profiles)):
             raise ValueError('Unknown selected profile')
-        payload = dict(schema=1, profiles=[p.as_dict() for p in profiles], active_id=active_id)
+        payload = dict(schema=THEME_SCHEMA, profiles=[p.as_dict() for p in profiles], active_id=active_id)
         if len((json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + '\n').encode('utf-8')) > MAX_BYTES:
             raise ValueError('Theme file exceeds 128 KiB')
         return atomic_write_json(self.path, payload)

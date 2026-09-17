@@ -62,7 +62,11 @@ def test_every_theme_combination_has_complete_editor_tokens(mode: str, contrast:
         isinstance(getattr(spec.editor, field.name), QColor)
         and getattr(spec.editor, field.name).isValid()
         for field in fields(EditorThemeTokens)
+        if field.name != "syntax"
     )
+    from uniti.app.theme_profiles import SYNTAX_ROLES
+    assert set(spec.editor.syntax) == set(SYNTAX_ROLES)
+    assert all(isinstance(color, QColor) and color.isValid() for color in spec.editor.syntax.values())
 
 
 def test_apply_and_active_theme_retain_both_independent_axes():

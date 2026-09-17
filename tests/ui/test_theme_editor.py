@@ -73,6 +73,22 @@ def test_clone_edit_apply_restart_and_unrelated_settings(window):
         restarted.close()
 
 
+def test_syntax_color_role_is_listed_editable_and_propagates_live(window):
+    from PySide6.QtWidgets import QApplication
+    from uniti.ui.theme_editor import ThemeEditor
+    from uniti.ui.theme import active_theme
+    editor = ThemeEditor(window)
+    editor.select_profile('Paper')
+    assert editor.role_combo.findData('syntax.keyword') != -1
+    assert editor.role_combo.itemText(editor.role_combo.findData('syntax.keyword')) == 'Syntax: Keyword'
+    editor.clone_profile()
+    editor.set_color('syntax.keyword', '#123456')
+    assert editor.draft.colors['syntax.keyword'] == '#123456'
+    assert editor.apply_changes()
+    assert active_theme(QApplication.instance()).editor.syntax['keyword'].name() == '#123456'
+    editor.reject()
+
+
 def test_failed_apply_stays_open_reports_error_and_cancel_restores(window, monkeypatch):
     from PySide6.QtWidgets import QApplication
     from uniti.ui.theme_editor import ThemeEditor
