@@ -256,14 +256,27 @@ def _canonical_envelope(envelope: dict[str, object]) -> bytes:
 def test_manifest_payload_round_trips_complete_structural_state():
     anchor = session_module.DockReturnRecord("window-a", "pane-left", 3)
     manifest = _manifest(
-        views=(replace(_manifest().views[0], dock_return=anchor),),
+        views=(
+            replace(
+                _manifest().views[0],
+                dock_return=anchor,
+                extra={"editor.example": [1, "two", None]},
+            ),
+        ),
         find_replace=replace(
             _find_manifest(),
             placement="attached",
             find_wrap=True,
             replace_wrap=True,
+            extra={"find_replace.step_through_position": 4},
         ),
-        documents=(replace(_manifest().documents[0], group_id="A"),),
+        documents=(
+            replace(
+                _manifest().documents[0],
+                group_id="A",
+                extra={"groups.scope_hint": "current_group"},
+            ),
+        ),
     )
 
     payload = manifest_to_payload(manifest)
@@ -278,9 +291,42 @@ def test_manifest_payload_round_trips_complete_structural_state():
     assert payload["find_replace"]["find_wrap"] is True
     assert payload["find_replace"]["replace_wrap"] is True
     assert payload["documents"][0]["group_id"] == "A"
+    assert payload["views"][0]["extra"] == {"editor.example": [1, "two", None]}
+    assert payload["find_replace"]["extra"] == {
+        "find_replace.step_through_position": 4
+    }
+    assert payload["documents"][0]["extra"] == {"groups.scope_hint": "current_group"}
     assert len(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     ) <= (1 << 20)
+
+
+def test_manifest_payload_round_trips_extra_keys_this_build_does_not_recognize():
+    """BF-042: an unrecognized `extra` key must survive load-then-resave."""
+    payload = manifest_to_payload(_manifest())
+    payload["views"][0]["extra"] = {"a_future_build.new_field": {"nested": True}}
+
+    restored = manifest_from_payload(payload)
+    resaved = manifest_to_payload(restored)
+
+    assert resaved["views"][0]["extra"] == {
+        "a_future_build.new_field": {"nested": True}
+    }
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {1: "keys must be strings"},
+        {"unsupported": object()},
+        {f"key-{index}": index for index in range(65)},
+    ],
+)
+def test_view_extra_rejects_untrusted_values(extra):
+    with pytest.raises(ValueError, match="extra"):
+        ViewRecord(
+            "view", "doc", 0, 0, None, 0, 0, 0, False, 100, None, 400, extra
+        )
 
 
 @pytest.mark.parametrize(
@@ -300,12 +346,15 @@ def test_dock_return_record_rejects_untrusted_values(kwargs):
 def test_schema_one_manifest_migrates_new_presentation_fields():
     restored = manifest_from_payload(_schema_one_payload_fixture())
 
-    assert restored.schema == SESSION_SCHEMA == 5
+    assert restored.schema == SESSION_SCHEMA == 6
     assert all(view.dock_return is None for view in restored.views)
     assert restored.find_replace.placement == "detached"
     assert restored.find_replace.find_wrap is False
     assert restored.find_replace.replace_wrap is False
     assert all(document.group_id is None for document in restored.documents)
+    assert all(view.extra == {} for view in restored.views)
+    assert all(document.extra == {} for document in restored.documents)
+    assert restored.find_replace.extra == {}
 
 
 def _schema_two_payload_fixture() -> dict[str, object]:
@@ -319,11 +368,12 @@ def _schema_two_payload_fixture() -> dict[str, object]:
 def test_schema_two_manifest_migrates_wrap_fields():
     restored = manifest_from_payload(_schema_two_payload_fixture())
 
-    assert restored.schema == SESSION_SCHEMA == 5
+    assert restored.schema == SESSION_SCHEMA == 6
     assert restored.find_replace.placement == "attached"
     assert restored.find_replace.find_wrap is False
     assert restored.find_replace.replace_wrap is False
     assert all(document.group_id is None for document in restored.documents)
+    assert restored.find_replace.extra == {}
 
 
 def _schema_three_payload_fixture() -> dict[str, object]:
@@ -337,9 +387,28 @@ def _schema_three_payload_fixture() -> dict[str, object]:
 def test_schema_three_manifest_migrates_document_group_id():
     restored = manifest_from_payload(_schema_three_payload_fixture())
 
-    assert restored.schema == SESSION_SCHEMA == 5
+    assert restored.schema == SESSION_SCHEMA == 6
     assert restored.find_replace.find_wrap is True
     assert all(document.group_id is None for document in restored.documents)
+    assert all(document.extra == {} for document in restored.documents)
+
+
+def _schema_five_payload_fixture() -> dict[str, object]:
+    payload = _schema_three_payload_fixture()
+    payload["schema"] = 5
+    payload["documents"][0]["group_id"] = None
+    payload["views"][0]["font_weight"] = 400
+    return payload
+
+
+def test_schema_five_manifest_migrates_extra_blob():
+    """BF-042: a schema-5 payload (no `extra` key anywhere) still loads."""
+    restored = manifest_from_payload(_schema_five_payload_fixture())
+
+    assert restored.schema == SESSION_SCHEMA == 6
+    assert all(view.extra == {} for view in restored.views)
+    assert all(document.extra == {} for document in restored.documents)
+    assert restored.find_replace.extra == {}
 
 
 @pytest.mark.parametrize(
@@ -567,7 +636,7 @@ def test_pack_decoder_rejects_checksum_mismatch():
 
 def test_manifest_and_pack_reject_unsupported_schemas():
     manifest_payload = manifest_to_payload(_manifest())
-    manifest_payload["schema"] = 6
+    manifest_payload["schema"] = 7
     with pytest.raises(UnsupportedSessionSchema):
         manifest_from_payload(manifest_payload)
 

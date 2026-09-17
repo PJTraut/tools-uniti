@@ -195,6 +195,71 @@ def test_cancelling_resumed_queued_session_prevents_its_write():
         resources.shutdown()
 
 
+def test_document_key_is_threaded_through_to_the_pool_for_fairness():
+    """BF-040: TaskSpec.document_key must reach the pool, end to end."""
+    manager = ResourceManager(
+        max_workers=1,
+        initial_snapshot=MemorySnapshot(16 << 30, 8 << 30),
+    )
+    blocker_started = threading.Event()
+    release_blocker = threading.Event()
+    order: list[str] = []
+    try:
+        manager.tasks.submit(
+            TaskSpec.create(
+                TaskKind.SEARCH, foreground=True, document_key="blocker"
+            ),
+            lambda _context: (blocker_started.set(), release_blocker.wait(1.0)),
+        )
+        assert blocker_started.wait(1.0)
+
+        a_handles = [
+            manager.tasks.submit(
+                TaskSpec.create(
+                    TaskKind.SEARCH, foreground=True, document_key="doc-a"
+                ),
+                lambda _context, index=index: order.append(f"a{index}"),
+            )
+            for index in range(3)
+        ]
+        b_handle = manager.tasks.submit(
+            TaskSpec.create(TaskKind.SEARCH, foreground=True, document_key="doc-b"),
+            lambda _context: order.append("b0"),
+        )
+
+        release_blocker.set()
+        for handle in a_handles:
+            handle.future.result(timeout=1.0)
+        b_handle.future.result(timeout=1.0)
+
+        assert order == ["a0", "b0", "a1", "a2"]
+    finally:
+        manager.shutdown()
+
+
+def test_deferred_background_tasks_preserve_document_key_after_unpause(
+    resource_manager,
+):
+    """BF-040: replaying deferred background tasks must not drop document_key."""
+    order: list[str] = []
+    resource_manager.pause_background(True)
+    resource_manager.tasks.submit(
+        TaskSpec.create(TaskKind.INDEX, foreground=False, document_key="doc-a"),
+        lambda _context: order.append("a"),
+    )
+    resource_manager.tasks.submit(
+        TaskSpec.create(TaskKind.INDEX, foreground=False, document_key="doc-b"),
+        lambda _context: order.append("b"),
+    )
+    resource_manager.pause_background(False)
+
+    deadline = time.monotonic() + 1
+    while len(order) < 2 and time.monotonic() < deadline:
+        time.sleep(0.005)
+
+    assert set(order) == {"a", "b"}
+
+
 def test_estimated_work_above_available_resources_is_refused(resource_manager):
     invoked = False
 
@@ -449,7 +514,7 @@ def test_cancelling_deferred_background_task_removes_it_from_coordinator(
 
 def test_cancellation_after_future_starts_still_enters_coordinator_wrapper():
     class GapPool:
-        def submit(self, _priority, fn, /, *args, token=None, **kwargs):
+        def submit(self, _priority, fn, /, *args, token=None, document_key=None, **kwargs):
             future = Future()
             assert future.set_running_or_notify_cancel()
             self.pending = (future, fn, args, token, kwargs)

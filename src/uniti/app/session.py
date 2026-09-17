@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
 
 from uniti.core.file_identity import FileIdentity, SavedFileStamp
@@ -26,7 +27,7 @@ from uniti.core.history import (
 )
 
 
-SESSION_SCHEMA = 5
+SESSION_SCHEMA = 6
 # Qt's nine named QFont::Weight values (Thin..Black); duplicated here rather
 # than imported from `uniti.ui.text_view` so this module stays Qt-free.
 FONT_WEIGHT_STEPS = (100, 200, 300, 400, 500, 600, 700, 800, 900)
@@ -40,6 +41,8 @@ MAX_LEAF_PANES = 128
 MAX_VIEWS = 256
 MAX_DOCUMENTS = 128
 MAX_INPUT_HISTORY_STATES = 50
+MAX_EXTRA_ENTRIES = 64
+MAX_EXTRA_DEPTH = 8
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 _EOL_VALUES = frozenset({None, "LF", "CRLF", "CR"})
@@ -106,6 +109,46 @@ def _require_tuple(value: object, field: str) -> tuple:
     if not isinstance(value, tuple):
         raise ValueError(f"{field} must be an immutable tuple")
     return value
+
+
+def _validate_extra_value(value: object, *, depth: int = 0) -> None:
+    """Recursively require plain JSON-compatible values (BF-042 extra blob)."""
+
+    if depth > MAX_EXTRA_DEPTH:
+        raise ValueError("extra field is too deeply nested")
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return
+    if isinstance(value, list):
+        for item in value:
+            _validate_extra_value(item, depth=depth + 1)
+        return
+    if isinstance(value, dict):
+        if any(not isinstance(key, str) for key in value):
+            raise ValueError("extra field mapping keys must be strings")
+        for item in value.values():
+            _validate_extra_value(item, depth=depth + 1)
+        return
+    raise ValueError("extra field contains an unsupported value")
+
+
+def _require_extra(value: object, field: str) -> Mapping[str, object]:
+    """Validate and freeze an open-ended, forward-compatible extra blob.
+
+    Unlike every other field in this module, the *contents* of this mapping
+    are deliberately not schema-versioned: new optional per-record state can
+    be added under a new namespaced key (e.g. "find_replace.step_through")
+    without a SESSION_SCHEMA bump, and a key this build doesn't recognize
+    still round-trips unchanged (see manifest_to_payload/manifest_from_payload
+    for the two record types that carry this field).
+    """
+
+    if not isinstance(value, Mapping) or any(not isinstance(key, str) for key in value):
+        raise ValueError(f"{field} must be an object")
+    if len(value) > MAX_EXTRA_ENTRIES:
+        raise ValueError(f"{field} has too many entries")
+    copy = dict(value)
+    _validate_extra_value(copy)
+    return MappingProxyType(copy)
 
 
 def _validate_geometry(
@@ -311,6 +354,7 @@ class FindReplaceManifestRecord:
     placement: Literal["attached", "detached"] = "detached"
     find_wrap: bool = False
     replace_wrap: bool = False
+    extra: Mapping[str, object] = MappingProxyType({})
 
     def __post_init__(self) -> None:
         if not isinstance(self.find_current, InputStateRecord) or not isinstance(
@@ -323,6 +367,9 @@ class FindReplaceManifestRecord:
             or self.history_pack.kind != "find_replace"
         ):
             raise ValueError("find/replace history pack reference is invalid")
+        object.__setattr__(
+            self, "extra", _require_extra(self.extra, "find/replace extra")
+        )
 
 
 def _validate_find_replace_options(record: object) -> None:
@@ -385,6 +432,7 @@ class ViewRecord:
     zoom_percent: int
     dock_return: DockReturnRecord | None = None
     font_weight: int = 400
+    extra: Mapping[str, object] = MappingProxyType({})
 
     def __post_init__(self) -> None:
         _require_identifier(self.view_id, "view ID")
@@ -406,6 +454,7 @@ class ViewRecord:
             raise ValueError("view dock return is invalid")
         if self.font_weight not in FONT_WEIGHT_STEPS:
             raise ValueError("view font_weight must be one of Qt's nine named weights")
+        object.__setattr__(self, "extra", _require_extra(self.extra, "view extra"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -478,6 +527,7 @@ class DocumentRecord:
     last_active_at: str
     closed_at: str | None
     group_id: str | None = None
+    extra: Mapping[str, object] = MappingProxyType({})
 
     def __post_init__(self) -> None:
         _require_identifier(self.document_id, "document ID")
@@ -492,6 +542,9 @@ class DocumentRecord:
             _require_timestamp(self.closed_at, "document closed_at")
         if self.group_id is not None:
             _require_identifier(self.group_id, "document group ID")
+        object.__setattr__(
+            self, "extra", _require_extra(self.extra, "document extra")
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -880,6 +933,7 @@ def manifest_to_payload(manifest: SessionManifest) -> dict[str, object]:
                 "canonical_path": item.canonical_path,
                 "closed_at": item.closed_at,
                 "document_id": item.document_id,
+                "extra": dict(item.extra),
                 "group_id": item.group_id,
                 "last_active_at": item.last_active_at,
                 "view_ids": list(item.view_ids),
@@ -888,6 +942,7 @@ def manifest_to_payload(manifest: SessionManifest) -> dict[str, object]:
         ],
         "find_replace": {
             "case_sensitive": manifest.find_replace.case_sensitive,
+            "extra": dict(manifest.find_replace.extra),
             "find_current": _state_to_payload(manifest.find_replace.find_current),
             "find_wrap": manifest.find_replace.find_wrap,
             "geometry": (
@@ -921,6 +976,7 @@ def manifest_to_payload(manifest: SessionManifest) -> dict[str, object]:
                 "anchor": item.anchor,
                 "cursor": item.cursor,
                 "document_id": item.document_id,
+                "extra": dict(item.extra),
                 "font_weight": item.font_weight,
                 "dock_return": (
                     None
@@ -1096,7 +1152,7 @@ def manifest_from_payload(value: object) -> SessionManifest:
     }
     _keys(payload, required, "session manifest")
     source_schema = payload.get("schema")
-    if type(source_schema) is not int or source_schema not in {1, 2, 3, 4, SESSION_SCHEMA}:
+    if type(source_schema) is not int or source_schema not in {1, 2, 3, 4, 5, SESSION_SCHEMA}:
         raise UnsupportedSessionSchema(
             f"unsupported session schema: {source_schema}"
         )
@@ -1146,6 +1202,8 @@ def manifest_from_payload(value: object) -> SessionManifest:
     )
     if source_schema >= 5:
         view_fields = view_fields | {"font_weight"}
+    if source_schema >= 6:
+        view_fields = view_fields | {"extra"}
     for value in views_payload:
         item = _mapping(value, "view")
         _keys(item, view_fields, "view")
@@ -1157,6 +1215,8 @@ def manifest_from_payload(value: object) -> SessionManifest:
         )
         if source_schema < 5:
             view_values["font_weight"] = 400
+        if source_schema < 6:
+            view_values["extra"] = {}
         views.append(ViewRecord(**view_values))
 
     documents = []
@@ -1169,6 +1229,8 @@ def manifest_from_payload(value: object) -> SessionManifest:
     }
     if source_schema >= 4:
         document_fields = document_fields | {"group_id"}
+    if source_schema >= 6:
+        document_fields = document_fields | {"extra"}
     for value in documents_payload:
         item = _mapping(value, "document")
         _keys(item, document_fields, "document")
@@ -1180,6 +1242,7 @@ def manifest_from_payload(value: object) -> SessionManifest:
                 item["last_active_at"],
                 item["closed_at"],
                 item["group_id"] if source_schema >= 4 else None,
+                item["extra"] if source_schema >= 6 else {},
             )
         )
 
@@ -1202,6 +1265,8 @@ def manifest_from_payload(value: object) -> SessionManifest:
         find_fields = find_fields | {"placement"}
     if source_schema >= 3:
         find_fields = find_fields | {"find_wrap", "replace_wrap"}
+    if source_schema >= 6:
+        find_fields = find_fields | {"extra"}
     _keys(find_payload, find_fields, "find/replace manifest")
     find_geometry = find_payload["geometry"]
     find_replace = FindReplaceManifestRecord(
@@ -1223,6 +1288,7 @@ def manifest_from_payload(value: object) -> SessionManifest:
         "detached" if source_schema == 1 else find_payload["placement"],
         find_payload["find_wrap"] if source_schema >= 3 else False,
         find_payload["replace_wrap"] if source_schema >= 3 else False,
+        find_payload["extra"] if source_schema >= 6 else {},
     )
 
     return SessionManifest(

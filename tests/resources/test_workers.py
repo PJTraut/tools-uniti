@@ -108,6 +108,51 @@ def test_active_limit_holds_queued_work_until_capacity_increases():
         pool.shutdown()
 
 
+def test_round_robin_prevents_one_document_from_starving_another_at_same_priority():
+    """BF-040: same-tier dispatch is round-robin by document, not pure FIFO.
+
+    Before this fix, a burst of same-priority tasks from one document
+    (e.g. a large Find-in-Selection) would dispatch strictly ahead of a
+    single task from another document submitted right after it.
+    """
+    pool = PriorityWorkerPool(max_workers=1, thread_name_prefix="uniti-fair")
+    blocker_started = threading.Event()
+    release_blocker = threading.Event()
+    order: list[str] = []
+
+    def blocker():
+        blocker_started.set()
+        release_blocker.wait(1.0)
+
+    try:
+        running = pool.submit(WorkPriority.SEARCH, blocker, document_key="blocker")
+        assert blocker_started.wait(1.0)
+
+        a_futures = [
+            pool.submit(
+                WorkPriority.SEARCH,
+                lambda index=index: order.append(f"a{index}"),
+                document_key="doc-a",
+            )
+            for index in range(5)
+        ]
+        b_future = pool.submit(
+            WorkPriority.SEARCH,
+            lambda: order.append("b0"),
+            document_key="doc-b",
+        )
+
+        release_blocker.set()
+        running.result(timeout=1.0)
+        for future in a_futures:
+            future.result(timeout=1.0)
+        b_future.result(timeout=1.0)
+
+        assert order == ["a0", "b0", "a1", "a2", "a3", "a4"]
+    finally:
+        pool.shutdown()
+
+
 def test_active_limit_is_clamped_to_pool_capacity():
     pool = PriorityWorkerPool(max_workers=3)
     try:

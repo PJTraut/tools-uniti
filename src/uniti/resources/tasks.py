@@ -359,6 +359,7 @@ class TaskCoordinator:
             handle,
             fn,
             public_future,
+            document_key=handle.spec.document_key,
         )
         if public_future is None:
             handle._set_future(worker_future)

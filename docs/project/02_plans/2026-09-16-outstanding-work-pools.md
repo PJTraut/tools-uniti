@@ -9,25 +9,18 @@ Milestone: reviewed against the active [B3 milestone](v0.001b3-find-replace-and-
 
 The feedback log accumulates one `BF-NNN` entry per item, in report order. That's the right structure for disposition history, but it doesn't answer "what's left, and how does it cluster for planning the next pass of work" — this document is that view, refreshed periodically rather than maintained line-by-line. It does not replace the feedback log or the [ROADMAP](ROADMAP.md)'s milestone-level sequencing; it sits between them, at the level of "which outstanding `BF-NNN` items make sense to batch together next."
 
-## Pool 1 — Escalated architecture findings (unscheduled)
+## Pool 1 — Benchmark coverage gaps
 
-Both are P2/P4 findings from the P1 Find/Replace rework review, explicitly escalated rather than folded into that work.
-
-- [BF-040 \[P2\]](../BETA_FEEDBACK.md#bf-040-p2--per-document-task-pool-fairness-and-multi-document-benchmark-foundation) — Per-document task-pool fairness and multi-document benchmark foundation
-- [BF-042 \[P4\]](../BETA_FEEDBACK.md#bf-042-p4--session-schema-is-being-bumped-one-field-at-a-time) — Session schema is being bumped one field at a time (worth revisiting now that BF-067's font-weight work bumped it again, to 5)
-
-## Pool 2 — Benchmark coverage gaps
-
-Measurement gaps, not implementation gaps — the features exist; there's no benchmark evidence for these scenarios.
+Measurement gaps, not implementation gaps — the features exist; there's no benchmark evidence for these scenarios. BF-040 (per-document task-pool fairness) landed 2026-09-17 as the fairness foundation these two benchmarks need to give trustworthy results — see the [Pool 1 task-fairness and schema-flexibility plan](2026-09-17-pool-1-task-fairness-and-schema-flexibility-plan.md).
 
 - [BF-030](../BETA_FEEDBACK.md#bf-030--no-benchmark-coverage-for-many-concurrently-open-documents) — No benchmark coverage for many concurrently open documents
 - [BF-031](../BETA_FEEDBACK.md#bf-031--no-benchmark-coverage-for-large-cutpaste-or-undoredo-at-scale) — No benchmark coverage for large cut/paste or undo/redo at scale
 
-## Pool 3 — RTL's one remaining real gap
+## Pool 2 — RTL's one remaining real gap
 
 - Non-wrapped/horizontal-scroll multi-checkpoint case for an RTL line longer than one 8192-character checkpoint window. Investigated 2026-09-16 and deliberately not attempted: `HorizontalLayouts`'s progressive checkpoint model assumes reading further into a line always means visually further right (true for LTR, false for RTL), and a correct fix needs a mirrored coordinate space — a real architecture change touching several call sites currently tuned only for LTR, not a bounded patch. See the [RTL/bidi support plan](2026-09-15-rtl-bidi-support-plan.md)'s "Progress" section and [BF-064](../BETA_FEEDBACK.md#bf-064--rtlbidi-content-support-arabic--hebrew) for the full investigation.
 
-## Pool 4 — Native/hosted confirmation (standing, blocked without hardware/testers)
+## Pool 3 — Native/hosted confirmation (standing, blocked without hardware/testers)
 
 Every item below is code-complete; only affected-host, native-input, or hosted-CI confirmation remains. This pool cannot move without physical hardware or the B1 tester program — it's not a coding task.
 
@@ -37,7 +30,7 @@ Every item below is code-complete; only affected-host, native-input, or hosted-C
 - [BF-025](../BETA_FEEDBACK.md#bf-025--last-line-of-a-file-displays-only-80-when-the-editor-is-focused) — Last line partial-height fix (native visual confirmation)
 - RTL/bidi (BF-064) physical Arabic/Hebrew IME qualification — needs native hardware, not just an emulator
 
-## Pool 5 — Long-term wishlist (deliberately unscoped)
+## Pool 4 — Long-term wishlist (deliberately unscoped)
 
 Recorded in the [Feature Wishlist](../FEATURE_WISHLIST.md), not yet promoted to a `BF-NNN` entry.
 
@@ -54,4 +47,4 @@ Unrelated to any `BF-NNN` item above; tracked by the [ROADMAP](ROADMAP.md) and [
 
 ## Recently closed (context for why they're absent above)
 
-For continuity when this document is next refreshed: BF-029 (Open Folder by Type), BF-061 (Format/Minify Document), BF-064's content-level bidi work including its 2026-09-16 multi-rect-selection and caret-affinity fixes, BF-066 (font selection policy and Arabic/Hebrew bundling), and BF-067 (global font weight) all landed and were archived or updated between 2026-09-15 and 2026-09-16. This document's former Pool 1 (Recent Files, Find/Replace panel sizing, current-line highlight, Unicode hex hotkey — BF-058/059/060/053) and Pool 2 (Markdown preview, the extension→profile mapping half of the theme/text-type editor, and Inspect Selection — BF-062/063/065) all landed the same day (2026-09-16); see each `BF-NNN` entry in the [Beta Feedback Log](../BETA_FEEDBACK.md) for its implementation and verification notes. [BF-068](../BETA_FEEDBACK.md#bf-068--detached-findreplace-panel-geometry-can-restore-off-screen-after-a-monitor-is-removed) (detached Find/Replace panel geometry restoring off-screen after a monitor is removed) was found and fixed on 2026-09-17, the same pass that reviewed this document. See [`03_implemented/README.md`](../03_implemented/README.md#v0001b3-workstream-records) for the archived plans.
+For continuity when this document is next refreshed: BF-029 (Open Folder by Type), BF-061 (Format/Minify Document), BF-064's content-level bidi work including its 2026-09-16 multi-rect-selection and caret-affinity fixes, BF-066 (font selection policy and Arabic/Hebrew bundling), and BF-067 (global font weight) all landed and were archived or updated between 2026-09-15 and 2026-09-16. This document's former Pool 1 (Recent Files, Find/Replace panel sizing, current-line highlight, Unicode hex hotkey — BF-058/059/060/053) and Pool 2 (Markdown preview, the extension→profile mapping half of the theme/text-type editor, and Inspect Selection — BF-062/063/065) all landed the same day (2026-09-16); see each `BF-NNN` entry in the [Beta Feedback Log](../BETA_FEEDBACK.md) for its implementation and verification notes. [BF-068](../BETA_FEEDBACK.md#bf-068--detached-findreplace-panel-geometry-can-restore-off-screen-after-a-monitor-is-removed) (detached Find/Replace panel geometry restoring off-screen after a monitor is removed) was found and fixed on 2026-09-17, the same pass that reviewed this document. This document's former Pool 1 — Escalated architecture findings (BF-040, per-document task-pool fairness; BF-042, the session-schema `extra` blob) — both landed 2026-09-17; see the [Pool 1 task-fairness and schema-flexibility plan](2026-09-17-pool-1-task-fairness-and-schema-flexibility-plan.md) for implementation and verification detail. Remaining pools were renumbered accordingly (old Pool 2 → 1, Pool 3 → 2, Pool 4 → 3, Pool 5 → 4). See [`03_implemented/README.md`](../03_implemented/README.md#v0001b3-workstream-records) for the archived plans.

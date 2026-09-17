@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import itertools
 import threading
+from collections import OrderedDict, deque
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from enum import IntEnum
-from queue import Empty, PriorityQueue
 from typing import Any, Callable
 
 from .cancel import CancellationToken
@@ -22,15 +22,16 @@ class WorkPriority(IntEnum):
     PREFETCH = 50
 
 
-@dataclass(order=True, slots=True)
+@dataclass(slots=True)
 class _WorkItem:
     priority: int
     sequence: int
-    future: Future | None = field(compare=False)
-    fn: Callable[..., Any] | None = field(compare=False)
-    args: tuple[Any, ...] = field(compare=False, default=())
-    kwargs: dict[str, Any] = field(compare=False, default_factory=dict)
-    token: CancellationToken | None = field(compare=False, default=None)
+    future: Future | None
+    fn: Callable[..., Any] | None
+    args: tuple[Any, ...] = ()
+    kwargs: dict[str, Any] = field(default_factory=dict)
+    token: CancellationToken | None = None
+    document_key: str | None = None
 
 
 class PriorityWorkerPool:
@@ -41,7 +42,12 @@ class PriorityWorkerPool:
     def __init__(self, *, max_workers: int, thread_name_prefix: str = "uniti") -> None:
         if max_workers <= 0:
             raise ValueError("max_workers must be positive")
-        self._queue: PriorityQueue[_WorkItem] = PriorityQueue()
+        # {priority: {document_key: deque[_WorkItem]}}. Each priority tier's
+        # OrderedDict round-robins across the documents with pending work at
+        # that tier: a pop takes the front document's oldest item, then
+        # rotates that document to the back so a burst from one document
+        # can't starve another's item at the same tier (BF-040).
+        self._tiers: dict[int, OrderedDict[str | None, deque[_WorkItem]]] = {}
         self._sequence = itertools.count()
         self._lock = threading.Lock()
         self._condition = threading.Condition(self._lock)
@@ -93,11 +99,12 @@ class PriorityWorkerPool:
         /,
         *args: Any,
         token: CancellationToken | None = None,
+        document_key: str | None = None,
         **kwargs: Any,
     ) -> Future:
         if not callable(fn):
             raise TypeError("fn must be callable")
-        with self._lock:
+        with self._condition:
             if self._shutdown:
                 raise RuntimeError("worker pool is shut down")
             future: Future = Future()
@@ -109,14 +116,41 @@ class PriorityWorkerPool:
                 args=args,
                 kwargs=kwargs,
                 token=token,
+                document_key=document_key,
             )
             self._queued_count += 1
-            self._queue.put(item)
+            self._enqueue_locked(item)
+            self._condition.notify_all()
             return future
+
+    def _enqueue_locked(self, item: _WorkItem) -> None:
+        tier = self._tiers.setdefault(item.priority, OrderedDict())
+        bucket = tier.get(item.document_key)
+        if bucket is None:
+            bucket = deque()
+            tier[item.document_key] = bucket
+        bucket.append(item)
+
+    def _pop_next_locked(self) -> _WorkItem:
+        priority = min(self._tiers)
+        tier = self._tiers[priority]
+        key = next(iter(tier))
+        bucket = tier[key]
+        item = bucket.popleft()
+        if bucket:
+            tier.move_to_end(key)
+        else:
+            del tier[key]
+            if not tier:
+                del self._tiers[priority]
+        return item
 
     def _worker(self) -> None:
         while True:
-            item = self._queue.get()
+            with self._condition:
+                while not self._tiers:
+                    self._condition.wait()
+                item = self._pop_next_locked()
             active = False
             try:
                 if item.fn is None:
@@ -151,29 +185,24 @@ class PriorityWorkerPool:
                         if active:
                             self._active_count -= 1
                         self._condition.notify_all()
-                self._queue.task_done()
 
     def shutdown(self, *, wait: bool = True, cancel_pending: bool = False) -> None:
-        with self._lock:
+        with self._condition:
             if self._shutdown:
                 threads = tuple(self._threads)
             else:
                 self._shutdown = True
                 self._cancel_pending_on_shutdown = cancel_pending
                 if cancel_pending:
-                    while True:
-                        try:
-                            item = self._queue.get_nowait()
-                        except Empty:
-                            break
-                        try:
-                            if item.future is not None:
-                                item.future.cancel()
-                                self._queued_count -= 1
-                        finally:
-                            self._queue.task_done()
+                    for tier in self._tiers.values():
+                        for bucket in tier.values():
+                            for item in bucket:
+                                if item.future is not None:
+                                    item.future.cancel()
+                                    self._queued_count -= 1
+                    self._tiers.clear()
                 for _ in self._threads:
-                    self._queue.put(
+                    self._enqueue_locked(
                         _WorkItem(
                             priority=self._STOP_PRIORITY,
                             sequence=next(self._sequence),
