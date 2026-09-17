@@ -8,8 +8,8 @@ This is a continuation snapshot. [Current Status](../01_current/STATUS.md) owns 
 
 - Display/package identity: `v0.001b3` / `0.1b3`, consistent in `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml`.
 - Active milestone: B3 Find/Replace Rework & Editor Refinement Beta. B2 Feedback Refinement Beta is superseded as active (its own BF-001–BF-010 native-host/hosted evidence remains open, not implemented history). A21 Cross-Platform Alpha is the latest fully completed milestone.
-- Complete reviewed feedback source: BF-012–BF-068, plus BF-040/042 (the last two escalated architecture findings from the P1 review), committed and integrated on `main` at `0d75094` (previously `ca05d0b`, then `6d0e90f`/`d511723`; see the [B3 milestone plan](../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md) for the full item table).
-- Local `main` is ahead of `origin/main` by two commits (`d511723`, `0d75094`) as of this capture; it has not yet been pushed.
+- Complete reviewed feedback source: BF-012–BF-068, plus BF-040/042 (the last two escalated architecture findings from the P1 review) and BF-064's multi-checkpoint RTL horizontal-scroll fix, committed and integrated on `main` at `81c59e9` (previously `ca05d0b`, then `6d0e90f`/`d511723`/`0d75094`/`05483ec`; see the [B3 milestone plan](../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md) for the full item table).
+- Local `main` is ahead of `origin/main` by four commits (`d511723`, `0d75094`, `05483ec`, `81c59e9`) as of this capture; it has not yet been pushed.
 - Latest immutable release tag: `v0.001a15` at `10f419e`. This source promotion creates a B3 development identity; it does not create a tag, release, or native distribution.
 
 B3 is now the installed source version under [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md), continuing [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md)'s B1→B2 pattern. Historical A22/A23/A24/B1 plan names, and B2's own outstanding native/hosted evidence, retain outstanding release requirements; they do not require reverting the source version. Earlier checkpoints such as `5724f6c`, `aab3f3c`, `33c71d3`, and `3e20214` remain historical evidence; their changes must not be reapplied.
@@ -33,9 +33,9 @@ Per-item implementation and remaining host checks are in the [Beta Feedback Log]
 
 ## Verification and its limits
 
-Local full suite at `0d75094`: **1,960 passed, 6 expected platform skips** (plus 8 pre-existing local bootstrap/metadata-mismatch failures, confirmed to reproduce identically on unmodified `main` before the BF-040/042 pass — unrelated to any integrated change; see the [Pool 1 plan](../03_implemented/milestones/2026-09-17-pool-1-task-fairness-and-schema-flexibility-plan.md)). This supersedes the `ca05d0b` count below, which is retained for history: **1,830 passed, 6 expected platform skips**, including the regressions added for that batch (BF-017's single- and two-window shortcut-delivery tests, BF-056's match-report-sizing test) and the rewritten menu-structure test for BF-057. One order-dependent flaky failure (`test_palette_change_rebuilds_group_formats_with_accessible_contrast`, in `tests/ui/test_find_replace_contract.py`) was confirmed present on the pre-session code too, when the full file runs in a particular order; it is unrelated to that batch's changes and passes in isolation.
+Local full suite at `81c59e9`: **1,970 passed, 6 expected platform skips, no failures** (the 8 local bootstrap/metadata-mismatch failures previously recorded at `0d75094` did not reproduce in this run; they were already characterized there as environment-dependent and unrelated to any integrated change, so their absence here is not itself evidence they're fixed — see the [Pool 1 plan](../03_implemented/milestones/2026-09-17-pool-1-task-fairness-and-schema-flexibility-plan.md) for that earlier characterization). This supersedes the `ca05d0b` count below, which is retained for history: **1,830 passed, 6 expected platform skips**, including the regressions added for that batch (BF-017's single- and two-window shortcut-delivery tests, BF-056's match-report-sizing test) and the rewritten menu-structure test for BF-057. One order-dependent flaky failure (`test_palette_change_rebuilds_group_formats_with_accessible_contrast`, in `tests/ui/test_find_replace_contract.py`) was confirmed present on the pre-session code too, when the full file runs in a particular order; it is unrelated to that batch's changes and passes in isolation.
 
-No fresh hosted CI run or native-host confirmation exists for this B3 candidate. The historical B2 verification below remains as it was captured; it is evidence for `3e20214`/`596c88f`, not for the current `0d75094` tip.
+No fresh hosted CI run or native-host confirmation exists for this B3 candidate. The historical B2 verification below remains as it was captured; it is evidence for `3e20214`/`596c88f`, not for the current `81c59e9` tip.
 
 Recorded local evidence on the earlier B2 promotion (`33c71d3`/`3e20214`), retained for history:
 
@@ -48,7 +48,7 @@ The latest complete four-lane hosted feedback pass remains [run `34253008439`](h
 
 ## Remaining work
 
-1. Push `0d75094` to `origin/main` when ready (local is two commits ahead as of this capture).
+1. Push `81c59e9` to `origin/main` when ready (local is four commits ahead as of this capture).
 2. Obtain affected Windows and Mac confirmation of first use, last-window close, explicit Quit, terminal prompt return, and relaunch. BF-002 remains a critical testing blocker until those reports exist.
 3. Obtain native confirmation for the B3-specific items still marked pending in the feedback log: BF-017 (Find/Replace zoom shortcut; the underlying wiring is now regression-tested in headless simulation, but real macOS confirmation is still open), BF-019 and BF-025 (visual confirmations), and any other item recorded as pending native/affected-host evidence.
 4. Qualify physical Chinese/Korean IME composition, commit, and cancellation on Windows, macOS, and Linux. Synthetic events do not close physical input qualification.
