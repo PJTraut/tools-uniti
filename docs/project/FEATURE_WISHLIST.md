@@ -6,12 +6,6 @@ A running list of future feature ideas raised in passing, not yet scoped, design
 
 An idea moves out of this list when it is either promoted to a dated `BF-NNN` entry in the feedback log (once someone wants to actually scope it) or written up in the parked catalog (once it's evaluated and deliberately deferred with rationale).
 
-## Compare files
-
-- Noted: 2026-09-12.
-- Idea: a compare/diff function between two files (or two open documents).
-- Nothing scoped yet: not clear whether this means a side-by-side diff view, an inline merge-style view, comparison against the saved-on-disk version of the same document, or arbitrary two-document comparison.
-
 ## Multi-cursor / Select All Occurrences
 
 - Noted: 2026-09-13, from an architecture review.
