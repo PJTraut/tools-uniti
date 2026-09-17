@@ -1,13 +1,13 @@
 # UNITI Current Scope
 
-Date: 2026-09-15
+Date: 2026-09-17
 Version: `v0.001b3` / `0.1b3`
 
 ## Product boundary
 
 UNITI is a focused, cross-platform power text editor for Unicode correctness, explicit encoding/EOL control, bounded large-file editing, advanced third-party-regex search/replace, and a safe diagnosable desktop startup lifecycle. It is an editor rather than an IDE, project platform, plugin host, package manager, or cloud service.
 
-The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, and a21 Cross-Platform Alpha are implemented and verified. B3 Find/Replace Rework & Editor Refinement Beta is active. All reviewed BF-012–BF-057 feedback code is committed and integrated on GitHub `main` and is now identified as B3 under [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md). Outstanding release gates remain open. The earlier `aab3f3c` remains the latest hosted-green feedback checkpoint; no hosted run exists yet for the B3 candidate.
+The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, and a21 Cross-Platform Alpha are implemented and verified. B3 Find/Replace Rework & Editor Refinement Beta is active. All reviewed BF-012–BF-068 feedback code, plus BF-040/042, is committed and integrated on GitHub `main` and is now identified as B3 under [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md). Outstanding release gates remain open. The earlier `aab3f3c` remains the latest hosted-green feedback checkpoint; no hosted run exists yet for the B3 candidate.
 
 ## Included lifecycle capabilities
 
@@ -109,6 +109,6 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 
 ## Parked outside the approved roadmap
 
-Right-to-left/mixed-direction editing, multi-code-point inspection labels, Host-Python installation, signed polished installers, notarization, updater, network repair, accounts, cloud telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, and full programming-language syntax highlighting remain outside the approved roadmap. Embedded native application bundles and local executable health/repair are approved future A23 scope but are not implemented behavior.
+Host-Python installation, signed polished installers, notarization, updater, network repair, accounts, cloud telemetry, network-dependent normal startup, project/workspace systems, plugins, LSP, Git UI, integrated terminal, AI/cloud features, hex editing, full programming-language syntax highlighting, and syntax-category color customization (BF-063's un-implemented color half) remain outside the approved roadmap. Embedded native application bundles and local executable health/repair are approved future A23 scope but are not implemented behavior. Content-level right-to-left/bidi editing (Arabic + Hebrew; BF-064) and per-character Unicode-property inspection over a multi-character selection (BF-065) are now implemented — see [Current Handover](../06_handovers/CURRENT_HANDOVER.md); the deeper non-wrapped/multi-checkpoint RTL scrolling case and native IME qualification remain open, and the application's own chrome intentionally stays left-to-right.
 
 See the [Parked Capability Catalog](../04_parked/CATALOG.md) for rationale and re-evaluation triggers.

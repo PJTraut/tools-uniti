@@ -1,8 +1,8 @@
 # UNITI Ordered Roadmap
 
-Date: 2026-09-08
+Date: 2026-09-17
 
-B3 Find/Replace Rework & Editor Refinement Beta is the active source-development milestone. The user-directed version move is recorded in [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md), continuing [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md)'s B1→B2 pattern. All reviewed BF-012–BF-057 source changes are integrated; the version is `v0.001b3` / `0.1b3`.
+B3 Find/Replace Rework & Editor Refinement Beta is the active source-development milestone. The user-directed version move is recorded in [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md), continuing [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md)'s B1→B2 pattern. All reviewed BF-012–BF-068 source changes, plus BF-040/042, are integrated; the version is `v0.001b3` / `0.1b3`. See the [B3 milestone plan](v0.001b3-find-replace-and-editor-refinement-beta.md) for the full item-by-item table and the specific items still excluded from scope.
 
 ## Active development and outstanding qualification
 

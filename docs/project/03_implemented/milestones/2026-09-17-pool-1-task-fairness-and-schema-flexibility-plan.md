@@ -2,8 +2,8 @@
 
 Date: 2026-09-17
 Status: implemented and verified, integrated on `main`. Both BF-040 (round-robin per-document task-pool fairness) and BF-042 (session-schema `extra` blob) landed as scoped below, with no deviations from the confirmed mechanism choices. Full suite: 1960 passed, 6 skipped, 8 failed — the 8 failures are a pre-existing local bootstrap/metadata-mismatch environment issue, confirmed to reproduce identically on unmodified `main` before this work started, unrelated to either change.
-Feedback: [BF-040 \[P2\]](../BETA_FEEDBACK.md#bf-040-p2--per-document-task-pool-fairness-and-multi-document-benchmark-foundation), [BF-042 \[P4\]](../BETA_FEEDBACK.md#bf-042-p4--session-schema-is-being-bumped-one-field-at-a-time)
-Milestone: new workstream inside the active [B3 milestone](v0.001b3-find-replace-and-editor-refinement-beta.md); source of this pairing was the outstanding-work-pools index's former Pool 1 ("Escalated architecture findings, unscheduled"), closed and removed from that index on completion — remaining pools renumbered accordingly (see the [outstanding-work-pools index](2026-09-16-outstanding-work-pools.md)'s "Recently closed" section)
+Feedback: [BF-040 \[P2\]](../../BETA_FEEDBACK.md#bf-040-p2--per-document-task-pool-fairness-and-multi-document-benchmark-foundation), [BF-042 \[P4\]](../../BETA_FEEDBACK.md#bf-042-p4--session-schema-is-being-bumped-one-field-at-a-time)
+Milestone: new workstream inside the active [B3 milestone](../../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md); source of this pairing was the outstanding-work-pools index's former Pool 1 ("Escalated architecture findings, unscheduled"), closed and removed from that index on completion — remaining pools renumbered accordingly (see the [outstanding-work-pools index](../../02_plans/2026-09-16-outstanding-work-pools.md)'s "Recently closed" section)
 
 ## Scope (confirmed with the user)
 

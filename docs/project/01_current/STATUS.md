@@ -1,6 +1,6 @@
 # UNITI Current Status
 
-Date: 2026-09-15
+Date: 2026-09-17
 
 ## Canonical baseline
 
@@ -8,7 +8,7 @@ Date: 2026-09-15
 |---|---|
 | Current source identity | `v0.001b3` / `0.1b3` in `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` |
 | Active development milestone | B3 Find/Replace Rework & Editor Refinement Beta |
-| Implemented feedback | All reviewed BF-001–BF-057 source changes, integrated on GitHub `main` at `ca05d0b` (local `main`, one commit ahead of `origin/main` as of this capture) |
+| Implemented feedback | All reviewed BF-001–BF-068 source changes, plus BF-040/042, integrated on local `main` at `0d75094` (2 commits ahead of `origin/main` as of this capture; see the [B3 milestone plan](../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md) for the full item table) |
 | Pre-promotion baseline | `596c88f` ("1b2 feedback implementation"), the B2-era commit through which the B2 promotion below was verified |
 | Promotion scope | Version metadata and project records; existing document, settings, session, and recovery schemas remain unchanged |
 | Latest complete hosted feedback pass | `aab3f3c`, [run `34253008439`](https://github.com/PJTraut/tools-uniti/actions/runs/34253008439), all four lanes (no hosted run yet exists for the B3 candidate) |
@@ -151,6 +151,6 @@ Documentation verification found [BF-012](../BETA_FEEDBACK.md#bf-012--full-unico
 
 Before that new finding, recorded local and four-lane hosted evidence identified no shared-code session-writer race, silent admitted-history loss, external-file overwrite, recovery-evidence loss, unsafe instance takeover, cursor-navigation dependency on Find All, GUI freeze, unbounded allocation, platform launcher corruption, native-path defect, or inherited text-integrity/regex blocker. BF-002 nevertheless remains a critical user-testing blocker until the integrated shutdown/relaunch corrections are distributed and confirmed on the affected Windows and Mac hosts.
 
-UNITI does not install a permanent OS daemon. The desktop service retains an empty visible editor window when the user closes the last window, and exits on explicit Quit, logout, shutdown, or process termination. Legacy zero-window sessions remain restorable. Project/workspace semantics, cloud sync, collaboration, plugins, LSP, permanent background services, polished installers, multi-code-point grapheme inspection, and RTL/mixed-direction editing remain outside the implemented boundary. User-authored theme profiles, configurable held single-code-point Unicode inspection, and a bounded file-type syntax-highlighting extension point (BF-027, BF-041) are implemented; cross-row/multiline-aware highlighting and a syntax-color theme editor remain parked.
+UNITI does not install a permanent OS daemon. The desktop service retains an empty visible editor window when the user closes the last window, and exits on explicit Quit, logout, shutdown, or process termination. Legacy zero-window sessions remain restorable. Project/workspace semantics (beyond the narrow bounded Open Folder by Type exception, [ADR-0009](../05_decisions/ADR-0009-bounded-open-folder-by-type.md)), cloud sync, collaboration, plugins, LSP, permanent background services, and polished installers remain outside the implemented boundary. User-authored theme profiles, configurable held single-code-point Unicode inspection, a bounded file-type syntax-highlighting extension point (BF-027, BF-041), content-level right-to-left/bidi editing for Arabic and Hebrew (BF-064; application chrome stays left-to-right, and the deeper non-wrapped/multi-checkpoint RTL scrolling case plus native IME qualification remain open), and multi-code-point Unicode-property inspection over a selection (BF-065) are implemented; cross-row/multiline-aware highlighting and a syntax-color theme editor remain parked.
 
 The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). B3 Find/Replace Rework & Editor Refinement Beta is active. Outstanding A22, A23, A24, and B1 release qualification remains recorded under ADR-0007; B3's own advancement is recorded under ADR-0008. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).

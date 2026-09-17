@@ -2,7 +2,7 @@
 
 This directory is the tool-neutral source of truth for UNITI's development state, delivery sequence, historical implementation, scope boundaries, architectural decisions, and development handovers.
 
-Current product identity: `v0.001b3` / `0.1b3`. Reviewed BF-001–BF-057 code is integrated on `main`; B3 is the active source beta; qualified executable delivery remains gated by the outstanding checks in [ADR-0008](05_decisions/ADR-0008-b3-version-and-qualification.md), which continues [ADR-0007](05_decisions/ADR-0007-beta-source-version-and-qualification.md)'s A22→B2 pattern. See [Current Status](01_current/STATUS.md) for the synchronized baseline and verification evidence.
+Current product identity: `v0.001b3` / `0.1b3`. Reviewed BF-001–BF-068 code, plus BF-040/042, is integrated on `main`; B3 is the active source beta; qualified executable delivery remains gated by the outstanding checks in [ADR-0008](05_decisions/ADR-0008-b3-version-and-qualification.md), which continues [ADR-0007](05_decisions/ADR-0007-beta-source-version-and-qualification.md)'s A22→B2 pattern. See [Current Status](01_current/STATUS.md) for the synchronized baseline and verification evidence.
 
 [Beta Feedback Log](BETA_FEEDBACK.md) records user observations, implemented corrections and features, verification, and remaining host qualification. The [Feature Wishlist](FEATURE_WISHLIST.md) holds future ideas raised in passing that are not yet scoped or committed.
 
