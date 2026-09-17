@@ -35,6 +35,47 @@ def test_search_crosses_small_windows_with_partial_extension(tmp_path: Path):
     assert [result.span for result in results] == [(0, 9)]
 
 
+def test_backreference_marker_pair_matches_across_tiny_windows_for_each_marker_name(
+    tmp_path: Path,
+):
+    """A generic SFM/USFM-style `\\marker ... \\marker*` character-style
+    span, using a backreference so one pattern matches any marker name --
+    the negative lookahead must stop at that occurrence's own closing
+    marker, not a different marker's, and this must hold even when a
+    match's content is forced to span many tiny search windows (the
+    partial-match buffer growth in `_iter_engine_matches` re-scans from an
+    earlier position on every window; the backreference's captured group
+    must still resolve correctly against whatever the buffer's current
+    prefix is)."""
+
+    path = tmp_path / "markers.sfm"
+    text = (
+        r"\add inserted words\add* then "
+        r"\wj Jesus spoke\wj* and "
+        r"\nd LORD\nd* end"
+    )
+    path.write_text(text, encoding="utf-8")
+    with Document.open(path) as document:
+        results = list(
+            search_document(
+                document,
+                compile_pattern(r"\\(\w+)\s(?:(?!\\\1\*)[\s\S])+\\\1\*"),
+                options=SearchOptions(window_chars=3),
+            )
+        )
+        matched_text = [document.read(*result.span) for result in results]
+        marker_names = [
+            document.read(*result.captures[0].spans[0]) for result in results
+        ]
+
+    assert matched_text == [
+        r"\add inserted words\add*",
+        r"\wj Jesus spoke\wj*",
+        r"\nd LORD\nd*",
+    ]
+    assert marker_names == ["add", "wj", "nd"]
+
+
 def test_search_records_named_repeated_capture_spans(tmp_path: Path):
     path = tmp_path / "captures.txt"
     path.write_text("123 xx", encoding="utf-8")
