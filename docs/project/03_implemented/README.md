@@ -23,8 +23,7 @@ Retained here individually while their parent [B3 milestone](../02_plans/v0.001b
 - [Format Document / Minify Document plan](milestones/2026-09-15-format-document-plan.md) (BF-061)
 - [Arabic + Hebrew font bundling plan](milestones/2026-09-16-arabic-hebrew-font-bundling-plan.md) (BF-066)
 - [Pool 1 task-fairness and schema-flexibility plan](milestones/2026-09-17-pool-1-task-fairness-and-schema-flexibility-plan.md) (BF-040, BF-042) — the last two escalated architecture findings from the P1 Find/Replace rework review; closed the outstanding-work-pools index's former Pool 1
-
-The [RTL/bidi support plan](../02_plans/2026-09-15-rtl-bidi-support-plan.md) (BF-064) stays in `02_plans/` — most of its scope is implemented, but it still names real, non-hardware-dependent unfinished work of its own (the non-wrapped/horizontal-scroll multi-checkpoint case), not just an external gate.
+- [RTL/bidi support plan](milestones/2026-09-15-rtl-bidi-support-plan.md) (BF-064) — archived 2026-09-17 once its last non-hardware-dependent gap (the non-wrapped/horizontal-scroll multi-checkpoint case) landed; only native/physical IME qualification, an external hardware gate, remains, tracked in [Current Status](../01_current/STATUS.md)
 
 ## v0.001a21 records
 

@@ -1,15 +1,14 @@
 """Progressive pixel checkpoints. Unknown variable-width prefixes stay pending.
 
-BF-064 caveat: checkpoint accumulation (`offset + shaped.width`, growing
-monotonically as more of a line is read) assumes advancing further into a
-line always means visually further right — true for LTR advance, not for a
-right-to-left line where later logical content sits further left. Each
-individual `ShapedWindow` below gets the line's correct base direction, so a
-right-to-left line that fits within one window shapes and positions
-correctly; a right-to-left line long enough to need multiple checkpoint
-windows will not scroll/position correctly across that boundary. Full
-support for that case needs a direction-aware (right-anchored) checkpoint
-model, not yet implemented — see the RTL/bidi plan.
+BF-064: `offset`/`edge` (`offset + shaped.width`) are a direction-agnostic
+reading-order pixel distance from the line's true start — this module never
+shapes with `align_width_px`, so `shaped.width` is always this checkpoint's
+own tight natural width, regardless of direction. Consuming this correctly
+for a right-to-left line is the caller's responsibility: `UNITITextView`
+treats `horizontalScrollBar().value()` as the same reading-order distance
+(not a raw screen pixel) for both directions, and maps it to actual screen
+coordinates itself (`_row_text_x`) — see that module for the non-wrapped/
+multi-checkpoint RTL scroll fix. Nothing here needed to change for it.
 """
 
 from bisect import bisect_right

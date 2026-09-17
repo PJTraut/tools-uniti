@@ -2009,6 +2009,116 @@ def test_typing_into_an_rtl_line_advances_the_caret_visually(tmp_path: Path):
             app.processEvents()
 
 
+def test_caret_moves_leftward_across_an_rtl_horizontal_scroll_checkpoint(
+    tmp_path: Path,
+):
+    """BF-064's documented remaining gap: a non-wrapped right-to-left line
+    long enough to need more than one 8,192-code-point horizontal-scroll
+    checkpoint window did not scroll/position correctly across that
+    boundary. Reconfirmed directly before this fix: a 12,000-character
+    Arabic line's caret at position 9,000 (past the first checkpoint)
+    landed at x≈ 39,375, moving further *right* the deeper into the
+    line, when it should move left off a right anchor (see the RTL/bidi
+    plan's "Not yet done" note). Reproduced here with real cursor moves
+    spanning both checkpoints; confirmed to fail against the pre-fix code
+    before being accepted."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    app = QApplication.instance() or QApplication([])
+    # 12,000 Arabic characters as one logical line -- long enough to need
+    # a second 8,192-code-point horizontal-scroll checkpoint window.
+    arabic_line = "مرحبا" * 2400
+    assert len(arabic_line) == 12_000
+    path = tmp_path / "long-rtl-line.txt"
+    path.write_text(arabic_line, encoding="utf-8", newline="")
+
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(400, 100)
+        view.set_soft_wrap(False)
+        view.show()
+        app.processEvents()
+
+        positions = []
+        for target in (0, 100, 4000, 8000, 8200, 9000, 11_999):
+            state.move_to(target)
+            view._state_changed()
+            app.processEvents()
+            positions.append(view._cursor_rectangle().x())
+
+        # Deeper reading-order positions must move the caret further left
+        # (or hold at the same on-screen edge), never further right --
+        # the pre-fix bug's exact signature.
+        for earlier, later in zip(positions, positions[1:]):
+            assert later <= earlier + 1.0, positions
+
+        # The line only has 12,000 characters, all read by position
+        # 11,999 -- the caret must actually have moved net leftward
+        # across the whole traversal, not merely failed to regress.
+        assert positions[-1] < positions[0], positions
+
+        view.close()
+        app.processEvents()
+
+
+def test_hit_testing_stays_correct_past_an_rtl_horizontal_scroll_checkpoint(
+    tmp_path: Path,
+):
+    """Companion to the caret-position regression above: clicking inside
+    the *second* checkpoint window of a long RTL line must resolve to a
+    character actually within that window, not silently misplace the hit
+    onto the first checkpoint's (wrongly reused) coordinate space."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    app = QApplication.instance() or QApplication([])
+    arabic_line = "مرحبا" * 2400
+    path = tmp_path / "long-rtl-line-hit.txt"
+    path.write_text(arabic_line, encoding="utf-8", newline="")
+
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(400, 100)
+        view.set_soft_wrap(False)
+        view.show()
+        app.processEvents()
+
+        # Scroll deep enough that the visible window is entirely within
+        # the second checkpoint (past code point 8,192).
+        state.move_to(9_000)
+        view._state_changed()
+        app.processEvents()
+
+        far_right = view._gutter_width + view._wrap_width() - 1
+        offset = view._char_for_point(far_right, view._line_height // 2)
+
+        # The resolved offset must land within the checkpoint actually
+        # being displayed (near the deep scroll target), not snap back to
+        # the very start of the line -- which is what reusing the first
+        # checkpoint's coordinate space for the second one would produce.
+        assert offset > 8_192, offset
+
+        view.close()
+        app.processEvents()
+
+
 def test_typing_into_an_ltr_line_still_advances_the_caret_forward(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

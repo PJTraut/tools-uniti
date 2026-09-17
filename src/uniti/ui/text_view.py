@@ -672,8 +672,47 @@ class UNITITextView(QAbstractScrollArea):
         self._refresh_scrollbars(advance_index=False)
 
     def _horizontal_window(self, line: int = 0) -> tuple[int, float]:
-        start, offset, _, resolved = self._horizontal_geometry(line)
-        return start, self._gutter_width + offset - self.horizontalScrollBar().value()
+        start, offset, shaped, resolved = self._horizontal_geometry(line)
+        del resolved
+        return start, self._row_text_x(offset, shaped.direction, shaped.width)
+
+    def _row_text_x(self, offset: float, direction, width: float) -> float:
+        """Screen x such that `text_x + shaped.x_for_cp(cp)` (Qt's own raw,
+        *unaligned* box-local coordinate — see `_shape(..., align=False)`)
+        gives the correct screen position of code point `cp` in a
+        non-wrapped-mode checkpoint window, for either direction.
+
+        `offset` is that checkpoint's cumulative reading-order pixel
+        distance from the line's true start (`HorizontalLayouts`'s own
+        bookkeeping, already direction-agnostic — it only ever shapes
+        unaligned windows itself); `width` is this specific checkpoint's
+        own tight shaped width.
+
+        LTR keeps today's formula exactly: the checkpoint's start sits
+        `offset` pixels right of the line's true start, scrolled left by
+        `horizontal.value()`. RTL mirrors this off the text area's right
+        edge instead, since a deeper reading-order offset sits further
+        *left* on screen: the checkpoint's start (an unaligned RTL box's
+        right edge, at local x == `width`) is placed at
+        `gutter + wrap_width() + horizontal.value() - offset`, which is
+        exactly `_row_text_x + width` — i.e. `_row_text_x` is that anchor
+        minus `width`, so adding the raw (decreasing-with-cp) `x_for_cp`
+        result on top lands each glyph at its correct screen position with
+        no special-casing needed at any of this method's callers. This
+        keeps `horizontal.value()` increasing as the user reads *deeper*
+        into the line for both directions — BF-064's non-wrapped/
+        multi-checkpoint RTL scroll gap.
+        """
+        horizontal = self.horizontalScrollBar().value()
+        if direction == Qt.LayoutDirection.RightToLeft:
+            return (
+                self._gutter_width
+                + self._wrap_width()
+                + horizontal
+                - offset
+                - width
+            )
+        return self._gutter_width + offset - horizontal
 
     def _horizontal_geometry(self, line, *, column=None):
         signature = (
@@ -735,7 +774,7 @@ class UNITITextView(QAbstractScrollArea):
         self._line_directions[line] = direction
         return direction
 
-    def _shape(self, text, window_start=None, *, origin=0):
+    def _shape(self, text, window_start=None, *, origin=0, align=True):
         preedit = None
         if (
             window_start is not None
@@ -748,13 +787,23 @@ class UNITITextView(QAbstractScrollArea):
             if window_start is None
             else self._direction_for_window(text, window_start)
         )
-        # BF-064: this window is never itself wrapping (its text is already
+        # BF-064: a wrapped row (or an unscrolled, single-checkpoint
+        # non-wrapped row) is never itself wrapping (its text is already
         # exactly one row's worth), so it has no `width_px` of its own —
         # but a right-to-left row still needs a real anchor to grow
         # leftward from as it's typed/composed into, rather than Qt's
         # left-anchored default (see `ShapedWindow`'s docstring comment).
         # The available text-area width is a harmless no-op for LTR text.
-        align_width_px = self._wrap_width()
+        #
+        # `align=False` opts out of this anchor entirely, for the one case
+        # where it's actively wrong: a non-wrapped horizontal-scroll
+        # checkpoint window, whose own logical start is not the line's
+        # true start once `offset > 0` (or once the row has scrolled at
+        # all) — right-anchoring *that* text against the viewport edge
+        # would misplace it. Callers there instead position the resulting
+        # unaligned (tight) box themselves via `_row_text_x`, which knows
+        # each checkpoint's true reading-order offset into the line.
+        align_width_px = self._wrap_width() if align else None
         key = (
             text,
             self.font().key(),
@@ -1146,7 +1195,7 @@ class UNITITextView(QAbstractScrollArea):
             tokens.gutter_base,
         )
 
-        display_rows: list[tuple[int, int, float, int, int]] = []
+        display_rows: list[tuple[int, int, float, float, int, int]] = []
         if wrapped is not None:
             for row in range(min(visible, max(0, wrapped.known_count - first_line))):
                 try:
@@ -1158,6 +1207,7 @@ class UNITITextView(QAbstractScrollArea):
                         visual.line,
                         visual.column_start,
                         self._gutter_width,
+                        0.0,
                         row,
                         visual.length,
                     )
@@ -1168,16 +1218,23 @@ class UNITITextView(QAbstractScrollArea):
                     column_start, offset, geometry, _ = self._horizontal_geometry(
                         first_line + row
                     )
-                    text_x = (
-                        self._gutter_width + offset - self.horizontalScrollBar().value()
+                    text_x = self._row_text_x(
+                        offset, geometry.direction, geometry.width
                     )
                 except ValueError:
                     break
                 display_rows.append(
-                    (first_line + row, column_start, text_x, row, len(geometry.text))
+                    (
+                        first_line + row,
+                        column_start,
+                        text_x,
+                        offset,
+                        row,
+                        len(geometry.text),
+                    )
                 )
 
-        for line_number, column_start, text_x, row, row_length in display_rows:
+        for line_number, column_start, text_x, row_offset, row, row_length in display_rows:
             try:
                 line_start = self.document.line_start(line_number)
                 annotated = self._line_content(
@@ -1214,13 +1271,8 @@ class UNITITextView(QAbstractScrollArea):
             shaped = self._shape(
                 text,
                 line_start + column_start,
-                origin=(
-                    0
-                    if self._soft_wrap
-                    else text_x
-                    - self._gutter_width
-                    + self.horizontalScrollBar().value()
-                ),
+                origin=0 if self._soft_wrap else row_offset,
+                align=self._soft_wrap,
             )
             ascent = max((math.ceil(line.ascent()) for line in shaped.lines), default=0)
             descent = max(
@@ -1258,21 +1310,14 @@ class UNITITextView(QAbstractScrollArea):
             if shaped.preedit is not None:
                 width = self._shape(
                     text,
-                    origin=(
-                        0
-                        if self._soft_wrap
-                        else text_x
-                        - self._gutter_width
-                        + self.horizontalScrollBar().value()
-                    ),
+                    origin=0 if self._soft_wrap else row_offset,
+                    align=self._soft_wrap,
                 ).width
             if not self._soft_wrap:
                 self._max_seen_line_width = max(
                     self._max_seen_line_width,
                     int(
-                        text_x
-                        - self._gutter_width
-                        + self.horizontalScrollBar().value()
+                        row_offset
                         + width
                         + (self.viewport().width() if len(text) >= 8191 else 0)
                     ),
@@ -1499,7 +1544,7 @@ class UNITITextView(QAbstractScrollArea):
             column_start, offset, geometry, resolved = self._horizontal_geometry(line)
             if not resolved:
                 return self.state.cursor
-            text_x = self._gutter_width + offset - self.horizontalScrollBar().value()
+            text_x = self._row_text_x(offset, geometry.direction, geometry.width)
         try:
             line_start = self.document.line_start(line)
             text = (
@@ -1513,11 +1558,8 @@ class UNITITextView(QAbstractScrollArea):
         shaped = self._shape(
             text,
             line_start + column_start,
-            origin=(
-                0
-                if self._soft_wrap
-                else text_x - self._gutter_width + self.horizontalScrollBar().value()
-            ),
+            origin=0 if self._soft_wrap else offset,
+            align=self._soft_wrap,
         )
         text_x += self._composition_pan(shaped, text_x)
         return line_start + column_start + shaped.cp_for_x(max(0.0, x - text_x))
@@ -1796,22 +1838,19 @@ class UNITITextView(QAbstractScrollArea):
             )
             y = (visual_row - first) * self._line_height
         else:
-            horizontal = self.horizontalScrollBar().value()
-            start, offset, shaped, resolved = self._horizontal_geometry(
+            start, offset, geometry, resolved = self._horizontal_geometry(
                 line, column=column
             )
             if not resolved:
                 return QRectF()
-            shaped = self._shape(shaped.text, line_start + start, origin=offset)
-            x = (
-                self._gutter_width
-                + offset
-                + (
-                    shaped.preedit_x(self._preedit_cursor)
-                    if shaped.preedit
-                    else shaped.x_for_cp(min(len(shaped.text), column - start))
-                )
-                - horizontal
+            shaped = self._shape(
+                geometry.text, line_start + start, origin=offset, align=False
+            )
+            text_x = self._row_text_x(offset, geometry.direction, shaped.width)
+            x = text_x + (
+                shaped.preedit_x(self._preedit_cursor)
+                if shaped.preedit
+                else shaped.x_for_cp(min(len(shaped.text), column - start))
             )
             y = (line - first) * self._line_height
         if shaped.preedit is not None:
@@ -2024,7 +2063,11 @@ class UNITITextView(QAbstractScrollArea):
             if shaped.text:
                 QTimer.singleShot(0, self._ensure_cursor_visible)
             return
-        cursor_pixel = int(offset + shaped.x_for_cp(column - start))
+        # `shaped` here is `HorizontalLayouts`'s own unaligned window, so
+        # `reading_x` (not raw `x_for_cp`) gives the direction-agnostic
+        # reading-order distance this scroll-into-view comparison needs —
+        # BF-064's non-wrapped/multi-checkpoint RTL scroll gap.
+        cursor_pixel = int(offset + shaped.reading_x(column - start))
         horizontal = self.horizontalScrollBar()
         page = max(1, horizontal.pageStep())
         if cursor_pixel < horizontal.value():

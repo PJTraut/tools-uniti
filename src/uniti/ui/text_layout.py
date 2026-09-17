@@ -156,6 +156,25 @@ class ShapedWindow:
         value = self.lines[row].cursorToX(self.unit_for_cp(cp))
         return float(value[0] if isinstance(value, tuple) else value)
 
+    def reading_x(self, cp, row=0):
+        """Direction-agnostic reading-order local x: 0 at this window's own
+        logical start, growing toward `width` as `cp` advances into it.
+
+        BF-064: an *unaligned* (`align_width_px=None`) window's raw
+        `x_for_cp` already grows this way for LTR (verified directly:
+        `x_for_cp(0) == 0`, `x_for_cp(len) == width`), but for RTL it runs
+        the other way (`x_for_cp(0) == width`, `x_for_cp(len) == 0`,
+        confirmed directly with real Arabic shaping) — Qt lays an
+        unaligned RTL run out tightly with its *last* logical character at
+        the box's left edge. Mirroring here gives every caller (the
+        non-wrapped horizontal-scroll checkpoint machinery in
+        `HorizontalLayouts`/`UNITITextView`) one direction-independent
+        "how far read into this window" value, instead of duplicating the
+        direction check at each call site.
+        """
+        x = self.x_for_cp(cp, row)
+        return x if self.direction == Qt.LayoutDirection.LeftToRight else self.width - x
+
     def cp_for_x(self, x, row=0):
         if not self.lines:
             return 0
