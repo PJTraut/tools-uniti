@@ -1,7 +1,7 @@
 # Compare/Diff — Implementation Plan
 
 Date: 2026-09-17
-Status: **Phases 1 (plain view) and 2 (merge-style apply/reject) implemented and integrated on `main`.** Phase 3 (doc-vs-disk mode) is not yet started. This document exists to turn the [Feature Wishlist](../FEATURE_WISHLIST.md)'s unscoped "Compare files" idea into a concrete task breakdown before any code is written; see "Progress" below for what actually landed.
+Status: **Phases 1 (plain view) and 2 (merge-style apply/reject) implemented and integrated on `main`.** Phase 3 (doc-vs-disk mode) is **parked** — see the [Parked Capability Catalog](../04_parked/CATALOG.md#compare-doc-vs-disk-mode) — not abandoned, but deliberately not built until the re-evaluation trigger recorded there fires. This document exists to turn the [Feature Wishlist](../FEATURE_WISHLIST.md)'s unscoped "Compare files" idea into a concrete task breakdown before any code is written; see "Progress" below for what actually landed.
 Feedback: [BF-070](../BETA_FEEDBACK.md#bf-070--comparediff-between-two-documents)
 Milestone: a new workstream inside the active [B3 milestone](v0.001b3-find-replace-and-editor-refinement-beta.md), following the same "planned before implementation" pattern the [RTL/bidi plan](../03_implemented/milestones/2026-09-15-rtl-bidi-support-plan.md) used.
 
@@ -24,6 +24,8 @@ Milestone: a new workstream inside the active [B3 milestone](v0.001b3-find-repla
 - **There is no separate "reject" action.** Rejecting a hunk is simply not applying it and moving on with Next/Previous — two arbitrary documents have no "ours/theirs" base to reconcile against the way a three-way merge would, so there is no third "resolved but intentionally left different" state worth tracking. Recorded here since the original scope language ("apply or reject") could otherwise read as a missed feature rather than a considered scope boundary.
 - **A real bug found and fixed while implementing this, not merely a gap:** applying an insertion whose target line lands at the very end of a document that doesn't already end with a terminator glued the inserted content directly onto the existing final line with no separator — confirmed directly, producing `"gammadelta"` instead of `"gamma\ndelta"`. Every other insertion point in a document sits immediately after some existing line's own terminator (that's what makes it a line start), so only the true end-of-document case needed a fix: a new `_insertion_text(document, position, text)` helper prepends `document.insertion_eol`'s terminator exactly when a pure insertion point (`target_a == target_b`) has no preceding terminator to rely on. Caught by `tests/ui/test_compare_pane.py::test_apply_all_handles_insertions_and_deletions_not_just_replacements`, confirmed to fail against the pre-fix code before being accepted.
 - Verification: 6 new tests in `tests/ui/test_compare_pane.py` (single-hunk apply both directions, defaulting to the first hunk before navigating, apply-all as one undo step, the insertion/deletion end-of-document bug above, and an ordinary `UNITITextView` tab on the same document reflecting an applied hunk and its undo). Full suite green, no regressions (exact total: 2,018 passed, 6 platform skips — confirmed by a full run before this was committed).
+
+**Phase 3 parked 2026-09-17** rather than built — see the [Parked Capability Catalog](../04_parked/CATALOG.md#compare-doc-vs-disk-mode) entry for the why, the dependencies it would need, and its re-evaluation trigger. The task breakdown below (tasks 8–9) is left as drafted so it doesn't need re-deriving if it's un-parked later.
 
 ## Scope (confirmed with the user)
 
@@ -77,7 +79,7 @@ Subject to change once the remaining open questions above are resolved at implem
 6. **Apply/reject actions** — per-hunk controls calling `Document.replace_many` with that hunk's original-coordinate range and the other side's text, as one undoable transaction; "apply all remaining" mirrors Format Document's single whole-buffer `replace` call.
 7. **Tests** — apply/reject/apply-all, each confirmed as one `Undo` step, including the interleaving case where the same document is also open in an ordinary tab.
 
-**Phase 3 — doc-vs-disk mode:**
+**Phase 3 — doc-vs-disk mode (parked, see the [Parked Capability Catalog](../04_parked/CATALOG.md#compare-doc-vs-disk-mode)):**
 
 8. **Comparison-source resolution for disk content** — reads on-disk bytes independent of the live in-memory document, reusing the existing verified-read path already trusted for save/hash reconciliation; feeds `text_diff` the same way an open document does, but marked read-only per open question 1.
 9. **Tests** — an open document with unsaved edits compared against its own saved bytes; confirms the disk side rejects apply/reject controls.

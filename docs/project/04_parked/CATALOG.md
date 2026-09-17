@@ -72,6 +72,13 @@ Current identity is `v0.001b3` / `0.1b3`, with feedback code through BF-068, plu
 - **Known dependencies/risks:** schema ownership, discoverability, reset behavior, migration, platform conventions, and premature commitment to unstable options.
 - **Re-evaluation trigger:** repeated stable settings accumulate beyond focused menus and controls.
 
+## Compare: doc-vs-disk mode
+
+- **Status: parked 2026-09-17**, after [BF-070](../BETA_FEEDBACK.md#bf-070--comparediff-between-two-documents)'s other two phases were implemented the same day. Comparing two currently-open documents (Phase 1: plain side-by-side view; Phase 2: merge-style per-hunk and apply-all editing, both directions) is implemented and integrated on `main` — see the [Compare/diff plan](../02_plans/2026-09-17-compare-diff-plan.md) for the full implementation record. This entry covers only the narrower doc-vs-disk sub-scope (comparing one open document against its own saved-on-disk content, e.g. to review unsaved edits before saving), which was in the original confirmed scope but not built.
+- **Why parked:** the two implemented modes cover the two open-document comparisons a user is most likely to reach for; doc-vs-disk needs its own new machinery (reading saved bytes independent of the live in-memory document, reusing the existing verified-read path already trusted for save/hash reconciliation) and its own unresolved design question — whether the disk side is read-only reference text or something a user could act on directly — that the plan explicitly left open rather than guessed. Parking it avoids carrying that half-open design question and unbuilt read path as ambient plan debt indefinitely.
+- **Known dependencies/risks:** an independent disk-bytes read path distinct from `Document`'s own in-memory state; deciding whether the disk side accepts any merge action at all (the plan's recommendation was "revert this hunk to match disk" only, never free editing of the disk side); and `ComparePane`'s current architecture, built for two live `Document` objects with document-level history listeners, would need to treat one side as not backed by a `Document` at all.
+- **Re-evaluation trigger:** a real, repeated need to review unsaved edits against the saved file — the [Beta Feedback Log](../BETA_FEEDBACK.md) entry names this as the trigger to un-park and follow the plan's already-drafted Phase 3 task breakdown.
+
 ## Polished installers, signing, and update delivery
 
 - **Why parked:** A23 now owns unsigned standalone application bundles with embedded runtime and guided offline health/repair. Installer UX, privileged installation, publisher signing, macOS notarization, update delivery, and distribution-channel trust are separate security/release systems.
