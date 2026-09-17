@@ -30,6 +30,7 @@ from uniti.app.session import (
     manifest_to_payload,
 )
 from uniti.app.session_store import (
+    AGGREGATE_HISTORY_BYTES,
     MAX_GENERATIONS_INSPECTED,
     MIN_FREE_BYTES,
     LocalStorageBackend,
@@ -598,6 +599,48 @@ def test_aggregate_admission_trims_inactive_before_active_history():
     assert len(by_id["doc-active"].history.transactions) == 1
     assert by_id["doc-old"].notices[-1].reason == "aggregate_limit"
     assert admitted.manifest.notices[-1].reason == "aggregate_limit"
+
+
+def test_bf031_aggregate_admission_trims_at_the_real_256mib_default_with_many_large_documents():
+    """BF-031's multi-document variant of BF-030's shared-resource concern:
+    the mechanism above is proven correct at a synthetic, tiny
+    `aggregate_limit` for speed and focus; this proves it holds at the
+    real 256 MiB `AGGREGATE_HISTORY_BYTES` default, with real per-document
+    content sizes approaching (not merely simulating) the actual
+    production boundary.
+
+    Twelve open documents, each holding one ~30 MiB single-transaction
+    history (safely under the 32 MiB per-document export cap on its own)
+    of high-entropy hex text -- `_physical_encoded_bytes` is measured
+    *after* zlib compression, so low-entropy content like repeated
+    characters would trivially fit regardless of how "large" it looks
+    decoded. Twelve documents at this size comfortably exceed the 256 MiB
+    aggregate default; the oldest (least recently active) one must be the
+    one trimmed.
+    """
+
+    documents = [
+        _pack(
+            f"doc-{index}",
+            text=os.urandom(15 * 1024 * 1024).hex(),
+            generation=f"history-{index}",
+            last_active_at=NOW - timedelta(minutes=11 - index),
+        )
+        for index in range(12)
+    ]
+    snapshot = _snapshot(*documents, active_document_id=documents[-1].document_id)
+    physical_before = sum(len(encode_history_pack(pack)) for pack in documents)
+    assert physical_before > AGGREGATE_HISTORY_BYTES
+
+    admitted = plan_saved_history_admission(snapshot, now=NOW)
+
+    by_id = {pack.document_id: pack for pack in admitted.packs}
+    assert by_id["doc-0"].history.transactions == ()
+    assert by_id["doc-0"].notices[-1].reason == "aggregate_limit"
+    for pack in documents[1:]:
+        assert len(by_id[pack.document_id].history.transactions) == 1
+    physical_after = sum(len(encode_history_pack(pack)) for pack in admitted.packs)
+    assert physical_after <= AGGREGATE_HISTORY_BYTES
 
 
 def test_load_preserves_one_copy_of_invalid_pointer_evidence():
