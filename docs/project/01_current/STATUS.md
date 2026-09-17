@@ -8,7 +8,7 @@ Date: 2026-09-17
 |---|---|
 | Current source identity | `v0.001b3` / `0.1b3` in `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` |
 | Active development milestone | B3 Find/Replace Rework & Editor Refinement Beta |
-| Implemented feedback | All reviewed BF-001–BF-068 source changes, plus BF-040/042, BF-064's multi-checkpoint RTL fix, and BF-063's syntax color editing (ADR-0011), integrated on local `main` at `ab67e87` (1 commit ahead of `origin/main` as of this capture; see the [B3 milestone plan](../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md) for the full item table) |
+| Implemented feedback | All reviewed BF-001–BF-068 source changes, plus BF-040/042, BF-064's multi-checkpoint RTL fix, BF-063's syntax color editing (ADR-0011), and BF-030/031's benchmark coverage, integrated on local `main` at `3861e63` (1 commit ahead of `origin/main` as of this capture; see the [B3 milestone plan](../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md) for the full item table) |
 | Pre-promotion baseline | `596c88f` ("1b2 feedback implementation"), the B2-era commit through which the B2 promotion below was verified |
 | Promotion scope | Version metadata and project records; existing document, settings, session, and recovery schemas remain unchanged |
 | Latest complete hosted feedback pass | `aab3f3c`, [run `34253008439`](https://github.com/PJTraut/tools-uniti/actions/runs/34253008439), all four lanes (no hosted run yet exists for the B3 candidate) |
