@@ -181,6 +181,153 @@ def test_too_large_a_document_is_reported_instead_of_diffed(
         app.processEvents()
 
 
+def test_apply_current_hunk_left_to_right_is_one_undo_step(tmp_path: Path):
+    _require_qt()
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    with _open(tmp_path / "a.txt", "alpha\nbeta\ngamma") as left, _open(
+        tmp_path / "b.txt", "alpha\nBETA\ngamma"
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        assert len(pane._changed) == 1
+        pane._apply_current(direction="left_to_right")
+        assert right.read(0, right.total_chars()) == "alpha\nbeta\ngamma"
+        assert left.read(0, left.total_chars()) == "alpha\nbeta\ngamma"
+        right.undo()
+        assert right.read(0, right.total_chars()) == "alpha\nBETA\ngamma"
+        pane.close_compare()
+        app.processEvents()
+
+
+def test_apply_current_hunk_right_to_left_copies_the_other_direction(
+    tmp_path: Path,
+):
+    _require_qt()
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    with _open(tmp_path / "a.txt", "alpha\nbeta\ngamma") as left, _open(
+        tmp_path / "b.txt", "alpha\nBETA\ngamma"
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        pane._apply_current(direction="right_to_left")
+        assert left.read(0, left.total_chars()) == "alpha\nBETA\ngamma"
+        assert right.read(0, right.total_chars()) == "alpha\nBETA\ngamma"
+        left.undo()
+        assert left.read(0, left.total_chars()) == "alpha\nbeta\ngamma"
+        pane.close_compare()
+        app.processEvents()
+
+
+def test_apply_current_defaults_to_the_first_hunk_before_navigating(tmp_path: Path):
+    _require_qt()
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    with _open(tmp_path / "a.txt", "alpha\nbeta\ngamma\ndelta") as left, _open(
+        tmp_path / "b.txt", "alpha\nBETA\ngamma\nDELTA"
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        assert len(pane._changed) == 2
+        # No Previous/Next click yet -- Apply should still act on the
+        # first hunk, not silently do nothing.
+        pane._apply_current(direction="left_to_right")
+        assert right.read(0, right.total_chars()) == "alpha\nbeta\ngamma\nDELTA"
+        pane.close_compare()
+        app.processEvents()
+
+
+def test_apply_all_left_to_right_is_one_undo_step_for_every_hunk(tmp_path: Path):
+    _require_qt()
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    left_text = "alpha\nbeta\ngamma\ndelta\nepsilon"
+    right_text = "alpha\nBETA\ngamma\nDELTA\nEPSILON"
+    with _open(tmp_path / "a.txt", left_text) as left, _open(
+        tmp_path / "b.txt", right_text
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        # "delta"/"DELTA" and "epsilon"/"EPSILON" are adjacent changed
+        # lines, so SequenceMatcher merges them into one replace hunk.
+        assert len(pane._changed) == 2
+        pane._apply_all(direction="left_to_right")
+        assert right.read(0, right.total_chars()) == left_text
+        right.undo()
+        assert right.read(0, right.total_chars()) == right_text
+        pane.close_compare()
+        app.processEvents()
+
+
+def test_apply_all_handles_insertions_and_deletions_not_just_replacements(
+    tmp_path: Path,
+):
+    """Also a real regression guard: applying an insertion whose target
+    line falls at the very end of a document that doesn't already end
+    with a terminator used to glue the inserted line directly onto the
+    existing final line with no separator at all -- confirmed directly,
+    this produced "gammadelta" instead of "gamma\\ndelta" before
+    `_insertion_text`'s fix. Every other insertion point sits right after
+    some existing line's own terminator, so only this end-of-document case
+    needed it."""
+
+    _require_qt()
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    left_text = "alpha\nbeta\ngamma"
+    right_text = "alpha\ngamma\ndelta"  # "beta" deleted, "delta" appended
+    with _open(tmp_path / "a.txt", left_text) as left, _open(
+        tmp_path / "b.txt", right_text
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        pane._apply_all(direction="right_to_left")
+        assert left.read(0, left.total_chars()) == right_text
+        left.undo()
+        assert left.read(0, left.total_chars()) == left_text
+        pane.close_compare()
+        app.processEvents()
+
+
+def test_applying_a_hunk_updates_an_ordinary_tab_on_the_same_document(
+    tmp_path: Path,
+):
+    _require_qt()
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import ComparePane
+    from uniti.ui.text_view import UNITITextView
+    from uniti.app.editor_state import EditorState
+
+    app = QApplication.instance() or QApplication([])
+    with _open(tmp_path / "a.txt", "alpha\nbeta") as left, _open(
+        tmp_path / "b.txt", "alpha\nBETA"
+    ) as right:
+        ordinary_tab = UNITITextView(EditorState(right))
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        pane._apply_current(direction="left_to_right")
+        app.processEvents()
+        assert right.read(0, right.total_chars()) == "alpha\nbeta"
+        # The same shared Document backs both; undoing through the
+        # ordinary tab's own document reference reverts it too.
+        right.undo()
+        assert right.read(0, right.total_chars()) == "alpha\nBETA"
+        pane.close_compare()
+        ordinary_tab.close()
+        app.processEvents()
+
+
 def test_document_lines_matches_documents_own_line_semantics(tmp_path: Path):
     _require_qt()
     from PySide6.QtWidgets import QApplication

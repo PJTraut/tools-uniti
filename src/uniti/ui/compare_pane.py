@@ -1,9 +1,9 @@
-"""Side-by-side document comparison (BF-070, Phase 1: plain read-only view).
+"""Side-by-side document comparison (BF-070: Phase 1 plain view, Phase 2
+merge-style apply/reject; Phase 3 doc-vs-disk mode is not implemented).
 
 Scope, confirmed with the user and recorded in
-`docs/project/02_plans/2026-09-17-compare-diff-plan.md`: this phase covers
-two currently-open documents only (doc-vs-saved-disk is a later phase) and
-is read-only (merge-style apply/reject is a later phase). Architecture
+`docs/project/02_plans/2026-09-17-compare-diff-plan.md`: this covers two
+currently-open documents only (doc-vs-saved-disk is Phase 3). Architecture
 follows that plan's resolved decisions exactly: `ComparePane` attaches
 into `UNITIMainWindow._central_splitter` beside the pane tree, the same
 non-modal attachment `MarkdownPreviewPane` already uses (not a modal
@@ -11,13 +11,23 @@ non-modal attachment `MarkdownPreviewPane` already uses (not a modal
 synchronize scrolling through a line-alignment mapping derived from the
 diff's own hunk list (`uniti.core.text_diff`), not a raw scrollbar link.
 
-Deliberately not done in this phase (each a possible follow-up, not an
-oversight): neither side is padded with blank placeholder lines to keep
-the two panes row-for-row aligned — they scroll in sync via the hunk
-mapping instead; and if a compared document closes while this pane is
-still open, no further recompute happens (closing is not itself a history
-event this pane listens for) — the pane just shows its last-known content,
-which is safe (no crash) but visibly stale.
+Applying a hunk (or all remaining hunks) copies the *other* side's exact
+text for that line range — terminators and all, read straight from the
+source document rather than rejoined with a guessed separator — onto the
+target document via `Document.replace`/`replace_many`, each one atomic
+undoable transaction. There is no separate "reject" action: rejecting a
+hunk is simply not applying it and moving on with Next/Previous, since
+there is no third "resolved but intentionally left different" state to
+track — two arbitrary documents have no "ours/theirs" base to reconcile
+against, unlike a three-way merge.
+
+Deliberately not done (each a possible follow-up, not an oversight):
+neither side is padded with blank placeholder lines to keep the two panes
+row-for-row aligned — they scroll in sync via the hunk mapping instead;
+and if a compared document closes while this pane is still open, no
+further recompute happens (closing is not itself a history event this
+pane listens for) — the pane just shows its last-known content, which is
+safe (no crash) but visibly stale.
 """
 
 from __future__ import annotations
@@ -77,6 +87,47 @@ def document_lines(document: Document) -> list[str]:
         document.read(document.line_start(index), document.line_end(index))
         for index in range(document.line_count())
     ]
+
+
+def _line_range_span(document: Document, start: int, end: int) -> tuple[int, int]:
+    """The char-offset span covering lines `[start, end)` of `document`,
+    including each line's own trailing terminator — so a hunk's line range
+    can be read or replaced as a whole, terminators and all, rather than
+    needing a guessed separator to rejoin stripped lines. `end` reaching
+    the document's last line is the one case with no terminator to
+    include, so it clamps to `total_chars()` instead of `line_start(end)`,
+    which would not exist.
+    """
+
+    total_lines = document.line_count()
+    span_start = (
+        document.line_start(start) if start < total_lines else document.total_chars()
+    )
+    span_end = (
+        document.line_start(end) if end < total_lines else document.total_chars()
+    )
+    return span_start, span_end
+
+
+_EOL_TERMINATORS = {"LF": "\n", "CRLF": "\r\n", "CR": "\r"}
+
+
+def _insertion_text(document: Document, position: int, text: str) -> str:
+    """`text`, prefixed with a terminator if inserting it at `position`
+    would otherwise glue it directly onto a preceding line that has no
+    terminator of its own — the one place `_line_range_span` gives a pure
+    insertion point (`start == end == line_count`) with nothing already
+    separating it from the document's existing final line. Every other
+    insertion point sits right after some line's own terminator (or is
+    position 0), so this is a no-op there.
+    """
+
+    if not text or position == 0:
+        return text
+    preceding = document.read(position - 1, position)
+    if preceding in ("\n", "\r"):
+        return text
+    return _EOL_TERMINATORS[document.insertion_eol] + text
 
 
 def _line_kind_map(hunks: Sequence[Hunk], *, side: str) -> dict[int, HunkKind]:
@@ -236,10 +287,36 @@ class ComparePane(QWidget):
         previous_button.clicked.connect(lambda: self._go_to_hunk(-1))
         next_button = QPushButton("Next ▶", self)
         next_button.clicked.connect(lambda: self._go_to_hunk(1))
+        self._apply_current_right_button = QPushButton("Apply →", self)
+        self._apply_current_right_button.setToolTip(
+            "Copy the current change from the left document into the right."
+        )
+        self._apply_current_right_button.clicked.connect(
+            lambda: self._apply_current(direction="left_to_right")
+        )
+        self._apply_current_left_button = QPushButton("Apply ←", self)
+        self._apply_current_left_button.setToolTip(
+            "Copy the current change from the right document into the left."
+        )
+        self._apply_current_left_button.clicked.connect(
+            lambda: self._apply_current(direction="right_to_left")
+        )
+        self._apply_all_right_button = QPushButton("Apply All →", self)
+        self._apply_all_right_button.clicked.connect(
+            lambda: self._apply_all(direction="left_to_right")
+        )
+        self._apply_all_left_button = QPushButton("Apply All ←", self)
+        self._apply_all_left_button.clicked.connect(
+            lambda: self._apply_all(direction="right_to_left")
+        )
         close_button = QPushButton("Close", self)
         close_button.clicked.connect(self.close_compare)
         header.addWidget(previous_button)
         header.addWidget(next_button)
+        header.addWidget(self._apply_current_left_button)
+        header.addWidget(self._apply_current_right_button)
+        header.addWidget(self._apply_all_left_button)
+        header.addWidget(self._apply_all_right_button)
         header.addWidget(close_button)
 
         self._left_edit = _ComparePlainTextEdit(self)
@@ -288,6 +365,15 @@ class ComparePane(QWidget):
         self._recompute_queued = True
         self._recomputeRequested.emit()
 
+    def _set_apply_buttons_enabled(self, enabled: bool) -> None:
+        for button in (
+            self._apply_current_left_button,
+            self._apply_current_right_button,
+            self._apply_all_left_button,
+            self._apply_all_right_button,
+        ):
+            button.setEnabled(enabled)
+
     def _recompute(self) -> None:
         self._recompute_queued = False
         if self._closed:
@@ -298,11 +384,17 @@ class ComparePane(QWidget):
                     self._status_label.setText(
                         f"Too large to compare (over {MAX_COMPARE_CHARS:,} characters)."
                     )
+                    self._hunks = ()
+                    self._changed = ()
+                    self._set_apply_buttons_enabled(False)
                     return
             left_lines = document_lines(self._left_document)
             right_lines = document_lines(self._right_document)
         except ValueError:
             self._status_label.setText("A compared document is no longer available.")
+            self._hunks = ()
+            self._changed = ()
+            self._set_apply_buttons_enabled(False)
             return
         self._hunks = diff_lines(left_lines, right_lines)
         self._changed = changed_hunks(self._hunks)
@@ -313,6 +405,7 @@ class ComparePane(QWidget):
         self._right_edit.set_line_kinds(_line_kind_map(self._hunks, side="right"))
         count = len(self._changed)
         self._status_label.setText(f"{count} change{'s' if count != 1 else ''}")
+        self._set_apply_buttons_enabled(bool(self._changed))
 
     def _on_left_scrolled(self, value: int) -> None:
         if self._syncing:
@@ -347,6 +440,69 @@ class ComparePane(QWidget):
             self._right_edit.verticalScrollBar().setValue(hunk.right_start)
         finally:
             self._syncing = False
+
+    def _current_hunk_index(self) -> int:
+        """The hunk `Apply` (as opposed to `Apply All`) acts on: whichever
+        one Previous/Next last navigated to, defaulting to the first
+        changed hunk before the user has navigated at all.
+        """
+
+        if not self._changed:
+            return -1
+        return self._hunk_index if self._hunk_index >= 0 else 0
+
+    def _apply_current(self, *, direction: str) -> None:
+        index = self._current_hunk_index()
+        if index < 0:
+            return
+        self._apply_hunk(self._changed[index], direction=direction)
+
+    def _apply_hunk(self, hunk: Hunk, *, direction: str) -> None:
+        source_doc, target_doc, source_range, target_range = self._resolve_direction(
+            hunk, direction
+        )
+        source_a, source_b = _line_range_span(source_doc, *source_range)
+        text = source_doc.read(source_a, source_b)
+        target_a, target_b = _line_range_span(target_doc, *target_range)
+        if target_a == target_b:
+            text = _insertion_text(target_doc, target_a, text)
+        target_doc.replace(target_a, target_b, text)
+
+    def _apply_all(self, *, direction: str) -> None:
+        if not self._changed:
+            return
+        replacements: list[tuple[int, int, str]] = []
+        target_doc: Document | None = None
+        for hunk in self._changed:
+            source_doc, target_doc, source_range, target_range = (
+                self._resolve_direction(hunk, direction)
+            )
+            source_a, source_b = _line_range_span(source_doc, *source_range)
+            text = source_doc.read(source_a, source_b)
+            target_a, target_b = _line_range_span(target_doc, *target_range)
+            if target_a == target_b:
+                text = _insertion_text(target_doc, target_a, text)
+            replacements.append((target_a, target_b, text))
+        target_doc.replace_many(replacements)
+
+    def _resolve_direction(
+        self, hunk: Hunk, direction: str
+    ) -> tuple[Document, Document, tuple[int, int], tuple[int, int]]:
+        if direction == "left_to_right":
+            return (
+                self._left_document,
+                self._right_document,
+                (hunk.left_start, hunk.left_end),
+                (hunk.right_start, hunk.right_end),
+            )
+        if direction == "right_to_left":
+            return (
+                self._right_document,
+                self._left_document,
+                (hunk.right_start, hunk.right_end),
+                (hunk.left_start, hunk.left_end),
+            )
+        raise ValueError(f"unknown apply direction: {direction!r}")
 
     def close_compare(self) -> None:
         if self._closed:
