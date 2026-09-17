@@ -191,7 +191,7 @@ def test_whitespace_positions_after_supplementary_character(app, tmp_path, monke
         view.resize(600, 300)
         positions = {}
         monkeypatch.setattr(view, "_paint_whitespace_marker",
-            lambda painter, kind, label, x1, x2, y: positions.update({label: x1}))
+            lambda painter, kind, label, x1, x2, y, **_kwargs: positions.update({label: x1}))
         try:
             view.show()
             app.processEvents()

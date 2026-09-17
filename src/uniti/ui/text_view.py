@@ -57,6 +57,7 @@ class _MarkerBudget:
     remaining: int = MAX_WHITESPACE_MARKERS_PER_FRAME
     overflow: int = 0
     last_position: tuple[float, float, int] | None = None
+    last_rtl: bool = False
 
 
 def _consume_marker(budget: _MarkerBudget) -> bool:
@@ -159,6 +160,14 @@ class UNITITextView(QAbstractScrollArea):
         # a paragraph whose first strong character came earlier). Cleared
         # on every document edit in `refresh_document_revision`.
         self._line_directions: dict[int, object] = {}
+        # The "primary direction" switch: None means Auto (per-line
+        # first-strong-character detection, the default); otherwise every
+        # line is forced to this direction regardless of its own content.
+        # Solves a real gap Auto cannot: a predominantly-RTL paragraph that
+        # happens to *start* with Western text (a verse number, an
+        # abbreviation) gets misjudged LTR by the first-strong-character
+        # rule alone.
+        self._direction_override: Qt.LayoutDirection | None = None
         self._horizontal_layouts = None
         self._horizontal_signature = None
         self.geometry_pending = False
@@ -261,6 +270,47 @@ class UNITITextView(QAbstractScrollArea):
         self._whitespace_mode = selected
         self.viewport().update()
 
+    @property
+    def _direction_override_rtl(self) -> bool | None:
+        """`self._direction_override` as the `bool | None` shape
+        `EditorState`'s Qt-free visual-movement methods expect."""
+
+        if self._direction_override is None:
+            return None
+        return self._direction_override == Qt.LayoutDirection.RightToLeft
+
+    @property
+    def text_direction_override(self) -> str:
+        if self._direction_override is None:
+            return "auto"
+        return (
+            "rtl"
+            if self._direction_override == Qt.LayoutDirection.RightToLeft
+            else "ltr"
+        )
+
+    def set_text_direction_override(self, value: str) -> None:
+        """The "primary direction" switch: forces every line in this view
+        to one direction, bypassing per-line first-strong-character
+        detection entirely. Needed for a predominantly right-to-left
+        document whose lines happen to *start* with Western text (a verse
+        number, an abbreviation) — Auto alone misjudges those lines
+        left-to-right, since the first-strong-character rule only ever
+        looks at what comes first, never at the paragraph as a whole."""
+
+        mapping = {
+            "auto": None,
+            "ltr": Qt.LayoutDirection.LeftToRight,
+            "rtl": Qt.LayoutDirection.RightToLeft,
+        }
+        if value not in mapping:
+            raise ValueError("text direction override must be 'auto', 'ltr', or 'rtl'")
+        selected = mapping[value]
+        if selected == self._direction_override:
+            return
+        self._direction_override = selected
+        self.viewport().update()
+
     def set_theme_tokens(self, tokens: EditorThemeTokens) -> None:
         if not isinstance(tokens, EditorThemeTokens):
             raise TypeError("theme tokens must be EditorThemeTokens")
@@ -322,11 +372,16 @@ class UNITITextView(QAbstractScrollArea):
             self._wrap_width(),
             self.font().key(),
             self._tab_width_chars,
+            self._direction_override,
         )
         if self._wrap_index is None or signature != self._wrap_signature:
             width = self._wrap_width()
             provider = ShapedRowProvider(
-                self.document, self.font(), width, self._cell_width * self._tab_width_chars
+                self.document,
+                self.font(),
+                width,
+                self._cell_width * self._tab_width_chars,
+                direction_override=self._direction_override,
             )
             self._wrap_index = WrappedRowIndex(
                 self.document, columns, row_provider=provider
@@ -449,6 +504,9 @@ class UNITITextView(QAbstractScrollArea):
     def export_state(self, document_id: str) -> ViewRecord:
         editor = self.state.export_state()
         vertical = self.verticalScrollBar().value()
+        extra = {}
+        if self._direction_override is not None:
+            extra["text_direction_override"] = self.text_direction_override
         return ViewRecord(
             self.view_id,
             document_id,
@@ -462,6 +520,7 @@ class UNITITextView(QAbstractScrollArea):
             self._zoom_percent,
             self._dock_return,
             self._font_weight,
+            extra=extra,
         )
 
     def _restore_vertical_scroll(self, requested: int) -> None:
@@ -505,6 +564,9 @@ class UNITITextView(QAbstractScrollArea):
         self.set_zoom_percent(record.zoom_percent)
         self.set_font_weight(record.font_weight)
         self.set_soft_wrap(record.soft_wrap)
+        direction_override = record.extra.get("text_direction_override")
+        if direction_override in ("ltr", "rtl"):
+            self.set_text_direction_override(direction_override)
         self.state.restore_state(
             EditorStateSnapshot(
                 record.cursor,
@@ -719,10 +781,14 @@ class UNITITextView(QAbstractScrollArea):
             self.document.revision,
             self.font().key(),
             self._tab_width_chars,
+            self._direction_override,
         )
         if signature != self._horizontal_signature:
             self._horizontal_layouts = HorizontalLayouts(
-                self.document, self.font(), self._cell_width * self._tab_width_chars
+                self.document,
+                self.font(),
+                self._cell_width * self._tab_width_chars,
+                direction_override=self._direction_override,
             )
             self._horizontal_signature = signature
         result = self._horizontal_layouts.window(
@@ -758,6 +824,8 @@ class UNITITextView(QAbstractScrollArea):
         guessing from its own fragment, which could belong to an embedded
         run in the opposite direction from the paragraph as a whole."""
 
+        if self._direction_override is not None:
+            return self._direction_override
         line = self.document.line_for_char(window_start)
         cached = self._line_directions.get(line)
         if cached is not None:
@@ -1005,6 +1073,25 @@ class UNITITextView(QAbstractScrollArea):
         value = line.cursorToX(index)
         return float(value[0] if isinstance(value, tuple) else value)
 
+    def _end_of_text_marker_x(self, left: int, glyph: str, *, rtl: bool) -> int:
+        """`left` is a boundary point at the true visual edge of already-
+        drawn content — the end-of-line position, or the last marker drawn
+        before an overflow indicator — not a real character's own span
+        (contrast `_paint_whitespace_marker`'s SPACE/TAB/INVISIBLE cases,
+        which nudge into a real, already-bounded span and need no direction
+        awareness). A fixed rightward nudge only lands in empty margin for
+        LTR, where "further along reading direction" is also "further
+        right on screen": for RTL, reading continues to the *left* of
+        `left`, so the same rightward nudge draws the marker glyph back on
+        top of the text it's meant to sit past. Placing the glyph's own
+        rendered width entirely to the left of `left` gives real
+        clearance instead of merely flipping the nudge's sign, which would
+        still let the glyph's rightward extent bleed into the text.
+        """
+        if not rtl:
+            return left + 3
+        return left - 3 - self._metrics.horizontalAdvance(glyph)
+
     def _paint_whitespace_marker(
         self,
         painter: QPainter,
@@ -1013,6 +1100,8 @@ class UNITITextView(QAbstractScrollArea):
         x1: float,
         x2: float,
         y: float,
+        *,
+        rtl: bool = False,
     ) -> None:
         tokens = self._theme_tokens
         baseline = y + self._row_ascent
@@ -1023,7 +1112,9 @@ class UNITITextView(QAbstractScrollArea):
         left = int(round(min(x1, x2)))
         if kind == "overflow":
             painter.setPen(tokens.invisible_marker)
-            painter.drawText(left + 3, baseline, label)
+            painter.drawText(
+                self._end_of_text_marker_x(left, label, rtl=rtl), baseline, label
+            )
             return
         if self.whitespace_details_visible:
             for item in label.split(" / "):
@@ -1047,8 +1138,9 @@ class UNITITextView(QAbstractScrollArea):
             return
         elif kind == "eol":
             painter.setPen(tokens.eol_marker)
+            glyph = {"LF": "␊", "CR": "␍", "CRLF": "␍␊"}[label]
             painter.drawText(
-                left + 3, baseline, {"LF": "␊", "CR": "␍", "CRLF": "␍␊"}[label]
+                self._end_of_text_marker_x(left, glyph, rtl=rtl), baseline, glyph
             )
             return
         else:
@@ -1079,6 +1171,9 @@ class UNITITextView(QAbstractScrollArea):
         if self._whitespace_mode == WhitespaceMode.OFF or layout.lineCount() == 0:
             return
         layout_line = layout.lineAt(0)
+        is_rtl_row = (
+            shaped is not None and shaped.direction == Qt.LayoutDirection.RightToLeft
+        )
         viewport_right = float(self.viewport().width())
         viewport_left = float(self._gutter_width)
         markers = tuple(iter_character_markers(text, self._whitespace_mode))
@@ -1135,6 +1230,7 @@ class UNITITextView(QAbstractScrollArea):
             if max(x1, x2) < viewport_left or min(x1, x2) > viewport_right:
                 continue
             budget.last_position = (x1, x2, y)
+            budget.last_rtl = is_rtl_row
             if _consume_marker(budget):
                 self._paint_whitespace_marker(
                     painter,
@@ -1143,6 +1239,7 @@ class UNITITextView(QAbstractScrollArea):
                     x1,
                     x2,
                     y,
+                    rtl=is_rtl_row,
                 )
 
         if shows_eol(self._whitespace_mode) and owns_end:
@@ -1159,6 +1256,7 @@ class UNITITextView(QAbstractScrollArea):
                 )
                 if viewport_left <= x <= viewport_right:
                     budget.last_position = (x, x, y)
+                    budget.last_rtl = is_rtl_row
                     if _consume_marker(budget):
                         self._paint_whitespace_marker(
                             painter,
@@ -1167,6 +1265,7 @@ class UNITITextView(QAbstractScrollArea):
                             x,
                             x,
                             y,
+                            rtl=is_rtl_row,
                         )
 
     def paintEvent(self, event) -> None:
@@ -1437,6 +1536,7 @@ class UNITITextView(QAbstractScrollArea):
                 x1,
                 x2,
                 y,
+                rtl=marker_budget.last_rtl,
             )
             marker_budget.remaining -= 1
 
@@ -1909,9 +2009,13 @@ class UNITITextView(QAbstractScrollArea):
 
         def fallback() -> None:
             if want_increase_x:
-                self.state.move_visual_right(selecting=selecting)
+                self.state.move_visual_right(
+                    selecting=selecting, direction_override=self._direction_override_rtl
+                )
             else:
-                self.state.move_visual_left(selecting=selecting)
+                self.state.move_visual_left(
+                    selecting=selecting, direction_override=self._direction_override_rtl
+                )
 
         cursor = self.state.cursor
         line_number = self.document.line_for_char(cursor)
@@ -1974,9 +2078,13 @@ class UNITITextView(QAbstractScrollArea):
             event.accept()
             return
         elif primary and key == Qt.Key.Key_Left:
-            self.state.move_visual_word_left(selecting=selecting)
+            self.state.move_visual_word_left(
+                selecting=selecting, direction_override=self._direction_override_rtl
+            )
         elif primary and key == Qt.Key.Key_Right:
-            self.state.move_visual_word_right(selecting=selecting)
+            self.state.move_visual_word_right(
+                selecting=selecting, direction_override=self._direction_override_rtl
+            )
         elif primary and key in (Qt.Key.Key_Home, Qt.Key.Key_Up):
             self.state.move_document_start(selecting=selecting)
         elif primary and key in (Qt.Key.Key_End, Qt.Key.Key_Down):

@@ -61,10 +61,10 @@ def _labels(app, monkeypatch, view):
     labels = []
     original = view._paint_whitespace_marker
 
-    def observe(painter, kind, label, x1, x2, y):
+    def observe(painter, kind, label, x1, x2, y, **kwargs):
         if kind == "eol":
             labels.append(label)
-        original(painter, kind, label, x1, x2, y)
+        original(painter, kind, label, x1, x2, y, **kwargs)
 
     with monkeypatch.context() as patch:
         patch.setattr(view, "_paint_whitespace_marker", observe)

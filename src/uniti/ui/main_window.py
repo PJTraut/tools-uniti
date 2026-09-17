@@ -1072,6 +1072,28 @@ class UNITIMainWindow(QMainWindow):
             whitespace_menu.addAction(action)
             self._whitespace_actions[mode] = action
         self._whitespace_group = whitespace_group
+        direction_menu = view_menu.addMenu("Text Direction")
+        direction_group = QActionGroup(self)
+        direction_group.setExclusive(True)
+        direction_labels = {
+            "auto": "Auto",
+            "ltr": "Left-to-Right",
+            "rtl": "Right-to-Left",
+        }
+        self._text_direction_actions: dict[str, QAction] = {}
+        for value, label in direction_labels.items():
+            action = QAction(label, self)
+            action.setCheckable(True)
+            action.setChecked(value == "auto")
+            action.triggered.connect(
+                lambda _checked=False, value=value: self.set_editor_text_direction(
+                    value
+                )
+            )
+            direction_group.addAction(action)
+            direction_menu.addAction(action)
+            self._text_direction_actions[value] = action
+        self._text_direction_group = direction_group
         tab_width_menu = view_menu.addMenu("Tab Width")
         tab_width_group = QActionGroup(self)
         tab_width_group.setExclusive(True)
@@ -2228,6 +2250,24 @@ class UNITIMainWindow(QMainWindow):
         if view is not None and view.isEnabled():
             view.set_soft_wrap(enabled)
 
+    def set_editor_text_direction(self, value: str) -> None:
+        """Per-view "primary direction" override (Auto/LTR/RTL) — unlike
+        Whitespace/Tab Width, this is not a global setting applied to every
+        view: each view keeps its own choice, persisted in its own
+        `ViewRecord.extra` (see `UNITITextView.set_text_direction_override`).
+        """
+
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.set_text_direction_override(value)
+        self._sync_text_direction_action(view)
+
+    def _sync_text_direction_action(self, view: UNITITextView | None) -> None:
+        value = view.text_direction_override if view is not None else "auto"
+        action = getattr(self, "_text_direction_actions", {}).get(value)
+        if action is not None and not action.isChecked():
+            action.setChecked(True)
+
     def _on_view_state_changed(self, view: UNITITextView) -> None:
         if any(
             job.view_ref() is view and job.revision != view.document.revision
@@ -2261,6 +2301,7 @@ class UNITIMainWindow(QMainWindow):
                 self._markdown_preview_target_view = view
                 self._refresh_markdown_preview_now()
         self._refresh_markdown_preview_action()
+        self._sync_text_direction_action(view)
         if view is None:
             # The active pane may be a non-document view (e.g. the attached
             # Find/Replace pane) while other document tabs are still open

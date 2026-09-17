@@ -1058,6 +1058,48 @@ def test_whitespace_menu_persists_and_propagates_with_theme_tokens(tmp_path: Pat
         app.processEvents()
 
 
+def test_text_direction_menu_is_per_view_not_a_global_setting(tmp_path: Path):
+    """Unlike the Whitespace/Tab Width menus (global settings applied to
+    every view), the Text Direction override is per-view state: switching
+    the choice on one tab must not affect another tab, and switching tabs
+    must resync the radio group to the newly active view's own choice."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    first_path = tmp_path / "direction-a.txt"
+    second_path = tmp_path / "direction-b.txt"
+    first_path.write_text("alpha", encoding="utf-8")
+    second_path.write_text("beta", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        first_view = window.open_path(first_path)
+        second_view = window.open_path(second_path)
+        assert first_view is not None and second_view is not None
+        assert window._text_direction_actions["auto"].isChecked() is True
+
+        window._text_direction_actions["rtl"].trigger()
+        assert second_view.text_direction_override == "rtl"
+        assert first_view.text_direction_override == "auto"
+
+        window.panes.activate_view(first_view.view_id)
+        assert window._text_direction_actions["auto"].isChecked() is True
+
+        window.panes.activate_view(second_view.view_id)
+        assert window._text_direction_actions["rtl"].isChecked() is True
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
 def test_zoom_shortcut_reaches_the_panel_while_find_input_has_focus(
     tmp_path: Path,
 ):

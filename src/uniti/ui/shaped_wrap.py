@@ -6,7 +6,7 @@ from uniti.ui.text_layout import ShapedWindow, direction_for_text
 
 
 class ShapedRowProvider:
-    def __init__(self, document, font, width_px, tab_stop_px):
+    def __init__(self, document, font, width_px, tab_stop_px, *, direction_override=None):
         self.document, self.font = document, font
         self.width_px, self.tab_stop_px = width_px, tab_stop_px
         self.cache = OrderedDict()
@@ -20,6 +20,10 @@ class ShapedRowProvider:
         # signature includes `document.revision` in `text_view.py`), so no
         # separate invalidation is needed here.
         self.directions: dict[int, object] = {}
+        # The "primary direction" switch: when set, bypasses per-line
+        # first-strong-character detection entirely (see
+        # `HorizontalLayouts.direction_override`'s matching comment).
+        self.direction_override = direction_override
 
     def __call__(self, line, column):
         key = line, column
@@ -45,11 +49,18 @@ class ShapedRowProvider:
                 raise ValueError("grapheme exceeds layout budget")
             text = text[:stop]
         if column == 0:
-            self.directions[line] = direction_for_text(text)
+            self.directions[line] = (
+                self.direction_override
+                if self.direction_override is not None
+                else direction_for_text(text)
+            )
         cached_direction = self.directions.get(line)
-        direction = (
-            direction_for_text(text) if cached_direction is None else cached_direction
-        )
+        if cached_direction is not None:
+            direction = cached_direction
+        elif self.direction_override is not None:
+            direction = self.direction_override
+        else:
+            direction = direction_for_text(text)
         shaped = ShapedWindow(
             text,
             self.font,

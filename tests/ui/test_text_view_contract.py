@@ -192,7 +192,7 @@ def test_whitespace_modes_paint_only_their_marker_categories(
         view = UNITITextView(EditorState(document))
         painted: list[str] = []
 
-        def observe(_painter, _kind, label, _x1, _x2, _y):
+        def observe(_painter, _kind, label, _x1, _x2, _y, **_kwargs):
             painted.append(label)
 
         monkeypatch.setattr(view, "_paint_whitespace_marker", observe)
@@ -282,7 +282,7 @@ def test_wrapped_eol_marker_is_painted_only_on_final_visual_row(
         view = UNITITextView(EditorState(document))
         painted: list[tuple[str, int]] = []
 
-        def observe(_painter, _kind, label, _x1, _x2, y):
+        def observe(_painter, _kind, label, _x1, _x2, y, **_kwargs):
             painted.append((label, y))
 
         monkeypatch.setattr(view, "_paint_whitespace_marker", observe)
@@ -301,6 +301,96 @@ def test_wrapped_eol_marker_is_painted_only_on_final_visual_row(
         assert len(painted) == 1
         assert painted[0][0] == "CRLF"
         assert painted[0][1] >= view._line_height * 2
+        view.close()
+
+
+def test_end_of_text_marker_stays_clear_of_text_regardless_of_direction(
+    tmp_path: Path,
+):
+    """A fixed rightward nudge (the EOL/overflow marker's old behavior)
+    only lands in empty margin for LTR, where reading order and
+    increasing screen x agree. For RTL, reading continues to the *left*
+    of the text's end -- the same rightward nudge draws the marker glyph
+    back on top of the text instead of past its edge. Confirmed directly:
+    a 36-character Arabic line's EOL marker fully overlapped the line's
+    own rendered text before this fix (bounding boxes (102, 286) and
+    (106, 288) -- effectively the same span)."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "direction-neutral.txt"
+    path.write_text("x", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        left = 100
+        for rtl in (False, True):
+            for glyph in ("␊", "␍", "␍␊"):
+                x = view._end_of_text_marker_x(left, glyph, rtl=rtl)
+                width = view._metrics.horizontalAdvance(glyph)
+                if rtl:
+                    # The whole glyph must sit at or before `left`,
+                    # entirely in the margin beyond the RTL text's own
+                    # (leftward) end -- not spilling back over `left`
+                    # into the text itself.
+                    assert x + width <= left
+                else:
+                    # The glyph must start at or after `left`, in the
+                    # margin beyond the LTR text's own (rightward) end.
+                    assert x >= left
+        view.close()
+        app.processEvents()
+
+
+def test_rtl_eol_marker_is_positioned_clear_of_the_arabic_text(
+    tmp_path: Path, monkeypatch
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "rtl-eol.txt"
+    arabic = "مرحبا بكم جميعا في هذا اليوم الجميل"
+    path.write_text(arabic + "\n", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        painted: list[tuple[str, float, bool]] = []
+
+        def observe(_painter, kind, label, x1, _x2, _y, *, rtl=False):
+            if kind == "eol":
+                painted.append((label, x1, rtl))
+
+        view.resize(300, 100)
+        view.set_soft_wrap(False)
+        view.set_whitespace_mode("eol")
+        view.show()
+        app.processEvents()
+        monkeypatch.setattr(view, "_paint_whitespace_marker", observe)
+        view.viewport().repaint()
+        app.processEvents()
+
+        assert len(painted) == 1
+        label, x1, rtl = painted[0]
+        assert label == "LF"
+        assert rtl is True
+        resolved = view._end_of_text_marker_x(int(round(x1)), "␊", rtl=True)
+        width = view._metrics.horizontalAdvance("␊")
+        # The glyph must be drawn entirely to the left of the text's own
+        # end position (`x1`), not overlapping it.
+        assert resolved + width <= int(round(x1))
         view.close()
 
 
@@ -324,7 +414,7 @@ def test_whitespace_marker_frame_budget_reserves_one_overflow_aggregate(
         view = UNITITextView(EditorState(document))
         painted: list[str] = []
 
-        def observe(_painter, _kind, label, _x1, _x2, _y):
+        def observe(_painter, _kind, label, _x1, _x2, _y, **_kwargs):
             painted.append(label)
 
         monkeypatch.setattr(view, "_paint_whitespace_marker", observe)
@@ -1280,9 +1370,9 @@ def test_small_gutter_font_does_not_leak_into_wrapped_text_or_markers(tmp_path, 
             content_fonts.append(QFont(painter.font()))
             return original_text(painter, *args, **kwargs)
 
-        def observe_marker(painter, *args):
+        def observe_marker(painter, *args, **kwargs):
             marker_fonts.append(QFont(painter.font()))
-            return original_marker(painter, *args)
+            return original_marker(painter, *args, **kwargs)
 
         monkeypatch.setattr(view, "_paint_line_text", observe_text)
         monkeypatch.setattr(view, "_paint_whitespace_marker", observe_marker)
@@ -1362,6 +1452,122 @@ def test_restored_deep_wrapped_row_has_six_digit_gutter_before_first_paint(
         assert view._char_for_point(view._gutter_width, view._line_height // 2) == document.line_start(99_999)
         view.dispose()
         view.close()
+        app.processEvents()
+
+
+def test_direction_override_fixes_a_predominantly_rtl_line_starting_with_western_text(
+    tmp_path: Path,
+):
+    """A predominantly-Arabic line that happens to *start* with Western
+    text (e.g. a verse reference) is misjudged left-to-right by Auto's
+    first-strong-character rule alone -- confirmed directly:
+    `is_rtl_paragraph` returns False for this exact line. The "primary
+    direction" override lets a user correct this per-view when Auto gets
+    it wrong."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.bidi import is_rtl_paragraph
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "mixed-start.txt"
+    text = "John 3:16 قال يسوع من آمن به"
+    path.write_text(text, encoding="utf-8", newline="")
+    assert is_rtl_paragraph(text) is False  # confirms the real Auto gap
+
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        view.resize(600, 120)
+        view.set_soft_wrap(False)
+        view.show()
+        app.processEvents()
+
+        from PySide6.QtCore import Qt as _Qt
+
+        assert view.text_direction_override == "auto"
+        # Auto misjudges this line LTR, exactly matching `is_rtl_paragraph`
+        # above -- the same rule the renderer itself uses.
+        assert view._direction_for_window(text, 0) == _Qt.LayoutDirection.LeftToRight
+
+        view.set_text_direction_override("rtl")
+        assert view.text_direction_override == "rtl"
+        assert view._direction_for_window(text, 0) == _Qt.LayoutDirection.RightToLeft
+
+        # The override changes real hit-testing, not just the reported
+        # direction: clicking at the same point now resolves differently.
+        far_right = view._gutter_width + view._wrap_width() - 1
+        y = view._line_height // 2
+        rtl_offset = view._char_for_point(far_right, y)
+
+        view.set_text_direction_override("auto")
+        assert view.text_direction_override == "auto"
+        assert view._direction_for_window(text, 0) == _Qt.LayoutDirection.LeftToRight
+        auto_offset = view._char_for_point(far_right, y)
+        assert rtl_offset != auto_offset
+
+        view.close()
+        app.processEvents()
+
+
+def test_direction_override_rejects_unknown_values(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "direction-validation.txt"
+    path.write_text("alpha", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        with pytest.raises(ValueError):
+            view.set_text_direction_override("sideways")
+        assert view.text_direction_override == "auto"
+        view.close()
+        app.processEvents()
+
+
+def test_direction_override_round_trips_through_view_state(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "direction-persist.txt"
+    path.write_text("alpha", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        source = UNITITextView(EditorState(document))
+        source.set_text_direction_override("rtl")
+        record = source.export_state("doc-1")
+        assert record.extra["text_direction_override"] == "rtl"
+
+        restored = UNITITextView(EditorState(document), view_id=record.view_id)
+        restored.restore_state(record)
+        assert restored.text_direction_override == "rtl"
+
+        # The default (Auto) is never written -- an unmodified view's
+        # saved record carries no extra key for it at all.
+        source.set_text_direction_override("auto")
+        assert "text_direction_override" not in source.export_state("doc-1").extra
+
+        source.close()
+        restored.close()
         app.processEvents()
 
 

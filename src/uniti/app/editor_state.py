@@ -136,7 +136,7 @@ class EditorState:
         if result.complete:
             self._set_cursor(result.position, selecting=selecting)
 
-    def _cursor_line_is_rtl(self) -> bool:
+    def _cursor_line_is_rtl(self, *, direction_override: bool | None = None) -> bool:
         """BF-064: whether the cursor's logical line reads right-to-left,
         by the same paragraph-level (first-strong-character) rule used to
         render it — see `uniti.core.bidi.is_rtl_paragraph`.
@@ -148,8 +148,18 @@ class EditorState:
         — a known, documented limitation. Full embedding-level-aware caret
         affinity is a materially larger, separately-scoped effort (the
         "caret affinity" problem flagged in BF-043/BF-064's plan).
+
+        `direction_override`, when not None, bypasses detection entirely —
+        the "primary direction" switch: the first-strong-character rule
+        alone misjudges a predominantly-RTL paragraph that happens to
+        *start* with a Western character (a verse number's LTR text, an
+        abbreviation), classifying the whole line LTR. The caller (the
+        view, which owns the per-view override) is responsible for
+        passing it; this class stays Qt-free and has no view of its own.
         """
 
+        if direction_override is not None:
+            return direction_override
         line = self.document.line_for_char(self.cursor)
         line_start = self.document.line_start(line)
         line_end = self.document.line_end(line)
@@ -157,35 +167,43 @@ class EditorState:
         text = self.document.read(line_start, probe_end) if probe_end > line_start else ""
         return is_rtl_paragraph(text)
 
-    def move_visual_left(self, *, selecting: bool = False) -> None:
+    def move_visual_left(
+        self, *, selecting: bool = False, direction_override: bool | None = None
+    ) -> None:
         """Move toward the visual left edge — logically backward in a
         left-to-right line, logically forward in a right-to-left one."""
 
-        if self._cursor_line_is_rtl():
+        if self._cursor_line_is_rtl(direction_override=direction_override):
             self.move_right(selecting=selecting)
         else:
             self.move_left(selecting=selecting)
 
-    def move_visual_right(self, *, selecting: bool = False) -> None:
+    def move_visual_right(
+        self, *, selecting: bool = False, direction_override: bool | None = None
+    ) -> None:
         """Move toward the visual right edge — the mirror of `move_visual_left`."""
 
-        if self._cursor_line_is_rtl():
+        if self._cursor_line_is_rtl(direction_override=direction_override):
             self.move_left(selecting=selecting)
         else:
             self.move_right(selecting=selecting)
 
-    def move_visual_word_left(self, *, selecting: bool = False) -> None:
+    def move_visual_word_left(
+        self, *, selecting: bool = False, direction_override: bool | None = None
+    ) -> None:
         """Word-wise counterpart to `move_visual_left` (Ctrl/Cmd+Left)."""
 
-        if self._cursor_line_is_rtl():
+        if self._cursor_line_is_rtl(direction_override=direction_override):
             self.move_word_right(selecting=selecting)
         else:
             self.move_word_left(selecting=selecting)
 
-    def move_visual_word_right(self, *, selecting: bool = False) -> None:
+    def move_visual_word_right(
+        self, *, selecting: bool = False, direction_override: bool | None = None
+    ) -> None:
         """Word-wise counterpart to `move_visual_right` (Ctrl/Cmd+Right)."""
 
-        if self._cursor_line_is_rtl():
+        if self._cursor_line_is_rtl(direction_override=direction_override):
             self.move_word_left(selecting=selecting)
         else:
             self.move_word_right(selecting=selecting)

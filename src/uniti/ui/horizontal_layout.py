@@ -18,7 +18,7 @@ from uniti.ui.text_layout import ShapedWindow, direction_for_text
 
 
 class HorizontalLayouts:
-    def __init__(self, document, font, tab_stop_px):
+    def __init__(self, document, font, tab_stop_px, *, direction_override=None):
         self.document, self.font, self.tab_stop_px = document, font, tab_stop_px
         self.checkpoints = {}
         self.cache = OrderedDict()
@@ -27,6 +27,12 @@ class HorizontalLayouts:
         # recreated on every document edit (`document.revision` is part of
         # its construction signature in `text_view.py`).
         self.directions: dict[int, object] = {}
+        # The "primary direction" switch (BF-064 follow-up): when set,
+        # bypasses `direction_for_text`'s first-strong-character detection
+        # entirely for every line — the caller (the view) is responsible
+        # for invalidating/recreating this instance when it changes, the
+        # same way it already does for `document.revision`.
+        self.direction_override = direction_override
 
     def window(self, line, *, pixel=0.0, column=None):
         checkpoints = self.checkpoints.setdefault(line, [(0, 0.0)])
@@ -49,13 +55,18 @@ class HorizontalLayouts:
                     return start, offset, ShapedWindow("", self.font), False
                 text = text[:stop]
             if start == 0:
-                self.directions[line] = direction_for_text(text)
+                self.directions[line] = (
+                    self.direction_override
+                    if self.direction_override is not None
+                    else direction_for_text(text)
+                )
             cached_direction = self.directions.get(line)
-            direction = (
-                direction_for_text(text)
-                if cached_direction is None
-                else cached_direction
-            )
+            if cached_direction is not None:
+                direction = cached_direction
+            elif self.direction_override is not None:
+                direction = self.direction_override
+            else:
+                direction = direction_for_text(text)
             shaped = ShapedWindow(
                 text,
                 self.font,
