@@ -1,9 +1,20 @@
 # Compare/Diff — Implementation Plan
 
 Date: 2026-09-17
-Status: **planning** — scope confirmed with the user; no implementation yet. This document exists to turn the [Feature Wishlist](../FEATURE_WISHLIST.md)'s unscoped "Compare files" idea into a concrete task breakdown before any code is written.
+Status: **Phase 1 (plain view, two open documents) implemented and integrated on `main`.** Phases 2 (merge-style editing) and 3 (doc-vs-disk mode) are not yet started. This document exists to turn the [Feature Wishlist](../FEATURE_WISHLIST.md)'s unscoped "Compare files" idea into a concrete task breakdown before any code is written; see "Progress" below for what actually landed.
 Feedback: [BF-070](../BETA_FEEDBACK.md#bf-070--comparediff-between-two-documents)
 Milestone: a new workstream inside the active [B3 milestone](v0.001b3-find-replace-and-editor-refinement-beta.md), following the same "planned before implementation" pattern the [RTL/bidi plan](../03_implemented/milestones/2026-09-15-rtl-bidi-support-plan.md) used.
+
+## Progress
+
+**Phase 1 implemented 2026-09-17**, matching the draft task breakdown below with two deliberate, documented deviations:
+
+- `uniti.core.text_diff` (new, Qt-free): `HunkKind`, `Hunk`, `diff_lines`, `changed_hunks`, `align_left_to_right`/`align_right_to_left` — exactly as planned. `tests/core/test_text_diff.py` (10 tests).
+- `ComparePane` (`src/uniti/ui/compare_pane.py`): two read-only, non-wrapping `QPlainTextEdit` panes with a hunk-colored gutter (`_HunkGutter`, following Qt's standard line-number-area pattern) and full-row `ExtraSelection` highlighting, opened via a new **Tools → Compare…** menu entry and a `CompareDocumentPickerDialog`. Scroll sync and hunk navigation (Previous/Next buttons) both use the line-alignment mapping. Staleness recompute mirrors `UNITITextView`'s own pattern exactly: `document.add_history_listener` with a `weakref`-held callback, marshaled onto the GUI thread through a queued Qt signal. A 4 MiB provisional size cap (`MAX_COMPARE_CHARS`) guards both sides before any read. `tests/ui/test_compare_pane.py` (8 tests) and 3 menu-integration tests in `tests/ui/test_main_window_contract.py`. Full suite green: 2,012 passed (21 new), 6 platform skips, no regressions.
+- **Deviation 1 — document picker scope.** The plan named `DocumentRegistry.entries` (service-wide, across every window) as the candidate source; the picker actually built reuses `show_diagnostics`'s existing pattern instead (`dict.fromkeys(view.document for view in self.views)` — the *current window's* open tabs only). Simpler, requires no `_service` wiring, and works identically in the common one-window case; a user with documents split across two windows can't yet compare across them. Worth widening to `DocumentRegistry.entries` in a follow-up if that turns out to matter in practice.
+- **Deviation 2 — no line-padding for visual row alignment.** Not called out as an open question originally, but a real design choice made during implementation: the two panes do **not** insert blank placeholder lines to keep row *N* on the left visually beside its counterpart on the right (the way most side-by-side diff tools do). They scroll in sync via the alignment mapping instead, but within an unequal-length hunk the two panes' visible rows are not pixel-aligned line-for-line. Full padding is a real follow-up, not attempted here — it would also change how the gutter's line numbers and the `_HunkGutter` painting work.
+- Open question 3 (size bound) has a real number now, not just a recommendation: **4 MiB per side**, chosen precautionarily (Compare reads two buffers plus a diff pass, vs. Format Document's one buffer for its 16 MiB cap) and explicitly marked provisional in code — still not empirically tuned against a real large-file prototype.
+- Not yet done: Phase 2 (apply/reject hunks, `Document.replace_many`) and Phase 3 (doc-vs-disk mode) are both unimplemented, exactly as planned — see the task breakdown below, unchanged for those phases.
 
 ## Scope (confirmed with the user)
 

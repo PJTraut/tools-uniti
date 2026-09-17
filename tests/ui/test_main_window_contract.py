@@ -1100,6 +1100,138 @@ def test_text_direction_menu_is_per_view_not_a_global_setting(tmp_path: Path):
         app.processEvents()
 
 
+def test_compare_menu_opens_a_compare_pane_for_two_picked_documents(
+    tmp_path: Path, monkeypatch
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    import uniti.ui.main_window as main_window
+
+    class _StubPicker:
+        def __init__(self, candidates, *, parent=None):
+            self._candidates = candidates
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def left_choice(self):
+            return self._candidates[0]
+
+        def right_choice(self):
+            return self._candidates[1]
+
+    monkeypatch.setattr(main_window, "CompareDocumentPickerDialog", _StubPicker)
+
+    first_path = tmp_path / "compare-a.txt"
+    second_path = tmp_path / "compare-b.txt"
+    first_path.write_text("alpha\nbeta", encoding="utf-8")
+    second_path.write_text("alpha\nBETA", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = main_window.UNITIMainWindow()
+    try:
+        first_view = window.open_path(first_path)
+        second_view = window.open_path(second_path)
+        assert first_view is not None and second_view is not None
+
+        window.show_compare()
+        assert window._compare_pane is not None
+        assert window._central_splitter.indexOf(window._compare_pane) >= 0
+        assert len(window._compare_pane._changed) == 1
+
+        window._compare_pane.close_compare()
+        app.processEvents()
+        assert window._compare_pane is None
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_compare_menu_requires_two_open_documents(tmp_path: Path, monkeypatch):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QMessageBox
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    shown = {}
+    monkeypatch.setattr(
+        QMessageBox,
+        "information",
+        lambda self, title, text, *a, **k: shown.update(title=title, text=text),
+    )
+
+    path = tmp_path / "compare-only.txt"
+    path.write_text("alpha", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        view = window.open_path(path)
+        assert view is not None
+
+        window.show_compare()
+        assert window._compare_pane is None
+        assert shown.get("title") == "Compare"
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_compare_menu_rejects_comparing_a_document_with_itself(
+    tmp_path: Path, monkeypatch
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
+
+    import uniti.ui.main_window as main_window
+
+    class _SameChoicePicker:
+        def __init__(self, candidates, *, parent=None):
+            self._candidates = candidates
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def left_choice(self):
+            return self._candidates[0]
+
+        def right_choice(self):
+            return self._candidates[0]
+
+    monkeypatch.setattr(main_window, "CompareDocumentPickerDialog", _SameChoicePicker)
+    shown = {}
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda self, title, text, *a, **k: shown.update(title=title, text=text),
+    )
+
+    first_path = tmp_path / "compare-a.txt"
+    second_path = tmp_path / "compare-b.txt"
+    first_path.write_text("alpha", encoding="utf-8")
+    second_path.write_text("beta", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = main_window.UNITIMainWindow()
+    try:
+        assert window.open_path(first_path) is not None
+        assert window.open_path(second_path) is not None
+
+        window.show_compare()
+        assert window._compare_pane is None
+        assert shown.get("title") == "Compare"
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
 def test_zoom_shortcut_reaches_the_panel_while_find_input_has_focus(
     tmp_path: Path,
 ):

@@ -101,6 +101,11 @@ from uniti.resources import (
     WorkPriority,
 )
 from uniti.ui.character_inspector import CharacterInspectorDialog
+from uniti.ui.compare_pane import (
+    MAX_COMPARE_CHARS,
+    CompareDocumentPickerDialog,
+    ComparePane,
+)
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
 from uniti.ui.file_format_dialogs import (
     LineEndingReportDialog,
@@ -307,6 +312,7 @@ class UNITIMainWindow(QMainWindow):
         central_layout.addWidget(self._central_splitter, 1)
         self._markdown_preview: MarkdownPreviewPane | None = None
         self._markdown_preview_target_view: UNITITextView | None = None
+        self._compare_pane: ComparePane | None = None
         self._markdown_preview_timer = QTimer(self)
         self._markdown_preview_timer.setSingleShot(True)
         self._markdown_preview_timer.setInterval(300)
@@ -1179,6 +1185,13 @@ class UNITIMainWindow(QMainWindow):
                 "Character Inspector…",
                 None,
                 self.show_character_inspector,
+            )
+        )
+        tools_menu.addAction(
+            self._action(
+                "Compare…",
+                None,
+                self.show_compare,
             )
         )
         tools_menu.addAction(
@@ -3003,6 +3016,63 @@ class UNITIMainWindow(QMainWindow):
             self,
         )
         dialog.exec()
+
+    def _compare_candidates(self) -> list[tuple[str, Document]]:
+        documents = list(dict.fromkeys(view.document for view in self.views))
+        return [
+            (f"{document.path.name}{'*' if document.modified else ''}", document)
+            for document in documents
+        ]
+
+    def show_compare(self) -> None:
+        candidates = self._compare_candidates()
+        if len(candidates) < 2:
+            QMessageBox.information(
+                self, "Compare", "Open at least two documents to compare."
+            )
+            return
+        dialog = CompareDocumentPickerDialog(candidates, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        left_label, left_document = dialog.left_choice()
+        right_label, right_document = dialog.right_choice()
+        if left_document is right_document:
+            QMessageBox.warning(
+                self, "Compare", "Choose two different documents to compare."
+            )
+            return
+        for label, document in (
+            (left_label, left_document),
+            (right_label, right_document),
+        ):
+            if document.total_chars() > MAX_COMPARE_CHARS:
+                QMessageBox.warning(
+                    self,
+                    "Compare",
+                    f'"{label}" is larger than {MAX_COMPARE_CHARS:,} '
+                    "characters and cannot be compared.",
+                )
+                return
+        self._close_compare()
+        self._compare_pane = ComparePane(
+            left_document,
+            left_label,
+            right_document,
+            right_label,
+            self._central_splitter,
+        )
+        self._central_splitter.addWidget(self._compare_pane)
+        self._central_splitter.setSizes([1, 1])
+        self._compare_pane.closeRequested.connect(self._close_compare)
+
+    def _close_compare(self) -> None:
+        if self._compare_pane is None:
+            return
+        pane = self._compare_pane
+        self._compare_pane = None
+        pane.close_compare()
+        pane.setParent(None)
+        pane.deleteLater()
 
     def export_dogfood_evidence(self):
         if self._service is None:
