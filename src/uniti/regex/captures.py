@@ -25,8 +25,16 @@ MAX_CAPTURE_REPORT_MATCHES = 3
 _RECORD_PAYLOAD_BYTES = 64
 _CAPTURE_TIMEOUT_SECONDS = 0.25
 _PAYLOAD_LIMIT_REASON = "capture details exceed 1 MiB report limit"
-_CONTEXT_LIMIT_REASON = (
-    "capture details unavailable within 65,536-character context"
+# Three distinct causes previously shared one undifferentiated message —
+# each now names what a user could actually act on.
+_LOOKAROUND_CONTEXT_REASON = (
+    "capture details unavailable — this pattern uses lookaround, which needs "
+    "to see past the 65,536-character capture context to confirm the match"
+)
+_WINDOW_BOUNDARY_REASON = (
+    "capture details unavailable — the match could not be confirmed within "
+    "a 65,536-character window around it (it may need more surrounding "
+    "context, or the document changed since this match was found)"
 )
 _MATCH_LIMIT_REASON = "match exceeds 65,536-character report limit"
 _OUTSIDE_SNAPSHOT_REASON = "stored match is outside document snapshot"
@@ -286,7 +294,9 @@ def _resolve_exact_match(
     local_end = record.end - context_start
     excludes_document_content = context_start > 0 or excludes_right
     if excludes_document_content and _pattern_has_lookaround(compiled):
-        return _ExactMatchResolution(None, context_start, window, _CONTEXT_LIMIT_REASON)
+        return _ExactMatchResolution(
+            None, context_start, window, _LOOKAROUND_CONTEXT_REASON
+        )
     match = _find_exact_match(
         compiled,
         window,
@@ -296,12 +306,16 @@ def _resolve_exact_match(
         cancelled=cancelled,
     )
     if match is None:
-        return _ExactMatchResolution(None, context_start, window, _CONTEXT_LIMIT_REASON)
+        return _ExactMatchResolution(
+            None, context_start, window, _WINDOW_BOUNDARY_REASON
+        )
 
     touches_artificial_left = context_start > 0 and local_start == 0
     touches_artificial_right = excludes_right and local_end == len(window)
     if touches_artificial_left or touches_artificial_right:
-        return _ExactMatchResolution(None, context_start, window, _CONTEXT_LIMIT_REASON)
+        return _ExactMatchResolution(
+            None, context_start, window, _WINDOW_BOUNDARY_REASON
+        )
     return _ExactMatchResolution(match, context_start, window)
 
 
@@ -452,7 +466,8 @@ def resolve_capture_report(
         _utf8_size(reason)
         for reason in (
             _PAYLOAD_LIMIT_REASON,
-            _CONTEXT_LIMIT_REASON,
+            _LOOKAROUND_CONTEXT_REASON,
+            _WINDOW_BOUNDARY_REASON,
             _MATCH_LIMIT_REASON,
             _OUTSIDE_SNAPSHOT_REASON,
         )

@@ -217,6 +217,10 @@ def test_capture_report_never_trusts_an_artificial_window_edge(
 
     match = report.matches[0]
     assert match.groups == ()
+    # Distinguishes this from a plain window-boundary failure: this reason
+    # must specifically name lookaround as the cause, since that's what a
+    # user debugging the pattern needs to see.
+    assert "lookaround" in (match.unavailable_reason or "")
     assert "65,536" in (match.unavailable_reason or "")
 
 
@@ -243,7 +247,56 @@ def test_capture_report_rejects_centered_match_with_out_of_window_lookaround(
 
     match = report.matches[0]
     assert match.groups == ()
+    assert "lookaround" in (match.unavailable_reason or "")
     assert "65,536" in (match.unavailable_reason or "")
+
+
+def test_capture_report_gives_a_distinct_reason_when_a_stored_match_cannot_be_relocated(
+    tmp_path: Path,
+):
+    """A stored `MatchRecord` can go stale (the document changed since it
+    was found). This must not be reported with the same wording as a
+    lookaround-needs-more-context failure -- a user debugging their
+    pattern needs to know these are different problems."""
+
+    path = tmp_path / "changed.txt"
+    path.write_text("dog", encoding="utf-8")
+    pattern = "cat"
+    with Document.open(path) as document:
+        compiled = compile_pattern(pattern)
+        record = MatchRecord(0, 3)
+        request = _request(document, ((0, record),), pattern_text=pattern)
+        with document.snapshot() as snapshot:
+            report = resolve_capture_report(snapshot, compiled, request)
+
+    match = report.matches[0]
+    assert match.groups == ()
+    assert match.unavailable_reason is not None
+    assert "lookaround" not in match.unavailable_reason
+
+
+def test_capture_report_gives_a_distinct_reason_for_a_non_lookaround_match_touching_the_window_edge(
+    tmp_path: Path,
+):
+    """A plain greedy pattern with no lookaround can still legitimately
+    touch the artificial edge of the 65,536-character capture window --
+    this is a different cause from lookaround needing more context, and
+    must be worded differently."""
+
+    path = tmp_path / "edge-no-lookaround.txt"
+    path.write_text("a" * MAX_CAPTURE_CONTEXT_CHARS + "!", encoding="utf-8")
+    pattern = "a+"
+    with Document.open(path) as document:
+        compiled = compile_pattern(pattern)
+        record = MatchRecord(0, MAX_CAPTURE_CONTEXT_CHARS)
+        request = _request(document, ((0, record),), pattern_text=pattern)
+        with document.snapshot() as snapshot:
+            report = resolve_capture_report(snapshot, compiled, request)
+
+    match = report.matches[0]
+    assert match.groups == ()
+    assert match.unavailable_reason is not None
+    assert "lookaround" not in match.unavailable_reason
 
 
 def test_capture_report_bounds_context_preview_count_width_and_payload(

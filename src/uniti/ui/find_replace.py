@@ -1450,6 +1450,13 @@ class FindReplaceWindow(QDockWidget):
                     f"match {self._current_index + 1:,}/{len(self._results):,}"
                 )
             return
+        if self._results_compiled is not None:
+            # A search actually completed for this pattern and this
+            # document state and found nothing -- distinct from having
+            # never searched yet, which falls through to the generic
+            # "valid pattern" message below.
+            self.status_label.setText("0 matches")
+            return
         suffix = "group" if pattern.group_count == 1 else "groups"
         self.status_label.setText(
             f"valid pattern — {pattern.group_count:,} {suffix}"
@@ -2355,6 +2362,11 @@ class FindReplaceWindow(QDockWidget):
 
     @staticmethod
     def _capture_failure(request: CaptureReportRequest) -> CaptureReport:
+        # Deliberately never includes the triggering exception's own text:
+        # that could leak internal detail (paths, snippets of document
+        # content quoted in an error, memory addresses) into a report a
+        # user might export or share. See
+        # test_capture_failure_leaves_valid_match_navigation_intact.
         reason = "capture details unavailable"
         matches = tuple(
             CaptureMatchReport(

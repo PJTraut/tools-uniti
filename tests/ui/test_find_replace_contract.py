@@ -1549,6 +1549,31 @@ def test_invalid_and_over_limit_patterns_expose_exact_nonmodal_states(
         _close_panel(app, document, view, panel)
 
 
+def test_status_distinguishes_zero_matches_from_not_yet_searched(tmp_path: Path):
+    """A pattern that compiles but hasn't been searched yet, and one that
+    was searched and genuinely found nothing, must not read identically --
+    a user debugging a pattern (e.g. a mistyped SFM marker name) needs to
+    know a real search actually ran and found zero, not just that the
+    pattern happens to be syntactically valid."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha")
+    try:
+        panel.regex_checkbox.setChecked(True)
+        panel.find_input.set_text(r"(z)")
+        _wait_until(app, lambda: panel.compile_current() is not None)
+        assert panel.status_label.text() == "valid pattern — 1 group"
+
+        panel.find_all()
+        _wait_until(app, lambda: not panel.busy and panel.result_count == 0)
+        assert panel.status_label.text() == "0 matches"
+    finally:
+        _close_panel(app, document, view, panel)
+
+
 def test_pattern_and_replacement_formats_share_group_color(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
