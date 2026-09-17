@@ -637,6 +637,145 @@ def test_syntax_highlighting_never_changes_document_content(tmp_path: Path):
             view.close()
 
 
+def test_xml_comment_state_carries_across_logical_lines_when_painted(
+    tmp_path: Path,
+):
+    """The exact real-world gap the parked "multiline-aware" capability
+    closes: a line with no comment markers of its own ("middle of
+    comment") only highlights as a comment if the tokenizer's state
+    correctly carried over from the previous logical line's unterminated
+    `<!--`."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.core.syntax_profiles import profile_for_extension
+    from uniti.ui.syntax_theme import syntax_category_palette
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "sample.xml"
+    lines = ["<a>", "<!-- start of comment", "middle of comment", "end -->", "</a>"]
+    text = "\n".join(lines)
+    path.write_text(text, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            view.set_syntax_profile(profile_for_extension("xml"))
+            view.resize(320, 200)
+            view.set_soft_wrap(False)
+            view.show()
+            app.processEvents()
+            view.viewport().repaint()
+            app.processEvents()
+
+            image = view.viewport().grab().toImage()
+            expected_color = syntax_category_palette(view.theme_tokens.base)["comment"]
+            text_color = view.theme_tokens.text
+
+            def distance(left: QColor, right: QColor) -> int:
+                return sum(
+                    (a - b) ** 2 for a, b in zip(left.getRgb()[:3], right.getRgb()[:3])
+                )
+
+            row = 2  # "middle of comment"
+            y = row * view._line_height + view._line_height // 2
+            x_start = view._gutter_width + 1
+            x_end = view._gutter_width + view._metrics.horizontalAdvance(
+                "middle of comment"
+            )
+            closest = min(
+                (image.pixelColor(x, y) for x in range(x_start, x_end)),
+                key=lambda color: distance(color, expected_color),
+            )
+            assert distance(closest, expected_color) < distance(closest, text_color)
+        finally:
+            view.close()
+
+
+def test_syntax_start_state_cache_is_cleared_on_edit_and_profile_change(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.core.syntax_profiles import PLAIN_TEXT, profile_for_extension
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "sample.xml"
+    text = "<a>\n<!-- open\ncontent\nclose -->\n</a>"
+    path.write_text(text, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            view.set_syntax_profile(profile_for_extension("xml"))
+            view.resize(320, 200)
+            view.set_soft_wrap(False)
+            view.show()
+            app.processEvents()
+            view.viewport().repaint()
+            app.processEvents()
+            assert view._syntax_start_states  # populated by painting
+
+            view.refresh_document_revision()
+            assert view._syntax_start_states == {}
+
+            view.viewport().repaint()
+            app.processEvents()
+            assert view._syntax_start_states  # rebuilt by the next paint
+
+            view.set_syntax_profile(PLAIN_TEXT)
+            assert view._syntax_start_states == {}
+        finally:
+            view.close()
+
+
+def test_syntax_highlighting_degrades_gracefully_on_a_cold_cache(tmp_path: Path):
+    """Scrolling straight into a region whose start state was never
+    computed (e.g. a jump past unvisited lines) must not crash — it falls
+    back to the profile's `initial_state`, a documented approximation
+    rather than a full backward walk of the document."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.core.syntax_profiles import profile_for_extension
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "sample.xml"
+    lines = ["<a>", "<!-- open"] + [f"line {i}" for i in range(200)] + ["close -->", "</a>"]
+    text = "\n".join(lines)
+    path.write_text(text, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            view.set_syntax_profile(profile_for_extension("xml"))
+            view.resize(320, 200)
+            view.set_soft_wrap(False)
+            view.show()
+            view.verticalScrollBar().setValue(150)  # jump without ever painting line 0
+            app.processEvents()
+            view.viewport().repaint()
+            app.processEvents()  # must not raise
+        finally:
+            view.close()
+
+
 def test_zero_width_marker_row_ownership_is_unambiguous():
     from uniti.ui.text_view import _zero_width_visible
 

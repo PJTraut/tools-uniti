@@ -160,6 +160,27 @@ class UNITITextView(QAbstractScrollArea):
         # a paragraph whose first strong character came earlier). Cleared
         # on every document edit in `refresh_document_revision`.
         self._line_directions: dict[int, object] = {}
+        # Cross-line syntax-highlighting state (un-parked slice of "File-type
+        # profiles and syntax highlighting" — a multi-line comment, fenced
+        # code block, or YAML block scalar carries state from the line where
+        # it opens to the line where it closes). Keyed by logical line index,
+        # storing the tokenizer's state at the *start* of that line (i.e. the
+        # previous line's end-state) — built up incrementally as the first
+        # row of each logical line is painted in order, so a normal top-to-
+        # bottom scroll fills it cheaply. A line whose start state isn't
+        # cached yet (a cold cache, or a jump straight into an unvisited
+        # region of a huge file) falls back to the profile's `initial_state`
+        # rather than walking the whole document backward to compute it
+        # exactly — a bounded, self-correcting approximation in the same
+        # spirit as this cache's blunt wholesale-clear-on-edit invalidation,
+        # not a full incremental-parsing subsystem. Scoped to *logical*
+        # lines only: a single very long logical line that wraps or scrolls
+        # across multiple visible rows does not thread state *within*
+        # itself between those rows — see `uniti.core.syntax_profiles`'s
+        # module docstring for the full scope note. Cleared on every
+        # document edit in `refresh_document_revision`, and whenever the
+        # syntax profile itself changes in `set_syntax_profile`.
+        self._syntax_start_states: dict[int, object] = {}
         # The "primary direction" switch: None means Auto (per-line
         # first-strong-character detection, the default); otherwise every
         # line is forced to this direction regardless of its own content.
@@ -330,6 +351,7 @@ class UNITITextView(QAbstractScrollArea):
         if profile is self._syntax_profile:
             return
         self._syntax_profile = profile
+        self._syntax_start_states.clear()
         self.viewport().update()
 
     @property
@@ -603,6 +625,7 @@ class UNITITextView(QAbstractScrollArea):
         self._wrap_signature = None
         self._match_index = MatchIndex(())
         self._line_directions.clear()
+        self._syntax_start_states.clear()
         self._refresh_scrollbars(advance_index=False)
         line = self.document.line_for_char(self.state.cursor)
         column = self.state.cursor - self.document.line_start(line)
@@ -1006,16 +1029,31 @@ class UNITITextView(QAbstractScrollArea):
         *,
         selection: tuple[int, int] | None = None,
         shaped=None,
+        line_number: int | None = None,
+        column_start: int = 0,
     ) -> QTextLayout:
         shaped = self._shape(text) if shaped is None else shaped
         layout = shaped.layout
         formats: list[QTextLayout.FormatRange] = []
         if self._syntax_profile is not PLAIN_TEXT:
-            # Scoped to exactly this row/window's text — a construct
-            # spanning more than one visible row (e.g. a multi-line
-            # comment) will not highlight correctly across that boundary;
-            # see `uniti.core.syntax_profiles` (BF-027/BF-041).
-            for token in self._syntax_profile.tokenize(text):
+            # State threads across whole *logical* lines only (this line's
+            # start state is the previous line's cached end state) — not
+            # across the wrapped/horizontal-scroll rows within one long
+            # logical line, which all reuse that same start-of-line state
+            # rather than threading further. See `uniti.core.syntax_profiles`
+            # and `self._syntax_start_states`'s own comment for the full
+            # scope note.
+            state_in = (
+                self._syntax_start_states.get(
+                    line_number, self._syntax_profile.initial_state
+                )
+                if line_number is not None
+                else self._syntax_profile.initial_state
+            )
+            tokens, state_out = self._syntax_profile.tokenize(text, state_in)
+            if line_number is not None and column_start == 0:
+                self._syntax_start_states[line_number + 1] = state_out
+            for token in tokens:
                 color = self._syntax_colors.get(token.category)
                 if color is None:
                     continue
@@ -1493,6 +1531,8 @@ class UNITITextView(QAbstractScrollArea):
                 float(y),
                 selection=selected_range,
                 shaped=shaped,
+                line_number=line_number,
+                column_start=column_start,
             )
             self._paint_whitespace_for_row(
                 painter,

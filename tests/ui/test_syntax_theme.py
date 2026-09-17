@@ -61,7 +61,8 @@ def _rules_of(profile):
         "plain_text": "anything",
     }
     text = samples.get(profile.key, "")
-    return [(token.category, None) for token in profile.tokenize(text)]
+    tokens, _state = profile.tokenize(text, profile.initial_state)
+    return [(token.category, None) for token in tokens]
 
 
 @pytest.mark.parametrize("base_hex", ("#ffffff", "#1e1e1e"))
