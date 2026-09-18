@@ -11,6 +11,7 @@ import weakref
 
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal, QTimer
 from PySide6.QtGui import (
+    QColor,
     QFont,
     QFontMetrics,
     QFontMetricsF,
@@ -27,7 +28,7 @@ from PySide6.QtWidgets import QAbstractScrollArea, QApplication, QFrame
 
 from uniti.app.editor_state import EditorState, EditorStateSnapshot
 from uniti.app.session import DockReturnRecord, ViewRecord
-from uniti.core.syntax_profiles import PLAIN_TEXT, SyntaxProfile
+from uniti.core.syntax_profiles import PLAIN_TEXT, PROFILES_BY_KEY, SyntaxProfile
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
 from uniti.ui.theme import EditorThemeTokens, active_theme
@@ -70,6 +71,7 @@ def _consume_marker(budget: _MarkerBudget) -> bool:
 
 FONT_WEIGHT_STEPS = (100, 200, 300, 400, 500, 600, 700, 800, 900)
 DEFAULT_FONT_WEIGHT = 400
+DEFAULT_TAB_WIDTH = 4
 
 
 def _nearest_font_weight(value: int) -> int:
@@ -128,7 +130,7 @@ class UNITITextView(QAbstractScrollArea):
         self._zoom_percent = 100
         self._font_weight = _nearest_font_weight(self._base_font.weight())
         self._soft_wrap = False
-        self._tab_width_chars = 4
+        self._tab_width_chars = DEFAULT_TAB_WIDTH
         self._wrap_index: WrappedRowIndex | None = None
         self._wrap_signature: tuple[int, int, int] | None = None
         self.setFont(self._base_font)
@@ -202,8 +204,14 @@ class UNITITextView(QAbstractScrollArea):
             raise RuntimeError("UNITITextView requires an existing QApplication")
         self._inspection = unicode_inspection(app)
         self._inspection.changed.connect(self.viewport().update)
+        self._read_only = False
+        self._line_highlights: dict[int, QColor] = {}
+        self._line_markers: frozenset[int] = frozenset()
+        self._line_span_highlights: dict[int, tuple[tuple[int, int, QColor], ...]] = {}
         self._theme_tokens = active_theme(app).editor
+        self._theme_choice_id: str | None = None
         self._syntax_profile: SyntaxProfile = PLAIN_TEXT
+        self._syntax_choice_key: str | None = None
         self._syntax_colors = self._theme_tokens.syntax
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
@@ -332,6 +340,40 @@ class UNITITextView(QAbstractScrollArea):
         self._direction_override = selected
         self.viewport().update()
 
+    @property
+    def read_only(self) -> bool:
+        return self._read_only
+
+    def set_read_only(self, enabled: bool) -> None:
+        """Block every mutating keyboard/IME path (typing, paste, cut,
+        backspace/delete, newline) while leaving navigation, selection,
+        and copy untouched — for a view onto a live `Document` that must
+        stay inspectable but never edited in place (Compare's panes)."""
+
+        self._read_only = bool(enabled)
+
+    def set_line_highlights(
+        self,
+        colors: dict[int, QColor] | None = None,
+        markers: frozenset[int] | set[int] | None = None,
+        spans: dict[int, tuple[tuple[int, int, QColor], ...]] | None = None,
+    ) -> None:
+        """Tint arbitrary logical lines' gutter+row background (`colors`,
+        keyed by 0-based line number), mark others with a thin accent bar
+        in the gutter (`markers`), and/or paint specific character ranges
+        within a line more strongly (`spans`, keyed by line number, each
+        value a tuple of `(start_column, end_column, color)` in that
+        line's own column coordinates) — for Compare's hunk-kind
+        backgrounds, cross-pane current-line indicator, and intra-line
+        (word/character-level) change highlighting within a changed line.
+        All three replace whatever was set before; any argument left as
+        `None` clears that one."""
+
+        self._line_highlights = dict(colors) if colors else {}
+        self._line_markers = frozenset(markers) if markers else frozenset()
+        self._line_span_highlights = dict(spans) if spans else {}
+        self.viewport().update()
+
     def set_theme_tokens(self, tokens: EditorThemeTokens) -> None:
         if not isinstance(tokens, EditorThemeTokens):
             raise TypeError("theme tokens must be EditorThemeTokens")
@@ -340,6 +382,29 @@ class UNITITextView(QAbstractScrollArea):
         self._theme_tokens = tokens
         self._syntax_colors = tokens.syntax
         self.viewport().update()
+
+    @property
+    def theme_choice_id(self) -> str | None:
+        """This view's own theme choice (a built-in mode name or a custom
+        profile ID), independent of the application-wide chrome theme —
+        `None` means "follow the app theme" (the default: every view
+        tracks `set_theme_tokens` calls from the app-wide theme change
+        exactly as before this per-view override existed)."""
+
+        return self._theme_choice_id
+
+    def set_theme_choice(
+        self, choice_id: str | None, tokens: EditorThemeTokens | None
+    ) -> None:
+        """Record this view's theme choice and, if `tokens` is given, apply
+        it immediately. Resolving `choice_id` into concrete tokens needs
+        the application's theme/profile store, so that resolution stays in
+        `UNITIMainWindow` — this method only applies what it's given and
+        remembers the choice for `export_state`/menu-sync purposes."""
+
+        self._theme_choice_id = choice_id
+        if tokens is not None:
+            self.set_theme_tokens(tokens)
 
     @property
     def syntax_profile(self) -> SyntaxProfile:
@@ -353,6 +418,19 @@ class UNITITextView(QAbstractScrollArea):
         self._syntax_profile = profile
         self._syntax_start_states.clear()
         self.viewport().update()
+
+    @property
+    def syntax_choice_key(self) -> str | None:
+        """This view's own forced syntax-profile key, overriding whatever
+        the extension→profile mapping would otherwise assign to this
+        document — `None` means "follow the extension mapping" (the
+        default)."""
+
+        return self._syntax_choice_key
+
+    def set_syntax_choice(self, choice_key: str | None, profile: SyntaxProfile) -> None:
+        self._syntax_choice_key = choice_key
+        self.set_syntax_profile(profile)
 
     @property
     def dock_return(self) -> DockReturnRecord | None:
@@ -424,6 +502,10 @@ class UNITITextView(QAbstractScrollArea):
         self.wrapChanged.emit(enabled)
         self.viewport().update()
 
+    @property
+    def tab_width(self) -> int:
+        return self._tab_width_chars
+
     def set_tab_width(self, width: int) -> None:
         width = max(1, int(width))
         if width == self._tab_width_chars:
@@ -484,7 +566,7 @@ class UNITITextView(QAbstractScrollArea):
         self._rebuild_metrics()
 
     def set_zoom_percent(self, percent: int) -> None:
-        percent = max(50, min(300, int(percent)))
+        percent = max(50, min(500, int(percent)))
         if percent == self._zoom_percent:
             return
         self._zoom_percent = percent
@@ -527,8 +609,16 @@ class UNITITextView(QAbstractScrollArea):
         editor = self.state.export_state()
         vertical = self.verticalScrollBar().value()
         extra = {}
+        if self._whitespace_mode is not WhitespaceMode.OFF:
+            extra["whitespace_mode"] = self._whitespace_mode.value
+        if self._tab_width_chars != DEFAULT_TAB_WIDTH:
+            extra["tab_width"] = self._tab_width_chars
         if self._direction_override is not None:
             extra["text_direction_override"] = self.text_direction_override
+        if self._theme_choice_id is not None:
+            extra["theme_choice_id"] = self._theme_choice_id
+        if self._syntax_choice_key is not None:
+            extra["syntax_choice_key"] = self._syntax_choice_key
         return ViewRecord(
             self.view_id,
             document_id,
@@ -589,6 +679,24 @@ class UNITITextView(QAbstractScrollArea):
         direction_override = record.extra.get("text_direction_override")
         if direction_override in ("ltr", "rtl"):
             self.set_text_direction_override(direction_override)
+        whitespace_mode = record.extra.get("whitespace_mode")
+        if isinstance(whitespace_mode, str):
+            try:
+                self.set_whitespace_mode(whitespace_mode)
+            except ValueError:
+                pass
+        tab_width = record.extra.get("tab_width")
+        if isinstance(tab_width, int) and not isinstance(tab_width, bool) and tab_width > 0:
+            self.set_tab_width(tab_width)
+        syntax_choice_key = record.extra.get("syntax_choice_key")
+        if isinstance(syntax_choice_key, str) and syntax_choice_key in PROFILES_BY_KEY:
+            self.set_syntax_choice(syntax_choice_key, PROFILES_BY_KEY[syntax_choice_key])
+        theme_choice_id = record.extra.get("theme_choice_id")
+        if isinstance(theme_choice_id, str):
+            # Tokens are resolved by `UNITIMainWindow` (needs the app's
+            # theme/profile store) right after this call returns; here we
+            # only remember the choice for `export_state`/menu-sync.
+            self._theme_choice_id = theme_choice_id
         self.state.restore_state(
             EditorStateSnapshot(
                 record.cursor,
@@ -1386,10 +1494,20 @@ class UNITITextView(QAbstractScrollArea):
             y = row * self._line_height
             baseline = y + self._row_ascent
             is_cursor_line = line_number == cursor_line
-            if is_cursor_line and (not self._soft_wrap or column_start == 0):
+            line_highlight = self._line_highlights.get(line_number)
+            if (line_highlight is not None or is_cursor_line) and (
+                not self._soft_wrap or column_start == 0
+            ):
                 painter.fillRect(
                     QRectF(0, float(y), float(self._gutter_width), float(self._line_height)),
-                    tokens.current_line,
+                    line_highlight if line_highlight is not None else tokens.current_line,
+                )
+            if line_number in self._line_markers and (
+                not self._soft_wrap or column_start == 0
+            ):
+                painter.fillRect(
+                    QRectF(0, float(y), 3.0, float(self._line_height)),
+                    tokens.current_match,
                 )
             painter.setPen(tokens.gutter_text)
             if not self._soft_wrap or column_start == 0:
@@ -1432,7 +1550,7 @@ class UNITITextView(QAbstractScrollArea):
                     self.viewport().height(),
                 )
             )
-            if is_cursor_line:
+            if line_highlight is not None or is_cursor_line:
                 painter.fillRect(
                     QRectF(
                         float(self._gutter_width),
@@ -1440,7 +1558,7 @@ class UNITITextView(QAbstractScrollArea):
                         max(0.0, self.viewport().width() - self._gutter_width),
                         float(self._line_height),
                     ),
-                    tokens.current_line,
+                    line_highlight if line_highlight is not None else tokens.current_line,
                 )
             width = shaped.width
             if shaped.preedit is not None:
@@ -1519,6 +1637,17 @@ class UNITITextView(QAbstractScrollArea):
                     ):
                         painter.fillRect(rect, tokens.selection)
                     selected_range = (a, b)
+
+            for span_start, span_end, span_color in self._line_span_highlights.get(
+                line_number, ()
+            ):
+                a = max(0, span_start - column_start)
+                b = min(len(text), span_end - column_start)
+                if b > a:
+                    for rect in self._span_rects(
+                        shaped, text_x, a, b, y, self._line_height
+                    ):
+                        painter.fillRect(rect, span_color)
 
             self._paint_invalid_byte_annotations(
                 painter, annotated, line_window_start, text, text_x, y, shaped
@@ -1889,6 +2018,9 @@ class UNITITextView(QAbstractScrollArea):
             self._state_changed()
 
     def inputMethodEvent(self, event: QInputMethodEvent) -> None:
+        if self._read_only:
+            event.ignore()
+            return
         commit = event.commitString()
         replacement_length = event.replacementLength()
         replacement_start = event.replacementStart()
@@ -2110,11 +2242,13 @@ class UNITITextView(QAbstractScrollArea):
         elif primary and key == Qt.Key.Key_C:
             self.copy_selection()
         elif primary and key == Qt.Key.Key_X:
-            self.cut_selection()
+            if not self._read_only:
+                self.cut_selection()
             event.accept()
             return
         elif primary and key == Qt.Key.Key_V:
-            self.paste_clipboard()
+            if not self._read_only:
+                self.paste_clipboard()
             event.accept()
             return
         elif primary and key == Qt.Key.Key_Left:
@@ -2156,16 +2290,31 @@ class UNITITextView(QAbstractScrollArea):
         elif key == Qt.Key.Key_End:
             self.state.move_end(selecting=selecting)
         elif key == Qt.Key.Key_Backspace:
+            if self._read_only:
+                event.accept()
+                return
             self.state.backspace()
         elif key == Qt.Key.Key_Delete:
+            if self._read_only:
+                event.accept()
+                return
             self.state.delete_forward()
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if self._read_only:
+                event.accept()
+                return
             self.state.insert_newline()
         elif key == Qt.Key.Key_Tab and not primary:
+            if self._read_only:
+                event.accept()
+                return
             self.state.insert_text("\t")
         elif not primary and not (modifiers & Qt.KeyboardModifier.AltModifier):
             text = event.text()
             if text:
+                if self._read_only:
+                    event.accept()
+                    return
                 self.state.insert_text(text)
             else:
                 super().keyPressEvent(event)

@@ -4,7 +4,7 @@ For **v0.001b3 — Find/Replace Rework & Editor Refinement Beta** · Updated 202
 
 UNITI is a text editor for Unicode, explicit encoding and line-ending control, large files, and regex search/replace. This manual describes the current source beta. Native executable distribution and some platform/input qualification remain pending; see [current release status](project/01_current/STATUS.md).
 
-**Quick references:** [User Cheat Sheet](user-cheat-sheet.md) · [Regex Flags Guide](regex-flags.md)
+**Quick references:** [User Cheat Sheet](user-cheat-sheet.md) · [Regex Flags Guide](regex-flags.md) · [Syntax Highlighting Guide](syntax-highlighting.md)
 
 ## Contents
 
@@ -197,4 +197,4 @@ Large-file indexing, analysis, and navigation can complete progressively. The st
 
 For a report, include the UNITI version and OS, steps, expected/actual behavior, exact error, and a small sample that reproduces the issue. **Tools → Diagnostics…** helps inspect the current environment; review any paths or document details before sharing. **Export Dogfood Evidence…** and **Clear Dogfood Evidence…** support the current testing program when enabled.
 
-The current beta includes bundled Indic/Chinese/Korean fallback and LTR editing; physical Chinese/Korean IME qualification is still open. Advanced full Unicode case-folding searches have an open boundary qualification issue ([BF-012](project/BETA_FEEDBACK.md#bf-012--full-unicode-case-folding-misses-a-match-with-one-character-search-windows)). RTL/mixed-direction editing, syntax highlighting, integrated Git, plugins, and polished installers are outside the current delivered scope. [Current Status](project/01_current/STATUS.md) tracks remaining qualification.
+The current beta includes bundled Indic/Chinese/Korean/Arabic/Hebrew fallback, LTR and RTL/bidi editing, and file-type syntax highlighting (see the [Syntax Highlighting Guide](syntax-highlighting.md)); physical IME qualification for Chinese/Korean/Arabic/Hebrew is still open. Advanced full Unicode case-folding searches have an open boundary qualification issue ([BF-012](project/BETA_FEEDBACK.md#bf-012--full-unicode-case-folding-misses-a-match-with-one-character-search-windows)). Integrated Git, plugins, and polished installers remain outside the current delivered scope. [Current Status](project/01_current/STATUS.md) tracks remaining qualification.

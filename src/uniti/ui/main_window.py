@@ -69,7 +69,13 @@ from uniti.core.reformatters import (
     ReformatFailure,
     reformatter_for_key,
 )
-from uniti.core.syntax_profiles import MARKDOWN, profile_for_extension
+from uniti.core.syntax_profiles import (
+    MARKDOWN,
+    PLAIN_TEXT,
+    PROFILES,
+    PROFILES_BY_KEY,
+    profile_for_extension,
+)
 from uniti.core.index_jobs import (
     LineNavigationResult,
     build_line_index_batch,
@@ -122,11 +128,14 @@ from uniti.ui.text_view import UNITITextView
 from uniti.ui.theme import (
     THEME_CONTRASTS,
     THEME_MODES,
+    EditorThemeTokens,
     ThemeSpec,
     active_theme,
     apply_theme,
     apply_profile,
     preview_active,
+    resolve_editor_tokens,
+    resolve_profile_editor_tokens,
 )
 from uniti.ui.whitespace import WhitespaceMode, parse_whitespace_mode
 from uniti.ui.unicode_inspection import unicode_inspection
@@ -533,6 +542,7 @@ class UNITIMainWindow(QMainWindow):
             if isinstance(window, UNITIMainWindow):
                 window._theme_state = state
                 window._refresh_theme_menu()
+                window._refresh_editor_theme_menu()
         if isinstance(app, QApplication):
             profile = state.resolve()
             if profile is not None:
@@ -626,48 +636,168 @@ class UNITIMainWindow(QMainWindow):
         )
 
     def _propagate_theme_tokens(self, spec: ThemeSpec) -> None:
+        """Push an app-wide theme change to every view that is still
+        following it — a view with its own `theme_choice_id` (View >
+        Editor Theme) deliberately opted out and keeps its own tokens."""
+
         for window in self._appearance_windows():
             for view in window.views:
+                if getattr(view, "theme_choice_id", None) is not None:
+                    continue
                 setter = getattr(view, "set_theme_tokens", None)
                 if callable(setter):
                     setter(spec.editor)
 
     def set_whitespace_mode(self, mode: WhitespaceMode | str) -> None:
+        """Per-view (View > Whitespace): applies only to the current view,
+        like Wrap/Text Direction — not broadcast to every open view. Also
+        becomes the default a newly opened view starts from."""
+
         selected = parse_whitespace_mode(mode)
-        for window in self._appearance_windows():
-            action = getattr(window, "_whitespace_actions", {}).get(selected)
-            if action is not None:
-                action.setChecked(True)
-            window._settings = dataclass_replace(
-                window._settings,
-                whitespace_mode=selected.value,
-            )
-            for view in window.views:
-                view.set_whitespace_mode(selected)
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.set_whitespace_mode(selected)
+        self._settings = dataclass_replace(self._settings, whitespace_mode=selected.value)
         self._save_settings()
+        self._sync_whitespace_action(view)
+
+    def _sync_whitespace_action(self, view: UNITITextView | None) -> None:
+        selected = view.whitespace_mode if view is not None else parse_whitespace_mode(
+            self._settings.whitespace_mode
+        )
+        action = getattr(self, "_whitespace_actions", {}).get(selected)
+        if action is not None and not action.isChecked():
+            action.setChecked(True)
 
     def set_tab_width(self, width: int) -> None:
+        """Per-view (View > Tab Width): applies only to the current view —
+        see `set_whitespace_mode` above for the same pattern."""
+
         width = max(
             MIN_EDITOR_TAB_WIDTH, min(MAX_EDITOR_TAB_WIDTH, int(width))
         )
-        for window in self._appearance_windows():
-            action = getattr(window, "_tab_width_actions", {}).get(width)
-            if action is not None:
-                action.setChecked(True)
-            window._settings = dataclass_replace(
-                window._settings,
-                editor_tab_width=width,
-            )
-            for view in window.views:
-                view.set_tab_width(width)
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.set_tab_width(width)
+        self._settings = dataclass_replace(self._settings, editor_tab_width=width)
         self._save_settings()
+        self._sync_tab_width_action(view)
+
+    def _sync_tab_width_action(self, view: UNITITextView | None) -> None:
+        width = view.tab_width if view is not None else self._settings.editor_tab_width
+        action = getattr(self, "_tab_width_actions", {}).get(width)
+        if action is not None:
+            if not action.isChecked():
+                action.setChecked(True)
+        elif getattr(self, "_custom_tab_width_action", None) is not None:
+            if not self._custom_tab_width_action.isChecked():
+                self._custom_tab_width_action.setChecked(True)
+
+    def set_editor_theme_choice(self, choice_id: str | None) -> None:
+        """Per-view editor-content theme (View > Editor Theme) — resolves
+        `choice_id` into tokens and applies them to the current view only,
+        leaving every other view's theme (and the app-wide chrome theme,
+        `set_theme`/`set_theme_contrast` above) unchanged. `None` means
+        "follow the app theme": resets to whatever `active_theme` is
+        currently installed, and future app-wide theme changes apply to
+        this view again (see `_propagate_theme_tokens`)."""
+
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            app = QApplication.instance()
+            tokens = None
+            if choice_id is not None:
+                tokens = self._resolve_editor_theme_tokens(choice_id)
+            elif isinstance(app, QApplication):
+                tokens = active_theme(app).editor
+            view.set_theme_choice(choice_id, tokens)
+        self._sync_editor_theme_action(view)
+
+    def _resolve_editor_theme_tokens(self, choice_id: str) -> EditorThemeTokens | None:
+        from uniti.app.theme_profiles import BUILTIN_IDS
+        app = QApplication.instance()
+        if not isinstance(app, QApplication):
+            return None
+        if choice_id in BUILTIN_IDS:
+            return resolve_editor_tokens(app, choice_id, self._settings.theme_contrast)
+        for profile in self._theme_state.profiles:
+            if profile.id == choice_id:
+                return resolve_profile_editor_tokens(
+                    app, profile, self._settings.theme_contrast
+                )
+        return None
+
+    def _sync_editor_theme_action(self, view: UNITITextView | None) -> None:
+        choice_id = view.theme_choice_id if view is not None else None
+        action = getattr(self, "_editor_theme_actions", {}).get(choice_id)
+        if action is not None and not action.isChecked():
+            action.setChecked(True)
+
+    def _refresh_editor_theme_menu(self) -> None:
+        """Rebuild the profile entries (System/Light/Dark plus every
+        custom profile) to match `self._theme_state.profiles` — called
+        whenever that list changes, mirroring `_refresh_theme_menu`'s own
+        rebuild for the app-wide Theme menu."""
+
+        if not hasattr(self, "_editor_theme_menu"):
+            return
+        from uniti.app.theme_profiles import BUILTIN_IDS
+        follow_action = self._editor_theme_actions[None]
+        for choice_id, action in list(self._editor_theme_actions.items()):
+            if choice_id is None:
+                continue
+            self._editor_theme_menu.removeAction(action)
+            self._editor_theme_group.removeAction(action)
+            action.deleteLater()
+        self._editor_theme_actions = {None: follow_action}
+        entries = [(name, name) for name in BUILTIN_IDS]
+        entries.extend((p.id, p.name) for p in self._theme_state.profiles)
+        for choice_id, name in entries:
+            action = QAction(name, self)
+            action.setCheckable(True)
+            action.triggered.connect(
+                lambda _checked=False, choice_id=choice_id: self.set_editor_theme_choice(
+                    choice_id
+                )
+            )
+            self._editor_theme_group.addAction(action)
+            self._editor_theme_menu.addAction(action)
+            self._editor_theme_actions[choice_id] = action
+        self._sync_editor_theme_action(self.current_view)
+
+    def set_syntax_choice(self, choice_key: str | None) -> None:
+        """Per-view syntax-profile override (View > Syntax Profile) —
+        forces this one document to a specific profile regardless of what
+        the extension→profile mapping (View > Text-Type Profiles…)
+        would otherwise assign it. `None` returns to following the
+        mapping."""
+
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            if choice_key is not None:
+                profile = PROFILES_BY_KEY.get(choice_key, PLAIN_TEXT)
+            else:
+                profile = profile_for_extension(
+                    view.document.path.suffix,
+                    self._settings.syntax_extension_overrides,
+                )
+            view.set_syntax_choice(choice_key, profile)
+        self._sync_syntax_choice_action(view)
+
+    def _sync_syntax_choice_action(self, view: UNITITextView | None) -> None:
+        choice_key = view.syntax_choice_key if view is not None else None
+        action = getattr(self, "_syntax_choice_actions", {}).get(choice_key)
+        if action is not None and not action.isChecked():
+            action.setChecked(True)
 
     def _prompt_custom_tab_width(self) -> None:
+        view = self.current_view
+        current_width = view.tab_width if view is not None else self._settings.editor_tab_width
         width, accepted = QInputDialog.getInt(
             self,
             "Tab Width",
             "Spaces per tab:",
-            self._settings.editor_tab_width,
+            current_width,
             MIN_EDITOR_TAB_WIDTH,
             MAX_EDITOR_TAB_WIDTH,
         )
@@ -677,14 +807,13 @@ class UNITIMainWindow(QMainWindow):
             # Restore the checked preset/custom action to match the
             # unchanged setting — the exclusive group already flipped to
             # "Custom…" when this action was triggered.
-            action = self._tab_width_actions.get(self._settings.editor_tab_width)
-            (action or self._custom_tab_width_action).setChecked(True)
+            self._sync_tab_width_action(view)
 
     def convert_tabs_to_spaces(self) -> None:
         view = self.current_view
         if view is None or not view.isEnabled():
             return
-        convert_document_tabs_to_spaces(view.document, self._settings.editor_tab_width)
+        convert_document_tabs_to_spaces(view.document, view.tab_width)
         self._on_view_state_changed(view)
 
     def _on_command_binding_changed(self, command_id: str, shortcut: str) -> None:
@@ -1125,6 +1254,47 @@ class UNITIMainWindow(QMainWindow):
         tab_width_menu.addAction(custom_tab_width_action)
         self._custom_tab_width_action = custom_tab_width_action
         self._tab_width_group = tab_width_group
+        editor_theme_menu = view_menu.addMenu("Editor Theme")
+        editor_theme_group = QActionGroup(self)
+        editor_theme_group.setExclusive(True)
+        self._editor_theme_group = editor_theme_group
+        self._editor_theme_menu = editor_theme_menu
+        follow_theme_action = QAction("Follow App Theme", self)
+        follow_theme_action.setCheckable(True)
+        follow_theme_action.setChecked(True)
+        follow_theme_action.triggered.connect(
+            lambda _checked=False: self.set_editor_theme_choice(None)
+        )
+        editor_theme_group.addAction(follow_theme_action)
+        editor_theme_menu.addAction(follow_theme_action)
+        editor_theme_menu.addSeparator()
+        self._editor_theme_actions: dict[str | None, QAction] = {None: follow_theme_action}
+        self._refresh_editor_theme_menu()
+        syntax_choice_menu = view_menu.addMenu("Syntax Profile")
+        syntax_choice_group = QActionGroup(self)
+        syntax_choice_group.setExclusive(True)
+        self._syntax_choice_group = syntax_choice_group
+        auto_syntax_action = QAction("Auto (by File Type)", self)
+        auto_syntax_action.setCheckable(True)
+        auto_syntax_action.setChecked(True)
+        auto_syntax_action.triggered.connect(
+            lambda _checked=False: self.set_syntax_choice(None)
+        )
+        syntax_choice_group.addAction(auto_syntax_action)
+        syntax_choice_menu.addAction(auto_syntax_action)
+        syntax_choice_menu.addSeparator()
+        self._syntax_choice_actions: dict[str | None, QAction] = {
+            None: auto_syntax_action
+        }
+        for profile in PROFILES:
+            action = QAction(profile.label, self)
+            action.setCheckable(True)
+            action.triggered.connect(
+                lambda _checked=False, key=profile.key: self.set_syntax_choice(key)
+            )
+            syntax_choice_group.addAction(action)
+            syntax_choice_menu.addAction(action)
+            self._syntax_choice_actions[profile.key] = action
         view_menu.addAction(
             "Convert Tabs to Spaces", self.convert_tabs_to_spaces
         )
@@ -1591,9 +1761,14 @@ class UNITIMainWindow(QMainWindow):
             self._refresh_all_syntax_profiles()
 
     def _refresh_all_syntax_profiles(self) -> None:
+        """Re-resolve every view's syntax profile from the (possibly just
+        changed) extension→profile mapping — except a view with its own
+        per-view override (View > Syntax Profile), which deliberately
+        doesn't follow the mapping."""
+
         for view_id in self._panes.view_ids:
             view = self.view_for_id(view_id)
-            if view is None:
+            if view is None or view.syntax_choice_key is not None:
                 continue
             view.set_syntax_profile(
                 profile_for_extension(
@@ -2072,6 +2247,13 @@ class UNITIMainWindow(QMainWindow):
                 view.view_id,
                 "dock" if view.dock_return is not None else "undock",
             )
+            if view.theme_choice_id is not None:
+                # `restore_state` can only remember the choice id (no
+                # access to the theme/profile store from `text_view.py`);
+                # resolve it into concrete tokens now that the view exists.
+                tokens = self._resolve_editor_theme_tokens(view.theme_choice_id)
+                if tokens is not None:
+                    view.set_theme_choice(view.theme_choice_id, tokens)
         if select:
             view.setFocus()
         return view
@@ -2264,11 +2446,12 @@ class UNITIMainWindow(QMainWindow):
             view.set_soft_wrap(enabled)
 
     def set_editor_text_direction(self, value: str) -> None:
-        """Per-view "primary direction" override (Auto/LTR/RTL) — unlike
-        Whitespace/Tab Width, this is not a global setting applied to every
-        view: each view keeps its own choice, persisted in its own
+        """Per-view "primary direction" override (Auto/LTR/RTL), like
+        Whitespace/Tab Width/Editor Theme/Syntax Profile above and below:
+        each view keeps its own choice, persisted in its own
         `ViewRecord.extra` (see `UNITITextView.set_text_direction_override`).
-        """
+        Unlike those, "Auto" has no equivalent global default setting to
+        feed back into — it's the sensible default for every new view."""
 
         view = self.current_view
         if view is not None and view.isEnabled():
@@ -2315,6 +2498,10 @@ class UNITIMainWindow(QMainWindow):
                 self._refresh_markdown_preview_now()
         self._refresh_markdown_preview_action()
         self._sync_text_direction_action(view)
+        self._sync_whitespace_action(view)
+        self._sync_tab_width_action(view)
+        self._sync_editor_theme_action(view)
+        self._sync_syntax_choice_action(view)
         if view is None:
             # The active pane may be a non-document view (e.g. the attached
             # Find/Replace pane) while other document tabs are still open
@@ -3059,11 +3246,18 @@ class UNITIMainWindow(QMainWindow):
             left_label,
             right_document,
             right_label,
-            self._central_splitter,
+            self,
         )
-        self._central_splitter.addWidget(self._compare_pane)
-        self._central_splitter.setSizes([1, 1])
+        self._compare_pane.apply_view_defaults(
+            whitespace_mode=self._settings.whitespace_mode,
+            tab_width=self._settings.editor_tab_width,
+            syntax_extension_overrides=self._settings.syntax_extension_overrides,
+        )
+        self._compare_pane.resize(900, 600)
         self._compare_pane.closeRequested.connect(self._close_compare)
+        self._compare_pane.show()
+        self._compare_pane.raise_()
+        self._compare_pane.activateWindow()
 
     def _close_compare(self) -> None:
         if self._compare_pane is None:

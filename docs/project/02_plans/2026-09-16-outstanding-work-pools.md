@@ -14,9 +14,7 @@ The feedback log accumulates one `BF-NNN` entry per item, in report order. That'
 Every item below is code-complete; only affected-host, native-input, or hosted-CI confirmation remains. This pool cannot move without physical hardware or the B1 tester program — it's not a coding task.
 
 - [BF-001](../BETA_FEEDBACK.md#bf-001--slow-windows-first-launch-with-limited-progress-feedback)–[BF-010](../BETA_FEEDBACK.md#bf-010--eol-markers-unchanged-when-the-status-line-updates) (partial — most items in this range still need affected-host or native-input confirmation; see each entry's own Status line for which)
-- [BF-017](../BETA_FEEDBACK.md#bf-017--findreplace-zoom-keyboard-shortcut-does-not-work-in-the-find-field) — Find/Replace zoom shortcut (native affected-host confirmation)
-- [BF-019](../BETA_FEEDBACK.md#bf-019--match-report-capture-group-row-indentation-and-truncated-label) — Match Report label alignment (native visual confirmation)
-- [BF-025](../BETA_FEEDBACK.md#bf-025--last-line-of-a-file-displays-only-80-when-the-editor-is-focused) — Last line partial-height fix (native visual confirmation)
+- [BF-019](../BETA_FEEDBACK.md#bf-019--match-report-capture-group-row-indentation-and-truncated-label) — Match Report capture-group label rendered ~10% smaller than the matched-text content; investigated 2026-09-18, no reproducible code-level cause found (the paint path shares one `QFont` for both columns, confirmed pixel-identical in an offscreen render) — back to needing native visual confirmation, not a known coding task
 - RTL/bidi (BF-064) physical Arabic/Hebrew IME qualification — needs native hardware, not just an emulator
 
 ## Pool 2 — Long-term wishlist (deliberately unscoped)
@@ -28,6 +26,10 @@ Recorded in the [Feature Wishlist](../FEATURE_WISHLIST.md), not yet promoted to 
 ## Not pooled — standing release-qualification gates
 
 Unrelated to any `BF-NNN` item above; tracked by the [ROADMAP](ROADMAP.md) and [Current Status](../01_current/STATUS.md), not this document: the A22 seven real-use days, A23 executable health/recovery delivery, A24 stabilization, and the B1 fourteen-day three-tester feedback program.
+
+## Recently closed, 2026-09-18 (context for why they're absent above)
+
+BF-070's five 2026-09-18 follow-up findings mostly landed the same day: the "full editor parity" rework (swapping Compare's bespoke `_ComparePlainTextEdit` for real read-only `UNITITextView` panes onto the live documents), the standalone top-level window, zoom sync, and cross-pane current-line highlight are all implemented. Two of the five stay open by design, not oversight: wrap sync (the line-alignment scroll-sync mapping is inherently incompatible with wrap, unchanged by the widget swap) and intra-line/segment-level diff highlighting within a changed line (still whole-line only). This document's former [Feature Wishlist](../FEATURE_WISHLIST.md) entry "View settings per pane/open document" was promoted and implemented the same day as [BF-075](../BETA_FEEDBACK.md#bf-075--view-settings-per-paneopen-document) — whitespace mode, theme, tab width, and syntax-profile choice are now per-view, following the zoom/wrap/weight/direction-override pattern.
 
 ## Recently closed (context for why they're absent above)
 

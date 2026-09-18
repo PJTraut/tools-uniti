@@ -267,6 +267,12 @@ def test_a21_editor_docking_preserves_authority_layout_and_bytes(tmp_path: Path)
         assert panel.isFloating() is True
         assert service.capture_session().manifest.find_replace.placement == "detached"
 
+        # Whitespace is per-view (applies to the current view only, unlike
+        # Theme/Contrast below which stay application-wide chrome
+        # settings) — the Find/Replace attach/detach dance above may have
+        # shifted which pane is active within `window`, so make the
+        # target explicit rather than relying on it still being `original`.
+        window.panes.activate_view(original.view_id)
         window.set_whitespace_mode(WhitespaceMode.ALL)
         window.set_theme("Dark")
         window.set_theme_contrast("High Contrast")

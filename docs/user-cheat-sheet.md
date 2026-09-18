@@ -1,6 +1,6 @@
 # UNITI User Cheat Sheet
 
-**v0.001b3** · [User Manual](user-manual.md) · [Regex Flags Guide](regex-flags.md)
+**v0.001b3** · [User Manual](user-manual.md) · [Regex Flags Guide](regex-flags.md) · [Syntax Highlighting Guide](syntax-highlighting.md)
 
 ## Everyday actions
 

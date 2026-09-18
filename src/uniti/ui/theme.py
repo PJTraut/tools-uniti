@@ -334,6 +334,23 @@ def active_theme(app: QApplication) -> ThemeSpec:
     return build_theme(_remember_system_palette(app), "System", "Standard")
 
 
+def resolve_editor_tokens(app: QApplication, mode: str, contrast: str) -> EditorThemeTokens:
+    """Editor-pane tokens for a built-in theme mode, computed without
+    installing anything application-wide — for a per-view theme choice
+    (View > Editor Theme) that must not affect window chrome."""
+
+    return build_theme(_remember_system_palette(app), mode, contrast).editor
+
+
+def resolve_profile_editor_tokens(app: QApplication, profile, contrast: str = "Standard") -> EditorThemeTokens:
+    """Editor-pane tokens for a custom theme profile, computed without
+    installing anything application-wide — the per-view counterpart to
+    `resolve_editor_tokens` for a user-defined profile rather than a
+    built-in mode."""
+
+    return build_profile_theme(_remember_system_palette(app), profile, contrast).editor
+
+
 __all__ = [
     "EditorThemeTokens",
     "THEME_CONTRASTS",
@@ -342,6 +359,8 @@ __all__ = [
     "active_theme",
     "apply_theme",
     "build_theme",
+    "resolve_editor_tokens",
+    "resolve_profile_editor_tokens",
 ]
 
 

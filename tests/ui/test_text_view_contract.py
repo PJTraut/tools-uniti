@@ -950,7 +950,7 @@ def test_text_view_zoom_is_clamped_to_supported_range(tmp_path: Path):
     with Document.open(path, encoding="utf-8") as document:
         view = UNITITextView(EditorState(document))
         view.set_zoom_percent(999)
-        assert view.zoom_percent == 300
+        assert view.zoom_percent == 500
         view.set_zoom_percent(1)
         assert view.zoom_percent == 50
         view.close()
@@ -1655,6 +1655,57 @@ def test_direction_override_fixes_a_predominantly_rtl_line_starting_with_western
         app.processEvents()
 
 
+def test_read_only_blocks_mutation_but_allows_navigation_and_copy(tmp_path: Path):
+    """Added for Compare's "full editor parity" rework (BF-070 follow-up):
+    a real `UNITITextView` now backs each read-only Compare pane directly
+    onto the live `Document`, so typing/paste/cut/delete must be fully
+    blocked while cursor movement, selection, and copy stay available for
+    inspecting the compared text."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt as _Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "read-only.txt"
+    path.write_text("alpha", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        assert view.read_only is False
+        view.set_read_only(True)
+        assert view.read_only is True
+
+        def press(key, text=""):
+            event = QKeyEvent(
+                QKeyEvent.Type.KeyPress, key, _Qt.KeyboardModifier.NoModifier, text
+            )
+            view.keyPressEvent(event)
+
+        press(_Qt.Key.Key_X, "x")
+        press(_Qt.Key.Key_Backspace)
+        press(_Qt.Key.Key_Delete)
+        press(_Qt.Key.Key_Return)
+        press(_Qt.Key.Key_Tab)
+        press(_Qt.Key.Key_A, "a")
+        assert document.read(0, document.total_chars()) == "alpha"
+
+        # Navigation and select-all still work.
+        press(_Qt.Key.Key_Right)
+        assert view.state.cursor == 1
+        view.state.select_all()
+        assert view.state.selection == (0, 5)
+
+        view.close()
+        app.processEvents()
+
+
 def test_direction_override_rejects_unknown_values(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
@@ -1704,6 +1755,63 @@ def test_direction_override_round_trips_through_view_state(tmp_path: Path):
         # saved record carries no extra key for it at all.
         source.set_text_direction_override("auto")
         assert "text_direction_override" not in source.export_state("doc-1").extra
+
+        source.close()
+        restored.close()
+        app.processEvents()
+
+
+def test_per_view_settings_round_trip_through_view_state(tmp_path: Path):
+    """Whitespace mode, tab width, syntax-profile choice, and theme choice
+    are all per-view state (view settings per pane), like the text
+    direction override above: each is carried in `ViewRecord.extra`, only
+    when it differs from the fresh-view default, and restores exactly."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.core.syntax_profiles import MARKDOWN
+    from uniti.ui.theme import EditorThemeTokens, active_theme
+    from uniti.ui.text_view import UNITITextView
+    from uniti.ui.whitespace import WhitespaceMode
+
+    path = tmp_path / "per-view-settings.txt"
+    path.write_text("alpha", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        source = UNITITextView(EditorState(document))
+
+        # Unmodified: none of the four keys are written at all.
+        record = source.export_state("doc-1")
+        for key in ("whitespace_mode", "tab_width", "syntax_choice_key", "theme_choice_id"):
+            assert key not in record.extra
+
+        source.set_whitespace_mode(WhitespaceMode.ALL)
+        source.set_tab_width(8)
+        source.set_syntax_choice("markdown", MARKDOWN)
+        custom_tokens = active_theme(app).editor
+        assert isinstance(custom_tokens, EditorThemeTokens)
+        source.set_theme_choice("Dark", custom_tokens)
+        record = source.export_state("doc-1")
+        assert record.extra["whitespace_mode"] == "all"
+        assert record.extra["tab_width"] == 8
+        assert record.extra["syntax_choice_key"] == "markdown"
+        assert record.extra["theme_choice_id"] == "Dark"
+
+        restored = UNITITextView(EditorState(document), view_id=record.view_id)
+        restored.restore_state(record)
+        assert restored.whitespace_mode is WhitespaceMode.ALL
+        assert restored.tab_width == 8
+        assert restored.syntax_profile is MARKDOWN
+        assert restored.syntax_choice_key == "markdown"
+        # Theme tokens themselves are resolved by `UNITIMainWindow` (needs
+        # the app's theme/profile store); `restore_state` only remembers
+        # the choice id for that later step and for menu sync.
+        assert restored.theme_choice_id == "Dark"
 
         source.close()
         restored.close()

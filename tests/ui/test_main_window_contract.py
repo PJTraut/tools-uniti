@@ -1059,9 +1059,9 @@ def test_whitespace_menu_persists_and_propagates_with_theme_tokens(tmp_path: Pat
 
 
 def test_text_direction_menu_is_per_view_not_a_global_setting(tmp_path: Path):
-    """Unlike the Whitespace/Tab Width menus (global settings applied to
-    every view), the Text Direction override is per-view state: switching
-    the choice on one tab must not affect another tab, and switching tabs
+    """Text Direction is per-view state, like Whitespace/Tab Width/Editor
+    Theme/Syntax Profile (see the sibling tests below): switching the
+    choice on one tab must not affect another tab, and switching tabs
     must resync the radio group to the newly active view's own choice."""
 
     if importlib.util.find_spec("PySide6") is None:
@@ -1094,6 +1094,115 @@ def test_text_direction_menu_is_per_view_not_a_global_setting(tmp_path: Path):
 
         window.panes.activate_view(second_view.view_id)
         assert window._text_direction_actions["rtl"].isChecked() is True
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_whitespace_tab_width_and_syntax_menus_are_per_view_not_a_global_setting(
+    tmp_path: Path,
+):
+    """Whitespace, Tab Width, and Syntax Profile are per-view state too
+    (view settings per pane) — changing one open document's setting must
+    not affect another open document's, and switching tabs must resync
+    every one of these radio groups to the newly active view's own
+    choice. Editor Theme has its own dedicated test below since it needs
+    a theme profile store."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+    from uniti.ui.whitespace import WhitespaceMode
+
+    first_path = tmp_path / "per-view-a.txt"
+    second_path = tmp_path / "per-view-b.md"
+    first_path.write_text("alpha", encoding="utf-8")
+    second_path.write_text("# beta", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        first_view = window.open_path(first_path)
+        second_view = window.open_path(second_path)
+        assert first_view is not None and second_view is not None
+
+        window._whitespace_actions[WhitespaceMode.ALL].trigger()
+        window._tab_width_actions[8].trigger()
+        window._syntax_choice_actions["sfm"].trigger()
+        assert second_view.whitespace_mode is WhitespaceMode.ALL
+        assert second_view.tab_width == 8
+        assert second_view.syntax_choice_key == "sfm"
+        assert first_view.whitespace_mode is WhitespaceMode.OFF
+        assert first_view.tab_width == 4
+        assert first_view.syntax_choice_key is None
+
+        window.panes.activate_view(first_view.view_id)
+        assert window._whitespace_actions[WhitespaceMode.OFF].isChecked() is True
+        assert window._tab_width_actions[4].isChecked() is True
+        assert window._syntax_choice_actions[None].isChecked() is True
+
+        window.panes.activate_view(second_view.view_id)
+        assert window._whitespace_actions[WhitespaceMode.ALL].isChecked() is True
+        assert window._tab_width_actions[8].isChecked() is True
+        assert window._syntax_choice_actions["sfm"].isChecked() is True
+
+        # Changing the global extension->profile mapping re-resolves a
+        # view that never took an explicit override, but leaves the
+        # overridden view (second_view, forced to "sfm" above) alone.
+        window._refresh_all_syntax_profiles()
+        assert second_view.syntax_profile.key == "sfm"
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_editor_theme_menu_is_per_view_and_independent_of_app_chrome_theme(
+    tmp_path: Path,
+):
+    """Editor Theme (View > Editor Theme) is a per-view override of just
+    the editor pane's own colors — it must not touch the app-wide chrome
+    theme (View > Theme / High Contrast), and switching back to "Follow
+    App Theme" must pick up whatever the app theme currently is."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+    from uniti.ui.theme import active_theme
+
+    first_path = tmp_path / "theme-a.txt"
+    second_path = tmp_path / "theme-b.txt"
+    first_path.write_text("alpha", encoding="utf-8")
+    second_path.write_text("beta", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        first_view = window.open_path(first_path)
+        second_view = window.open_path(second_path)
+        assert first_view is not None and second_view is not None
+        assert window._editor_theme_actions[None].isChecked() is True
+
+        window._editor_theme_actions["Dark"].trigger()
+        assert second_view.theme_choice_id == "Dark"
+        assert first_view.theme_choice_id is None
+        # The window's own chrome/app-wide theme is untouched.
+        assert window._settings.theme_mode == "System"
+
+        window.panes.activate_view(first_view.view_id)
+        assert window._editor_theme_actions[None].isChecked() is True
+
+        window.panes.activate_view(second_view.view_id)
+        assert window._editor_theme_actions["Dark"].isChecked() is True
+
+        window._editor_theme_actions[None].trigger()
+        assert second_view.theme_choice_id is None
+        assert second_view.theme_tokens == active_theme(app).editor
     finally:
         window.close_all_documents(force=True)
         window.close()
@@ -1138,7 +1247,11 @@ def test_compare_menu_opens_a_compare_pane_for_two_picked_documents(
 
         window.show_compare()
         assert window._compare_pane is not None
-        assert window._central_splitter.indexOf(window._compare_pane) >= 0
+        # Compare is its own standalone top-level window (2026-09-18
+        # follow-up), not embedded in the central splitter beside the
+        # pane tree.
+        assert window._central_splitter.indexOf(window._compare_pane) == -1
+        assert window._compare_pane.isWindow()
         assert len(window._compare_pane._changed) == 1
 
         window._compare_pane.close_compare()

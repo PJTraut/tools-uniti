@@ -70,7 +70,7 @@ def _settings_from_payload(payload: object) -> Settings:
     if (
         not isinstance(editor_zoom_percent, int)
         or isinstance(editor_zoom_percent, bool)
-        or not 50 <= editor_zoom_percent <= 300
+        or not 50 <= editor_zoom_percent <= 500
     ):
         editor_zoom_percent = 100
     editor_font_weight = payload.get("editor_font_weight", DEFAULT_EDITOR_FONT_WEIGHT)
@@ -115,7 +115,7 @@ def _settings_from_payload(payload: object) -> Settings:
     if (
         not isinstance(find_replace_zoom_percent, int)
         or isinstance(find_replace_zoom_percent, bool)
-        or not 50 <= find_replace_zoom_percent <= 300
+        or not 50 <= find_replace_zoom_percent <= 500
     ):
         find_replace_zoom_percent = 100
     find_replace_report_location = payload.get(

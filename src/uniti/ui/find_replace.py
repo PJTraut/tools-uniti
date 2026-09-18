@@ -922,7 +922,7 @@ class FindReplaceWindow(QDockWidget):
         self._apply_wrap_mode(self.replace_input, checked)
 
     def set_zoom_percent(self, percent: int) -> None:
-        percent = max(50, min(300, int(percent)))
+        percent = max(50, min(500, int(percent)))
         if percent == self._zoom_percent:
             return
         scale = percent / self._zoom_percent
