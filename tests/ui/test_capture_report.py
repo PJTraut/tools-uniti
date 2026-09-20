@@ -568,3 +568,94 @@ def test_delegate_paints_each_group_label_in_its_matching_palette_color(app):
     selected_index = model.index(1, 0)
     assert delegate._label_color(option, selected_index, default) == default
     view.close()
+
+
+def test_colored_group_spans_do_not_overlap_across_a_literal_tab(app):
+    """BF-072 regression guard: a replacement preview containing both a
+    capture-group backreference and a literal tab escape in its literal
+    text (e.g. `[\\1]\\t"\\2"`) used to render out of order -- the old
+    per-segment `QFontMetrics.horizontalAdvance` cursor advance didn't
+    expand tabs the way `QPainter.drawText` does when actually rendering
+    one, so the segment after the tab was drawn at a stale, too-narrow x
+    offset and overlapped the segment before it (reported: `[aaa]` +
+    "yyyy" visibly overlapping/out of order instead of `[aaa]` + TAB +
+    `"yyyy"`). The fix (`_paint_content_group_spans`,
+    `capture_report_delegate.py`) lays the whole string out once with a
+    single `QTextLayout`, coloring ranges via `QTextCharFormat` rather
+    than measuring and re-drawing each segment separately -- so the two
+    groups' own colors should now paint as two cleanly separated,
+    non-overlapping, correctly-ordered column ranges."""
+
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPalette, QTextLayout, QTextOption
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    from uniti.ui.capture_report_delegate import CaptureReportDelegate
+    from uniti.ui.regex_input import group_palette
+
+    delegate = CaptureReportDelegate()
+    content = '[aaa]\t"yyyy"'
+    # "aaa" (indices 1-4) and "yyyy" (indices 7-11) each get a group color,
+    # exactly like a real `[\1]\t"\2"` replacement preview against a
+    # match of "aaa" and "yyyy".
+    spans = ((1, 4, 1), (7, 11, 2))
+
+    option = QStyleOptionViewItem()
+    option.font = QFont("Menlo", 14)
+    option.palette = QPalette()
+    content_rect = QRect(0, 0, 500, 30)
+    base_color = QColor("black")
+    base = option.palette.color(QPalette.ColorGroup.Normal, QPalette.ColorRole.Base)
+    group1_color, group2_color = group_palette(base)[:2]
+
+    image = QImage(500, 30, QImage.Format.Format_ARGB32)
+    image.fill(QColor("white"))
+    painter = QPainter(image)
+    painted = delegate._paint_content_group_spans(
+        painter, option, content_rect, content, spans, base_color
+    )
+    painter.end()
+    assert painted is True
+
+    def columns_painted_in(color: QColor, tolerance: int = 30) -> list[int]:
+        columns = []
+        for x in range(image.width()):
+            for y in range(image.height()):
+                pixel = image.pixelColor(x, y)
+                if (
+                    abs(pixel.red() - color.red()) < tolerance
+                    and abs(pixel.green() - color.green()) < tolerance
+                    and abs(pixel.blue() - color.blue()) < tolerance
+                ):
+                    columns.append(x)
+                    break
+        return columns
+
+    group1_columns = columns_painted_in(group1_color)
+    group2_columns = columns_painted_in(group2_color)
+    assert group1_columns and group2_columns
+    # The old bug interleaved/overlapped the two groups' ink; fixed, "aaa"
+    # (group 1) must render entirely to the left of "yyyy" (group 2).
+    assert max(group1_columns) < min(group2_columns)
+
+    # Ground truth for where each group *should* start: a plain,
+    # unformatted `QTextLayout` of the same string, independent of the
+    # delegate entirely -- `cursorToX` correctly expands the tab, the
+    # same guarantee `_paint_content_group_spans`'s own `QTextLayout`
+    # relies on. The old per-segment `horizontalAdvance`-based algorithm
+    # placed "yyyy" 40+ pixels off from this (confirmed directly against
+    # this exact test data while diagnosing the fix), far outside any
+    # rendering-backend or anti-aliasing tolerance.
+    reference = QTextLayout(content, option.font)
+    reference_option = QTextOption()
+    reference_option.setWrapMode(QTextOption.WrapMode.NoWrap)
+    reference.setTextOption(reference_option)
+    reference.beginLayout()
+    reference_line = reference.createLine()
+    reference_line.setLineWidth(2**20)
+    reference.endLayout()
+    expected_group1_x, _ = reference_line.cursorToX(1)
+    expected_group2_x, _ = reference_line.cursorToX(7)
+
+    assert abs(min(group1_columns) - expected_group1_x) <= 5
+    assert abs(min(group2_columns) - expected_group2_x) <= 5

@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QColor, QPalette, QFont, QFontMetrics
+from PySide6.QtCore import QPointF, QRect, Qt
+from PySide6.QtGui import (
+    QColor,
+    QPalette,
+    QFont,
+    QFontMetrics,
+    QTextCharFormat,
+    QTextLayout,
+    QTextOption,
+)
 from PySide6.QtWidgets import QApplication, QStyle, QStyledItemDelegate
 
 from uniti.ui.capture_report import CaptureReportModel
@@ -175,7 +183,7 @@ class CaptureReportDelegate(QStyledItemDelegate):
             painter.setPen(text_color)
             spans = index.data(CaptureReportModel.ContentGroupSpansRole) or ()
             painted = spans and self._paint_content_group_spans(
-                painter, styled, content_rect, content, spans, text_color, vertical
+                painter, styled, content_rect, content, spans, text_color
             )
             if not painted:
                 painter.drawText(
@@ -189,7 +197,7 @@ class CaptureReportDelegate(QStyledItemDelegate):
             painter.restore()
 
     def _paint_content_group_spans(
-        self, painter, option, content_rect, content, spans, base_color, vertical
+        self, painter, option, content_rect, content, spans, base_color
     ) -> bool:
         """Paint `content` with each `spans` range in its group's own color
         (BF-052 item 5) — a replacement preview's substituted text should
@@ -197,42 +205,65 @@ class CaptureReportDelegate(QStyledItemDelegate):
         where the full text fits without eliding; falls back to the
         existing plain single-color path otherwise, rather than tracking
         elided-text span remapping.
+
+        BF-072 fix: lays the whole string out once with a single
+        `QTextLayout`, coloring ranges via `QTextCharFormat` rather than
+        the previous approach of measuring each colored segment with
+        `QFontMetrics.horizontalAdvance` and drawing it separately at an
+        x-cursor advanced by that measurement. `horizontalAdvance` does
+        not expand tabs, but `QPainter.drawText` does when actually
+        rendering a segment containing one — so a segment ending in or
+        containing a tab was measured narrower than it actually rendered,
+        and every colored segment after it was drawn at a stale,
+        too-far-left x position, overlapping the one before it. A single
+        `QTextLayout` measures and paints the tab-expanded line exactly
+        once; per-group color only changes which `QTextCharFormat` a
+        range of that one layout uses, never where anything is
+        positioned.
         """
 
-        metrics = option.fontMetrics
-        if metrics.horizontalAdvance(content) > content_rect.width():
-            return False
+        layout = QTextLayout(content, option.font)
+        no_wrap = QTextOption()
+        no_wrap.setWrapMode(QTextOption.WrapMode.NoWrap)
+        layout.setTextOption(no_wrap)
+
         base = option.palette.color(QPalette.ColorGroup.Normal, QPalette.ColorRole.Base)
         palette_colors = group_palette(base)
-        x = float(content_rect.left())
+        formats = []
         cursor = 0
         for start, end, group_number in sorted(spans):
             start = max(cursor, min(len(content), start))
             end = max(start, min(len(content), end))
-            if start > cursor:
-                x = self._draw_content_segment(
-                    painter, content_rect, vertical, x, content[cursor:start], base_color, metrics
-                )
             if end > start:
-                color = palette_colors[(group_number - 1) % len(palette_colors)]
-                x = self._draw_content_segment(
-                    painter, content_rect, vertical, x, content[start:end], color, metrics
+                char_format = QTextCharFormat()
+                char_format.setForeground(
+                    palette_colors[(group_number - 1) % len(palette_colors)]
                 )
+                format_range = QTextLayout.FormatRange()
+                format_range.start = start
+                format_range.length = end - start
+                format_range.format = char_format
+                formats.append(format_range)
             cursor = end
-        if cursor < len(content):
-            self._draw_content_segment(
-                painter, content_rect, vertical, x, content[cursor:], base_color, metrics
-            )
-        return True
+        layout.setFormats(formats)
 
-    @staticmethod
-    def _draw_content_segment(painter, content_rect, vertical, x, text, color, metrics) -> float:
-        if not text:
-            return x
-        painter.setPen(color)
-        painter.drawText(
-            QRect(int(x), content_rect.top(), content_rect.width(), content_rect.height()),
-            vertical | Qt.AlignmentFlag.AlignLeft,
-            text,
-        )
-        return x + metrics.horizontalAdvance(text)
+        layout.beginLayout()
+        line = layout.createLine()
+        if not line.isValid():
+            layout.endLayout()
+            return False
+        # Effectively unlimited: elision for the colored path is handled
+        # by falling back to the plain single-color path below, not by
+        # wrapping or truncating within the layout itself.
+        line.setLineWidth(2**20)
+        layout.endLayout()
+
+        if line.naturalTextWidth() > content_rect.width():
+            return False
+
+        painter.save()
+        painter.setPen(base_color)
+        y = content_rect.top() + (content_rect.height() - line.height()) / 2
+        layout.draw(painter, QPointF(content_rect.left(), y))
+        painter.restore()
+        return True
