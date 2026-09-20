@@ -330,6 +330,8 @@ class FindReplaceWindow(QDockWidget):
         self.find_input = RegexInput(content)
         self.replace_input = ReplacementInput(content)
         self.status_label = QLabel("0 matches", content)
+        self.pattern_info_label = QLabel(content)
+        self.pattern_info_label.setAccessibleName("Pattern Info")
         self.capture_view = QListView(content)
         self.capture_model = CaptureReportModel(self.capture_view)
         self.capture_view.setModel(self.capture_model)
@@ -371,6 +373,7 @@ class FindReplaceWindow(QDockWidget):
         find_row = QHBoxLayout()
         find_row.addWidget(self.find_indicator)
         find_row.addWidget(self.find_input, 1)
+        find_row.addWidget(self.status_label)
         replace_row = QHBoxLayout()
         replace_row.addWidget(self.replace_indicator)
         replace_row.addWidget(self.replace_input, 1)
@@ -436,6 +439,11 @@ class FindReplaceWindow(QDockWidget):
             self.actions_widget,
             width=34,
         )
+        self.cancel_button = QPushButton("Cancel", content)
+        self.cancel_button.setIcon(lucide_icon("circle-stop"))
+        self.cancel_button.setAccessibleName("Cancel")
+        self.cancel_button.setEnabled(False)
+
         actions.addWidget(self.find_all_button)
         actions.addWidget(self.replace_all_button)
         actions.addStretch(1)
@@ -443,15 +451,7 @@ class FindReplaceWindow(QDockWidget):
         actions.addWidget(self.next_button)
         actions.addWidget(self.replace_button)
         actions.addWidget(self.replace_and_next_button)
-
-        self.cancel_button = QPushButton("Cancel", content)
-        self.cancel_button.setIcon(lucide_icon("circle-stop"))
-        self.cancel_button.setEnabled(False)
-
-        footer = QHBoxLayout()
-        footer.addWidget(self.cancel_button)
-        footer.addStretch(1)
-        footer.addWidget(self.status_label)
+        actions.addWidget(self.cancel_button)
 
         controls_widget = QWidget(content)
         controls_layout = QVBoxLayout(controls_widget)
@@ -470,13 +470,13 @@ class FindReplaceWindow(QDockWidget):
         bottom_controls_layout.setSpacing(3)
         bottom_controls_layout.addLayout(options_row)
         bottom_controls_layout.addWidget(self.actions_widget)
-        bottom_controls_layout.addLayout(footer)
         controls_layout.addWidget(self.bottom_controls_widget)
 
         self.report_frame = QFrame(content)
         report_layout = QVBoxLayout(self.report_frame)
         report_layout.setContentsMargins(4, 4, 4, 4)
         report_layout.addWidget(self.capture_view)
+        report_layout.addWidget(self.pattern_info_label)
 
         self.report_splitter = QSplitter(Qt.Orientation.Horizontal, content)
         self.report_splitter.addWidget(controls_widget)
@@ -1414,7 +1414,24 @@ class FindReplaceWindow(QDockWidget):
             and analysis.pattern_generation == self._pattern_generation
         )
 
+    def _refresh_pattern_info_label(self) -> None:
+        """Group-count info for the current pattern, shown under the Match
+        Report rather than folded into `status_label`'s own busy/match/
+        error messages (2026-09-20 request) -- it's a static property of
+        the pattern, not a transient search-progress message, so it
+        updates independently of `status_label` and of `self.busy`."""
+
+        pattern = self._pattern_analysis
+        if self.find_input.text() and pattern.state is AnalysisState.VALID:
+            suffix = "group" if pattern.group_count == 1 else "groups"
+            self.pattern_info_label.setText(
+                f"valid pattern — {pattern.group_count:,} {suffix}"
+            )
+        else:
+            self.pattern_info_label.setText("")
+
     def _refresh_analysis_status(self) -> None:
+        self._refresh_pattern_info_label()
         if self.busy:
             return
         expression = self.find_input.text()
@@ -1453,14 +1470,12 @@ class FindReplaceWindow(QDockWidget):
         if self._results_compiled is not None:
             # A search actually completed for this pattern and this
             # document state and found nothing -- distinct from having
-            # never searched yet, which falls through to the generic
-            # "valid pattern" message below.
+            # never searched yet, which leaves status_label blank below
+            # (a valid-but-unsearched pattern's group count is shown by
+            # `pattern_info_label` instead, under the Match Report).
             self.status_label.setText("0 matches")
             return
-        suffix = "group" if pattern.group_count == 1 else "groups"
-        self.status_label.setText(
-            f"valid pattern — {pattern.group_count:,} {suffix}"
-        )
+        self.status_label.setText("")
 
     def _update_actions(self) -> None:
         view = self._current_view()

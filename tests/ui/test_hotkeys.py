@@ -97,6 +97,7 @@ def test_hotkeys_popup_has_horizontal_categories_and_binding_columns(tmp_path: P
         "Find/Replace",
         "Editor View",
         "F/R View",
+        "Tools",
     ]
     assert [popup.table.horizontalHeaderItem(i).text() for i in range(3)] == [
         "Command",

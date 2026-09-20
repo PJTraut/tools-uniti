@@ -20,6 +20,7 @@ class CommandCategory(StrEnum):
     FIND_REPLACE = "Find/Replace"
     EDITOR_VIEW = "Editor View"
     FIND_REPLACE_VIEW = "F/R View"
+    TOOLS = "Tools"
 
 
 @dataclass(frozen=True, slots=True)

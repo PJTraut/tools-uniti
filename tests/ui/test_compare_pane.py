@@ -545,3 +545,139 @@ def test_char_diff_spans_pairs_replace_hunk_lines_up_to_the_shorter_side(
         assert 1 in pane._left_char_spans  # "gamma", paired with "GAMMA"
         pane.close_compare()
         app.processEvents()
+
+
+def test_right_click_context_menu_changes_only_the_clicked_panes_whitespace(
+    tmp_path: Path,
+):
+    """2026-09-20 report: Compare had no menu bar of its own, so there was
+    no way to change a pane's whitespace/tab-width/syntax/theme display
+    after `apply_view_defaults` seeded it once at open time. A right-click
+    context menu on each pane fixes this -- and must apply only to the
+    pane that was actually clicked, not both."""
+
+    _require_qt()
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QApplication, QMenu
+
+    from uniti.ui.compare_pane import ComparePane
+    from uniti.ui.whitespace import WhitespaceMode
+
+    app = QApplication.instance() or QApplication([])
+    with _open(tmp_path / "a.txt", "alpha") as left, _open(
+        tmp_path / "b.txt", "beta"
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        pane.apply_view_defaults(
+            whitespace_mode="off", tab_width=4, syntax_extension_overrides={}
+        )
+        assert pane._left_view.whitespace_mode is WhitespaceMode.OFF
+        assert pane._right_view.whitespace_mode is WhitespaceMode.OFF
+
+        pane._show_view_context_menu(pane._left_view, QPoint(10, 10))
+        menus = pane.findChildren(QMenu)
+        whitespace_menu = next(m for m in menus if m.title() == "Whitespace")
+        all_action = next(a for a in whitespace_menu.actions() if a.text() == "All")
+        all_action.trigger()
+
+        assert pane._left_view.whitespace_mode is WhitespaceMode.ALL
+        assert pane._right_view.whitespace_mode is WhitespaceMode.OFF
+        pane.close_compare()
+        app.processEvents()
+
+
+def test_context_menu_offers_tab_width_syntax_and_theme_choices(tmp_path: Path):
+    _require_qt()
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QApplication, QMenu
+
+    from uniti.core.syntax_profiles import MARKDOWN
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    with _open(tmp_path / "a.md", "# alpha") as left, _open(
+        tmp_path / "b.md", "# beta"
+    ) as right:
+        pane = ComparePane(left, "a.md", right, "b.md")
+        pane.apply_view_defaults(
+            whitespace_mode="off", tab_width=4, syntax_extension_overrides={}
+        )
+
+        pane._show_view_context_menu(pane._right_view, QPoint(5, 5))
+        menus = pane.findChildren(QMenu)
+        tab_width_menu = next(m for m in menus if m.title() == "Tab Width")
+        eight_action = next(a for a in tab_width_menu.actions() if a.text() == "8")
+        eight_action.trigger()
+        assert pane._right_view.tab_width == 8
+        assert pane._left_view.tab_width == 4
+
+        pane._show_view_context_menu(pane._right_view, QPoint(5, 5))
+        menus = pane.findChildren(QMenu)
+        syntax_menu = next(m for m in menus if m.title() == "Syntax Profile")
+        md_action = next(a for a in syntax_menu.actions() if a.text() == "Markdown")
+        md_action.trigger()
+        assert pane._right_view.syntax_profile is MARKDOWN
+        assert pane._right_view.syntax_choice_key == "markdown"
+
+        pane._show_view_context_menu(pane._right_view, QPoint(5, 5))
+        menus = pane.findChildren(QMenu)
+        theme_menu = next(m for m in menus if m.title() == "Editor Theme")
+        dark_action = next(a for a in theme_menu.actions() if a.text() == "Dark")
+        dark_action.trigger()
+        assert pane._right_view.theme_choice_id == "Dark"
+        assert pane._left_view.theme_choice_id is None
+        pane.close_compare()
+        app.processEvents()
+
+
+def test_window_is_frameless_and_stays_on_top(tmp_path: Path):
+    """2026-09-20 request: styled/behaved like the Character Inspector's
+    and Find/Replace's own detached window -- fully frameless (only a
+    frameless window reliably avoids the native OS frame's rounded
+    corners and minimize/close controls; `Qt.WindowType.Tool` alone still
+    draws them), stays on top, and no title-bar min/max controls."""
+
+    _require_qt()
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    with _open(tmp_path / "a.txt", "alpha") as left, _open(
+        tmp_path / "b.txt", "beta"
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        flags = pane.windowFlags()
+        assert bool(flags & Qt.WindowType.Tool)
+        assert bool(flags & Qt.WindowType.WindowStaysOnTopHint)
+        assert bool(flags & Qt.WindowType.FramelessWindowHint)
+        pane.close_compare()
+        app.processEvents()
+
+
+def test_zoom_percent_property_and_setter_restore_a_persisted_zoom(tmp_path: Path):
+    """2026-09-20 request: preserve geometry/zoom across reopens -- the
+    zoom half. Both panes always stay in sync, so `set_zoom_percent`
+    setting just the left one (and its `zoomChanged` cascading to the
+    right, the same wiring an interactive zoom change already uses) is
+    enough to restore a previously-persisted zoom on reopen."""
+
+    _require_qt()
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    with _open(tmp_path / "a.txt", "alpha") as left, _open(
+        tmp_path / "b.txt", "beta"
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        assert pane.zoom_percent == 100
+
+        pane.set_zoom_percent(150)
+        assert pane.zoom_percent == 150
+        assert pane._left_view.zoom_percent == 150
+        assert pane._right_view.zoom_percent == 150
+        pane.close_compare()
+        app.processEvents()

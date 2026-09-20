@@ -43,6 +43,17 @@ class Settings:
     find_replace_attached_height: int | None = None
     shortcut_overrides: dict[str, str] = field(default_factory=dict)
     syntax_extension_overrides: dict[str, str] = field(default_factory=dict)
+    # One generic persistence mechanism for every "toggle window" (a
+    # single hotkey opens/closes it again) other than Find/Replace, which
+    # predates this and has its own dedicated fields above -- Character
+    # Inspector, Compare, and any future one -- keyed by a short window
+    # identifier (e.g. "character_inspector", "compare") rather than each
+    # getting its own pair of dedicated fields (2026-09-20 request: "one
+    # global function to manage toggle windows").
+    toggle_window_geometry: dict[str, tuple[int, int, int, int]] = field(
+        default_factory=dict
+    )
+    toggle_window_zoom_percent: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +154,34 @@ def _settings_from_payload(payload: object) -> Settings:
         or find_replace_attached_height <= 0
     ):
         find_replace_attached_height = None
+    raw_toggle_window_geometry = payload.get("toggle_window_geometry", {})
+    toggle_window_geometry: dict[str, tuple[int, int, int, int]] = {}
+    if isinstance(raw_toggle_window_geometry, dict):
+        for key, value in raw_toggle_window_geometry.items():
+            if not isinstance(key, str):
+                continue
+            if (
+                isinstance(value, (list, tuple))
+                and len(value) == 4
+                and all(
+                    isinstance(component, int) and not isinstance(component, bool)
+                    for component in value
+                )
+                and value[2] > 0
+                and value[3] > 0
+            ):
+                toggle_window_geometry[key] = tuple(value)
+    raw_toggle_window_zoom_percent = payload.get("toggle_window_zoom_percent", {})
+    toggle_window_zoom_percent: dict[str, int] = {}
+    if isinstance(raw_toggle_window_zoom_percent, dict):
+        for key, value in raw_toggle_window_zoom_percent.items():
+            if (
+                isinstance(key, str)
+                and isinstance(value, int)
+                and not isinstance(value, bool)
+                and 50 <= value <= 500
+            ):
+                toggle_window_zoom_percent[key] = value
     raw_shortcut_overrides = payload.get("shortcut_overrides", {})
     if not isinstance(raw_shortcut_overrides, dict):
         shortcut_overrides = {}
@@ -178,6 +217,8 @@ def _settings_from_payload(payload: object) -> Settings:
         find_replace_attached_height=find_replace_attached_height,
         shortcut_overrides=shortcut_overrides,
         syntax_extension_overrides=syntax_extension_overrides,
+        toggle_window_geometry=toggle_window_geometry,
+        toggle_window_zoom_percent=toggle_window_zoom_percent,
     )
 
 

@@ -54,15 +54,17 @@ import weakref
 from collections.abc import Mapping, Sequence
 from difflib import SequenceMatcher
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QActionGroup, QColor
 from PySide6.QtWidgets import (
+    QApplication,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QSplitter,
     QVBoxLayout,
@@ -71,7 +73,7 @@ from PySide6.QtWidgets import (
 
 from uniti.app.editor_state import EditorState
 from uniti.core.document import Document
-from uniti.core.syntax_profiles import profile_for_extension
+from uniti.core.syntax_profiles import PROFILES, profile_for_extension
 from uniti.core.text_diff import (
     Hunk,
     HunkKind,
@@ -81,6 +83,8 @@ from uniti.core.text_diff import (
     diff_lines,
 )
 from uniti.ui.text_view import UNITITextView
+from uniti.ui.theme import THEME_MODES, active_theme, resolve_editor_tokens
+from uniti.ui.whitespace import WhitespaceMode
 
 # Provisional, not yet empirically tuned (see the BF-070 plan's open
 # question on sizing): Compare reads two whole buffers and runs a diff
@@ -222,6 +226,52 @@ def _char_diff_spans(
     return left_spans, right_spans
 
 
+class _CompareTitleBar(QWidget):
+    """Custom title bar for the frameless window (2026-09-20 request:
+    styled/behaved the same way as the Character Inspector's and Find/
+    Replace's own detached window -- square corners, no minimize/close
+    controls -- which for a plain `QWidget`/`QDialog` top-level window
+    means fully frameless, since `Qt.WindowType.Tool` alone still draws
+    the native OS frame on every platform tested). Same drag-to-move
+    mechanism as `_CharacterInspectorTitleBar`/`_FindReplaceTitleBar`: a
+    custom title bar widget disables Qt's built-in native drag gesture,
+    so this reimplements it directly. No close button -- Compare already
+    has its own explicit Close button in the header below."""
+
+    def __init__(self, pane: QWidget, title: str) -> None:
+        super().__init__(pane)
+        self._pane = pane
+        self._drag_offset: QPoint | None = None
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(6, 2, 2, 2)
+        label = QLabel(title, self)
+        label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout.addWidget(label)
+        layout.addStretch(1)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self._pane.pos()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_offset is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            global_pos = event.globalPosition().toPoint()
+            self._pane.move(global_pos - self._drag_offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if self._drag_offset is not None:
+            self._drag_offset = None
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+
 class ComparePane(QWidget):
     """Two synchronized read-only `UNITITextView` panes comparing two open
     documents, as its own standalone top-level window."""
@@ -237,8 +287,16 @@ class ComparePane(QWidget):
         right_label: str,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__(parent, Qt.WindowType.Window)
-        self.setWindowTitle(f"Compare — {left_label} vs. {right_label}")
+        super().__init__(parent)
+        # Frameless + `Tool` + stays-on-top (2026-09-20 request: match the
+        # Character Inspector's/Find-Replace's own detached-window chrome
+        # -- see `_CompareTitleBar` above for why frameless is required).
+        self.setWindowFlag(Qt.WindowType.Tool, True)
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
+        title = f"{left_label}  vs.  {right_label}"
+        self.setWindowTitle(f"Compare — {title}")
         self._left_document = left_document
         self._right_document = right_document
         self._hunks: tuple[Hunk, ...] = ()
@@ -254,9 +312,9 @@ class ComparePane(QWidget):
         self._right_char_spans: dict[int, tuple[tuple[int, int, QColor], ...]] = {}
         self._left_marker_line: int | None = None
         self._right_marker_line: int | None = None
+        self._syntax_extension_overrides: dict[str, str] = {}
 
         header = QHBoxLayout()
-        header.addWidget(QLabel(f"{left_label}  vs.  {right_label}", self))
         header.addStretch(1)
         self._status_label = QLabel(self)
         header.addWidget(self._status_label)
@@ -307,12 +365,22 @@ class ComparePane(QWidget):
         for view in (self._left_view, self._right_view):
             view.set_read_only(True)
             view.set_soft_wrap(False)
+            view.contextMenuRequested.connect(
+                lambda position, view=view: self._show_view_context_menu(view, position)
+            )
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.addWidget(self._left_view)
         splitter.addWidget(self._right_view)
         splitter.setSizes([1, 1])
 
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        outer_layout.addWidget(_CompareTitleBar(self, title))
+
+        content = QWidget(self)
+        outer_layout.addWidget(content, 1)
+        layout = QVBoxLayout(content)
         layout.addLayout(header)
         layout.addWidget(splitter, 1)
 
@@ -440,6 +508,23 @@ class ComparePane(QWidget):
             target.set_zoom_percent(percent)
         finally:
             self._zoom_syncing = False
+
+    @property
+    def zoom_percent(self) -> int:
+        """Both panes always stay in sync (`_sync_zoom` above), so either
+        one's own zoom represents the pane's zoom as a whole -- read by
+        `UNITIMainWindow._toggle_window`'s generic geometry/zoom
+        persistence (2026-09-20 request) when this window closes."""
+
+        return self._left_view.zoom_percent
+
+    def set_zoom_percent(self, percent: int) -> None:
+        """Restores a previously-persisted zoom level on reopen. Setting
+        just the left view is enough -- its `zoomChanged` signal cascades
+        to the right view through the same `_sync_zoom` wiring an
+        interactive zoom change already uses."""
+
+        self._left_view.set_zoom_percent(percent)
 
     @staticmethod
     def _clamp_line(line: int, document: Document) -> int:
@@ -575,6 +660,7 @@ class ComparePane(QWidget):
         parity" panes still looked like plain, unstyled text (2026-09-18
         regression report: no whitespace markers, no syntax highlighting)."""
 
+        self._syntax_extension_overrides = dict(syntax_extension_overrides)
         for view, document in (
             (self._left_view, self._left_document),
             (self._right_view, self._right_document),
@@ -584,6 +670,108 @@ class ComparePane(QWidget):
             view.set_syntax_profile(
                 profile_for_extension(document.path.suffix, syntax_extension_overrides)
             )
+
+    def _show_view_context_menu(self, view: UNITITextView, global_position) -> None:
+        """Compare has no menu bar of its own, so per-view display
+        settings (whitespace, tab width, syntax profile, editor theme —
+        the same ones `UNITIMainWindow`'s View menu offers an ordinary
+        tab) need a context menu here instead — otherwise there is no way
+        to change them at all after `apply_view_defaults` seeds them
+        (2026-09-20 report: "cannot change whitespace highlight state").
+        Applies only to the pane that was right-clicked, not both."""
+
+        document = self._left_document if view is self._left_view else self._right_document
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+        whitespace_menu = menu.addMenu("Whitespace")
+        whitespace_group = QActionGroup(menu)
+        whitespace_group.setExclusive(True)
+        for mode, label in (
+            (WhitespaceMode.OFF, "Off"),
+            (WhitespaceMode.EOL, "EOL"),
+            (WhitespaceMode.SPACES_TABS, "Spaces & Tabs"),
+            (WhitespaceMode.INVISIBLE_UNICODE, "Invisible Unicode"),
+            (WhitespaceMode.ALL, "All"),
+        ):
+            action = whitespace_menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(view.whitespace_mode is mode)
+            action.triggered.connect(
+                lambda _checked=False, mode=mode, view=view: view.set_whitespace_mode(mode)
+            )
+            whitespace_group.addAction(action)
+
+        tab_width_menu = menu.addMenu("Tab Width")
+        tab_width_group = QActionGroup(menu)
+        tab_width_group.setExclusive(True)
+        for width in (2, 4, 8):
+            action = tab_width_menu.addAction(str(width))
+            action.setCheckable(True)
+            action.setChecked(view.tab_width == width)
+            action.triggered.connect(
+                lambda _checked=False, width=width, view=view: view.set_tab_width(width)
+            )
+            tab_width_group.addAction(action)
+
+        syntax_menu = menu.addMenu("Syntax Profile")
+        syntax_group = QActionGroup(menu)
+        syntax_group.setExclusive(True)
+        auto_action = syntax_menu.addAction("Auto (by File Type)")
+        auto_action.setCheckable(True)
+        auto_action.setChecked(view.syntax_choice_key is None)
+
+        def _use_auto(_checked=False, view=view, document=document) -> None:
+            view.set_syntax_choice(
+                None,
+                profile_for_extension(
+                    document.path.suffix, self._syntax_extension_overrides
+                ),
+            )
+
+        auto_action.triggered.connect(_use_auto)
+        syntax_group.addAction(auto_action)
+        for profile in PROFILES:
+            action = syntax_menu.addAction(profile.label)
+            action.setCheckable(True)
+            action.setChecked(view.syntax_choice_key == profile.key)
+            action.triggered.connect(
+                lambda _checked=False, key=profile.key, profile=profile, view=view: (
+                    view.set_syntax_choice(key, profile)
+                )
+            )
+            syntax_group.addAction(action)
+
+        theme_menu = menu.addMenu("Editor Theme")
+        theme_group = QActionGroup(menu)
+        theme_group.setExclusive(True)
+        app = QApplication.instance()
+        follow_action = theme_menu.addAction("Follow App Theme")
+        follow_action.setCheckable(True)
+        follow_action.setChecked(view.theme_choice_id is None)
+
+        def _follow_app_theme(_checked=False, view=view, app=app) -> None:
+            tokens = active_theme(app).editor if isinstance(app, QApplication) else None
+            view.set_theme_choice(None, tokens)
+
+        follow_action.triggered.connect(_follow_app_theme)
+        theme_group.addAction(follow_action)
+        if isinstance(app, QApplication):
+            contrast = active_theme(app).contrast
+            for mode in THEME_MODES:
+                action = theme_menu.addAction(mode)
+                action.setCheckable(True)
+                action.setChecked(view.theme_choice_id == mode)
+
+                def _choose_mode(
+                    _checked=False, mode=mode, view=view, app=app, contrast=contrast
+                ) -> None:
+                    view.set_theme_choice(mode, resolve_editor_tokens(app, mode, contrast))
+
+                action.triggered.connect(_choose_mode)
+                theme_group.addAction(action)
+
+        menu.popup(global_position)
 
     def close_compare(self) -> None:
         if self._closed:

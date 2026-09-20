@@ -1565,11 +1565,17 @@ def test_status_distinguishes_zero_matches_from_not_yet_searched(tmp_path: Path)
         panel.regex_checkbox.setChecked(True)
         panel.find_input.set_text(r"(z)")
         _wait_until(app, lambda: panel.compile_current() is not None)
-        assert panel.status_label.text() == "valid pattern — 1 group"
+        # "valid pattern -- N groups" lives in its own label under the
+        # Match Report (2026-09-20), decoupled from status_label's
+        # busy/match/error messages -- status_label itself is blank here,
+        # since no search has run yet.
+        assert panel.pattern_info_label.text() == "valid pattern — 1 group"
+        assert panel.status_label.text() == ""
 
         panel.find_all()
         _wait_until(app, lambda: not panel.busy and panel.result_count == 0)
         assert panel.status_label.text() == "0 matches"
+        assert panel.pattern_info_label.text() == "valid pattern — 1 group"
     finally:
         _close_panel(app, document, view, panel)
 
@@ -2214,6 +2220,8 @@ def test_find_replace_actions_are_compact_accessible_and_on_one_line():
             if layout.itemAt(index).widget() is not None
         ]
 
+    # Cancel was folded into this same row (2026-09-20 request) instead of
+    # sitting alone on its own footer line below.
     assert button_names(panel.actions_widget) == [
         "Find All",
         "Replace All",
@@ -2221,6 +2229,7 @@ def test_find_replace_actions_are_compact_accessible_and_on_one_line():
         "Next Match",
         "Replace Current Match",
         "Replace & Find Next",
+        "Cancel",
     ]
     expected_names = {
         panel.find_all_button: "Find All",

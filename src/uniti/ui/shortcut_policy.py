@@ -33,6 +33,8 @@ _UNITI_FALLBACKS = {
     "view.pause_background": "",
     "find.report_cycle": "Ctrl+Alt+R",
     "editing.unicode_hex_toggle": "",
+    "tools.character_inspector": "Ctrl+Alt+I",
+    "tools.compare": "Ctrl+Alt+C",
 }
 
 
@@ -260,6 +262,20 @@ def _definitions() -> tuple[CommandDefinition, ...]:
             category.FIND_REPLACE,
             scope.WINDOW,
             None,
+        ),
+        (
+            "tools.character_inspector",
+            "Character Inspector…",
+            category.TOOLS,
+            scope.WINDOW,
+            "tools.character_inspector",
+        ),
+        (
+            "tools.compare",
+            "Compare…",
+            category.TOOLS,
+            scope.WINDOW,
+            "tools.compare",
         ),
     )
 

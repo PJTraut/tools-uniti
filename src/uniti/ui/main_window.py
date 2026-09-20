@@ -321,7 +321,14 @@ class UNITIMainWindow(QMainWindow):
         central_layout.addWidget(self._central_splitter, 1)
         self._markdown_preview: MarkdownPreviewPane | None = None
         self._markdown_preview_target_view: UNITITextView | None = None
-        self._compare_pane: ComparePane | None = None
+        # One generic tracker for every "toggle window" (2026-09-20
+        # request: "one global function to manage toggle windows") --
+        # Compare, Character Inspector, and any future one -- keyed by a
+        # short window identifier. See `_toggle_window`/
+        # `_on_toggle_window_closed` below; `_compare_pane`/
+        # `_character_inspector_dialog` stay as read-only convenience
+        # properties over this dict.
+        self._toggle_windows: dict[str, QWidget] = {}
         self._markdown_preview_timer = QTimer(self)
         self._markdown_preview_timer.setSingleShot(True)
         self._markdown_preview_timer.setInterval(300)
@@ -895,6 +902,14 @@ class UNITIMainWindow(QMainWindow):
         return self._find_replace
 
     @property
+    def _compare_pane(self) -> ComparePane | None:
+        return self._toggle_windows.get("compare")
+
+    @property
+    def _character_inspector_dialog(self) -> CharacterInspectorDialog | None:
+        return self._toggle_windows.get("character_inspector")
+
+    @property
     def views(self) -> tuple[UNITITextView, ...]:
         found: list[UNITITextView] = []
         for view_id in self._panes.view_ids:
@@ -1351,19 +1366,11 @@ class UNITIMainWindow(QMainWindow):
 
         tools_menu = self.menuBar().addMenu("&Tools")
         tools_menu.addAction(
-            self._action(
-                "Character Inspector…",
-                None,
-                self.show_character_inspector,
+            self._command_action(
+                "tools.character_inspector", self.show_character_inspector
             )
         )
-        tools_menu.addAction(
-            self._action(
-                "Compare…",
-                None,
-                self.show_compare,
-            )
-        )
+        tools_menu.addAction(self._command_action("tools.compare", self.show_compare))
         tools_menu.addAction(
             self._action(
                 "Diagnostics…",
@@ -3127,13 +3134,23 @@ class UNITIMainWindow(QMainWindow):
         return True
 
     def show_character_inspector(self) -> None:
+        """The hotkey toggles like Find does (2026-09-20 request):
+        pressing it again while the dialog is open closes it instead of
+        opening a second one -- via the generic `_toggle_window` manager
+        below, which is also why the dialog itself is non-modal (`show()`,
+        not `exec()`)."""
+
+        self._toggle_window("character_inspector", self._build_character_inspector)
+
+    def _build_character_inspector(
+        self, zoom_percent: int, geometry: tuple[int, int, int, int] | None
+    ) -> CharacterInspectorDialog | None:
         view = self.current_view
         if view is None or not view.isEnabled():
-            return
+            return None
         selection = view.state.selection
         if selection is not None and selection[1] - selection[0] > 1:
-            self._show_inspect_selection(view, selection)
-            return
+            return self._build_inspect_selection(view, selection, zoom_percent, geometry)
         position = selection[0] if selection is not None else view.state.cursor
         invalid_bytes = None
         try:
@@ -3153,21 +3170,26 @@ class UNITIMainWindow(QMainWindow):
                 character = ""
         if not character:
             QMessageBox.information(self, "Character Inspector", "No character at cursor.")
-            return
-        dialog = CharacterInspectorDialog(
+            return None
+        return CharacterInspectorDialog(
             character[0],
             output_encoding=view.document.output_encoding,
             invalid_bytes=invalid_bytes,
+            initial_zoom_percent=zoom_percent,
+            initial_geometry=geometry,
             parent=self,
         )
-        dialog.exec()
 
-    def _show_inspect_selection(
-        self, view: UNITITextView, selection: tuple[int, int]
-    ) -> None:
+    def _build_inspect_selection(
+        self,
+        view: UNITITextView,
+        selection: tuple[int, int],
+        zoom_percent: int,
+        geometry: tuple[int, int, int, int] | None,
+    ) -> CharacterInspectorDialog | None:
         """BF-065: the whole-selection counterpart to the single-character
-        inspector above — same dialog class, a per-character table instead
-        of one character's form."""
+        inspector above — same dialog class, a per-character list+detail
+        view instead of one character's form."""
 
         from uniti.ui.character_inspector import MAX_INSPECT_SELECTION_CHARACTERS
 
@@ -3181,11 +3203,77 @@ class UNITIMainWindow(QMainWindow):
             QMessageBox.information(
                 self, "Character Inspector", "No characters in selection."
             )
-            return
-        dialog = CharacterInspectorDialog(
-            text, output_encoding=view.document.output_encoding, parent=self
+            return None
+        return CharacterInspectorDialog(
+            text,
+            output_encoding=view.document.output_encoding,
+            initial_zoom_percent=zoom_percent,
+            initial_geometry=geometry,
+            parent=self,
         )
-        dialog.exec()
+
+    def _toggle_window(self, key: str, factory) -> QWidget | None:
+        """One generic open/close/geometry-and-zoom-persistence manager
+        for every "toggle window" (2026-09-20 request: "one global
+        function to manage toggle windows") -- Compare, Character
+        Inspector, and any future one. A call while `key`'s window is
+        already open closes it instead of opening another (matching Find:
+        the hotkey toggles). `factory(zoom_percent, geometry)` builds a
+        new window using the last-persisted values for `key` (or the
+        defaults if none exist yet), or returns `None` to decline opening
+        at all -- e.g. the user cancelled a document/file picker, or
+        there was nothing to inspect -- in which case nothing is shown or
+        tracked. Whatever closes the window (this method again, its own
+        Close action, Escape, or window chrome) is caught via its
+        `closeRequested` signal if it has one (`ComparePane`), else
+        `QDialog`'s own `finished` (`CharacterInspectorDialog`), and
+        persists its final geometry (always) and `zoom_percent` (if the
+        window exposes that property) back to `Settings`."""
+
+        existing = self._toggle_windows.get(key)
+        if existing is not None:
+            existing.close()
+            return None
+        zoom_percent = self._settings.toggle_window_zoom_percent.get(key, 100)
+        geometry = self._settings.toggle_window_geometry.get(key)
+        window = factory(zoom_percent, geometry)
+        if window is None:
+            return None
+        self._toggle_windows[key] = window
+        close_signal = getattr(window, "closeRequested", None)
+        if close_signal is None:
+            close_signal = window.finished
+        close_signal.connect(
+            lambda *_args, key=key, window=window: self._on_toggle_window_closed(
+                key, window
+            )
+        )
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        return window
+
+    def _on_toggle_window_closed(self, key: str, window: QWidget) -> None:
+        if self._toggle_windows.get(key) is not window:
+            return
+        del self._toggle_windows[key]
+        geometry = window.geometry()
+        geometries = dict(self._settings.toggle_window_geometry)
+        geometries[key] = (
+            geometry.x(),
+            geometry.y(),
+            geometry.width(),
+            geometry.height(),
+        )
+        updates: dict[str, object] = {"toggle_window_geometry": geometries}
+        zoom_percent = getattr(window, "zoom_percent", None)
+        if isinstance(zoom_percent, int):
+            zoom_percents = dict(self._settings.toggle_window_zoom_percent)
+            zoom_percents[key] = zoom_percent
+            updates["toggle_window_zoom_percent"] = zoom_percents
+        self._settings = dataclass_replace(self._settings, **updates)
+        self._save_settings()
+        window.deleteLater()
 
     def show_diagnostics(self) -> None:
         documents = list(dict.fromkeys(view.document for view in self.views))
@@ -3212,22 +3300,57 @@ class UNITIMainWindow(QMainWindow):
         ]
 
     def show_compare(self) -> None:
+        """The hotkey/menu command toggles like Find and Character
+        Inspector do (2026-09-20 request), via the generic
+        `_toggle_window` manager below."""
+
+        self._toggle_window("compare", self._build_compare_pane)
+
+    def _build_compare_pane(
+        self, zoom_percent: int, geometry: tuple[int, int, int, int] | None
+    ) -> ComparePane | None:
         candidates = self._compare_candidates()
-        if len(candidates) < 2:
-            QMessageBox.information(
-                self, "Compare", "Open at least two documents to compare."
+        if not candidates:
+            # "ask for files if nothing OPEN" (2026-09-20 request): with
+            # no documents open at all, the usual picker has nothing to
+            # offer -- prompt for exactly two files directly instead of
+            # just reporting an error, and compare those two once opened.
+            paths, _filter = QFileDialog.getOpenFileNames(
+                self,
+                "Choose Two Files to Compare",
+                self._settings.last_directory or "",
             )
-            return
-        dialog = CompareDocumentPickerDialog(candidates, parent=self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        left_label, left_document = dialog.left_choice()
-        right_label, right_document = dialog.right_choice()
-        if left_document is right_document:
-            QMessageBox.warning(
-                self, "Compare", "Choose two different documents to compare."
-            )
-            return
+            if not paths:
+                return None
+            if len(paths) != 2:
+                QMessageBox.information(
+                    self, "Compare", "Choose exactly two files to compare."
+                )
+                return None
+            documents = []
+            for path in paths:
+                opened = self.open_path(path)
+                if opened is None:
+                    return None
+                documents.append(opened.document)
+            left_label, right_label = (Path(path).name for path in paths)
+            left_document, right_document = documents
+        else:
+            if len(candidates) < 2:
+                QMessageBox.information(
+                    self, "Compare", "Open at least two documents to compare."
+                )
+                return None
+            dialog = CompareDocumentPickerDialog(candidates, parent=self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            left_label, left_document = dialog.left_choice()
+            right_label, right_document = dialog.right_choice()
+            if left_document is right_document:
+                QMessageBox.warning(
+                    self, "Compare", "Choose two different documents to compare."
+                )
+                return None
         for label, document in (
             (left_label, left_document),
             (right_label, right_document),
@@ -3239,34 +3362,19 @@ class UNITIMainWindow(QMainWindow):
                     f'"{label}" is larger than {MAX_COMPARE_CHARS:,} '
                     "characters and cannot be compared.",
                 )
-                return
-        self._close_compare()
-        self._compare_pane = ComparePane(
-            left_document,
-            left_label,
-            right_document,
-            right_label,
-            self,
-        )
-        self._compare_pane.apply_view_defaults(
+                return None
+        pane = ComparePane(left_document, left_label, right_document, right_label, self)
+        pane.apply_view_defaults(
             whitespace_mode=self._settings.whitespace_mode,
             tab_width=self._settings.editor_tab_width,
             syntax_extension_overrides=self._settings.syntax_extension_overrides,
         )
-        self._compare_pane.resize(900, 600)
-        self._compare_pane.closeRequested.connect(self._close_compare)
-        self._compare_pane.show()
-        self._compare_pane.raise_()
-        self._compare_pane.activateWindow()
-
-    def _close_compare(self) -> None:
-        if self._compare_pane is None:
-            return
-        pane = self._compare_pane
-        self._compare_pane = None
-        pane.close_compare()
-        pane.setParent(None)
-        pane.deleteLater()
+        pane.set_zoom_percent(zoom_percent)
+        if geometry is not None:
+            pane.setGeometry(*geometry)
+        else:
+            pane.resize(900, 600)
+        return pane
 
     def export_dogfood_evidence(self):
         if self._service is None:

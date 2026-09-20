@@ -170,31 +170,78 @@ class CaptureReportDelegate(QStyledItemDelegate):
         label_color = self._label_color(styled, index, text_color)
         painter.save()
         try:
-            painter.setFont(styled.font)
-            painter.setPen(label_color)
-            vertical = Qt.AlignmentFlag.AlignVCenter | Qt.TextFlag.TextSingleLine
-            painter.drawText(
+            self._paint_single_color_text(
+                painter,
                 label_rect,
-                vertical | Qt.AlignmentFlag.AlignRight,
                 styled.fontMetrics.elidedText(
                     label, Qt.TextElideMode.ElideRight, label_rect.width()
                 ),
+                label_color,
+                styled.font,
+                align_right=True,
             )
-            painter.setPen(text_color)
             spans = index.data(CaptureReportModel.ContentGroupSpansRole) or ()
             painted = spans and self._paint_content_group_spans(
                 painter, styled, content_rect, content, spans, text_color
             )
             if not painted:
-                painter.drawText(
+                self._paint_single_color_text(
+                    painter,
                     content_rect,
-                    vertical | Qt.AlignmentFlag.AlignLeft,
                     styled.fontMetrics.elidedText(
                         content, Qt.TextElideMode.ElideRight, content_rect.width()
                     ),
+                    text_color,
+                    styled.font,
+                    align_right=False,
                 )
         finally:
             painter.restore()
+
+    @staticmethod
+    def _paint_single_color_text(
+        painter, rect, text, color, font, *, align_right: bool
+    ) -> None:
+        """Paint `text` in one color via `QTextLayout` — the same
+        rendering pipeline `_paint_content_group_spans` uses below
+        (BF-072), rather than `QPainter.drawText`.
+
+        BF-019: the label and content columns were reported reading at
+        visibly different effective sizes on native hardware despite
+        sharing the identical `QFont` — confirmed not reproducible via
+        pixel measurement in an offscreen render, and confirmed not
+        explained by any font/metrics divergence in this delegate's own
+        code (both columns already used the same `styled.font`). Kept
+        reproducing anyway, so rather than continue guessing at which
+        native-only Qt/OS rendering detail caused it, this removes the
+        one remaining structural difference between the label and
+        content columns: `QPainter.drawText` and `QTextLayout.draw` are
+        two different Qt text-drawing code paths, and BF-072 already
+        established that they don't necessarily agree pixel-for-pixel
+        even for the same font (there, on tab-stop width; here, the
+        open theory is glyph hinting/rasterization). Both columns now
+        render through the identical `QTextLayout` path regardless of
+        which one happens to need it (BF-072's own multi-color spans),
+        so there is no longer a code-level way for them to diverge.
+        """
+
+        if not text:
+            return
+        layout = QTextLayout(text, font)
+        no_wrap = QTextOption()
+        no_wrap.setWrapMode(QTextOption.WrapMode.NoWrap)
+        layout.setTextOption(no_wrap)
+        layout.beginLayout()
+        line = layout.createLine()
+        if not line.isValid():
+            layout.endLayout()
+            return
+        line.setLineWidth(2**20)
+        layout.endLayout()
+        x = rect.right() + 1 - line.naturalTextWidth() if align_right else rect.left()
+        y = rect.top() + (rect.height() - line.height()) / 2
+        painter.setPen(color)
+        layout.draw(painter, QPointF(x, y))
 
     def _paint_content_group_spans(
         self, painter, option, content_rect, content, spans, base_color

@@ -1345,6 +1345,156 @@ def test_compare_menu_rejects_comparing_a_document_with_itself(
         app.processEvents()
 
 
+def test_compare_hotkey_toggles_open_and_closed(tmp_path: Path, monkeypatch):
+    """2026-09-20 request: add a hotkey toggle for Compare, matching Find
+    and Character Inspector -- pressing it again while Compare is open
+    closes it instead of reopening the document picker."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    import uniti.ui.main_window as main_window
+
+    class _StubPicker:
+        def __init__(self, candidates, *, parent=None):
+            self._candidates = candidates
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def left_choice(self):
+            return self._candidates[0]
+
+        def right_choice(self):
+            return self._candidates[1]
+
+    monkeypatch.setattr(main_window, "CompareDocumentPickerDialog", _StubPicker)
+
+    first_path = tmp_path / "toggle-a.txt"
+    second_path = tmp_path / "toggle-b.txt"
+    first_path.write_text("alpha", encoding="utf-8")
+    second_path.write_text("beta", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    window = main_window.UNITIMainWindow()
+    try:
+        assert window.open_path(first_path) is not None
+        assert window.open_path(second_path) is not None
+
+        assert window._compare_pane is None
+        window.show_compare()
+        app.processEvents()
+        assert window._compare_pane is not None
+
+        window.show_compare()
+        app.processEvents()
+        assert window._compare_pane is None
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_compare_asks_for_files_when_nothing_is_open(tmp_path: Path, monkeypatch):
+    """2026-09-20 request: "ask for files if nothing OPEN" -- with zero
+    documents open, the usual "open at least two documents" message has
+    nothing useful to say; prompt for exactly two files directly, open
+    them, and compare those two without a redundant picker step."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QFileDialog
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    first_path = tmp_path / "ask-a.txt"
+    second_path = tmp_path / "ask-b.txt"
+    first_path.write_text("alpha", encoding="utf-8")
+    second_path.write_text("beta", encoding="utf-8")
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileNames",
+        lambda *a, **k: ([str(first_path), str(second_path)], ""),
+    )
+
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    try:
+        assert not window.views
+        window.show_compare()
+        app.processEvents()
+        assert window._compare_pane is not None
+        opened_names = {view.document.path.name for view in window.views}
+        assert opened_names == {"ask-a.txt", "ask-b.txt"}
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
+def test_compare_remembers_size_and_zoom_across_reopens(tmp_path: Path, monkeypatch):
+    """2026-09-20 request: preserve Compare's geometry (and zoom) across
+    reopens, the same generic `_toggle_window` mechanism Character
+    Inspector uses."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QDialog
+
+    import uniti.ui.main_window as main_window
+
+    class _StubPicker:
+        def __init__(self, candidates, *, parent=None):
+            self._candidates = candidates
+
+        def exec(self):
+            return QDialog.DialogCode.Accepted
+
+        def left_choice(self):
+            return self._candidates[0]
+
+        def right_choice(self):
+            return self._candidates[1]
+
+    monkeypatch.setattr(main_window, "CompareDocumentPickerDialog", _StubPicker)
+
+    first_path = tmp_path / "remember-a.txt"
+    second_path = tmp_path / "remember-b.txt"
+    first_path.write_text("alpha", encoding="utf-8")
+    second_path.write_text("beta", encoding="utf-8")
+    from uniti.app.settings import SettingsStore
+
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = main_window.UNITIMainWindow(settings_store=store)
+    try:
+        assert window.open_path(first_path) is not None
+        assert window.open_path(second_path) is not None
+
+        window.show_compare()
+        app.processEvents()
+        pane = window._compare_pane
+        pane.setGeometry(20, 30, 950, 620)
+        pane.set_zoom_percent(130)
+
+        window.show_compare()  # toggle closed -- saves state
+        app.processEvents()
+        assert window._settings.toggle_window_geometry["compare"] == (
+            20,
+            30,
+            950,
+            620,
+        )
+        assert window._settings.toggle_window_zoom_percent["compare"] == 130
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+        app.processEvents()
+
+
 def test_zoom_shortcut_reaches_the_panel_while_find_input_has_focus(
     tmp_path: Path,
 ):
@@ -1938,7 +2088,16 @@ def test_character_inspector_shows_selection_table_for_multi_character_selection
         captured = {}
 
         class _RecordingDialog(QDialog):
-            def __init__(self, text, *, output_encoding, invalid_bytes=None, parent=None):
+            def __init__(
+                self,
+                text,
+                *,
+                output_encoding,
+                invalid_bytes=None,
+                initial_zoom_percent=100,
+                initial_geometry=None,
+                parent=None,
+            ):
                 super().__init__(parent)
                 captured["text"] = text
 
@@ -1949,6 +2108,113 @@ def test_character_inspector_shows_selection_table_for_multi_character_selection
             window.show_character_inspector()
 
         assert captured["text"] == "Hello"
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_character_inspector_hotkey_toggles_open_and_closed(tmp_path: Path):
+    """2026-09-20 request: the hotkey should toggle like Find does --
+    pressing it again while the dialog is open closes it instead of
+    opening a second one. Needs the dialog to be non-modal (`show()`, not
+    `exec()`, which the earlier BF-073 implementation used) so a second
+    press can even reach `show_character_inspector` at all."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "doc.txt"
+    path.write_text("Hello", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        view.state.move_to(0)
+
+        assert window._character_inspector_dialog is None
+        window.show_character_inspector()
+        app.processEvents()
+        first_dialog = window._character_inspector_dialog
+        assert first_dialog is not None
+        assert first_dialog.isVisible()
+
+        window.show_character_inspector()
+        app.processEvents()
+        assert window._character_inspector_dialog is None
+        # `_on_toggle_window_closed` schedules `deleteLater()`, and
+        # `processEvents()` above may already have processed that
+        # deferred delete -- don't touch `first_dialog` further.
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_character_inspector_remembers_size_and_zoom_across_reopens(tmp_path: Path):
+    """2026-09-20 request: remember the previous window dimensions and
+    font zoom size on reopen -- resizing/zooming, closing, and reopening
+    (even a fresh window sharing the same settings store, as a real
+    relaunch would) must restore both."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "doc.txt"
+    path.write_text("Hello", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        view.state.move_to(0)
+
+        window.show_character_inspector()
+        app.processEvents()
+        dialog = window._character_inspector_dialog
+        dialog.setGeometry(50, 60, 500, 550)
+        dialog.zoom_in()
+        dialog.zoom_in()
+        expected_zoom = dialog.zoom_percent
+
+        window.show_character_inspector()  # toggle closed -- saves state
+        app.processEvents()
+        assert (
+            window._settings.toggle_window_zoom_percent["character_inspector"]
+            == expected_zoom
+        )
+        assert window._settings.toggle_window_geometry["character_inspector"] == (
+            50,
+            60,
+            500,
+            550,
+        )
+
+        # A fresh window sharing the same settings store, as a real
+        # relaunch would produce, must load the persisted values too.
+        second_window = UNITIMainWindow(settings_store=store)
+        try:
+            second_view = second_window.open_path(path)
+            second_view.state.move_to(0)
+            second_window.show_character_inspector()
+            app.processEvents()
+            reopened = second_window._character_inspector_dialog
+            assert reopened.zoom_percent == expected_zoom
+            geometry = reopened.geometry()
+            assert (geometry.x(), geometry.y()) == (50, 60)
+            assert (geometry.width(), geometry.height()) == (500, 550)
+        finally:
+            second_window.close_all_documents(force=True)
+            second_window.close()
     finally:
         window.close_all_documents(force=True)
         window.close()

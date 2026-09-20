@@ -140,6 +140,41 @@ def test_find_replace_view_state_round_trips(tmp_path: Path):
     assert store.load() == expected
 
 
+def test_toggle_window_geometry_and_zoom_round_trip(tmp_path: Path):
+    """2026-09-20 request: remember each toggle window's (Character
+    Inspector, Compare, ...) previous size and zoom level across reopens
+    -- one generic, keyed mechanism rather than a dedicated pair of
+    fields per window."""
+
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    expected = Settings(
+        toggle_window_zoom_percent={"character_inspector": 150, "compare": 80},
+        toggle_window_geometry={
+            "character_inspector": (40, 60, 720, 480),
+            "compare": (0, 0, 900, 600),
+        },
+    )
+
+    store.save(expected)
+
+    assert store.load() == expected
+
+
+def test_toggle_window_geometry_and_zoom_reject_malformed_entries(tmp_path: Path):
+    path = tmp_path / "settings.json"
+    path.write_text(
+        '{"schema":1,"toggle_window_zoom_percent":'
+        '{"character_inspector":9999,"compare":150,"bad":"nope"},'
+        '"toggle_window_geometry":'
+        '{"character_inspector":[1,2,3],"compare":[0,0,900,600],"bad":"nope"}}',
+        encoding="utf-8",
+    )
+    settings = SettingsStore(path).load()
+    assert settings.toggle_window_zoom_percent == {"compare": 150}
+    assert settings.toggle_window_geometry == {"compare": (0, 0, 900, 600)}
+
+
 def test_legacy_bottom_report_setting_migrates_to_right(tmp_path: Path):
     path = tmp_path / "settings.json"
     path.write_text(
@@ -269,6 +304,8 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
         "find_replace_attached_height": None,
         "find_replace_report_location": "Right",
         "find_replace_zoom_percent": 100,
+        "toggle_window_geometry": {},
+        "toggle_window_zoom_percent": {},
         "last_directory": None,
         "performance_mode": "Automatic",
         "schema": 5,
