@@ -1,24 +1,35 @@
 # UNITI Current Status
 
-Date: 2026-09-17
+Date: 2026-09-20
 
 ## Canonical baseline
 
 | Item | Current value |
 |---|---|
-| Current source identity | `v0.001b3` / `0.1b3` in `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` |
-| Active development milestone | B3 Find/Replace Rework & Editor Refinement Beta |
-| Implemented feedback | All reviewed BF-001–BF-068 source changes, plus BF-040/042, BF-064's multi-checkpoint RTL fix, BF-063's syntax color editing (ADR-0011), and BF-030/031's benchmark coverage, integrated on local `main` at `3861e63` (1 commit ahead of `origin/main` as of this capture; see the [B3 milestone plan](../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md) for the full item table) |
-| Pre-promotion baseline | `596c88f` ("1b2 feedback implementation"), the B2-era commit through which the B2 promotion below was verified |
+| Current source identity | `v0.001b4` / `0.1b4` in `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml` |
+| Active development milestone | B4 Compare, Character Inspector & Per-View Settings Beta |
+| Implemented feedback | All reviewed BF-019 (real fix), BF-070 (Compare full editor parity), BF-072, BF-073 (Character Inspector rebuild), and BF-075 (per-view settings) source changes, plus the shared toggle-window state-persistence mechanism, integrated on local `main` at `366ea42` (see the [B4 milestone plan](../02_plans/v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) for the full item table) |
+| Pre-promotion baseline | `3861e63`, the B3-era commit through which the B3 promotion below was verified |
 | Promotion scope | Version metadata and project records; existing document, settings, session, and recovery schemas remain unchanged |
-| Latest complete hosted feedback pass | `aab3f3c`, [run `34253008439`](https://github.com/PJTraut/tools-uniti/actions/runs/34253008439), all four lanes (no hosted run yet exists for the B3 candidate) |
+| Latest complete hosted feedback pass | `aab3f3c`, [run `34253008439`](https://github.com/PJTraut/tools-uniti/actions/runs/34253008439), all four lanes (no hosted run yet exists for the B4 candidate) |
 | Last recorded hosted account block | [Run `34259043043`](https://github.com/PJTraut/tools-uniti/actions/runs/34259043043) on `33c71d3`: zero executed steps in all four jobs; GitHub annotations cite failed payments or spending limits |
 | Latest completed milestone | A21 Cross-Platform Alpha at hosted-proven `8b24f4b` |
 | Latest immutable release tag | `v0.001a15` at `10f419e`; no beta tag or native distribution is created by this source promotion |
 
-The user directed the project to move beyond A22 after the beta feedback work was implemented, then again beyond B2 after this further batch. [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md) advanced the source identity and activated B2; [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md) advances it again to B3, in both cases while preserving unfinished release qualification. A22 real-use days, A23 executable health/recovery delivery, A24 stabilization, and B1 independent executable feedback remain open, as does B2's own BF-001–BF-010 native-host and hosted-CI evidence. Those historical milestone names and the B2 label identify outstanding requirements, not the currently installed source version.
+The user directed the project to move beyond A22 after the beta feedback work was implemented, then beyond B2, then beyond B3 after this further batch. [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md) advanced the source identity and activated B2; [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md) advanced it to B3; [ADR-0012](../05_decisions/ADR-0012-b4-version-and-qualification.md) advances it again to B4, in each case while preserving unfinished release qualification. A22 real-use days, A23 executable health/recovery delivery, A24 stabilization, and B1 independent executable feedback remain open, as does B2's own BF-001–BF-010 and B3's own outstanding native-host and hosted-CI evidence. Those historical milestone names and the B2/B3 labels identify outstanding requirements, not the currently installed source version.
 
 The critical BF-002 affected-host confirmation, physical Chinese/Korean IME qualification, and same-commit hosted validation also remain open. Source integration and version advancement do not supply those results. The [Roadmap](../02_plans/ROADMAP.md) records the revised development and qualification order.
+
+## B4 source promotion
+
+Fresh local validation on the B4 promotion working tree, 2026-09-20:
+
+- The version identity was advanced in `VERSION`, `src/uniti/__init__.py`, and `pyproject.toml`; `tests/test_package.py::test_project_versions_are_canonical` passed against the new `v0.001b4`/`0.1b4` values.
+- The owned development installation was refreshed through `scripts/bootstrap.py --dev --no-launch`; `--version` reports `v0.001b4`. This step was required: an initial full-suite run against the pre-refresh installation failed 8 tests (`test_deep_check_exercises_complete_core_matrix`, `test_complete_offscreen_startup_reaches_ready_without_pip`, `test_a18_deep_self_check_includes_large_file`, and all five `test_bf002_lifecycle.py::test_desktop_exit_releases_process_and_relaunches_saved_session` variants) with `installed UNITI metadata does not match the running release`; all 8 passed once the installed metadata was refreshed to `v0.001b4`.
+- Local full suite at `366ea42` (this promotion's tip, post-refresh): **2,058 passed, 6 expected platform skips, no failures**.
+- `git diff --check` passed (no whitespace errors) and the new/edited cross-referenced documents (ADR-0012, the B4 milestone plan) resolve to real files.
+
+This validates the local source promotion only. Same-commit hosted, physical input, affected-host, and executable qualification remain pending — none has been attempted on `366ea42`. No historical performance or wheel result is relabelled as a fresh B4 measurement. The B3 source promotion verification below remains valid evidence for the commit it was captured on, not for this tip.
 
 ## B3 source promotion
 
@@ -29,7 +40,7 @@ Fresh local validation on the B3 promotion working tree, 2026-09-15:
 - All **21 deep self-checks** (`--self-check --deep --json`) passed, reporting identity `display_version: v0.001b3`, `package_version: 0.1b3`, confirming source/display/package/installed metadata agreement.
 - `git diff --check` passed (no whitespace errors) and the new/edited cross-referenced documents (ADR-0008, the B3 milestone plan) resolve to real files.
 
-This validates the local source promotion only. Same-commit hosted, physical input, affected-host, and executable qualification remain pending — none has been attempted on `ca05d0b`. No historical performance or wheel result is relabelled as a fresh B3 measurement. The B2 source promotion verification below remains valid evidence for the commit it was captured on, not for this tip.
+This validates the local source promotion only. Same-commit hosted, physical input, affected-host, and executable qualification remain pending — none was attempted on `ca05d0b`. No historical performance or wheel result is relabelled as a fresh B3 measurement. The B2 source promotion verification below remains valid evidence for the commit it was captured on, not for this tip.
 
 ## B2 source promotion verification
 
@@ -153,4 +164,4 @@ Before that new finding, recorded local and four-lane hosted evidence identified
 
 UNITI does not install a permanent OS daemon. The desktop service retains an empty visible editor window when the user closes the last window, and exits on explicit Quit, logout, shutdown, or process termination. Legacy zero-window sessions remain restorable. Project/workspace semantics (beyond the narrow bounded Open Folder by Type exception, [ADR-0009](../05_decisions/ADR-0009-bounded-open-folder-by-type.md)), cloud sync, collaboration, plugins, LSP, permanent background services, and polished installers remain outside the implemented boundary. User-authored theme profiles, configurable held single-code-point Unicode inspection, a bounded file-type syntax-highlighting extension point (BF-027, BF-041), content-level right-to-left/bidi editing for Arabic and Hebrew (BF-064; application chrome stays left-to-right, and native IME qualification remains open), and multi-code-point Unicode-property inspection over a selection (BF-065) are implemented; cross-row/multiline-aware highlighting and a syntax-color theme editor remain parked.
 
-The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). B3 Find/Replace Rework & Editor Refinement Beta is active. Outstanding A22, A23, A24, and B1 release qualification remains recorded under ADR-0007; B3's own advancement is recorded under ADR-0008. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
+The complete A21 Cross-Platform milestone/design/plan and its Editor Layout and Visibility workstream are retained in [Implemented](../03_implemented/README.md). B4 Compare, Character Inspector & Per-View Settings Beta is active. Outstanding A22, A23, A24, and B1 release qualification remains recorded under ADR-0007; B3's advancement is recorded under ADR-0008; B4's own advancement is recorded under ADR-0012. See [Scope](SCOPE.md), [Architecture](ARCHITECTURE.md), [Development](DEVELOPMENT.md), [Roadmap](../02_plans/ROADMAP.md), and the [Current Handover](../06_handovers/CURRENT_HANDOVER.md).
