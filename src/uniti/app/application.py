@@ -37,6 +37,7 @@ class ApplicationRequest:
     deep: bool = False
     json_output: bool = False
     version: bool = False
+    no_restore: bool = False
 
 
 class ApplicationUsageError(ValueError):
@@ -55,6 +56,11 @@ def _argument_parser() -> argparse.ArgumentParser:
     group.add_argument("--version", action="store_true", help="print the UNITI version")
     parser.add_argument("--deep", action="store_true", help="run deep functional checks")
     parser.add_argument("--json", dest="json_output", action="store_true", help="emit JSON")
+    parser.add_argument(
+        "--no-restore",
+        action="store_true",
+        help="start with no previous session restored",
+    )
     parser.add_argument("files", nargs="*", type=Path)
     return parser
 
@@ -92,6 +98,7 @@ def parse_args(argv: list[str]) -> ApplicationRequest:
         deep=bool(namespace.deep),
         json_output=bool(namespace.json_output),
         version=bool(namespace.version),
+        no_restore=bool(namespace.no_restore),
     )
 
 
@@ -475,6 +482,15 @@ def _startup_callbacks(
             TaskSpec.create(TaskKind.RECOVERY, foreground=False),
             lambda _task_context: manager.discover(),
         )
+        if request.no_restore:
+            # --no-restore skips reading the previous session's manifest
+            # entirely -- it must not skip crash/autosave recovery, which
+            # is the unrelated `recovery_handle` task above and still runs.
+            from uniti.app.session import LoadedSession
+
+            context.recovery_candidates = recovery_handle.future.result()
+            context.data["loaded_session"] = LoadedSession(None, (), None, ())
+            return
         session_handle = resource_manager.tasks.submit(
             TaskSpec.create(TaskKind.SESSION, foreground=False),
             lambda _task_context: _load_session_surface(

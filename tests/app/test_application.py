@@ -51,6 +51,11 @@ def test_parse_args_does_not_strip_an_unrelated_main_py_file():
     assert request.files == (Path(unrelated_main),)
 
 
+def test_parse_args_recognizes_no_restore_flag():
+    assert application.parse_args(["uniti"]).no_restore is False
+    assert application.parse_args(["uniti", "--no-restore"]).no_restore is True
+
+
 def test_version_does_not_require_qt(monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "PySide6", None)
 

@@ -159,6 +159,50 @@ def test_primary_session_startup_constructs_one_process_dogfood_runtime(
         resources.shutdown()
 
 
+def test_no_restore_skips_session_load_but_keeps_recovery_discovery(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """--no-restore must skip reading the previous session manifest, but
+    must NOT skip crash/autosave recovery discovery -- the two are
+    unrelated mechanisms that happen to share the RECOVERY_DISCOVERY phase
+    (application.py's `recovery()`)."""
+
+    from uniti.app.recovery_manager import RecoveryManager
+
+    paths = _paths(tmp_path)
+    paths.ensure()
+    resources = ResourceManager(max_workers=1)
+
+    class ExplodingSessionStore:
+        def load_manifest(self):
+            raise AssertionError(
+                "session manifest must not be loaded under --no-restore"
+            )
+
+    candidate = object()
+    monkeypatch.setattr(RecoveryManager, "discover", lambda self: (candidate,))
+
+    context = StartupContext.create(paths, session_id="no-restore")
+    context.data.update(
+        resource_manager=resources,
+        session_store=ExplodingSessionStore(),
+    )
+    callbacks = application._startup_callbacks(
+        application.ApplicationRequest(no_restore=True),
+        tmp_path / "runtime.json",
+    )
+    try:
+        callbacks[StartupPhase.RECOVERY_DISCOVERY](context)
+
+        assert context.recovery_candidates == (candidate,)
+        loaded_session = context.data["loaded_session"]
+        assert loaded_session.manifest is None
+        assert loaded_session.problems == ()
+    finally:
+        resources.shutdown()
+
+
 def test_forwarded_startup_never_constructs_a_dogfood_runtime(
     tmp_path: Path,
     monkeypatch,
