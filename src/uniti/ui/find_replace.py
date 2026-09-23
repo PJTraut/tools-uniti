@@ -212,6 +212,7 @@ class FindReplaceWindow(QDockWidget):
     """Modeless Find/Replace utility; match records never become document state."""
 
     zoomChanged = Signal(int)
+    reportZoomChanged = Signal(int)
     reportLocationChanged = Signal(str)
     geometryChanged = Signal(tuple)
     attachedHeightChanged = Signal(int)
@@ -280,6 +281,12 @@ class FindReplaceWindow(QDockWidget):
         self._current_index: int | None = None
         self._results_compiled = None
         self._zoom_percent = 100
+        # BF-092: the Match Report's own font size, independent of the
+        # find/replace input fields' -- previously `set_zoom_percent` scaled
+        # `capture_view` in lockstep with the fields, and a Ctrl+scroll
+        # anywhere in the panel (including directly over the report itself)
+        # drove that same shared value via one `zoom_in`/`zoom_out` pair.
+        self._report_zoom_percent = 100
         self._pattern_generation = 0
         self._pattern_analysis = RegexAnalysis.empty(
             role=ExpressionRole.PATTERN,
@@ -940,23 +947,43 @@ class FindReplaceWindow(QDockWidget):
     def _replace_wrap_toggled(self, checked: bool) -> None:
         self._apply_wrap_mode(self.replace_input, checked)
 
+    @staticmethod
+    def _scaled_font(widget: QWidget, scale: float) -> QFont:
+        font = QFont(widget.font())
+        point_size = font.pointSizeF()
+        if point_size <= 0:
+            point_size = 12.0
+        font.setPointSizeF(point_size * scale)
+        return font
+
     def set_zoom_percent(self, percent: int) -> None:
         percent = max(50, min(500, int(percent)))
         if percent == self._zoom_percent:
             return
         scale = percent / self._zoom_percent
         self._zoom_percent = percent
-        for widget in (self.find_input, self.replace_input, self.capture_view):
-            font = QFont(widget.font())
-            point_size = font.pointSizeF()
-            if point_size <= 0:
-                point_size = 12.0
-            font.setPointSizeF(point_size * scale)
-            widget.setFont(font)
-        for field in (self.find_input, self.replace_input):
-            field.setMinimumHeight(field.minimum_content_height())
-        self._update_capture_view_minimum_height()
+        for widget in (self.find_input, self.replace_input):
+            widget.setFont(self._scaled_font(widget, scale))
+            widget.setMinimumHeight(widget.minimum_content_height())
         self.zoomChanged.emit(percent)
+
+    @property
+    def report_zoom_percent(self) -> int:
+        return self._report_zoom_percent
+
+    def set_report_zoom_percent(self, percent: int) -> None:
+        """BF-092: the Match Report's own font size -- independent of
+        `set_zoom_percent` above, which only scales the find/replace input
+        fields."""
+
+        percent = max(50, min(500, int(percent)))
+        if percent == self._report_zoom_percent:
+            return
+        scale = percent / self._report_zoom_percent
+        self._report_zoom_percent = percent
+        self.capture_view.setFont(self._scaled_font(self.capture_view, scale))
+        self._update_capture_view_minimum_height()
+        self.reportZoomChanged.emit(percent)
 
     _CAPTURE_VIEW_MIN_VISIBLE_ROWS = MAX_CAPTURE_REPORT_MATCHES
 
@@ -991,7 +1018,16 @@ class FindReplaceWindow(QDockWidget):
     def reset_zoom(self) -> None:
         self.set_zoom_percent(100)
 
-    def _handle_zoom_wheel(self, event: QWheelEvent) -> bool:
+    def report_zoom_in(self) -> None:
+        self.set_report_zoom_percent(self._report_zoom_percent + 10)
+
+    def report_zoom_out(self) -> None:
+        self.set_report_zoom_percent(self._report_zoom_percent - 10)
+
+    def reset_report_zoom(self) -> None:
+        self.set_report_zoom_percent(100)
+
+    def _handle_zoom_wheel(self, event: QWheelEvent, *, report: bool) -> bool:
         delta = event.angleDelta().y()
         primary = bool(
             event.modifiers()
@@ -1001,9 +1037,15 @@ class FindReplaceWindow(QDockWidget):
             return False
         steps = max(1, abs(delta) // 120)
         for _ in range(steps):
-            self.zoom_in() if delta > 0 else self.zoom_out()
+            if report:
+                self.report_zoom_in() if delta > 0 else self.report_zoom_out()
+            else:
+                self.zoom_in() if delta > 0 else self.zoom_out()
         event.accept()
         return True
+
+    def _is_report_widget(self, widget) -> bool:
+        return widget is self.capture_view or widget is self.capture_view.viewport()
 
     def eventFilter(self, watched, event) -> bool:
         if watched in (self.find_input, self.replace_input) and event.type() in {
@@ -1011,12 +1053,14 @@ class FindReplaceWindow(QDockWidget):
             QEvent.Type.Show,
         }:
             self._position_clear_buttons()
-        if event.type() == QEvent.Type.Wheel and self._handle_zoom_wheel(event):
+        if event.type() == QEvent.Type.Wheel and self._handle_zoom_wheel(
+            event, report=self._is_report_widget(watched)
+        ):
             return True
         return super().eventFilter(watched, event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
-        if self._handle_zoom_wheel(event):
+        if self._handle_zoom_wheel(event, report=False):
             return
         super().wheelEvent(event)
 

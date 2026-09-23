@@ -61,7 +61,7 @@ This validates the local source promotion. Same-commit hosted, physical input, a
 - the ordinary-space marker is centered from real layout bounds across 50–300% zoom, and the persisted Unicode hold combination is reachable from Hotkeys and applies to existing and new windows;
 - line numbers use an independent 80% font while preserving the editor baseline/row height, and progressive wrapped-row preparation settles gutter width before paint and hit testing;
 - pending EOL conversion is stated as “on save”; committed markers remain truthful before save, and successful save refreshes every view sharing the document;
-- Find/Replace uses the complete Lucide control set, while capture rows expose `\\N :` labels separately and align every preview to one measured column without changing `Match N of M` headers; and
+- Find/Replace uses the complete Lucide control set, while capture rows expose `\\N` labels separately and align every preview to one measured column without changing `Match N of M` headers; and
 - Paper and Slate are complete named profiles. Users can clone and edit profiles, preview across service windows, apply/cancel/reset/delete, and persist custom profiles plus active selection in one bounded atomic file. Packaged profiles are read-only and contrast remains independent;
 - bundled Noto fallback preserves the native monospace primary, orders Han fallback by locale, and covers the selected Indic, Chinese, and Korean samples without OS font installation or runtime download; and
 - bounded shaped windows, grapheme-aware navigation/deletion, UTF-16 IME offsets, exact-width wrapping, and virtual preedit panning share Qt geometry while exact code-point inspection remains available.

@@ -1780,6 +1780,46 @@ def test_system_theme_refreshes_when_the_platform_palette_changes():
         app.processEvents()
 
 
+def test_find_replace_report_zoom_persists_independently_of_field_zoom(
+    tmp_path: Path,
+):
+    """BF-092: the Match Report's own font size is tracked and persisted
+    separately from the find/replace fields' zoom, mirroring how
+    find_replace_attached_height already persists on change (not just at
+    construction, unlike find_replace_zoom_percent's write-once seed)."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        window._find_replace.set_zoom_percent(140)
+        window._find_replace.set_report_zoom_percent(160)
+        app.processEvents()
+
+        assert window._settings.find_replace_report_zoom_percent == 160
+        # The fields' own zoom is not saved on change (a pre-existing,
+        # separate gap this doesn't touch) -- only report zoom is.
+        assert window._settings.find_replace_zoom_percent == 100
+
+        second_window = UNITIMainWindow(settings_store=store)
+        try:
+            assert second_window._find_replace.report_zoom_percent == 160
+        finally:
+            second_window.close_all_documents(force=True)
+            second_window.close()
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
 def test_recent_files_menu_lists_opened_files_most_recent_first(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
@@ -2096,6 +2136,7 @@ def test_character_inspector_shows_selection_table_for_multi_character_selection
                 invalid_bytes=None,
                 initial_zoom_percent=100,
                 initial_geometry=None,
+                initial_splitter_sizes=None,
                 on_refresh=None,
                 parent=None,
             ):
@@ -2261,6 +2302,105 @@ def test_character_inspector_remembers_size_and_zoom_across_reopens(tmp_path: Pa
         finally:
             second_window.close_all_documents(force=True)
             second_window.close()
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_character_inspector_selection_view_remembers_splitter_sizes_across_reopens(
+    tmp_path: Path,
+):
+    """BF-087: the list/detail splitter's position persists across reopens
+    the same generic way geometry/zoom already do (`toggle_window_splitter_sizes`,
+    mirroring `toggle_window_geometry`/`toggle_window_zoom_percent` above).
+    Single-character mode has no splitter at all -- `splitter_sizes` must
+    stay `None` there and never write an entry."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "doc.txt"
+    path.write_text("Hello, world!", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        view.state.move_to(0)
+        view.state.move_to(5, selecting=True)
+
+        window.show_character_inspector()
+        app.processEvents()
+        dialog = window._character_inspector_dialog
+        assert dialog.splitter_sizes is not None
+        dialog._selection_splitter.setSizes([222, 333])
+        # `setSizes` alone doesn't fire `splitterMoved` -- drive the
+        # tracked value the same way a real user drag would.
+        dialog._on_selection_splitter_moved(0, 1)
+        expected_sizes = dialog.splitter_sizes
+        assert expected_sizes is not None
+
+        window.show_character_inspector()  # toggle closed -- saves state
+        app.processEvents()
+        assert (
+            window._settings.toggle_window_splitter_sizes["character_inspector"]
+            == expected_sizes
+        )
+
+        second_window = UNITIMainWindow(settings_store=store)
+        try:
+            second_view = second_window.open_path(path)
+            second_view.state.move_to(0)
+            second_view.state.move_to(5, selecting=True)
+            second_window.show_character_inspector()
+            app.processEvents()
+            reopened = second_window._character_inspector_dialog
+            assert reopened.splitter_sizes == expected_sizes
+        finally:
+            second_window.close_all_documents(force=True)
+            second_window.close()
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_character_inspector_single_character_mode_has_no_splitter_sizes(
+    tmp_path: Path,
+):
+    """BF-087: a single-character dialog never builds a splitter, so its
+    `splitter_sizes` must stay `None` and closing it must not write a
+    stale/irrelevant entry."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "doc.txt"
+    path.write_text("Hello", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        view.state.move_to(0)
+
+        window.show_character_inspector()
+        app.processEvents()
+        dialog = window._character_inspector_dialog
+        assert dialog.splitter_sizes is None
+
+        window.show_character_inspector()  # toggle closed -- saves state
+        app.processEvents()
+        assert "character_inspector" not in window._settings.toggle_window_splitter_sizes
     finally:
         window.close_all_documents(force=True)
         window.close()

@@ -53,7 +53,7 @@ def bracket_color(base: QColor) -> QColor:
     """One distinct, neutral (desaturated) color for capturing-group parentheses.
 
     Deliberately not one of the per-group hues in `_GROUP_HUES`, so a group's
-    own color (used for its `\\N :` label in the Match Report, and for its
+    own color (used for its `\\N` label in the Match Report, and for its
     backreferences here) never doubles as the bracket color.
     """
 

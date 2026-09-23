@@ -471,6 +471,9 @@ class UNITIService:
                 self._find_replace.set_zoom_percent(
                     settings.find_replace_zoom_percent
                 )
+                self._find_replace.set_report_zoom_percent(
+                    settings.find_replace_report_zoom_percent
+                )
                 self._find_replace.set_report_location(
                     settings.find_replace_report_location
                 )

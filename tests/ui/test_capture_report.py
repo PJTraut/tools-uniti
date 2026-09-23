@@ -103,23 +103,23 @@ def test_capture_rows_expose_literal_labels_content_and_accessible_text(app):
     assert "─────────────────" in model.rows()
 
     expected = (
-        (r"\1 :", "漢 字 [letter]"),
-        (r"\9 :", "empty at 12 … (9 occurrences) [empty]"),
-        (r"\10 :", "x … (10 occurrences)"),
+        (r"\1 ", "漢 字 [letter]"),
+        (r"\9 ", "empty at 12 … (9 occurrences) [empty]"),
+        (r"\10 ", "x … (10 occurrences)"),
         (
-            r"\100 :",
+            r"\100 ",
             "y … (100 occurrences) "
             "[a-name-that-is-deliberately-long-enough-to-exceed-the-report-pane]",
         ),
-        (r"\101 :", "not matched [optional]"),
+        (r"\101 ", "not matched [optional]"),
     )
     for row_number, (label, content) in enumerate(expected, start=1):
         index = model.index(row_number, 0)
         assert model.data(index, CaptureReportModel.LabelRole) == label
         assert model.data(index, CaptureReportModel.ContentRole) == content
-        assert model.data(index, Qt.ItemDataRole.DisplayRole) == f"{label} {content}"
+        assert model.data(index, Qt.ItemDataRole.DisplayRole) == f"{label}{content}"
         accessible = model.data(index, Qt.ItemDataRole.AccessibleTextRole)
-        assert accessible == f"{label} {content}"
+        assert accessible == f"{label}{content}"
 
     header = model.index(0, 0)
     assert model.data(header, CaptureReportModel.LabelRole) is None
@@ -192,7 +192,7 @@ def test_replacement_preview_appends_a_row_after_the_matchs_groups(app):
     model.set_report(report)
 
     rows = model.rows()
-    assert rows == ("Match 1 of 1", r"\1 : alpha", "→ omega")
+    assert rows == ("Match 1 of 1", r"\1 alpha", "→ omega")
     preview_index = model.index(2, 0)
     assert model.data(preview_index, CaptureReportModel.LabelRole) == "→"
     assert model.data(preview_index, CaptureReportModel.ContentRole) == "omega"
@@ -346,6 +346,54 @@ def test_label_column_never_shrinks_below_its_measured_width(app, zoom, pane_wid
         assert rect.width() == measured_width
 
     assert len({(rect.x(), rect.width()) for rect, _ in label_rects}) == 1
+    view.close()
+
+
+@pytest.mark.parametrize("zoom", range(50, 501, 10))
+def test_label_is_never_elided_at_its_own_measured_width(app, zoom):
+    """BF-093: `QFontMetrics.horizontalAdvance` (what `_label_width` uses
+    to measure) and `elidedText`'s own internal fit test don't always
+    agree at the exact boundary -- confirmed directly, `\\10 ` (and other
+    multi-digit labels) truncated to `\\1...` at roughly 1 in 10 zoom
+    percentages even though `label_rect.width()` was exactly
+    `_label_width`'s own measured value for that label. A small safety
+    margin gives `elidedText` guaranteed headroom instead of exactly
+    zero, across every zoom level a user could reach (50-500%, the
+    documented clamp range)."""
+
+    from PySide6.QtCore import QRect, Qt
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QListView, QStyleOptionViewItem
+
+    from uniti.ui.capture_report import CaptureReportModel
+    from uniti.ui.capture_report_delegate import CaptureReportDelegate
+
+    model = CaptureReportModel()
+    model.set_report(_report())
+    view = QListView()
+    view.resize(300, 240)
+    font = QFont(view.font())
+    font.setPointSizeF(max(1.0, font.pointSizeF() * zoom / 100))
+    view.setFont(font)
+    delegate = CaptureReportDelegate(view)
+    view.setModel(model)
+    view.setItemDelegate(delegate)
+
+    for row in range(model.rowCount()):
+        label = model.data(model.index(row, 0), CaptureReportModel.LabelRole)
+        if label is None:
+            continue
+        option = QStyleOptionViewItem()
+        option.initFrom(view)
+        option.rect = QRect(0, 0, 300, 30)
+        option.font = font
+        option.fontMetrics = view.fontMetrics()
+        index = model.index(row, 0)
+        label_rect = delegate.label_rect(option, index)
+        elided = option.fontMetrics.elidedText(
+            label, Qt.TextElideMode.ElideRight, label_rect.width()
+        )
+        assert elided == label, f"{label!r} elided to {elided!r} at zoom={zoom}"
     view.close()
 
 
@@ -659,6 +707,88 @@ def test_colored_group_spans_do_not_overlap_across_a_literal_tab(app):
 
     assert abs(min(group1_columns) - expected_group1_x) <= 5
     assert abs(min(group2_columns) - expected_group2_x) <= 5
+
+
+def test_label_font_is_ninety_percent_of_content_font_size(app):
+    """BF-085: the `\\N :` label reads ~10% smaller than its matched-text
+    content -- only the label's glyphs shrink; the row height and label
+    column width (both driven by the full-size font) are untouched, per
+    test_label_column_never_shrinks_below_its_measured_width above."""
+
+    from PySide6.QtGui import QFont
+
+    from uniti.ui.capture_report_delegate import CaptureReportDelegate
+
+    content_font = QFont("Arial", 20)
+    label_font = CaptureReportDelegate._label_font(content_font)
+
+    assert label_font.pointSizeF() == pytest.approx(20 * 0.9)
+    assert label_font.family() == content_font.family()
+
+
+def test_paint_renders_the_label_smaller_without_changing_its_reserved_rect(app):
+    """The label column's rect/width must stay exactly as measured by the
+    full-size font (BF-019's contract, test_label_column_never_shrinks_...
+    above); only the font passed to the label's own paint call shrinks."""
+
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QFont
+    from PySide6.QtWidgets import QListView, QStyleOptionViewItem
+
+    from uniti.ui.capture_report import CaptureReportModel
+    from uniti.ui.capture_report_delegate import CaptureReportDelegate
+
+    model = CaptureReportModel()
+    model.set_report(_report())
+    view = QListView()
+    view.resize(400, 240)
+    delegate = CaptureReportDelegate(view)
+    view.setModel(model)
+    view.setItemDelegate(delegate)
+
+    label_row = next(
+        row
+        for row in range(model.rowCount())
+        if model.data(model.index(row, 0), CaptureReportModel.LabelRole) is not None
+    )
+    option = QStyleOptionViewItem()
+    option.initFrom(view)
+    option.rect = QRect(0, 0, 400, 30)
+    index = model.index(label_row, 0)
+
+    before_label_rect = delegate.label_rect(option, index)
+    before_label_width = delegate._label_width(option, model)
+
+    calls: list[tuple[bool, QFont]] = []
+    real_paint = CaptureReportDelegate._paint_single_color_text
+
+    def spy(painter, rect, text, color, font, *, align_right):
+        calls.append((align_right, QFont(font)))
+        return real_paint(painter, rect, text, color, font, align_right=align_right)
+
+    CaptureReportDelegate._paint_single_color_text = staticmethod(spy)
+    try:
+        from PySide6.QtGui import QPixmap, QPainter
+
+        pixmap = QPixmap(400, 30)
+        painter = QPainter(pixmap)
+        try:
+            delegate.paint(painter, option, index)
+        finally:
+            painter.end()
+    finally:
+        CaptureReportDelegate._paint_single_color_text = staticmethod(real_paint)
+
+    label_calls = [font for align_right, font in calls if align_right]
+    content_calls = [font for align_right, font in calls if not align_right]
+    assert len(label_calls) == 1
+    assert len(content_calls) == 1
+    assert label_calls[0].pointSizeF() == pytest.approx(
+        content_calls[0].pointSizeF() * 0.9
+    )
+    assert delegate.label_rect(option, index) == before_label_rect
+    assert delegate._label_width(option, model) == before_label_width
+    view.close()
 
 
 def test_fallback_font_uses_the_editor_monospace_family_first(app):

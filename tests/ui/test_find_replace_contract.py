@@ -816,10 +816,10 @@ def test_capture_report_model_formats_rows_and_accessible_text():
 
     assert model.rows() == (
         "Match 1 of 2",
-        r"\1 : a | a | a (3 occurrences) [letter]",
-        r"\2 : empty at 3 [empty]",
-        r"\3 : not matched [missing]",
-        r"\4 : a | empty at 1 (2 occurrences) [mixed]",
+        r"\1 a | a | a (3 occurrences) [letter]",
+        r"\2 empty at 3 [empty]",
+        r"\3 not matched [missing]",
+        r"\4 a | empty at 1 (2 occurrences) [mixed]",
         "─────────────────",
         "Match 2 of 2",
         "capture details unavailable",
@@ -887,8 +887,9 @@ def test_capture_view_minimum_height_never_grows_with_match_report_content(
         app.processEvents()
         assert panel.capture_view.minimumHeight() == height_before_any_search
 
-        # Zoom, a deliberate user action, is still allowed to change it.
-        panel.set_zoom_percent(200)
+        # Zoom, a deliberate user action, is still allowed to change it --
+        # the report's own zoom (BF-092), independent of the fields'.
+        panel.set_report_zoom_percent(200)
         app.processEvents()
         assert panel.capture_view.minimumHeight() > height_before_any_search
     finally:
@@ -2588,6 +2589,88 @@ def test_primary_modifier_wheel_zooms_focused_find_replace_only(tmp_path: Path):
         view.close()
 
 
+def test_report_zoom_is_independent_of_the_input_fields_zoom(tmp_path: Path):
+    """BF-092: the Match Report's font size no longer moves in lockstep
+    with the find/replace fields' -- each has its own persisted state and
+    its own scale factor."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    try:
+        original_field_size = panel.find_input.font().pointSizeF()
+        original_report_size = panel.capture_view.font().pointSizeF()
+
+        panel.set_zoom_percent(140)
+        assert panel.zoom_percent == 140
+        assert panel.report_zoom_percent == 100
+        assert panel.find_input.font().pointSizeF() > original_field_size
+        assert panel.capture_view.font().pointSizeF() == original_report_size
+
+        panel.set_report_zoom_percent(160)
+        assert panel.report_zoom_percent == 160
+        assert panel.zoom_percent == 140
+        assert panel.capture_view.font().pointSizeF() > original_report_size
+        assert panel.find_input.font().pointSizeF() == pytest.approx(
+            original_field_size * 1.4
+        )
+
+        panel.reset_report_zoom()
+        assert panel.report_zoom_percent == 100
+        assert panel.zoom_percent == 140
+    finally:
+        panel.shutdown()
+        panel.close()
+
+
+def test_primary_modifier_wheel_over_the_report_zooms_the_report_only(
+    tmp_path: Path,
+):
+    """BF-092: a Ctrl+scroll directly over the Match Report changes only
+    its own font size, not the find/replace fields' -- companion to
+    test_primary_modifier_wheel_zooms_focused_find_replace_only above,
+    which covers the reverse (wheel over a field leaves the report alone)."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QPoint, QPointF, Qt
+    from PySide6.QtGui import QWheelEvent
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    try:
+        panel.show()
+        app.processEvents()
+        event = QWheelEvent(
+            QPointF(10, 10),
+            QPointF(10, 10),
+            QPoint(),
+            QPoint(0, 120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.ControlModifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+
+        QApplication.sendEvent(panel.capture_view.viewport(), event)
+
+        assert panel.report_zoom_percent == 110
+        assert panel.zoom_percent == 100
+    finally:
+        panel.shutdown()
+        panel.close()
+
+
 def test_navigation_publishes_loading_then_current_and_next_capture_report(
     tmp_path: Path,
     monkeypatch,
@@ -2619,9 +2702,9 @@ def test_navigation_publishes_loading_then_current_and_next_capture_report(
             and panel.capture_model.rows()[0] == "Match 1 of 2",
         )
         rows = panel.capture_model.rows()
-        assert r"\1 : a | a | a (3 occurrences) [letter]" in rows
+        assert r"\1 a | a | a (3 occurrences) [letter]" in rows
         assert "Match 2 of 2" in rows
-        assert r"\1 : b | b | b (3 occurrences) [letter]" in rows
+        assert r"\1 b | b | b (3 occurrences) [letter]" in rows
         assert all("group 0" not in row.lower() for row in rows)
         assert panel.capture_view.accessibleName() == "Match Report"
     finally:

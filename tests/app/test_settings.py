@@ -144,7 +144,9 @@ def test_toggle_window_geometry_and_zoom_round_trip(tmp_path: Path):
     """2026-09-20 request: remember each toggle window's (Character
     Inspector, Compare, ...) previous size and zoom level across reopens
     -- one generic, keyed mechanism rather than a dedicated pair of
-    fields per window."""
+    fields per window. BF-087 extends the same mechanism to a toggle
+    window's own internal splitter position (only Character Inspector's
+    list/detail split has one so far)."""
 
     path = tmp_path / "settings.json"
     store = SettingsStore(path)
@@ -154,6 +156,7 @@ def test_toggle_window_geometry_and_zoom_round_trip(tmp_path: Path):
             "character_inspector": (40, 60, 720, 480),
             "compare": (0, 0, 900, 600),
         },
+        toggle_window_splitter_sizes={"character_inspector": (280, 420)},
     )
 
     store.save(expected)
@@ -167,12 +170,15 @@ def test_toggle_window_geometry_and_zoom_reject_malformed_entries(tmp_path: Path
         '{"schema":1,"toggle_window_zoom_percent":'
         '{"character_inspector":9999,"compare":150,"bad":"nope"},'
         '"toggle_window_geometry":'
-        '{"character_inspector":[1,2,3],"compare":[0,0,900,600],"bad":"nope"}}',
+        '{"character_inspector":[1,2,3],"compare":[0,0,900,600],"bad":"nope"},'
+        '"toggle_window_splitter_sizes":'
+        '{"character_inspector":[280,0],"compare":[300,400],"bad":"nope"}}',
         encoding="utf-8",
     )
     settings = SettingsStore(path).load()
     assert settings.toggle_window_zoom_percent == {"compare": 150}
     assert settings.toggle_window_geometry == {"compare": (0, 0, 900, 600)}
+    assert settings.toggle_window_splitter_sizes == {"compare": (300, 400)}
 
 
 def test_legacy_bottom_report_setting_migrates_to_right(tmp_path: Path):
@@ -287,6 +293,26 @@ def test_prepare_migrates_schema_one_panel_values_with_current_defaults(
     assert payload["find_replace_geometry"] == [20, 30, 700, 360]
 
 
+def test_find_replace_report_zoom_percent_round_trip_and_rejects_malformed(
+    tmp_path: Path,
+):
+    """BF-092: the Match Report's own font size, tracked independently of
+    find_replace_zoom_percent (the input fields' own)."""
+
+    path = tmp_path / "settings.json"
+    store = SettingsStore(path)
+    expected = Settings(find_replace_report_zoom_percent=160)
+
+    store.save(expected)
+
+    assert store.load() == expected
+
+    path.write_text(
+        '{"schema":5,"find_replace_report_zoom_percent":9999}', encoding="utf-8"
+    )
+    assert SettingsStore(path).load().find_replace_report_zoom_percent == 100
+
+
 def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
     path = tmp_path / "settings.json"
     path.write_text("broken", encoding="utf-8")
@@ -304,8 +330,10 @@ def test_prepare_preserves_malformed_before_writing_defaults(tmp_path: Path):
         "find_replace_attached_height": None,
         "find_replace_report_location": "Right",
         "find_replace_zoom_percent": 100,
+        "find_replace_report_zoom_percent": 100,
         "toggle_window_geometry": {},
         "toggle_window_zoom_percent": {},
+        "toggle_window_splitter_sizes": {},
         "last_directory": None,
         "performance_mode": "Automatic",
         "schema": 5,

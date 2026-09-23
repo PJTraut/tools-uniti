@@ -31,7 +31,7 @@ def _occurrence_suffix(count: int) -> str:
 
 
 def _format_group(row: CaptureGroupRow, *, match_index: int) -> _ReportRow:
-    label = f"\\{row.number} :"
+    label = f"\\{row.number} "
     if row.state == "not_matched":
         value = "not matched"
     else:
@@ -45,7 +45,7 @@ def _format_group(row: CaptureGroupRow, *, match_index: int) -> _ReportRow:
     if row.name:
         content += f" [{row.name}]"
     return _ReportRow(
-        f"{label} {content}", label, content, match_index, group_number=row.number
+        f"{label}{content}", label, content, match_index, group_number=row.number
     )
 
 

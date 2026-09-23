@@ -352,6 +352,9 @@ class UNITIMainWindow(QMainWindow):
         self._find_replace.attachedHeightChanged.connect(
             self._on_find_replace_attached_height_changed
         )
+        self._find_replace.reportZoomChanged.connect(
+            self._on_find_replace_report_zoom_changed
+        )
         if self._settings.find_replace_attached_height is not None:
             self._find_replace.set_attached_height(
                 self._settings.find_replace_attached_height
@@ -360,6 +363,9 @@ class UNITIMainWindow(QMainWindow):
             self._find_replace.hide()
             self._find_replace.set_zoom_percent(
                 self._settings.find_replace_zoom_percent
+            )
+            self._find_replace.set_report_zoom_percent(
+                self._settings.find_replace_report_zoom_percent
             )
             self._find_replace.set_report_location(
                 self._settings.find_replace_report_location
@@ -2537,6 +2543,12 @@ class UNITIMainWindow(QMainWindow):
         )
         self._save_settings()
 
+    def _on_find_replace_report_zoom_changed(self, percent: int) -> None:
+        self._settings = dataclass_replace(
+            self._settings, find_replace_report_zoom_percent=percent
+        )
+        self._save_settings()
+
     def _on_view_wrap_changed(self, view: UNITITextView, enabled: bool) -> None:
         if view is self.current_view:
             self._status.update_view(view.zoom_percent, soft_wrap=enabled)
@@ -3356,6 +3368,9 @@ class UNITIMainWindow(QMainWindow):
             output_encoding=output_encoding,
             initial_zoom_percent=zoom_percent,
             initial_geometry=geometry,
+            initial_splitter_sizes=self._settings.toggle_window_splitter_sizes.get(
+                "character_inspector"
+            ),
             on_refresh=self._refresh_character_inspector,
             parent=self,
         )
@@ -3444,6 +3459,18 @@ class UNITIMainWindow(QMainWindow):
             zoom_percents = dict(self._settings.toggle_window_zoom_percent)
             zoom_percents[key] = zoom_percent
             updates["toggle_window_zoom_percent"] = zoom_percents
+        # BF-087: same optional-property pattern as zoom_percent above --
+        # only a window that exposes `splitter_sizes` (Character Inspector's
+        # list/detail split) gets an entry; others are left untouched.
+        splitter_sizes = getattr(window, "splitter_sizes", None)
+        if (
+            isinstance(splitter_sizes, tuple)
+            and len(splitter_sizes) == 2
+            and all(isinstance(size, int) for size in splitter_sizes)
+        ):
+            splitter_sizes_by_key = dict(self._settings.toggle_window_splitter_sizes)
+            splitter_sizes_by_key[key] = splitter_sizes
+            updates["toggle_window_splitter_sizes"] = splitter_sizes_by_key
         self._settings = dataclass_replace(self._settings, **updates)
         self._save_settings()
         window.deleteLater()

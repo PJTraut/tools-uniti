@@ -38,6 +38,9 @@ class Settings:
     whitespace_inspect_modifiers: str = DEFAULT_INSPECTION_MODIFIERS
     editor_tab_width: int = DEFAULT_EDITOR_TAB_WIDTH
     find_replace_zoom_percent: int = 100
+    # BF-092: the Match Report's own font size, tracked independently of
+    # find_replace_zoom_percent above (which only covers the input fields).
+    find_replace_report_zoom_percent: int = 100
     find_replace_report_location: str = "Right"
     find_replace_geometry: tuple[int, int, int, int] | None = None
     find_replace_attached_height: int | None = None
@@ -54,6 +57,12 @@ class Settings:
         default_factory=dict
     )
     toggle_window_zoom_percent: dict[str, int] = field(default_factory=dict)
+    # BF-087: a toggle window's internal splitter position (currently only
+    # Character Inspector's list/detail split), keyed the same way as the
+    # two dicts above -- optional, since not every toggle window has one.
+    toggle_window_splitter_sizes: dict[str, tuple[int, int]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +138,15 @@ def _settings_from_payload(payload: object) -> Settings:
         or not 50 <= find_replace_zoom_percent <= 500
     ):
         find_replace_zoom_percent = 100
+    find_replace_report_zoom_percent = payload.get(
+        "find_replace_report_zoom_percent", 100
+    )
+    if (
+        not isinstance(find_replace_report_zoom_percent, int)
+        or isinstance(find_replace_report_zoom_percent, bool)
+        or not 50 <= find_replace_report_zoom_percent <= 500
+    ):
+        find_replace_report_zoom_percent = 100
     find_replace_report_location = payload.get(
         "find_replace_report_location", "Right"
     )
@@ -182,6 +200,23 @@ def _settings_from_payload(payload: object) -> Settings:
                 and 50 <= value <= 500
             ):
                 toggle_window_zoom_percent[key] = value
+    raw_toggle_window_splitter_sizes = payload.get("toggle_window_splitter_sizes", {})
+    toggle_window_splitter_sizes: dict[str, tuple[int, int]] = {}
+    if isinstance(raw_toggle_window_splitter_sizes, dict):
+        for key, value in raw_toggle_window_splitter_sizes.items():
+            if not isinstance(key, str):
+                continue
+            if (
+                isinstance(value, (list, tuple))
+                and len(value) == 2
+                and all(
+                    isinstance(component, int) and not isinstance(component, bool)
+                    for component in value
+                )
+                and value[0] > 0
+                and value[1] > 0
+            ):
+                toggle_window_splitter_sizes[key] = tuple(value)
     raw_shortcut_overrides = payload.get("shortcut_overrides", {})
     if not isinstance(raw_shortcut_overrides, dict):
         shortcut_overrides = {}
@@ -212,6 +247,7 @@ def _settings_from_payload(payload: object) -> Settings:
         whitespace_inspect_modifiers=inspection_modifiers,
         editor_tab_width=editor_tab_width,
         find_replace_zoom_percent=find_replace_zoom_percent,
+        find_replace_report_zoom_percent=find_replace_report_zoom_percent,
         find_replace_report_location=find_replace_report_location,
         find_replace_geometry=find_replace_geometry,
         find_replace_attached_height=find_replace_attached_height,
@@ -219,6 +255,7 @@ def _settings_from_payload(payload: object) -> Settings:
         syntax_extension_overrides=syntax_extension_overrides,
         toggle_window_geometry=toggle_window_geometry,
         toggle_window_zoom_percent=toggle_window_zoom_percent,
+        toggle_window_splitter_sizes=toggle_window_splitter_sizes,
     )
 
 

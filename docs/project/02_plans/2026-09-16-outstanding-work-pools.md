@@ -28,6 +28,22 @@ Seven items from a batch of external beta-tester feedback ([BF-076](../BETA_FEED
 
 - [BF-082](../BETA_FEEDBACK.md#bf-082--file-tabs-stack-files-per-group-longer-filenames-paging-nav) — File tabs: per-group stacking, horizontal groups/vertical files, paging nav. **New architecture, in progress.** Scoped with the user 2026-09-21: per-split stacking — each `PaneLeaf` gets its own horizontal group row/vertical file stack, layered onto the existing `EditorPaneTree` split model, not a window-wide concept spanning splits. Interaction model refined 2026-09-22 and built as an interactive HTML prototype for the user (and a tester) to try before real code — the actual `panes.py`/`_DetachableTabBar` rework is blocked on that feedback. The Recent-Files sub-piece (longer list, remembers/restores a file's group) has already landed independently.
 
+## Pool 0b — 2026-09-22/23 feedback batch
+
+Five items from a second beta-tester feedback drop (`scripts/feedback/001b4b.txt`), triaged 2026-09-23 against the current codebase (existing-code citations in each entry), plus one more (BF-090) reported live during the same triage, not from that file. Triaged, then implemented the same day once the open scope questions were each resolved by the closest existing precedent (see each entry in the Beta Feedback Log for the reasoning) — only BF-089 remains open, genuinely unscoped.
+
+**Landed 2026-09-23** (see each entry in the [Beta Feedback Log](../BETA_FEEDBACK.md) for implementation and verification):
+
+- [BF-085](../BETA_FEEDBACK.md#bf-085--match-report-shrink-capture-group-label-text-10-leave-rowcell-size-unchanged) — Match Report capture-group label text now renders at 90% of the content font size; the reserved label column and row height are untouched.
+- [BF-086](../BETA_FEEDBACK.md#bf-086--findreplace-highlight-the-erroring-regex-span-with-a-background-tint-not-just-a-text-message) — the erroring regex span now gets a low-alpha background tint (derived from the existing per-theme `_invalid_color`) alongside its existing wavy underline, in both the Find and Replace fields for free (shared highlighter code path).
+- [BF-087](../BETA_FEEDBACK.md#bf-087--character-inspector-persist-the-listdetail-splitters-column-width-across-reopens) — the list/detail splitter's position now persists across reopens via a new `Settings.toggle_window_splitter_sizes` dict, mirroring the existing geometry/zoom mechanism exactly.
+- [BF-088](../BETA_FEEDBACK.md#bf-088--findreplace-pasting-literal-whitespace-into-a-regex-mode-field-should-convert-to-its-regex-escape) — pasting a literal CR/LF/TAB into the Find or Replace field now converts it to `\r`/`\n`/`\t` while Regex mode is on; literal mode keeps the raw byte.
+- [BF-090](../BETA_FEEDBACK.md#bf-090--docked-findreplace-expands-to-fill-the-whole-panel-when-no-document-is-open) — docked Find/Replace with zero documents open now reserves its usual bounded height (a new `EditorPaneTree.split_pane`, splitting the empty root pane directly) instead of filling the whole window; confirmed not Windows-specific despite the report's "(windows)" tag.
+
+**Still open:**
+
+- [BF-089](../BETA_FEEDBACK.md#bf-089--unicodechar-function-improvements-needs-scoping) — Unicode↔Char function improvements. Reported as an open-ended "brainstorm" — needs the user's own clarification before any scoping is possible.
+
 ## Pool 1 — Native/hosted confirmation (standing, blocked without hardware/testers)
 
 Every item below is code-complete; only affected-host, native-input, or hosted-CI confirmation remains. This pool cannot move without physical hardware or the B1 tester program — it's not a coding task.

@@ -28,12 +28,26 @@ class CaptureReportDelegate(QStyledItemDelegate):
         self._width_cache_key: tuple[int, int, str] | None = None
         self._cached_label_width = 0
 
+    #: BF-085: the `\N :` label reads ~10% smaller than its matched-text
+    #: content -- the row height and reserved label-column width (both
+    #: driven by the full-size font, via `sizeHint`/`_label_width`) stay
+    #: exactly as they are; only the label's own glyphs shrink.
+    _LABEL_SIZE_FACTOR = 0.9
+
     @staticmethod
     def _fallback_font(font):
         result = QFont(font)
         result.setFamilies(
             list(dict.fromkeys([*resolve_editor_font().font.families(), font.family()]))
         )
+        return result
+
+    @classmethod
+    def _label_font(cls, font):
+        result = QFont(font)
+        point_size = font.pointSizeF()
+        if point_size > 0:
+            result.setPointSizeF(point_size * cls._LABEL_SIZE_FACTOR)
         return result
 
     def sizeHint(self, option, index):
@@ -49,6 +63,17 @@ class CaptureReportDelegate(QStyledItemDelegate):
         )
         return result
 
+    #: BF-093: `QFontMetrics.horizontalAdvance` (a logical cursor-advance
+    #: measurement) and `QFontMetrics.elidedText`'s own internal fit test
+    #: don't always agree at the exact boundary -- confirmed directly: at
+    #: some zoom levels, `elidedText(label, ElideRight, width)` still
+    #: truncated a label (e.g. "\10" -> "\1...") even when `width` was
+    #: precisely this method's own measured value for that same label,
+    #: reproducing at roughly 1 in 10 zoom percentages swept from 50-500%
+    #: for a two-digit label. A small safety margin gives `elidedText`
+    #: guaranteed headroom rather than exactly zero.
+    _LABEL_WIDTH_SAFETY_MARGIN = 2
+
     def _label_width(self, option, model) -> int:
         cache_key = (
             id(model),
@@ -56,7 +81,7 @@ class CaptureReportDelegate(QStyledItemDelegate):
             option.font.key(),
         )
         if cache_key != self._width_cache_key:
-            self._cached_label_width = max(
+            measured = max(
                 (
                     option.fontMetrics.horizontalAdvance(
                         model.data(model.index(row, 0), CaptureReportModel.LabelRole)
@@ -66,6 +91,9 @@ class CaptureReportDelegate(QStyledItemDelegate):
                     is not None
                 ),
                 default=0,
+            )
+            self._cached_label_width = (
+                measured + self._LABEL_WIDTH_SAFETY_MARGIN if measured else 0
             )
             self._width_cache_key = cache_key
         return self._cached_label_width
@@ -177,7 +205,7 @@ class CaptureReportDelegate(QStyledItemDelegate):
                     label, Qt.TextElideMode.ElideRight, label_rect.width()
                 ),
                 label_color,
-                styled.font,
+                self._label_font(styled.font),
                 align_right=True,
             )
             spans = index.data(CaptureReportModel.ContentGroupSpansRole) or ()

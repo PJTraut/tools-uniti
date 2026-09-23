@@ -298,6 +298,7 @@ class CharacterInspectorDialog(QDialog):
         invalid_bytes: bytes | None = None,
         initial_zoom_percent: int = DEFAULT_ZOOM_PERCENT,
         initial_geometry: tuple[int, int, int, int] | None = None,
+        initial_splitter_sizes: tuple[int, int] | None = None,
         on_refresh: Callable[[], None] | None = None,
         parent=None,
     ) -> None:
@@ -315,6 +316,13 @@ class CharacterInspectorDialog(QDialog):
         self._zoom_percent = max(
             MIN_ZOOM_PERCENT, min(MAX_ZOOM_PERCENT, int(initial_zoom_percent))
         )
+        # BF-087: the list/detail splitter's position, same persistence
+        # contract as zoom/geometry above (the caller persists `splitter_sizes`
+        # on close). Kept live (not just the constructor's initial value) so
+        # a BF-076 `refresh()` rebuild preserves whatever the user last
+        # dragged it to, rather than resetting to the original reopen value.
+        self._splitter_sizes = initial_splitter_sizes
+        self._selection_splitter: QSplitter | None = None
         self._glyph_labels: list[QLabel] = []
         self._character_list: QListView | None = None
         # BF-076: re-reads and repaints the current selection in place on
@@ -400,6 +408,7 @@ class CharacterInspectorDialog(QDialog):
         self._clear_layout(self._content_layout)
         self._glyph_labels = []
         self._character_list = None
+        self._selection_splitter = None
 
         title = "Character Inspector" if len(text) == 1 else "Inspect Selection"
         self.setWindowTitle(f"UNITI — {title}")
@@ -611,9 +620,38 @@ class CharacterInspectorDialog(QDialog):
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 3)
         splitter.setChildrenCollapsible(False)
+        if self._splitter_sizes is not None:
+            splitter.setSizes(list(self._splitter_sizes))
+        splitter.splitterMoved.connect(self._on_selection_splitter_moved)
+        self._selection_splitter = splitter
         if text:
             self._character_list.setCurrentIndex(self._character_model.index(0, 0))
         return splitter
+
+    def _on_selection_splitter_moved(self, _position: int, _index: int) -> None:
+        if self._selection_splitter is None:
+            return
+        sizes = self._selection_splitter.sizes()
+        if len(sizes) == 2 and all(size > 0 for size in sizes):
+            self._splitter_sizes = (sizes[0], sizes[1])
+
+    @property
+    def splitter_sizes(self) -> tuple[int, int] | None:
+        """BF-087: the list/detail splitter's current position, for
+        `UNITIMainWindow._on_toggle_window_closed` to persist across
+        reopens (mirrors the existing `zoom_percent` property) -- `None`
+        for a single-character dialog, which never builds a splitter.
+        Reads the live splitter directly (not just `self._splitter_sizes`,
+        which only updates once the user actually drags it or an initial
+        value was supplied) so closing without ever dragging still
+        persists whatever position it actually opened at."""
+
+        if self._selection_splitter is None:
+            return None
+        sizes = self._selection_splitter.sizes()
+        if len(sizes) == 2 and all(size > 0 for size in sizes):
+            return (sizes[0], sizes[1])
+        return self._splitter_sizes
 
     def _show_character_detail(self, index) -> None:
         if not index.isValid():
