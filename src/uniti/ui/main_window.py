@@ -1029,6 +1029,9 @@ class UNITIMainWindow(QMainWindow):
         file_menu.addAction(self._command_action("file.reload", self.reload_current))
         file_menu.addSeparator()
         file_menu.addAction(self._command_action("file.close", self.close_current))
+        file_menu.addAction(
+            self._command_action("file.close_all", self.close_all_documents)
+        )
         file_menu.addAction(self._command_action("file.quit", self.request_quit))
 
         edit_menu = self.menuBar().addMenu("&Edit")
@@ -3151,6 +3154,24 @@ class UNITIMainWindow(QMainWindow):
         selection = view.state.selection
         if selection is not None and selection[1] - selection[0] > 1:
             return self._build_inspect_selection(view, selection, zoom_percent, geometry)
+        payload = self._character_inspector_single_payload(view, selection)
+        if payload is None:
+            QMessageBox.information(self, "Character Inspector", "No character at cursor.")
+            return None
+        character, output_encoding, invalid_bytes = payload
+        return CharacterInspectorDialog(
+            character,
+            output_encoding=output_encoding,
+            invalid_bytes=invalid_bytes,
+            initial_zoom_percent=zoom_percent,
+            initial_geometry=geometry,
+            on_refresh=self._refresh_character_inspector,
+            parent=self,
+        )
+
+    def _character_inspector_single_payload(
+        self, view: UNITITextView, selection: tuple[int, int] | None
+    ) -> tuple[str, str, bytes | None] | None:
         position = selection[0] if selection is not None else view.state.cursor
         invalid_bytes = None
         try:
@@ -3169,16 +3190,23 @@ class UNITIMainWindow(QMainWindow):
             except ValueError:
                 character = ""
         if not character:
-            QMessageBox.information(self, "Character Inspector", "No character at cursor.")
             return None
-        return CharacterInspectorDialog(
-            character[0],
-            output_encoding=view.document.output_encoding,
-            invalid_bytes=invalid_bytes,
-            initial_zoom_percent=zoom_percent,
-            initial_geometry=geometry,
-            parent=self,
-        )
+        return character[0], view.document.output_encoding, invalid_bytes
+
+    def _character_inspector_selection_payload(
+        self, view: UNITITextView, selection: tuple[int, int]
+    ) -> tuple[str, str, None] | None:
+        from uniti.ui.character_inspector import MAX_INSPECT_SELECTION_CHARACTERS
+
+        start, end = selection
+        bounded_end = min(end, start + MAX_INSPECT_SELECTION_CHARACTERS)
+        try:
+            text = view.document.read(start, bounded_end)
+        except ValueError:
+            text = ""
+        if not text:
+            return None
+        return text, view.document.output_encoding, None
 
     def _build_inspect_selection(
         self,
@@ -3191,26 +3219,46 @@ class UNITIMainWindow(QMainWindow):
         inspector above — same dialog class, a per-character list+detail
         view instead of one character's form."""
 
-        from uniti.ui.character_inspector import MAX_INSPECT_SELECTION_CHARACTERS
-
-        start, end = selection
-        bounded_end = min(end, start + MAX_INSPECT_SELECTION_CHARACTERS)
-        try:
-            text = view.document.read(start, bounded_end)
-        except ValueError:
-            text = ""
-        if not text:
+        payload = self._character_inspector_selection_payload(view, selection)
+        if payload is None:
             QMessageBox.information(
                 self, "Character Inspector", "No characters in selection."
             )
             return None
+        text, output_encoding, _ = payload
         return CharacterInspectorDialog(
             text,
-            output_encoding=view.document.output_encoding,
+            output_encoding=output_encoding,
             initial_zoom_percent=zoom_percent,
             initial_geometry=geometry,
+            on_refresh=self._refresh_character_inspector,
             parent=self,
         )
+
+    def _refresh_character_inspector(self) -> None:
+        """BF-076: re-reads the current view's selection/cursor and
+        repaints the already-open Character Inspector in place, rather
+        than requiring the user to close and reopen it to see a newer
+        selection. Wired as the dialog's `on_refresh` callback."""
+
+        dialog = self._toggle_windows.get("character_inspector")
+        if dialog is None:
+            return
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        selection = view.state.selection
+        if selection is not None and selection[1] - selection[0] > 1:
+            payload = self._character_inspector_selection_payload(view, selection)
+            message = "No characters in selection."
+        else:
+            payload = self._character_inspector_single_payload(view, selection)
+            message = "No character at cursor."
+        if payload is None:
+            QMessageBox.information(self, "Character Inspector", message)
+            return
+        text, output_encoding, invalid_bytes = payload
+        dialog.refresh(text, output_encoding=output_encoding, invalid_bytes=invalid_bytes)
 
     def _toggle_window(self, key: str, factory) -> QWidget | None:
         """One generic open/close/geometry-and-zoom-persistence manager

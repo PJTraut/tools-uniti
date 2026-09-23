@@ -2221,10 +2221,14 @@ def test_find_replace_actions_are_compact_accessible_and_on_one_line():
         ]
 
     # Cancel was folded into this same row (2026-09-20 request) instead of
-    # sitting alone on its own footer line below.
+    # sitting alone on its own footer line below. status_label moved here
+    # too (2026-09-21 request), centered between the left- and right-hand
+    # button groups rather than living in the Find row, so it stays
+    # visible even when the Match Report panel is collapsed.
     assert button_names(panel.actions_widget) == [
         "Find All",
         "Replace All",
+        "Status",
         "Previous Match",
         "Next Match",
         "Replace Current Match",

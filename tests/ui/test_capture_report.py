@@ -659,3 +659,25 @@ def test_colored_group_spans_do_not_overlap_across_a_literal_tab(app):
 
     assert abs(min(group1_columns) - expected_group1_x) <= 5
     assert abs(min(group2_columns) - expected_group2_x) <= 5
+
+
+def test_fallback_font_uses_the_editor_monospace_family_first(app):
+    """BF-079 regression guard: capture-report labels/content used to paint
+    in the report view's inherited proportional UI font, with the editor's
+    monospace font appended only as a glyph-coverage fallback -- so digit
+    widths ("1" vs "2") disagreed between rows. `_fallback_font` must now
+    put the resolved editor monospace family first, with the widget's own
+    UI font family kept only as an additional fallback."""
+
+    from PySide6.QtGui import QFont
+
+    from uniti.ui.capture_report_delegate import CaptureReportDelegate
+    from uniti.ui.font_policy import resolve_editor_font
+
+    ui_font = QFont("Arial", 12)
+    result = CaptureReportDelegate._fallback_font(ui_font)
+
+    editor_families = resolve_editor_font().font.families()
+    assert result.families()[0] == editor_families[0]
+    assert "Arial" in result.families()
+    assert result.pointSize() == 12

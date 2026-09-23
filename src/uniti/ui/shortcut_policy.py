@@ -105,6 +105,7 @@ def _definitions() -> tuple[CommandDefinition, ...]:
         ("file.save_as", "Save As…", category.FILE, scope.WINDOW, standard.SaveAs),
         ("file.reload", "Reload/Revert from Disk", category.FILE, scope.WINDOW, "file.reload"),
         ("file.close", "Close", category.FILE, scope.WINDOW, standard.Close),
+        ("file.close_all", "Close All", category.FILE, scope.WINDOW, None),
         ("file.quit", "Quit", category.FILE, scope.WINDOW, standard.Quit),
         ("editing.undo", "Undo", category.EDITING, scope.WINDOW, standard.Undo),
         ("editing.redo", "Redo", category.EDITING, scope.WINDOW, standard.Redo),

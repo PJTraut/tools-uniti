@@ -1209,6 +1209,59 @@ def test_soft_wrap_progressively_indexes_visual_rows_without_changing_text(tmp_p
         view.close()
 
 
+def test_visual_row_for_line_converts_between_a_logical_line_and_the_scrollbar_value(
+    tmp_path: Path,
+):
+    """BF-077: Compare's scroll sync needs to convert a logical line into
+    whatever the vertical scrollbar's own value means for a given view --
+    the line itself when wrap is off, a wrapped-row index when it's on --
+    without knowing which mode that view is in. `visual_row_for_line`/
+    `line_for_visual_row` are that conversion, reusing the same
+    `WrappedRowIndex` machinery cursor placement already relies on
+    (`_ensure_cursor_visible`)."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "long-lines.txt"
+    path.write_text(("0123456789" * 30 + "\n") * 10, encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        view.resize(220, 90)
+        view.show()
+        app.processEvents()
+
+        # Wrap off: the scrollbar value is the logical line itself.
+        assert view.soft_wrap is False
+        assert view.visual_row_for_line(5) == 5
+        assert view.line_for_visual_row(5) == (5, 0)
+
+        view.set_soft_wrap(True)
+        app.processEvents()
+
+        row_for_line_5 = view.visual_row_for_line(5)
+        view._wrapped_row_index().ensure_row(row_for_line_5)
+        # Each 300-character line wraps into several rows at this width,
+        # so the row for logical line 5 is well past row 5.
+        assert row_for_line_5 > 5
+        assert view.line_for_visual_row(row_for_line_5) == (5, 0)
+        # A row mid-way through line 5's wrapped rows still maps back to
+        # line 5, with a non-zero column start.
+        line, column = view.line_for_visual_row(row_for_line_5 + 1)
+        assert line == 5
+        assert column > 0
+
+        view.close()
+        app.processEvents()
+
+
 def test_view_state_round_trips_selection_scroll_wrap_row_and_zoom(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

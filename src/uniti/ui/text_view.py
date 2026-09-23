@@ -502,6 +502,39 @@ class UNITITextView(QAbstractScrollArea):
         self.wrapChanged.emit(enabled)
         self.viewport().update()
 
+    def visual_row_for_line(self, line: int, column: int = 0) -> int:
+        """The vertical-scrollbar value whose top row shows `line`/`column`
+        -- a logical line index unless wrap is on, in which case it's
+        resolved through the wrapped-row index the same way cursor
+        placement already does (`_ensure_cursor_visible`). Lets a caller
+        (Compare's scroll sync, BF-077) convert a logical line into a
+        scrollbar value without knowing whether this particular view has
+        wrap enabled.
+        """
+
+        if not self._soft_wrap:
+            return max(0, line)
+        try:
+            return self._wrapped_row_index().row_for_position(
+                max(0, line), max(0, column)
+            )
+        except ValueError:
+            return self._wrapped_row_index().known_count
+
+    def line_for_visual_row(self, row: int) -> tuple[int, int]:
+        """The inverse of `visual_row_for_line`: the `(line, column_start)`
+        a scrollbar `row` value corresponds to -- the row itself when wrap
+        is off, or resolved through the wrapped-row index when it's on.
+        """
+
+        if not self._soft_wrap:
+            return max(0, row), 0
+        try:
+            wrapped = self._wrapped_row_index().row(max(0, row))
+        except ValueError:
+            return 0, 0
+        return wrapped.line, wrapped.column_start
+
     @property
     def tab_width(self) -> int:
         return self._tab_width_chars

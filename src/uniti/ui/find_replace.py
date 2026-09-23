@@ -330,6 +330,7 @@ class FindReplaceWindow(QDockWidget):
         self.find_input = RegexInput(content)
         self.replace_input = ReplacementInput(content)
         self.status_label = QLabel("0 matches", content)
+        self.status_label.setAccessibleName("Status")
         self.pattern_info_label = QLabel(content)
         self.pattern_info_label.setAccessibleName("Pattern Info")
         self.capture_view = QListView(content)
@@ -373,7 +374,6 @@ class FindReplaceWindow(QDockWidget):
         find_row = QHBoxLayout()
         find_row.addWidget(self.find_indicator)
         find_row.addWidget(self.find_input, 1)
-        find_row.addWidget(self.status_label)
         replace_row = QHBoxLayout()
         replace_row.addWidget(self.replace_indicator)
         replace_row.addWidget(self.replace_input, 1)
@@ -446,6 +446,12 @@ class FindReplaceWindow(QDockWidget):
 
         actions.addWidget(self.find_all_button)
         actions.addWidget(self.replace_all_button)
+        actions.addStretch(1)
+        # Centered on the actions row, between the left- and right-hand
+        # button groups (2026-09-21 request) -- always visible here
+        # regardless of whether the Match Report panel is open or
+        # collapsed, unlike a position inside `report_frame` would be.
+        actions.addWidget(self.status_label)
         actions.addStretch(1)
         actions.addWidget(self.previous_button)
         actions.addWidget(self.next_button)

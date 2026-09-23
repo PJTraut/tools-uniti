@@ -19,11 +19,14 @@ free, and lets an edit to a compared document from an ordinary tab
 elsewhere repaint through the view's own existing live-document machinery
 instead of a separate text-refresh path. The two sides synchronize
 scrolling through a line-alignment mapping derived from the diff's own
-hunk list (`uniti.core.text_diff`), not a raw scrollbar link — unaffected
-by the widget swap, since `UNITITextView`'s own vertical scrollbar is
-already exactly a first-visible-logical-line index whenever wrap is off
-(`_refresh_scrollbars`), the same assumption the old bespoke pane relied
-on.
+hunk list (`uniti.core.text_diff`), not a raw scrollbar link. Each pane's
+vertical scrollbar is a first-visible-logical-line index whenever wrap is
+off (`_refresh_scrollbars`) but a wrapped-row index when it's on; scroll
+sync (`_on_left_scrolled`/`_on_right_scrolled`/`_go_to_hunk`) converts
+through `UNITITextView.line_for_visual_row`/`visual_row_for_line` at each
+pane's own boundary (BF-077) so the hunk-alignment math itself always
+operates in logical-line coordinates regardless of which pane, if any,
+has wrap enabled.
 
 Applying a hunk (or all remaining hunks) copies the *other* side's exact
 text for that line range — terminators and all, read straight from the
@@ -38,14 +41,20 @@ against, unlike a three-way merge.
 Deliberately not done (each a possible follow-up, not an oversight):
 neither side is padded with blank placeholder lines to keep the two panes
 row-for-row aligned — they scroll in sync via the hunk mapping instead;
-wrap stays off on both sides (turning it on would make the vertical
-scrollbar a wrapped-row count instead of a logical-line index, breaking
-the alignment mapping — the same architectural conflict the pre-rework
-bespoke pane had, not resolved by the widget swap since it's inherent to
-line-based diff alignment, not to which widget draws the text); and
-within a changed (`REPLACE`) hunk, only the whole line is highlighted, not
-the specific differing segment within it (`uniti.core.text_diff` is
-purely line-level).
+and within a changed (`REPLACE`) hunk, only the whole line is
+highlighted, not the specific differing segment within it
+(`uniti.core.text_diff` is purely line-level).
+
+Line wrap (BF-077, per-pane via the right-click context menu, off by
+default like an ordinary editor tab): each pane still only knows its own
+wrapped-row index, so scroll sync converts at both boundaries — the
+source pane's scrollbar value to a logical line via `line_for_visual_row`
+before the hunk-alignment math, and the aligned result back to the target
+pane's own scrollbar value via `visual_row_for_line` — rather than
+teaching `uniti.core.text_diff` anything about wrapped rows. Toggling wrap
+resets that pane's scrollbar to 0 (`UNITITextView.set_soft_wrap`'s own
+existing behavior for a single view), which the sync wiring then carries
+over to the other pane like any other scroll event.
 """
 
 from __future__ import annotations
@@ -106,6 +115,45 @@ _HUNK_COLORS = {
 # (2026-09-18 follow-up: "cat"/"fat" should highlight just the "c"/"f",
 # not the whole line uniformly).
 _INTRA_LINE_CHANGE_COLOR = QColor(210, 153, 34, 150)
+
+# The cross-pane current-line indicator's background tint (BF-078: the
+# 2026-09-18 cross-pane marker was gutter-only -- a thin 3px accent bar,
+# `tokens.current_match` -- with no row background of its own). A blue
+# hue, deliberately distinct from every hunk color above (green/red/amber)
+# and from the app's own current-line token (which marks the *locally*
+# focused line, a different thing from the line *mapped from the other
+# pane*) so the two concepts stay visually distinguishable even layered
+# on top of a hunk background.
+_CROSS_PANE_CURRENT_LINE_COLOR = QColor(88, 166, 255, 70)
+
+
+def _blend_over(base: QColor, overlay: QColor) -> QColor:
+    """Alpha-composite `overlay` over `base` (the standard "over"
+    operator) so a marker line that already has a hunk-kind background
+    reads as visibly layered rather than one color silently replacing
+    the other."""
+
+    overlay_alpha = overlay.alphaF()
+    base_alpha = base.alphaF()
+    out_alpha = overlay_alpha + base_alpha * (1 - overlay_alpha)
+    if out_alpha <= 0:
+        return QColor(0, 0, 0, 0)
+
+    def channel(overlay_component: int, base_component: int) -> int:
+        return round(
+            (
+                overlay_component * overlay_alpha
+                + base_component * base_alpha * (1 - overlay_alpha)
+            )
+            / out_alpha
+        )
+
+    return QColor(
+        channel(overlay.red(), base.red()),
+        channel(overlay.green(), base.green()),
+        channel(overlay.blue(), base.blue()),
+        round(out_alpha * 255),
+    )
 
 
 def document_lines(document: Document) -> list[str]:
@@ -364,7 +412,6 @@ class ComparePane(QWidget):
         self._right_view = UNITITextView(EditorState(right_document))
         for view in (self._left_view, self._right_view):
             view.set_read_only(True)
-            view.set_soft_wrap(False)
             view.contextMenuRequested.connect(
                 lambda position, view=view: self._show_view_context_menu(view, position)
             )
@@ -436,17 +483,42 @@ class ComparePane(QWidget):
         ):
             button.setEnabled(enabled)
 
+    @staticmethod
+    def _with_cross_pane_tint(
+        colors: dict[int, QColor], marker_line: int | None
+    ) -> dict[int, QColor]:
+        """Layers the cross-pane current-line tint onto `marker_line`
+        (BF-078), on top of whatever hunk-kind background (if any) that
+        line already has, rather than replacing it -- so a mapped line
+        inside a changed hunk still shows its hunk color, distinguishably
+        brightened, instead of losing it."""
+
+        if marker_line is None:
+            return colors
+        base = colors.get(marker_line)
+        colors = dict(colors)
+        colors[marker_line] = (
+            _blend_over(base, _CROSS_PANE_CURRENT_LINE_COLOR)
+            if base is not None
+            else _CROSS_PANE_CURRENT_LINE_COLOR
+        )
+        return colors
+
     def _refresh_left_highlights(self) -> None:
-        colors = {line: _HUNK_COLORS[kind] for line, kind in self._left_kinds.items()}
+        colors = self._with_cross_pane_tint(
+            {line: _HUNK_COLORS[kind] for line, kind in self._left_kinds.items()},
+            self._left_marker_line,
+        )
         markers = (
             {self._left_marker_line} if self._left_marker_line is not None else None
         )
         self._left_view.set_line_highlights(colors, markers, self._left_char_spans)
 
     def _refresh_right_highlights(self) -> None:
-        colors = {
-            line: _HUNK_COLORS[kind] for line, kind in self._right_kinds.items()
-        }
+        colors = self._with_cross_pane_tint(
+            {line: _HUNK_COLORS[kind] for line, kind in self._right_kinds.items()},
+            self._right_marker_line,
+        )
         markers = (
             {self._right_marker_line} if self._right_marker_line is not None else None
         )
@@ -553,7 +625,11 @@ class ComparePane(QWidget):
             return
         self._syncing = True
         try:
-            target = round(align_left_to_right(self._hunks, value))
+            line, _column = self._left_view.line_for_visual_row(value)
+            target_line = self._clamp_line(
+                round(align_left_to_right(self._hunks, line)), self._right_document
+            )
+            target = self._right_view.visual_row_for_line(target_line)
             bar = self._right_view.verticalScrollBar()
             bar.setValue(max(bar.minimum(), min(bar.maximum(), target)))
         finally:
@@ -564,7 +640,11 @@ class ComparePane(QWidget):
             return
         self._syncing = True
         try:
-            target = round(align_right_to_left(self._hunks, value))
+            line, _column = self._right_view.line_for_visual_row(value)
+            target_line = self._clamp_line(
+                round(align_right_to_left(self._hunks, line)), self._left_document
+            )
+            target = self._left_view.visual_row_for_line(target_line)
             bar = self._left_view.verticalScrollBar()
             bar.setValue(max(bar.minimum(), min(bar.maximum(), target)))
         finally:
@@ -577,8 +657,12 @@ class ComparePane(QWidget):
         hunk = self._changed[self._hunk_index]
         self._syncing = True
         try:
-            self._left_view.verticalScrollBar().setValue(hunk.left_start)
-            self._right_view.verticalScrollBar().setValue(hunk.right_start)
+            self._left_view.verticalScrollBar().setValue(
+                self._left_view.visual_row_for_line(hunk.left_start)
+            )
+            self._right_view.verticalScrollBar().setValue(
+                self._right_view.visual_row_for_line(hunk.right_start)
+            )
         finally:
             self._syncing = False
 
@@ -683,6 +767,14 @@ class ComparePane(QWidget):
         document = self._left_document if view is self._left_view else self._right_document
         menu = QMenu(self)
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+
+        wrap_action = menu.addAction("Line Wrap")
+        wrap_action.setCheckable(True)
+        wrap_action.setChecked(view.soft_wrap)
+        wrap_action.triggered.connect(
+            lambda checked, view=view: view.set_soft_wrap(checked)
+        )
+        menu.addSeparator()
 
         whitespace_menu = menu.addMenu("Whitespace")
         whitespace_group = QActionGroup(menu)

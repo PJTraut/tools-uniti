@@ -6,6 +6,8 @@ glyph-preview area (2026-09-20 follow-up)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import unicodedataplus as unicodedata
 
 from PySide6.QtCore import (
@@ -26,6 +28,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListView,
+    QPushButton,
     QSplitter,
     QStyle,
     QStyledItemDelegate,
@@ -223,18 +226,39 @@ class _CharacterInspectorTitleBar(QWidget):
     a custom title bar widget disables Qt's built-in native drag gesture,
     so this reimplements it directly. No close button, matching
     Find/Replace's own detached title bar -- closing is Escape or the
-    hotkey toggle, not a title-bar control."""
+    hotkey toggle, not a title-bar control.
 
-    def __init__(self, dialog: QDialog, title: str) -> None:
+    An optional Refresh button (BF-076: the dialog otherwise only ever
+    shows the selection captured at open time, and stays open across
+    later selection changes per its toggle-window behavior) sits at the
+    opposite end from the draggable title label."""
+
+    def __init__(
+        self,
+        dialog: QDialog,
+        title: str,
+        *,
+        on_refresh: Callable[[], None] | None = None,
+    ) -> None:
         super().__init__(dialog)
         self._dialog = dialog
         self._drag_offset: QPoint | None = None
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 2, 2, 2)
-        label = QLabel(title, self)
-        label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        layout.addWidget(label)
+        self._label = QLabel(title, self)
+        self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout.addWidget(self._label)
         layout.addStretch(1)
+        if on_refresh is not None:
+            refresh_button = QPushButton("Refresh", self)
+            refresh_button.setFlat(True)
+            refresh_button.setAccessibleName("Refresh")
+            refresh_button.setToolTip("Re-inspect the current selection (F5)")
+            refresh_button.clicked.connect(on_refresh)
+            layout.addWidget(refresh_button)
+
+    def set_title(self, title: str) -> None:
+        self._label.setText(title)
 
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
@@ -274,6 +298,7 @@ class CharacterInspectorDialog(QDialog):
         invalid_bytes: bytes | None = None,
         initial_zoom_percent: int = DEFAULT_ZOOM_PERCENT,
         initial_geometry: tuple[int, int, int, int] | None = None,
+        on_refresh: Callable[[], None] | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
@@ -292,6 +317,12 @@ class CharacterInspectorDialog(QDialog):
         )
         self._glyph_labels: list[QLabel] = []
         self._character_list: QListView | None = None
+        # BF-076: re-reads and repaints the current selection in place on
+        # Refresh, rather than requiring close/reopen. The dialog itself
+        # stays unaware of the live document/view -- the caller supplies
+        # this closure, which reads the current selection and calls
+        # `refresh()` back.
+        self._on_refresh = on_refresh
 
         # Styled/behaved like the Find/Replace detached window (2026-09-20
         # request): a `Tool` window that stays on top of the editor so it
@@ -308,31 +339,19 @@ class CharacterInspectorDialog(QDialog):
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
 
-        title = "Character Inspector" if len(text) == 1 else "Inspect Selection"
-        self.setWindowTitle(f"UNITI — {title}")
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
         outer_layout.setSpacing(0)
-        outer_layout.addWidget(_CharacterInspectorTitleBar(self, title))
+        self._title_bar = _CharacterInspectorTitleBar(
+            self, "", on_refresh=self._request_refresh if on_refresh is not None else None
+        )
+        outer_layout.addWidget(self._title_bar)
 
-        content = QWidget(self)
-        outer_layout.addWidget(content, 1)
-        layout = QVBoxLayout(content)
-        if len(text) == 1:
-            layout.addLayout(
-                self._single_character_form(text, output_encoding, invalid_bytes)
-            )
-            default_size = (420, 480)
-        else:
-            truncated = text[:MAX_INSPECT_SELECTION_CHARACTERS]
-            if len(truncated) < len(text):
-                layout.addWidget(
-                    QLabel(
-                        f"Showing the first {len(truncated)} of {len(text)} characters."
-                    )
-                )
-            layout.addWidget(self._selection_list_and_detail(truncated), 1)
-            default_size = (720, 480)
+        self._content = QWidget(self)
+        outer_layout.addWidget(self._content, 1)
+        self._content_layout = QVBoxLayout(self._content)
+
+        default_size = self._populate_content(text, output_encoding, invalid_bytes)
         if initial_geometry is not None:
             self.setGeometry(*initial_geometry)
         else:
@@ -346,7 +365,82 @@ class CharacterInspectorDialog(QDialog):
         )
         QShortcut(QKeySequence("Ctrl+0"), self, activated=self.reset_zoom)
         QShortcut(QKeySequence("Ctrl+="), self, activated=self.zoom_in)
+        if on_refresh is not None:
+            QShortcut(
+                QKeySequence(QKeySequence.StandardKey.Refresh),
+                self,
+                activated=self._request_refresh,
+            )
+
+    @staticmethod
+    def _clear_layout(layout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+                continue
+            sub_layout = item.layout()
+            if sub_layout is not None:
+                CharacterInspectorDialog._clear_layout(sub_layout)
+
+    def _populate_content(
+        self,
+        text: str,
+        output_encoding: str,
+        invalid_bytes: bytes | None,
+    ) -> tuple[int, int]:
+        """(Re-)builds the dialog's content for `text`, either the
+        single-character form or the list+detail selection view. Returns
+        the default window size for this shape -- used at construction
+        only; `refresh()` deliberately keeps whatever size/position the
+        window already has."""
+
+        self._clear_layout(self._content_layout)
+        self._glyph_labels = []
+        self._character_list = None
+
+        title = "Character Inspector" if len(text) == 1 else "Inspect Selection"
+        self.setWindowTitle(f"UNITI — {title}")
+        self._title_bar.set_title(title)
+        if len(text) == 1:
+            self._content_layout.addLayout(
+                self._single_character_form(text, output_encoding, invalid_bytes)
+            )
+            default_size = (420, 480)
+        else:
+            truncated = text[:MAX_INSPECT_SELECTION_CHARACTERS]
+            if len(truncated) < len(text):
+                self._content_layout.addWidget(
+                    QLabel(
+                        f"Showing the first {len(truncated)} of {len(text)} characters."
+                    )
+                )
+            self._content_layout.addWidget(self._selection_list_and_detail(truncated), 1)
+            default_size = (720, 480)
         self._apply_zoom_fonts()
+        return default_size
+
+    def _request_refresh(self) -> None:
+        if self._on_refresh is not None:
+            self._on_refresh()
+
+    def refresh(
+        self,
+        text: str,
+        *,
+        output_encoding: str,
+        invalid_bytes: bytes | None = None,
+    ) -> None:
+        """Re-inspects `text` in place (BF-076), keeping the window's
+        current size, position, and zoom -- only the content rebuilds,
+        even when switching between the single-character and
+        list+detail shapes."""
+
+        if not text:
+            raise ValueError("character inspector requires at least one character")
+        self._populate_content(text, output_encoding, invalid_bytes)
 
     def _make_glyph_label(self, character: str, parent: QWidget) -> QLabel:
         label = QLabel(_display_glyph(character), parent)

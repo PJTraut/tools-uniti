@@ -61,13 +61,81 @@ class SearchOptions:
             raise ValueError("end must not be before start")
 
 
+def _strip_character_classes(source: str) -> str:
+    """Replaces every `[...]` character class's contents with placeholder
+    characters, preserving the pattern's overall length/positions, so
+    `_needs_full_prefix`'s substring checks for `^` and lookbehind/`\\A`/
+    `\\G` syntax only match a real pattern construct -- not the same
+    characters appearing inside a class (most commonly `^` as a class
+    negation marker, e.g. `[^\\]`, not a line-start anchor). An escape
+    pair (`\\` plus the next character) is never itself a class
+    delimiter, so it's tracked to keep bracket-matching correct (e.g. an
+    escaped `\\]`/`\\[` inside a class, or an escaped `\\[` outside one)
+    -- but only *inside* a class is it also stripped to a placeholder;
+    outside a class it passes through unchanged, since that's exactly
+    where real `\\A`/`\\G` anchor syntax lives and the caller's substring
+    checks need to see them intact. Handles the one class-syntax wrinkle
+    that matters here: a literal `]` right after `[` or `[^` doesn't
+    close the class.
+    """
+
+    result: list[str] = []
+    i = 0
+    n = len(source)
+    in_class = False
+    negation_open = False
+    content_seen = False
+    while i < n:
+        ch = source[i]
+        if ch == "\\" and i + 1 < n:
+            if in_class:
+                result.append("\0\0")
+                negation_open = False
+                content_seen = True
+            else:
+                result.append(source[i : i + 2])
+            i += 2
+            continue
+        if not in_class:
+            if ch == "[":
+                in_class = True
+                negation_open = True
+                content_seen = False
+                result.append("[")
+            else:
+                result.append(ch)
+            i += 1
+            continue
+        if negation_open and ch == "^":
+            negation_open = False
+            result.append("\0")
+            i += 1
+            continue
+        negation_open = False
+        if ch == "]" and not content_seen:
+            content_seen = True
+            result.append("\0")
+            i += 1
+            continue
+        if ch == "]":
+            in_class = False
+            result.append("]")
+            i += 1
+            continue
+        content_seen = True
+        result.append("\0")
+        i += 1
+    return "".join(result)
+
+
 def _needs_full_prefix(compiled: regex.Pattern) -> bool:
     source = compiled.pattern
     if not isinstance(source, str):
         return True
-    if "(?<=" in source or "(?<!" in source or "\\A" in source or "\\G" in source:
+    scanned = _strip_character_classes(source)
+    if "(?<=" in scanned or "(?<!" in scanned or "\\A" in scanned or "\\G" in scanned:
         return True
-    if "^" in source and not (compiled.flags & regex.MULTILINE):
+    if "^" in scanned and not (compiled.flags & regex.MULTILINE):
         return True
     return False
 

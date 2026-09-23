@@ -323,3 +323,90 @@ def test_detail_content_anchors_to_the_top_not_centered_in_extra_space(qapp):
         assert last_item.spacerItem() is not None
     finally:
         dialog.close()
+
+
+def test_no_refresh_button_or_shortcut_without_an_on_refresh_callback(qapp):
+    from PySide6.QtWidgets import QPushButton
+
+    dialog = CharacterInspectorDialog("A", output_encoding="utf-8")
+    try:
+        assert dialog.findChildren(QPushButton) == []
+    finally:
+        dialog.close()
+
+
+def test_refresh_button_appears_and_calls_the_on_refresh_callback(qapp):
+    """BF-076: a Refresh control lets the user re-inspect a newer
+    selection without closing/reopening the dialog. The dialog itself
+    stays unaware of the live document -- clicking Refresh (or the
+    button matching a click on it) must call back into the caller-
+    supplied closure, which is responsible for reading the current
+    selection and calling `refresh()`."""
+
+    from PySide6.QtWidgets import QPushButton
+
+    calls = []
+    dialog = CharacterInspectorDialog(
+        "A", output_encoding="utf-8", on_refresh=lambda: calls.append(True)
+    )
+    try:
+        buttons = dialog.findChildren(QPushButton)
+        assert len(buttons) == 1
+        assert buttons[0].text() == "Refresh"
+        buttons[0].click()
+        assert calls == [True]
+
+        dialog._request_refresh()
+        assert calls == [True, True]
+    finally:
+        dialog.close()
+
+
+def test_refresh_rebuilds_content_in_place_keeping_window_geometry_and_zoom(qapp):
+    dialog = CharacterInspectorDialog("A", output_encoding="utf-8", on_refresh=lambda: None)
+    try:
+        dialog.setGeometry(50, 60, 500, 400)
+        dialog.zoom_in()
+        geometry_before = dialog.geometry()
+        zoom_before = dialog.zoom_percent
+
+        assert dialog.windowTitle() == "UNITI — Character Inspector"
+        dialog.refresh("é", output_encoding="utf-8")
+        assert dialog.windowTitle() == "UNITI — Character Inspector"
+        assert dialog.geometry() == geometry_before
+        assert dialog.zoom_percent == zoom_before
+    finally:
+        dialog.close()
+
+
+def test_refresh_switches_between_single_character_and_selection_shapes(qapp):
+    """A refresh triggered while the dialog is open must be able to
+    switch shapes entirely -- e.g. a single-character selection grows
+    into a multi-character one, or vice versa -- not just update values
+    within the shape it opened with."""
+
+    dialog = CharacterInspectorDialog("A", output_encoding="utf-8", on_refresh=lambda: None)
+    try:
+        assert dialog.windowTitle() == "UNITI — Character Inspector"
+        assert dialog.findChildren(QListView) == []
+
+        dialog.refresh("AB1", output_encoding="utf-8")
+        assert dialog.windowTitle() == "UNITI — Inspect Selection"
+        model = dialog._character_model
+        assert isinstance(model, CharacterListModel)
+        assert model.rowCount() == 3
+
+        dialog.refresh("Z", output_encoding="utf-8")
+        assert dialog.windowTitle() == "UNITI — Character Inspector"
+        assert dialog.findChildren(QListView) == []
+    finally:
+        dialog.close()
+
+
+def test_refresh_rejects_empty_text(qapp):
+    dialog = CharacterInspectorDialog("A", output_encoding="utf-8", on_refresh=lambda: None)
+    try:
+        with pytest.raises(ValueError):
+            dialog.refresh("", output_encoding="utf-8")
+    finally:
+        dialog.close()

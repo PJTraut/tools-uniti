@@ -76,6 +76,77 @@ def test_backreference_marker_pair_matches_across_tiny_windows_for_each_marker_n
     assert marker_names == ["add", "wj", "nd"]
 
 
+def test_negated_character_class_is_not_mistaken_for_a_line_anchor():
+    """`_needs_full_prefix` used to do a naive `"^" in source` substring
+    check with no awareness of character-class syntax, so a negated class
+    like `[^\\]` -- an extremely common SFM/USFM marker-pairing idiom,
+    "any character except a backslash" -- was mistaken for a `^`
+    line-start anchor and forced `retain_prefix=True`. That disables all
+    buffer trimming (`context_start` stays 0 forever in
+    `_iter_engine_matches`), so the search buffer only ever grows,
+    eventually exceeding `max_context_chars` on any sufficiently large
+    document regardless of how well-bounded the pattern actually is."""
+
+    from uniti.regex.search import _needs_full_prefix
+
+    assert _needs_full_prefix(compile_pattern(r"\\(\w+)\s([^\\]+)\\\1\*")) is False
+    assert _needs_full_prefix(compile_pattern(r"[^abc]+")) is False
+    # A literal `]` as the class's first content character (right after
+    # `[` or the negation `[^`) doesn't close the class -- must not be
+    # mistaken for the class boundary either.
+    assert _needs_full_prefix(compile_pattern(r"[^\]]+")) is False
+    # A real top-level anchor, an anchor appearing after an alternation,
+    # and lookbehind syntax must still be detected correctly -- the fix
+    # only changes behavior *inside* a character class.
+    assert _needs_full_prefix(compile_pattern(r"^abc")) is True
+    assert _needs_full_prefix(compile_pattern(r"(?<=x)abc")) is True
+    assert _needs_full_prefix(compile_pattern(r"\Aabc")) is True
+    assert _needs_full_prefix(compile_pattern(r"abc\Gdef")) is True
+
+
+def test_backreference_pattern_using_a_negated_class_is_not_bounded_by_a_false_prefix_requirement(
+    tmp_path: Path,
+):
+    """End-to-end regression for the same bug: the exact SFM marker-pair
+    idiom a user reported failing on a real (much larger) document --
+    `\\marker ... \\marker*` written with `[^\\]+` rather than the
+    negative-lookahead form the other backreference test above uses.
+    Under the pre-fix heuristic this pattern was wrongly treated as
+    needing the *entire* scanned prefix retained forever, so the search
+    buffer only grew and never trimmed; with a small `max_context_chars`
+    (mirroring `test_partial_pattern_cannot_grow_search_buffer_without_bound`'s
+    style) a real document only slightly larger than that budget was
+    enough to reproduce the failure before the fix, and must complete
+    correctly now."""
+
+    path = tmp_path / "markers.sfm"
+    text = (
+        r"\add inserted words\add* then "
+        r"\wj Jesus spoke\wj* and "
+        r"\nd LORD\nd* end"
+    )
+    path.write_text(text, encoding="utf-8")
+    with Document.open(path) as document:
+        results = list(
+            search_document(
+                document,
+                compile_pattern(r"\\(\w+)\s([^\\]+)\\\1\*"),
+                options=SearchOptions(window_chars=3, max_context_chars=40),
+            )
+        )
+        matched_text = [document.read(*result.span) for result in results]
+        marker_names = [
+            document.read(*result.captures[0].spans[0]) for result in results
+        ]
+
+    assert matched_text == [
+        r"\add inserted words\add*",
+        r"\wj Jesus spoke\wj*",
+        r"\nd LORD\nd*",
+    ]
+    assert marker_names == ["add", "wj", "nd"]
+
+
 def test_search_records_named_repeated_capture_spans(tmp_path: Path):
     path = tmp_path / "captures.txt"
     path.write_text("123 xx", encoding="utf-8")

@@ -91,6 +91,65 @@ def test_scrolling_the_left_pane_moves_the_right_pane_by_the_alignment_mapping(
         app.processEvents()
 
 
+def test_scroll_sync_stays_correct_when_one_pane_has_wrap_enabled(
+    tmp_path: Path,
+):
+    """BF-077: a wrapped pane's vertical scrollbar is a wrapped-row index,
+    not a logical-line index -- scroll sync must convert through
+    `line_for_visual_row`/`visual_row_for_line` at each pane's own
+    boundary rather than treating the raw scrollbar value as a line
+    number, or turning on wrap on just one side would desync the other."""
+
+    _require_qt()
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    # Long lines force many wrapped rows per logical line once the pane is
+    # narrow -- the left pane's row-for-line-3 value will land far past
+    # row 3, unlike the (unwrapped) right pane's, where row == line. Extra
+    # short trailing lines give the (unwrapped) right pane's scrollbar
+    # actual room to reach line 3 -- without them the whole short document
+    # fits in the viewport and every scrollbar value clamps to 0.
+    lines = [f"line {i} " + ("x" * 200) for i in range(6)] + [
+        f"tail {i}" for i in range(20)
+    ]
+    left_text = "\n".join(lines)
+    right_text = "\n".join(lines)
+    with _open(tmp_path / "a.txt", left_text) as left, _open(
+        tmp_path / "b.txt", right_text
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        pane.resize(300, 200)
+        pane.show()
+        app.processEvents()
+
+        pane._left_view.set_soft_wrap(True)
+        app.processEvents()
+
+        row_for_line_3 = pane._left_view.visual_row_for_line(3)
+        assert row_for_line_3 > 3  # each earlier line wraps into several rows
+
+        # The wrapped-row index populates progressively (bounded work per
+        # frame, like a large document's line index) -- force it to catch
+        # up to the target row before scrolling there, or the scrollbar's
+        # range wouldn't extend far enough yet and `setValue` would clamp.
+        pane._left_view._wrapped_row_index().ensure_row(row_for_line_3)
+        pane._left_view._refresh_scrollbars(advance_index=False)
+
+        pane._left_view.verticalScrollBar().setValue(row_for_line_3)
+        app.processEvents()
+
+        # Identical documents on both sides: the aligned line for logical
+        # line 3 is line 3 itself, and the right pane is unwrapped, so its
+        # scrollbar (row == line there) should land exactly on 3 -- not on
+        # the much larger wrapped-row value the left pane is now showing.
+        assert pane._right_view.verticalScrollBar().value() == 3
+        pane.close_compare()
+        app.processEvents()
+
+
 def test_next_and_previous_hunk_jump_both_sides_to_the_hunks_own_start(
     tmp_path: Path,
 ):
@@ -458,6 +517,56 @@ def test_moving_the_cursor_marks_the_corresponding_line_on_the_other_side(
         app.processEvents()
 
 
+def test_cross_pane_marker_line_gets_a_distinct_background_tint(tmp_path: Path):
+    """BF-078: the 2026-09-18 cross-pane current-line feature only drew a
+    thin 3px gutter marker bar, not a row/background tint, so the mapped
+    line on the other side was easy to miss. The marker line must now
+    also carry a background color -- distinct from both the plain hunk
+    colors and, when the mapped line falls inside a changed hunk, layered
+    on top of that hunk's own color rather than replacing it."""
+
+    _require_qt()
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.compare_pane import (
+        _CROSS_PANE_CURRENT_LINE_COLOR,
+        _HUNK_COLORS,
+        ComparePane,
+    )
+    from uniti.core.text_diff import HunkKind
+
+    app = QApplication.instance() or QApplication([])
+    left_text = "\n".join(["same 0", "same 1", "same 2", "same 3"])
+    right_text = "\n".join(["same 0", "changed 1", "same 2", "same 3"])
+    with _open(tmp_path / "a.txt", left_text) as left, _open(
+        tmp_path / "b.txt", right_text
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+
+        # Moving the cursor to the left pane's unchanged line 3 maps to an
+        # unchanged line on the right -- no hunk color there to begin
+        # with, so the tint applies directly.
+        pane._left_view.state.move_to(left.line_start(3))
+        pane._left_view._state_changed()
+        assert pane._right_marker_line == 3
+        assert pane._right_view._line_highlights[3] == _CROSS_PANE_CURRENT_LINE_COLOR
+
+        # Moving to the left pane's changed line (line 1, a REPLACE hunk)
+        # maps to the right pane's own changed line -- already carrying
+        # the REPLACE hunk color. The marker tint must layer on top of
+        # it, not silently overwrite it back to the plain tint or leave
+        # the plain hunk color unchanged.
+        pane._left_view.state.move_to(left.line_start(1))
+        pane._left_view._state_changed()
+        assert pane._right_marker_line == 1
+        blended = pane._right_view._line_highlights[1]
+        assert blended != _CROSS_PANE_CURRENT_LINE_COLOR
+        assert blended != _HUNK_COLORS[HunkKind.REPLACE]
+
+        pane.close_compare()
+        app.processEvents()
+
+
 def test_apply_view_defaults_matches_an_ordinary_editor_tabs_appearance(
     tmp_path: Path,
 ):
@@ -582,6 +691,48 @@ def test_right_click_context_menu_changes_only_the_clicked_panes_whitespace(
 
         assert pane._left_view.whitespace_mode is WhitespaceMode.ALL
         assert pane._right_view.whitespace_mode is WhitespaceMode.OFF
+        pane.close_compare()
+        app.processEvents()
+
+
+def test_right_click_context_menu_toggles_line_wrap_for_only_the_clicked_pane(
+    tmp_path: Path,
+):
+    """BF-077 ("Line wrap function needed for text compare, add to 'right
+    click' menu?"): a checkable Line Wrap action, applying only to the
+    pane that was clicked -- matching the existing Whitespace/Tab
+    Width/Syntax/Theme per-pane entries in the same menu."""
+
+    _require_qt()
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QApplication, QMenu
+
+    from uniti.ui.compare_pane import ComparePane
+
+    app = QApplication.instance() or QApplication([])
+    with _open(tmp_path / "a.txt", "alpha") as left, _open(
+        tmp_path / "b.txt", "beta"
+    ) as right:
+        pane = ComparePane(left, "a.txt", right, "b.txt")
+        assert pane._left_view.soft_wrap is False
+        assert pane._right_view.soft_wrap is False
+
+        pane._show_view_context_menu(pane._left_view, QPoint(10, 10))
+        menus = pane.findChildren(QMenu)
+        top_menu = next(m for m in menus if any(a.text() == "Line Wrap" for a in m.actions()))
+        wrap_action = next(a for a in top_menu.actions() if a.text() == "Line Wrap")
+        assert wrap_action.isCheckable()
+        assert wrap_action.isChecked() is False
+        wrap_action.trigger()
+
+        assert pane._left_view.soft_wrap is True
+        assert pane._right_view.soft_wrap is False
+
+        pane._show_view_context_menu(pane._left_view, QPoint(10, 10))
+        menus = pane.findChildren(QMenu)
+        top_menu = next(m for m in menus if any(a.text() == "Line Wrap" for a in m.actions()))
+        wrap_action = next(a for a in top_menu.actions() if a.text() == "Line Wrap")
+        assert wrap_action.isChecked() is True
         pane.close_compare()
         app.processEvents()
 

@@ -32,7 +32,7 @@ class CaptureReportDelegate(QStyledItemDelegate):
     def _fallback_font(font):
         result = QFont(font)
         result.setFamilies(
-            list(dict.fromkeys([font.family(), *resolve_editor_font().font.families()]))
+            list(dict.fromkeys([*resolve_editor_font().font.families(), font.family()]))
         )
         return result
 

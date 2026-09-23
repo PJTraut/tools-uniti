@@ -2096,6 +2096,7 @@ def test_character_inspector_shows_selection_table_for_multi_character_selection
                 invalid_bytes=None,
                 initial_zoom_percent=100,
                 initial_geometry=None,
+                on_refresh=None,
                 parent=None,
             ):
                 super().__init__(parent)
@@ -2150,6 +2151,51 @@ def test_character_inspector_hotkey_toggles_open_and_closed(tmp_path: Path):
         # `_on_toggle_window_closed` schedules `deleteLater()`, and
         # `processEvents()` above may already have processed that
         # deferred delete -- don't touch `first_dialog` further.
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_character_inspector_refresh_reflects_a_newer_selection(tmp_path: Path):
+    """BF-076: the dialog stays open across selection changes (per its
+    toggle-window/non-modal behavior), and previously had no way to pick
+    up a newer selection short of closing and reopening. Refresh must
+    re-read the current view's selection and repaint in place."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.character_inspector import CharacterListModel
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "doc.txt"
+    path.write_text("Hello World", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        view.state.move_to(0)
+
+        window.show_character_inspector()
+        app.processEvents()
+        dialog = window._character_inspector_dialog
+        assert dialog.windowTitle() == "UNITI — Character Inspector"
+
+        view.state.move_to(0)
+        view.state.move_to(5, selecting=True)
+        window._refresh_character_inspector()
+        app.processEvents()
+
+        # Same dialog instance, not a new one -- refresh rebuilds in
+        # place rather than reopening.
+        assert window._character_inspector_dialog is dialog
+        assert dialog.windowTitle() == "UNITI — Inspect Selection"
+        assert isinstance(dialog._character_model, CharacterListModel)
+        assert dialog._character_model.rowCount() == 5
     finally:
         window.close_all_documents(force=True)
         window.close()
@@ -2215,6 +2261,43 @@ def test_character_inspector_remembers_size_and_zoom_across_reopens(tmp_path: Pa
         finally:
             second_window.close_all_documents(force=True)
             second_window.close()
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_close_all_menu_action_closes_every_open_document(tmp_path: Path):
+    """BF-084: there was no way to close every open document at once from
+    the File menu -- only one-at-a-time Close, even though the underlying
+    `close_all_documents()` (used internally for app-quit flows) already
+    existed and already prompts per unsaved document, exactly like an
+    ordinary Close would. This wires that existing safe method to a new
+    File > Close All entry."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        for name in ("a.txt", "b.txt", "c.txt"):
+            path = tmp_path / name
+            path.write_text("content", encoding="utf-8")
+            window.open_path(path)
+        assert len(window.view_ids) == 3
+
+        action = window._command_actions["file.close_all"]
+        assert action.text() == "Close All"
+        action.trigger()
+        app.processEvents()
+
+        assert len(window.view_ids) == 0
     finally:
         window.close_all_documents(force=True)
         window.close()
