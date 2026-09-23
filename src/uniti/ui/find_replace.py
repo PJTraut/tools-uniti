@@ -631,11 +631,12 @@ class FindReplaceWindow(QDockWidget):
 
     def _insert_content_into_pane_tree(self, host: QMainWindow, *, select: bool) -> None:
         """Insert the content widget as a new split leaf in ``host``'s pane
-        tree, anchored below the current document view (or added directly
-        if the window has no views open yet). Splitting always makes the
-        new leaf the tree's active leaf (``EditorPaneTree.split_view``), so
-        unless ``select`` asks for Find/Replace to become focused, the
-        previously active document tab is restored afterward."""
+        tree, anchored below the current document view (or, with no
+        document open at all, splitting the empty root pane directly,
+        BF-090). Splitting always makes the new leaf the tree's active leaf
+        (``EditorPaneTree.split_view``/``split_pane``), so unless
+        ``select`` asks for Find/Replace to become focused, the previously
+        active document tab is restored afterward."""
 
         tree = host.panes
         view_id = self.content.view_id
@@ -648,29 +649,41 @@ class FindReplaceWindow(QDockWidget):
         anchor = host.active_view_id
         if anchor is None and tree.view_ids:
             anchor = tree.view_ids[0]
+        # BF-059: attach at the remembered last-used height (never a
+        # hardcoded 50%, and not computed as a proportion of the pane
+        # tree's current height, which is unreliable before a layout pass
+        # has run) and pin it against window-resize deltas via stretch
+        # factors (1 for the editor pane, 0 for this one) rather than the
+        # ordinary proportional-resize behavior `split_view` gives
+        # user-created Split Right/Down panes.
         if anchor is None:
-            tree.add_view(self.content, select=select, title="Find / Replace")
+            # BF-090: no document is open at all, so there is no view to
+            # anchor a `split_view` against -- split the (empty) root pane
+            # directly instead of falling back to `add_view`, which made
+            # Find/Replace the tree's sole tab and filled the whole window
+            # rather than reserving the usual bounded height. The reserved
+            # sibling leaf simply stays empty (the same blank state an
+            # ordinary document-less window already shows).
+            new_leaf = tree.split_pane(
+                tree.first_leaf.pane_id,
+                Qt.Orientation.Vertical,
+                stretch=(1, 0),
+                fixed_sizes=(1, self._attached_height),
+            )
         else:
-            # BF-059: attach at the remembered last-used height (never a
-            # hardcoded 50%, and not computed as a proportion of the pane
-            # tree's current height, which is unreliable before a layout
-            # pass has run) and pin it against window-resize deltas via
-            # stretch factors (1 for the editor pane, 0 for this one) rather
-            # than the ordinary proportional-resize behavior `split_view`
-            # gives user-created Split Right/Down panes.
             new_leaf = tree.split_view(
                 anchor,
                 Qt.Orientation.Vertical,
                 stretch=(1, 0),
                 fixed_sizes=(1, self._attached_height),
             )
-            tree.add_view(
-                self.content,
-                pane_id=new_leaf.pane_id,
-                select=select,
-                title="Find / Replace",
-            )
-            self._track_attached_split(new_leaf)
+        tree.add_view(
+            self.content,
+            pane_id=new_leaf.pane_id,
+            select=select,
+            title="Find / Replace",
+        )
+        self._track_attached_split(new_leaf)
         if not select and previous_view_id is not None:
             tree.activate_view(previous_view_id)
 

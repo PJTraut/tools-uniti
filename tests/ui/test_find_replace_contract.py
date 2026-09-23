@@ -1071,6 +1071,48 @@ def test_find_replace_attach_inserts_a_pane_tree_leaf_and_detach_preserves_state
         app.processEvents()
 
 
+def test_attaching_with_no_document_open_reserves_height_instead_of_filling_the_window():
+    """BF-090: attaching with zero documents open used to have no view to
+    anchor a split against, so it fell back to adding Find/Replace as the
+    pane tree's sole tab -- filling the whole window instead of the usual
+    bounded height. It now splits the (empty) root pane directly
+    (`EditorPaneTree.split_pane`), leaving an empty sibling leaf reserving
+    space exactly like an ordinary document-less window already shows."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID
+    from uniti.ui.main_window import UNITIMainWindow
+
+    app = QApplication.instance() or QApplication([])
+    host = UNITIMainWindow()
+    panel = host.find_replace
+    try:
+        assert host.panes.view_ids == ()
+
+        panel.attach_to(host)
+        app.processEvents()
+
+        assert host.panes.leaf_count == 2
+        leaf = host.panes.leaf_for_view(FIND_REPLACE_VIEW_ID)
+        assert leaf.widget(leaf.index_of(FIND_REPLACE_VIEW_ID)) is panel.content
+        other_leaves = [
+            host.panes.leaf(pane_id)
+            for pane_id in host.panes.pane_ids
+            if pane_id != leaf.pane_id
+        ]
+        assert len(other_leaves) == 1
+        assert other_leaves[0].count() == 0
+    finally:
+        panel.shutdown()
+        panel.close()
+        host.close()
+        app.processEvents()
+
+
 def test_find_replace_persists_placement_and_only_tracks_detached_geometry():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

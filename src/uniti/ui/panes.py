@@ -607,14 +607,53 @@ class EditorPaneTree(QWidget):
         stretch: tuple[int, int] | None = None,
         fixed_sizes: tuple[int, int] | None = None,
     ) -> PaneLeaf:
+        leaf = self.leaf_for_view(view_id)
+        if leaf is None:
+            raise KeyError(view_id)
+        return self._split_leaf(
+            leaf,
+            orientation,
+            proportions=proportions,
+            stretch=stretch,
+            fixed_sizes=fixed_sizes,
+        )
+
+    def split_pane(
+        self,
+        pane_id: str,
+        orientation: Qt.Orientation,
+        *,
+        proportions: tuple[float, float] = (0.5, 0.5),
+        stretch: tuple[int, int] | None = None,
+        fixed_sizes: tuple[int, int] | None = None,
+    ) -> PaneLeaf:
+        """Split `pane_id`'s leaf even if it currently holds no views (BF-090)
+        -- `split_view` requires an existing view to anchor against, which a
+        genuinely empty pane tree (no documents open at all) can never
+        supply."""
+
+        return self._split_leaf(
+            self._leaf(pane_id),
+            orientation,
+            proportions=proportions,
+            stretch=stretch,
+            fixed_sizes=fixed_sizes,
+        )
+
+    def _split_leaf(
+        self,
+        leaf: PaneLeaf,
+        orientation: Qt.Orientation,
+        *,
+        proportions: tuple[float, float] = (0.5, 0.5),
+        stretch: tuple[int, int] | None = None,
+        fixed_sizes: tuple[int, int] | None = None,
+    ) -> PaneLeaf:
         if orientation not in (
             Qt.Orientation.Horizontal,
             Qt.Orientation.Vertical,
         ):
             raise ValueError("split orientation must be horizontal or vertical")
-        leaf = self.leaf_for_view(view_id)
-        if leaf is None:
-            raise KeyError(view_id)
         if self.leaf_count >= MAX_LEAF_PANES:
             raise ValueError(
                 f"pane tree cannot exceed {MAX_LEAF_PANES} leaf panes"
