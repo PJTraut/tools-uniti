@@ -1708,8 +1708,81 @@ class UNITIMainWindow(QMainWindow):
             return
         self._service.documents.set_group(document_id, group_id)
         entry = self._service.documents.get(document_id)
+        if self._recent_files_store is not None:
+            self._recent_files_store.record_group(str(entry.canonical_path), group_id)
         for view_id in entry.view_ids:
             self._refresh_group_indicator(view_id)
+
+    def _group_by_id(self, group_id: str) -> object | None:
+        return next((group for group in self._groups if group.id == group_id), None)
+
+    def _save_group(self, group_id: str) -> None:
+        """BF-081: persist the paths of every currently open document
+        carrying ``group_id`` onto that group's record, so it can later be
+        reopened with ``_open_group``. Untitled and already-closed
+        documents have no reopenable path and are skipped."""
+
+        if self._service is None or self._group_store is None:
+            return
+        index = next(
+            (i for i, group in enumerate(self._groups) if group.id == group_id), None
+        )
+        if index is None:
+            return
+        paths = tuple(
+            str(entry.canonical_path)
+            for entry in self._service.documents.entries
+            if entry.group_id == group_id and entry.view_ids and not entry.is_untitled
+        )
+        updated = dataclass_replace(self._groups[index], saved_paths=paths)
+        groups = self._groups[:index] + (updated,) + self._groups[index + 1 :]
+        try:
+            self._group_store.save(groups)
+        except ValueError as exc:
+            self.statusBar().showMessage(str(exc)[:256], 5000)
+            return
+        self._groups = groups
+        self.statusBar().showMessage(
+            f'Saved {len(paths)} file(s) to group "{updated.name}".', 5000
+        )
+
+    def _close_group(self, group_id: str) -> None:
+        """BF-081: close every open tab currently carrying ``group_id``,
+        prompting per unsaved document exactly like an ordinary Close would
+        (matching ``close_all_documents``, BF-084)."""
+
+        if self._service is None:
+            return
+        for view_id in reversed(self.view_ids):
+            entry = self._service.documents.entry_for_view(view_id)
+            if entry is not None and entry.group_id == group_id:
+                if not self._close_view_id(view_id, force=False):
+                    return
+
+    def _open_group(self, group_id: str) -> None:
+        """BF-081: reopen every path saved onto ``group_id`` (an already
+        open path is focused instead, per ``open_path``) and (re)assign it
+        to the group -- restoring membership, not tab order/position."""
+
+        group = self._group_by_id(group_id)
+        if group is None or self._service is None:
+            return
+        failed = 0
+        for raw_path in group.saved_paths:
+            try:
+                view = self.open_path(Path(raw_path))
+            except Exception:
+                failed += 1
+                continue
+            if view is None:
+                continue
+            entry = self._service.documents.entry_for_view(view.view_id)
+            if entry is not None and entry.group_id != group_id:
+                self._set_document_group(entry.document_id, group_id)
+        if failed:
+            self.statusBar().showMessage(
+                f'Could not open {failed} file(s) from group "{group.name}".', 5000
+            )
 
     def _show_group_menu(self, view_id: str, position: QPoint) -> None:
         if self._service is None:
@@ -1737,6 +1810,27 @@ class UNITIMainWindow(QMainWindow):
                 lambda _checked=False,
                 document_id=entry.document_id,
                 group_id=group.id: self._set_document_group(document_id, group_id)
+            )
+        openable = [group for group in self._groups if group.saved_paths]
+        if openable:
+            menu.addSeparator()
+            for group in openable:
+                action = menu.addAction(f'Open Saved "{group.name}"')
+                action.triggered.connect(
+                    lambda _checked=False, group_id=group.id: self._open_group(group_id)
+                )
+        current_group = (
+            self._group_by_id(entry.group_id) if entry.group_id is not None else None
+        )
+        if current_group is not None:
+            menu.addSeparator()
+            save_action = menu.addAction(f'Save Group "{current_group.name}"')
+            save_action.triggered.connect(
+                lambda _checked=False, group_id=current_group.id: self._save_group(group_id)
+            )
+            close_action = menu.addAction(f'Close Group "{current_group.name}"')
+            close_action.triggered.connect(
+                lambda _checked=False, group_id=current_group.id: self._close_group(group_id)
             )
         menu.addSeparator()
         manage_action = menu.addAction("Manage Groups…")
@@ -1943,34 +2037,65 @@ class UNITIMainWindow(QMainWindow):
     def _populate_recent_files_menu(self) -> None:
         menu = self._recent_files_menu
         menu.clear()
-        paths = (
-            self._recent_files_store.load()
+        entries = (
+            self._recent_files_store.load_entries()
             if self._recent_files_store is not None
             else ()
         )
-        if not paths:
+        if not entries:
             empty_action = menu.addAction("(No Recent Files)")
             empty_action.setEnabled(False)
             return
-        names = [Path(path).name for path in paths]
+        names = [Path(entry.path).name for entry in entries]
         duplicated_names = {name for name in names if names.count(name) > 1}
-        for path, name in zip(paths, names):
+        for entry, name in zip(entries, names):
             label = (
-                f"{name}  ({Path(path).parent})" if name in duplicated_names else name
+                f"{name}  ({Path(entry.path).parent})" if name in duplicated_names else name
             )
-            action = menu.addAction(label)
-            action.setToolTip(path)
+            group = (
+                self._group_by_id(entry.group_id) if entry.group_id is not None else None
+            )
+            action = (
+                menu.addAction(self._group_swatch_icon(group.color), label)
+                if group is not None
+                else menu.addAction(label)
+            )
+            action.setToolTip(entry.path)
             action.triggered.connect(
-                lambda _checked=False, path=path: self._open_recent_file(path)
+                lambda _checked=False, path=entry.path: self._open_recent_file(path)
             )
         menu.addSeparator()
         menu.addAction("Clear Recent Files", self._clear_recent_files)
 
     def _open_recent_file(self, path: str) -> None:
+        """BF-082: reopening a recent file restores the DocumentGroup it
+        last carried, when that group still exists."""
+
+        group_id = None
+        if self._recent_files_store is not None:
+            match = next(
+                (
+                    entry
+                    for entry in self._recent_files_store.load_entries()
+                    if entry.path == path
+                ),
+                None,
+            )
+            group_id = match.group_id if match is not None else None
         try:
-            self.open_path(path)
+            view = self.open_path(path)
         except Exception as exc:
             QMessageBox.critical(self, "Open Failed", f"{path}\n\n{exc}")
+            return
+        if (
+            group_id is not None
+            and view is not None
+            and self._service is not None
+            and any(group.id == group_id for group in self._groups)
+        ):
+            entry = self._service.documents.entry_for_view(view.view_id)
+            if entry is not None and entry.group_id != group_id:
+                self._set_document_group(entry.document_id, group_id)
 
     def _clear_recent_files(self) -> None:
         if self._recent_files_store is not None:

@@ -702,7 +702,16 @@ def test_group_menu_lists_groups_and_marks_the_assigned_one(
         labels = [
             action.text() for action in menu.actions() if not action.isSeparator()
         ]
-        assert labels == ["No Group", "A", "B", "Manage Groups…"]
+        # BF-081: the tab's assigned group ("B") gains Save/Close Group
+        # commands; neither group has a saved set yet, so no "Open Saved".
+        assert labels == [
+            "No Group",
+            "A",
+            "B",
+            'Save Group "B"',
+            'Close Group "B"',
+            "Manage Groups…",
+        ]
         checked = {
             action.text(): action.isChecked()
             for action in menu.actions()
@@ -710,6 +719,230 @@ def test_group_menu_lists_groups_and_marks_the_assigned_one(
         }
         assert checked == {"No Group": False, "A": False, "B": True}
     finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_group_menu_offers_open_saved_for_groups_with_a_saved_set(
+    tmp_path: Path, monkeypatch
+):
+    """BF-081: any group with a saved set offers "Open Saved", even one
+    the current tab isn't assigned to."""
+
+    from PySide6.QtCore import QPoint
+    from PySide6.QtWidgets import QMenu
+
+    from uniti.app.document_groups import DocumentGroup
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "menu.txt"
+    path.write_text("abc", encoding="utf-8")
+    window = service.new_window()
+    captured: list[QMenu] = []
+    monkeypatch.setattr(QMenu, "popup", lambda self, *a, **k: captured.append(self))
+    try:
+        view = window.open_path(path)
+        window._groups = (
+            DocumentGroup("A", "A", "#e06c75"),
+            DocumentGroup("B", "B", "#61afef", saved_paths=("/tmp/saved.sfm",)),
+        )
+
+        window._show_group_menu(view.view_id, QPoint(10, 10))
+
+        assert len(captured) == 1
+        menu = captured[0]
+        labels = [
+            action.text() for action in menu.actions() if not action.isSeparator()
+        ]
+        assert labels == ["No Group", "A", "B", 'Open Saved "B"', "Manage Groups…"]
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_save_group_persists_open_paths_and_open_group_reopens_and_retags(
+    tmp_path: Path,
+):
+    """BF-081: "Save Group" persists which open tabs carry a group's tag;
+    "Open Group" (via a saved set) reopens exactly that set and reassigns
+    the tag, restoring membership."""
+
+    from uniti.app.document_groups import DocumentGroup
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    first = tmp_path / "first.sfm"
+    second = tmp_path / "second.sfm"
+    unrelated = tmp_path / "unrelated.sfm"
+    for path in (first, second, unrelated):
+        path.write_text("content", encoding="utf-8")
+    window = service.new_window()
+    try:
+        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        first_view = window.open_path(first)
+        second_view = window.open_path(second)
+        window.open_path(unrelated)
+        for view in (first_view, second_view):
+            entry = service.documents.entry_for_view(view.view_id)
+            service.documents.set_group(entry.document_id, "A")
+
+        window._save_group("A")
+
+        saved = next(group for group in window._groups if group.id == "A")
+        assert set(saved.saved_paths) == {str(first), str(second)}
+        assert window._group_store.load()[0].saved_paths == saved.saved_paths
+
+        window.close_all_documents(force=True)
+        assert len(window.view_ids) == 0
+
+        window._open_group("A")
+
+        assert len(window.view_ids) == 2
+        reopened_paths = set()
+        for view_id in window.view_ids:
+            entry = service.documents.entry_for_view(view_id)
+            assert entry.group_id == "A"
+            reopened_paths.add(str(entry.canonical_path))
+        assert reopened_paths == {str(first), str(second)}
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_close_group_closes_only_that_groups_tabs(tmp_path: Path):
+    """BF-081: "Close Group" closes every open tab carrying the tag, and
+    leaves other open tabs (including ungrouped ones) untouched."""
+
+    from uniti.app.document_groups import DocumentGroup
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    grouped_a = tmp_path / "grouped-a.sfm"
+    grouped_b = tmp_path / "grouped-b.sfm"
+    ungrouped = tmp_path / "ungrouped.sfm"
+    for path in (grouped_a, grouped_b, ungrouped):
+        path.write_text("content", encoding="utf-8")
+    window = service.new_window()
+    try:
+        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        grouped_a_view = window.open_path(grouped_a)
+        grouped_b_view = window.open_path(grouped_b)
+        ungrouped_view = window.open_path(ungrouped)
+        for view in (grouped_a_view, grouped_b_view):
+            entry = service.documents.entry_for_view(view.view_id)
+            service.documents.set_group(entry.document_id, "A")
+
+        window._close_group("A")
+
+        assert len(window.view_ids) == 1
+        remaining_entry = service.documents.entry_for_view(window.view_ids[0])
+        assert remaining_entry.document_id == service.documents.entry_for_view(
+            ungrouped_view.view_id
+        ).document_id
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_recent_files_menu_shows_group_swatch_and_reopening_restores_the_group(
+    tmp_path: Path,
+):
+    """BF-082: Recent Files remembers which DocumentGroup a file last
+    carried (via `_set_document_group`, the same path the group menu and
+    BF-081's Save/Open/Close Group actions all use) and restores it when
+    the file is reopened from that menu."""
+
+    from uniti.app.document_groups import DocumentGroup
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "tracked.sfm"
+    path.write_text("content", encoding="utf-8")
+    window = service.new_window()
+    try:
+        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        view = window.open_path(path)
+        entry = service.documents.entry_for_view(view.view_id)
+        window._set_document_group(entry.document_id, "A")
+
+        window._populate_recent_files_menu()
+        matches = [
+            action
+            for action in window._recent_files_menu.actions()
+            if action.text() == "tracked.sfm"
+        ]
+        assert len(matches) == 1
+        assert not matches[0].icon().isNull()
+
+        window._close_view_id(view.view_id, force=True)
+        assert len(window.view_ids) == 0
+
+        window._open_recent_file(str(path))
+
+        assert len(window.view_ids) == 1
+        reopened_entry = service.documents.entry_for_view(window.view_ids[0])
+        assert reopened_entry.group_id == "A"
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_close_group_prompts_per_unsaved_document_and_stops_on_cancel(
+    tmp_path: Path, monkeypatch
+):
+    """BF-081: closing a group prompts once per unsaved document, exactly
+    like an ordinary Close (matching Close All, BF-084) -- not once for the
+    whole group -- and a Cancel answer on one document stops the close
+    there, leaving that (still-modified) document open, just as
+    close_all_documents does when a Close is cancelled partway through."""
+
+    from PySide6.QtWidgets import QMessageBox
+
+    from uniti.app.document_groups import DocumentGroup
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    modified = tmp_path / "modified.sfm"
+    clean = tmp_path / "clean.sfm"
+    modified.write_text("content", encoding="utf-8")
+    clean.write_text("content", encoding="utf-8")
+    window = service.new_window()
+    monkeypatch.setattr(
+        QMessageBox,
+        "warning",
+        lambda *a, **k: QMessageBox.StandardButton.Cancel,
+    )
+    try:
+        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        modified_view = window.open_path(modified)
+        clean_view = window.open_path(clean)
+        modified_view.document.insert(0, "x")
+        modified_entry = service.documents.entry_for_view(modified_view.view_id)
+        for view in (modified_view, clean_view):
+            entry = service.documents.entry_for_view(view.view_id)
+            service.documents.set_group(entry.document_id, "A")
+
+        window._close_group("A")
+
+        # Close proceeds in reverse-open order (matching close_all_documents):
+        # "clean" (not modified, no prompt) closes first; "modified" then
+        # prompts, the Cancel answer stops the close, and it stays open.
+        assert len(window.view_ids) == 1
+        remaining_entry = service.documents.entry_for_view(window.view_ids[0])
+        assert remaining_entry.document_id == modified_entry.document_id
+    finally:
+        monkeypatch.undo()
         for _window_id, open_window in service.windows.items:
             open_window.close_all_documents(force=True)
             open_window.close()

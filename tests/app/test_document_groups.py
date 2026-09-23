@@ -79,6 +79,47 @@ def test_oversized_file_falls_back_to_defaults(tmp_path):
     assert store.load() == default_groups()
 
 
+def test_saved_paths_round_trip_and_default_empty(tmp_path):
+    """BF-081: a group can carry a saved, reopenable set of file paths."""
+
+    from uniti.app.document_groups import DocumentGroup, DocumentGroupStore, default_groups
+
+    defaults = default_groups()
+    assert all(group.saved_paths == () for group in defaults)
+
+    store = DocumentGroupStore(tmp_path / "document-groups.json")
+    with_paths = (
+        replace(defaults[0], saved_paths=("/tmp/a.sfm", "/tmp/b.sfm")),
+        *defaults[1:],
+    )
+    store.save(with_paths)
+    assert store.load() == with_paths
+    assert store.load()[0].saved_paths == ("/tmp/a.sfm", "/tmp/b.sfm")
+
+
+def test_saved_paths_defaults_when_absent_from_old_file(tmp_path):
+    """Files written before BF-081 have no ``saved_paths`` key at all."""
+
+    from uniti.app.document_groups import DocumentGroup
+
+    old_payload = {"id": "A", "name": "A", "color": "#e06c75"}
+    group = DocumentGroup.from_dict(old_payload)
+    assert group.saved_paths == ()
+
+
+def test_saved_paths_validation_rejects_non_string_entries():
+    from uniti.app.document_groups import DocumentGroup
+
+    with pytest.raises(ValueError):
+        DocumentGroup("A", "A", "#e06c75", saved_paths=("ok", ""))
+    with pytest.raises(ValueError):
+        DocumentGroup("A", "A", "#e06c75", saved_paths=("ok", 3))
+    with pytest.raises(ValueError):
+        DocumentGroup.from_dict(
+            {"id": "A", "name": "A", "color": "#e06c75", "saved_paths": [1, 2]}
+        )
+
+
 def test_atomic_failure_retains_previous_file(tmp_path, monkeypatch):
     from uniti.app import document_groups
 

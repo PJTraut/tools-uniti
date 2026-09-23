@@ -28,6 +28,7 @@ class DocumentGroup:
     id: str
     name: str
     color: str
+    saved_paths: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.id, str) or not _ID_RE.fullmatch(self.id):
@@ -36,16 +37,41 @@ class DocumentGroup:
             raise ValueError(f'Group name must be 1-{MAX_NAME_LENGTH} printable characters')
         if not isinstance(self.color, str) or not _COLOR_RE.fullmatch(self.color):
             raise ValueError('Group color must use #RRGGBB format')
+        if not isinstance(self.saved_paths, tuple) or not all(
+            isinstance(path, str) and path for path in self.saved_paths
+        ):
+            raise ValueError('Group saved paths must be a tuple of nonempty strings')
         object.__setattr__(self, 'color', self.color.lower())
 
     def as_dict(self) -> dict:
-        return dict(id=self.id, name=self.name, color=self.color)
+        return dict(
+            id=self.id,
+            name=self.name,
+            color=self.color,
+            saved_paths=list(self.saved_paths),
+        )
 
     @classmethod
     def from_dict(cls, payload: object) -> 'DocumentGroup':
-        if not isinstance(payload, dict) or set(payload) != {'id', 'name', 'color'}:
+        allowed_keys = {'id', 'name', 'color', 'saved_paths'}
+        required_keys = {'id', 'name', 'color'}
+        if (
+            not isinstance(payload, dict)
+            or not required_keys <= set(payload)
+            or set(payload) - allowed_keys
+        ):
             raise ValueError('Invalid document group keys')
-        return cls(**payload)
+        saved_paths = payload.get('saved_paths', [])
+        if not isinstance(saved_paths, list) or not all(
+            isinstance(path, str) for path in saved_paths
+        ):
+            raise ValueError('Invalid document group keys')
+        return cls(
+            id=payload['id'],
+            name=payload['name'],
+            color=payload['color'],
+            saved_paths=tuple(saved_paths),
+        )
 
 
 def default_groups() -> tuple[DocumentGroup, ...]:
