@@ -222,6 +222,21 @@ class _AnalysisHighlighter(QSyntaxHighlighter):
         result.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
         return result
 
+    def _diagnostic_format(self, base: QTextCharFormat) -> QTextCharFormat:
+        """BF-086: the reported error span gets a background tint in
+        addition to the existing wavy underline -- a text-only status-line
+        message ("... at column N") left the actual problem location
+        undiscoverable at a glance. Derived from `_invalid_color` (already
+        contrast-checked against this widget's own palette, `rebuild_formats`
+        above) at a low alpha, the same low-alpha tint convention Compare's
+        hunk backgrounds use (BF-078)."""
+
+        result = self._invalid_format(base)
+        tint = QColor(self._invalid_color)
+        tint.setAlpha(60)
+        result.setBackground(tint)
+        return result
+
     def highlightBlock(self, text: str) -> None:
         analysis = self.analysis
         if analysis is None or analysis.expression != text:
@@ -270,7 +285,7 @@ class _AnalysisHighlighter(QSyntaxHighlighter):
                 start = max(0, start - 1)
                 end = start + 1
             start_unit = mapping.cp_to_u16(start)
-            fmt = self._invalid_format(self.format(start_unit))
+            fmt = self._diagnostic_format(self.format(start_unit))
             self.setFormat(start_unit, mapping.cp_to_u16(end) - start_unit, fmt)
 
 
@@ -282,10 +297,47 @@ class ReplacementHighlighter(_AnalysisHighlighter):
     pass
 
 
+#: BF-088: only these three, matching the confirmed report exactly
+#: (CRLF/CR/LF/TAB) -- not general regex-metacharacter escaping of
+#: arbitrary pasted text, which is a different, much larger feature.
+_PASTE_WHITESPACE_ESCAPES = (
+    ("\r", "\\r"),
+    ("\n", "\\n"),
+    ("\t", "\\t"),
+)
+
+
+def _escape_pasted_whitespace(text: str) -> str:
+    for literal, escaped in _PASTE_WHITESPACE_ESCAPES:
+        text = text.replace(literal, escaped)
+    return text
+
+
 class _FallbackTextInput(BoundedSingleLineTextEdit):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._regex_mode = False
+
     def minimum_content_height(self) -> int:
         shape = ShapedWindow("क्षि ক্কি 中文 한국어", self.font())
         return max(28, int(max(line.height() for line in shape.lines)) + 12)
+
+    def set_regex_mode(self, enabled: bool) -> None:
+        """BF-088: while enabled, pasting literal CR/LF/TAB converts them
+        to their regex escapes (`\\r`/`\\n`/`\\t`) instead of inserting the
+        raw control character into this single-line field. Off (a literal,
+        non-regex search/replace) leaves paste untouched, since that mode
+        must still be able to match an actual tab or newline."""
+
+        self._regex_mode = bool(enabled)
+
+    def insertFromMimeData(self, source) -> None:
+        if self._regex_mode and source.hasText():
+            text = _escape_pasted_whitespace(source.text())
+            if text:
+                self.textCursor().insertText(text)
+            return
+        super().insertFromMimeData(source)
 
 
 class RegexInput(_FallbackTextInput):

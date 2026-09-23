@@ -1710,6 +1710,93 @@ def test_invalid_diagnostic_has_wave_underline_and_accessible_text(
         _close_panel(app, document, view, panel)
 
 
+def test_invalid_diagnostic_also_gets_a_background_tint(tmp_path: Path):
+    """BF-086: the reported error's location was previously only a
+    text-only status message ("... at column N") -- the same span that
+    gets the wavy underline now also gets a background tint, so the
+    problem is visible in the pattern field itself, not just described.
+    `ReplacementHighlighter(_AnalysisHighlighter): pass` shares this exact
+    `highlightBlock` with no override, so the replacement field gets the
+    same treatment for free."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from uniti.regex.analysis import AnalysisState
+
+    app, document, view, panel = _make_panel(tmp_path, "abc")
+    try:
+        panel.regex_checkbox.setChecked(True)
+        panel.find_input.set_text("(")
+        _wait_until(
+            app,
+            lambda: panel._pattern_analysis.state is AnalysisState.INVALID,
+        )
+        formats = panel.find_input.document().firstBlock().layout().formats()
+        tinted = [
+            item for item in formats if item.format.background().color().alpha() > 0
+        ]
+        assert tinted
+        expected = panel.find_input.highlighter._invalid_color
+        background = tinted[0].format.background().color()
+        assert (background.red(), background.green(), background.blue()) == (
+            expected.red(),
+            expected.green(),
+            expected.blue(),
+        )
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_regex_mode_paste_converts_literal_whitespace_to_regex_escapes(
+    tmp_path: Path,
+):
+    """BF-088: pasting literal CR/LF/TAB into either field while Regex mode
+    is on converts them to their regex escapes, instead of inserting the
+    raw control characters into a single-line pattern/replacement field."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QMimeData
+
+    app, document, view, panel = _make_panel(tmp_path, "abc")
+    try:
+        panel.regex_checkbox.setChecked(True)
+
+        mime = QMimeData()
+        mime.setText("a\tb\r\nc")
+        panel.find_input.insertFromMimeData(mime)
+        assert panel.find_input.text() == "a\\tb\\r\\nc"
+
+        panel.replace_input.insertFromMimeData(mime)
+        assert panel.replace_input.text() == "a\\tb\\r\\nc"
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_literal_mode_paste_keeps_whitespace_unconverted(tmp_path: Path):
+    """BF-088: a literal (non-regex) search/replace must still be able to
+    match an actual tab/newline, so paste stays raw with Regex mode off."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QMimeData
+
+    app, document, view, panel = _make_panel(tmp_path, "abc")
+    try:
+        assert panel.regex_checkbox.isChecked() is False
+
+        mime = QMimeData()
+        mime.setText("a\tb")
+        panel.find_input.insertFromMimeData(mime)
+        assert panel.find_input.text() == "a\tb"
+    finally:
+        _close_panel(app, document, view, panel)
+
+
 def test_palette_change_rebuilds_group_formats_with_accessible_contrast(
     tmp_path: Path,
 ):

@@ -1052,6 +1052,12 @@ class FindReplaceWindow(QDockWidget):
     def _search_mode_changed(self, regex_mode: bool) -> None:
         self.case_sensitive_checkbox.setEnabled(not regex_mode)
         self.whole_word_checkbox.setEnabled(not regex_mode)
+        # BF-088: pasted literal whitespace converts to its regex escape
+        # only in Regex mode -- a literal (non-regex) search/replace must
+        # still be able to match an actual tab/newline, so it keeps
+        # inserting the raw pasted bytes unchanged.
+        self.find_input.set_regex_mode(regex_mode)
+        self.replace_input.set_regex_mode(regex_mode)
         self._pattern_changed()
 
     def _selection_only_toggled(self, checked: bool) -> None:
