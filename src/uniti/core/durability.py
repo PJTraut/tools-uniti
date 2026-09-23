@@ -2,16 +2,52 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 import os
 from pathlib import Path
 import sys
+import time
 from typing import Protocol
 
 
 _MAX_DETAIL_CHARS = 128
+
+# ERROR_UNABLE_TO_REMOVE_REPLACED (a prior version of the destination could
+# not be deleted) and ERROR_SHARING_VIOLATION (something else has it open) --
+# both are routinely transient on Windows (antivirus or an indexer briefly
+# holding the destination open), not a persistent failure, so a replace is
+# worth retrying through them rather than failing on the first contended
+# attempt.
+_TRANSIENT_REPLACE_WINERRORS = frozenset({1175, 32})
+
+
+def _retry_transient_replace(
+    attempt: Callable[[], None],
+    *,
+    max_attempts: int = 5,
+    initial_delay_seconds: float = 0.02,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """Run `attempt` (a single ReplaceFileW call), retrying with backoff
+    through `_TRANSIENT_REPLACE_WINERRORS`. Any other OSError, or the last
+    attempt's, is raised immediately -- this is for riding out a momentary
+    lock, not for masking a persistent failure (wrong permissions, a
+    read-only/hidden target, a policy block)."""
+
+    delay = initial_delay_seconds
+    for remaining in range(max_attempts - 1, -1, -1):
+        try:
+            attempt()
+            return
+        except OSError as error:
+            if remaining == 0 or getattr(error, "winerror", None) not in (
+                _TRANSIENT_REPLACE_WINERRORS
+            ):
+                raise
+            sleep(delay)
+            delay *= 2
 
 
 def _windows_replace_existing(source: Path, destination: Path) -> None:
@@ -30,15 +66,19 @@ def _windows_replace_existing(source: Path, destination: Path) -> None:
         wintypes.LPVOID,
     )
     replace_file.restype = wintypes.BOOL
-    if not replace_file(
-        str(destination),
-        str(source),
-        None,
-        0,
-        None,
-        None,
-    ):
-        raise ctypes.WinError(ctypes.get_last_error())
+
+    def attempt() -> None:
+        if not replace_file(
+            str(destination),
+            str(source),
+            None,
+            0,
+            None,
+            None,
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    _retry_transient_replace(attempt)
 
 
 class DurabilityLevel(StrEnum):

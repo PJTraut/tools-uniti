@@ -980,6 +980,7 @@ class SelfCheckRunner:
             ):
                 raise RuntimeError("large-file fixture is not physically sparse")
             with Document.open(sparse_path, encoding="utf-8") as document:
+                expected_mmap = not sys.platform.startswith("win")
                 lazy_open = (
                     document.source.size == tail_offset + len(marker)
                     and document.source.read(tail_offset, len(marker)) == marker
@@ -987,6 +988,7 @@ class SelfCheckRunner:
                     and not document.offset_mapper.complete
                     and not document.document_line_index.complete
                     and document.offset_mapper.indexed_byte_end < (1 << 20)
+                    and document.source.uses_mmap is expected_mmap
                 )
 
             streaming_path.write_bytes(b"x" * (2 << 20))

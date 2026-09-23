@@ -120,7 +120,20 @@ Once bootstrapped:
 .venv/bin/python -m uniti
 ```
 
-Bootstrap options include `--local`, `--dev`, `--repair`, `--no-launch`, and `--self-check [--deep] [--json]`. Use `--` before filenames beginning with `-`.
+Bootstrap options include `--local`, `--dev`, `--repair`, `--no-launch`, and `--self-check [--deep] [--json]`. Use `--` before filenames beginning with `-`. Pass `--no-restore` to launch with no previous session restored (any filenames given still open); this does not skip crash/autosave recovery prompts.
+
+### Linux system dependencies
+
+PySide6/Qt needs a handful of system libraries pip cannot install; on a minimal or headless-derived install they may be missing. The exact list this project's own CI installs on Ubuntu (`.github/workflows/a21-cross-platform.yml`) via `apt-get install`:
+
+```
+libegl1 libfontconfig1 libgl1 libx11-xcb1 libxcb-cursor0 libxcb-icccm4 \
+libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 \
+libxkbcommon-x11-0 xauth xvfb
+```
+
+On a non-Debian distro, install the equivalent packages from your package manager. Missing these typically shows as Qt failing to load the `xcb` platform plugin at launch.
 
 ## Runtime self-check
 

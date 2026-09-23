@@ -135,6 +135,80 @@ def test_native_directory_sync_ignores_close_failure_after_success(monkeypatch):
     assert calls == [("fsync", 73), ("close", 73)]
 
 
+def test_retry_transient_replace_succeeds_without_retry_when_attempt_succeeds():
+    from uniti.core.durability import _retry_transient_replace
+
+    calls = []
+
+    def attempt():
+        calls.append("try")
+
+    sleeps = []
+    _retry_transient_replace(attempt, sleep=sleeps.append)
+
+    assert calls == ["try"]
+    assert sleeps == []
+
+
+@pytest.mark.parametrize("winerror", [1175, 32])
+def test_retry_transient_replace_retries_through_known_transient_winerrors(winerror):
+    from uniti.core.durability import _retry_transient_replace
+
+    attempts = []
+
+    def attempt():
+        attempts.append(1)
+        if len(attempts) < 3:
+            error = OSError("locked")
+            error.winerror = winerror
+            raise error
+
+    sleeps = []
+    _retry_transient_replace(attempt, sleep=sleeps.append)
+
+    assert len(attempts) == 3
+    # Exponential backoff: 0.02, then 0.04.
+    assert sleeps == [0.02, 0.04]
+
+
+def test_retry_transient_replace_does_not_retry_an_unrelated_oserror():
+    from uniti.core.durability import _retry_transient_replace
+
+    attempts = []
+
+    def attempt():
+        attempts.append(1)
+        error = OSError("access denied")
+        error.winerror = 5
+        raise error
+
+    sleeps = []
+    with pytest.raises(OSError, match="access denied"):
+        _retry_transient_replace(attempt, sleep=sleeps.append)
+
+    assert len(attempts) == 1
+    assert sleeps == []
+
+
+def test_retry_transient_replace_raises_the_last_error_after_exhausting_attempts():
+    from uniti.core.durability import _retry_transient_replace
+
+    attempts = []
+
+    def attempt():
+        attempts.append(1)
+        error = OSError("still locked")
+        error.winerror = 1175
+        raise error
+
+    sleeps = []
+    with pytest.raises(OSError, match="still locked"):
+        _retry_transient_replace(attempt, max_attempts=3, sleep=sleeps.append)
+
+    assert len(attempts) == 3
+    assert len(sleeps) == 2
+
+
 def test_native_windows_replace_uses_replacefile_for_existing_target(
     tmp_path: Path,
     monkeypatch,

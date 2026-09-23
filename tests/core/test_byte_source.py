@@ -93,6 +93,70 @@ def test_sparse_file_supports_offsets_above_one_gib(tmp_path: Path):
         assert source.read(marker_offset, 5) == b"UNITI"
 
 
+def test_windows_simulated_reads_support_large_sparse_files_without_mmap(
+    tmp_path: Path,
+    monkeypatch,
+):
+    """Coverage gap closed: mmap is unconditionally disabled on Windows
+    (ByteSource.open's own `not windows` gate), so on a real Windows machine
+    every large file is always read through the buffered seek/read
+    fallback -- but until this test, nothing combined a simulated-Windows
+    dispatch with a genuinely large (>1 GiB) file, so a regression in that
+    specific combination could only ever have been caught by a real Windows
+    CI run happening to notice, not by a dedicated assertion."""
+
+    path = tmp_path / "large-windows.bin"
+    marker_offset = (1 << 30) + 54321
+    marker = b"UNITI_WINDOWS_TAIL"
+    try:
+        with path.open("wb") as handle:
+            assert enable_sparse_file(handle.fileno())
+            handle.write(b"head\n")
+            handle.seek(marker_offset)
+            handle.write(marker)
+    except OSError as exc:
+        pytest.fail(f"required sparse test fixture is unavailable: {exc}")
+
+    opened: list[Path] = []
+
+    def open_shared_delete(candidate: Path):
+        opened.append(candidate)
+        return candidate.open("rb")
+
+    monkeypatch.setattr(byte_source_module.sys, "platform", "win32")
+    monkeypatch.setattr(
+        byte_source_module,
+        "_open_windows_read_shared_delete",
+        open_shared_delete,
+    )
+    monkeypatch.setattr(
+        byte_source_module.mmap,
+        "mmap",
+        lambda *_args, **_kwargs: pytest.fail(
+            "a simulated-Windows large file must not be mapped"
+        ),
+    )
+
+    with ByteSource.open(path, prefer_mmap=True) as source:
+        assert source.uses_mmap is False
+        assert source.size == marker_offset + len(marker)
+        assert source.read(0, 5) == b"head\n"
+        assert source.read(marker_offset, len(marker)) == marker
+        # A bounded read spanning out of the sparse hole and into the tail
+        # marker, exercising the fallback at a boundary a small fixture
+        # could never reach.
+        spanning = list(
+            source.iter_chunks(
+                start=marker_offset - 32,
+                end=marker_offset + len(marker),
+                chunk_size=8,
+            )
+        )
+        assert b"".join(spanning) == (b"\x00" * 32) + marker
+
+    assert opened == [path]
+
+
 def test_fork_retains_open_file_after_path_replacement_and_parent_close(tmp_path: Path):
     path = tmp_path / "fork.bin"
     path.write_bytes(b"original")
