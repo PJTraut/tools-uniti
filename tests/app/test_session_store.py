@@ -601,20 +601,20 @@ def test_aggregate_admission_trims_inactive_before_active_history():
     assert admitted.manifest.notices[-1].reason == "aggregate_limit"
 
 
-def test_bf031_aggregate_admission_trims_at_the_real_256mib_default_with_many_large_documents():
+def test_bf031_aggregate_admission_trims_at_the_real_512mib_default_with_many_large_documents():
     """BF-031's multi-document variant of BF-030's shared-resource concern:
     the mechanism above is proven correct at a synthetic, tiny
     `aggregate_limit` for speed and focus; this proves it holds at the
-    real 256 MiB `AGGREGATE_HISTORY_BYTES` default, with real per-document
+    real 512 MiB `AGGREGATE_HISTORY_BYTES` default, with real per-document
     content sizes approaching (not merely simulating) the actual
     production boundary.
 
-    Twelve open documents, each holding one ~30 MiB single-transaction
-    history (safely under the 32 MiB per-document export cap on its own)
+    Twelve open documents, each holding one ~60 MiB single-transaction
+    history (safely under the 64 MiB per-document export cap on its own)
     of high-entropy hex text -- `_physical_encoded_bytes` is measured
     *after* zlib compression, so low-entropy content like repeated
     characters would trivially fit regardless of how "large" it looks
-    decoded. Twelve documents at this size comfortably exceed the 256 MiB
+    decoded. Twelve documents at this size comfortably exceed the 512 MiB
     aggregate default; the oldest (least recently active) one must be the
     one trimmed.
     """
@@ -622,7 +622,7 @@ def test_bf031_aggregate_admission_trims_at_the_real_256mib_default_with_many_la
     documents = [
         _pack(
             f"doc-{index}",
-            text=os.urandom(15 * 1024 * 1024).hex(),
+            text=os.urandom(30 * 1024 * 1024).hex(),
             generation=f"history-{index}",
             last_active_at=NOW - timedelta(minutes=11 - index),
         )

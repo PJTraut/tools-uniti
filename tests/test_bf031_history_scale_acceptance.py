@@ -2,15 +2,15 @@
 at scale.
 
 "LARGE" is already a concrete, enforced boundary in the code, just
-untested against it: per-document Undo/Redo retention is bounded at 50
-transactions or 32 MiB decoded (`uniti.core.history.EditHistory`),
+untested against it: per-document Undo/Redo retention is bounded at 100
+transactions or 64 MiB decoded (`uniti.core.history.EditHistory`),
 whichever is hit first, after which the oldest transactions are pruned.
 These tests exercise a large single paste (as one real operation, through
 `Document`/`EditorState`'s own public API) and undo/redo at and past both
 boundaries -- not merely correctness at trivial size, which is all the
 existing suite covered before this.
 
-The multi-document variant approaching the separate 256 MiB *aggregate*
+The multi-document variant approaching the separate 512 MiB *aggregate*
 cap (BF-030's shared-resource concern) lives in
 `tests/app/test_session_store.py`, next to the mechanism it exercises.
 """
@@ -35,10 +35,10 @@ def test_large_single_paste_round_trips_with_fast_undo_redo(tmp_path: Path):
     path = tmp_path / "large-paste.txt"
     with _open(path) as document:
         state = EditorState(document)
-        # 24 MiB: a real, large single paste, comfortably under the 32 MiB
+        # 48 MiB: a real, large single paste, comfortably under the 64 MiB
         # single-transaction persistence cap.
-        payload = os.urandom(12 * 1024 * 1024).hex()
-        assert len(payload.encode("utf-8")) == 24 * 1024 * 1024
+        payload = os.urandom(24 * 1024 * 1024).hex()
+        assert len(payload.encode("utf-8")) == 48 * 1024 * 1024
 
         state.paste_text(payload)
         assert document.read(0, document.total_chars()) == payload
@@ -54,7 +54,7 @@ def test_large_single_paste_round_trips_with_fast_undo_redo(tmp_path: Path):
         assert document.read(0, document.total_chars()) == payload
 
         # Generous scale sanity bounds, not a strict perf-regression gate:
-        # a 24 MiB single-transaction undo/redo must not be anywhere near
+        # a 48 MiB single-transaction undo/redo must not be anywhere near
         # quadratic or otherwise pathological at this size.
         assert undo_seconds < 2.0
         assert redo_seconds < 2.0
@@ -64,7 +64,7 @@ def test_large_single_paste_round_trips_with_fast_undo_redo(tmp_path: Path):
         assert snapshot.truncations == ()
         # `estimate_transaction_bytes` adds a fixed 56-byte transaction/
         # operation overhead on top of the raw inserted text length.
-        assert snapshot.decoded_bytes == 24 * 1024 * 1024 + 56
+        assert snapshot.decoded_bytes == 48 * 1024 * 1024 + 56
 
 
 def test_paste_exceeding_the_single_transaction_cap_is_reported_not_silently_dropped(
@@ -73,10 +73,10 @@ def test_paste_exceeding_the_single_transaction_cap_is_reported_not_silently_dro
     path = tmp_path / "over-cap-paste.txt"
     with _open(path) as document:
         state = EditorState(document)
-        # 40 MiB: a single paste larger than the 32 MiB per-document
+        # 80 MiB: a single paste larger than the 64 MiB per-document
         # persistence cap on its own.
-        payload = os.urandom(20 * 1024 * 1024).hex()
-        assert len(payload.encode("utf-8")) == 40 * 1024 * 1024
+        payload = os.urandom(40 * 1024 * 1024).hex()
+        assert len(payload.encode("utf-8")) == 80 * 1024 * 1024
 
         state.paste_text(payload)
 
@@ -99,54 +99,54 @@ def test_paste_exceeding_the_single_transaction_cap_is_reported_not_silently_dro
         ]
         assert len(over_limit) == 1
         assert over_limit[0].dropped_transactions == 1
-        assert over_limit[0].dropped_bytes >= 40 * 1024 * 1024
+        assert over_limit[0].dropped_bytes >= 80 * 1024 * 1024
 
 
-def test_sixty_large_edits_enforce_the_fifty_transaction_depth_limit_live(
+def test_hundred_ten_large_edits_enforce_the_hundred_transaction_depth_limit_live(
     tmp_path: Path,
 ):
     path = tmp_path / "many-edits.txt"
     with _open(path) as document:
         state = EditorState(document)
         # Each edit is a distinct ~100 KB append at a growing offset, kept
-        # well under the 32 MiB aggregate cap (~6 MB total) so this
-        # isolates the 50-transaction depth limit from the byte limit.
+        # well under the 64 MiB aggregate cap (~11 MB total) so this
+        # isolates the 100-transaction depth limit from the byte limit.
         # `insert_text` only ever coalesces a *single* inserted character,
         # so each multi-character append here is already its own
         # transaction.
         chunk = "x" * 100_000
-        for _ in range(60):
+        for _ in range(110):
             state.cursor = document.total_chars()
             state.anchor = state.cursor
             state.insert_text(chunk)
 
-        assert document.total_chars() == 60 * len(chunk)
-        # The 50-transaction depth limit is enforced live, at record time
+        assert document.total_chars() == 110 * len(chunk)
+        # The 100-transaction depth limit is enforced live, at record time
         # -- not only at export -- so a generous export budget still only
-        # ever sees the 50 most recent transactions.
+        # ever sees the 100 most recent transactions.
         snapshot = document.export_history(max_transactions=1000, max_bytes=1 << 40)
-        assert len(snapshot.transactions) == 50
+        assert len(snapshot.transactions) == 100
 
-        for _ in range(50):
+        for _ in range(100):
             assert document.can_undo
             document.undo()
         assert not document.can_undo
         # The oldest 10 edits were evicted from *undo history* only; the
-        # document's actual content still reflects all 60.
+        # document's actual content still reflects all 110.
         assert document.total_chars() == 10 * len(chunk)
 
 
-def test_history_near_the_32mib_boundary_truncates_oldest_transactions_and_restores(
+def test_history_near_the_64mib_boundary_truncates_oldest_transactions_and_restores(
     tmp_path: Path,
 ):
     path = tmp_path / "near-boundary.txt"
     with _open(path) as document:
         state = EditorState(document)
-        # Five 8 MiB transactions: 40 MiB decoded total, over the 32 MiB
+        # Five 16 MiB transactions: 80 MiB decoded total, over the 64 MiB
         # export cap, but each individually well under the per-transaction
         # cap -- isolates the byte limit from the depth and
         # per-transaction limits.
-        chunks = [os.urandom(4 * 1024 * 1024).hex() for _ in range(5)]
+        chunks = [os.urandom(8 * 1024 * 1024).hex() for _ in range(5)]
         for chunk in chunks:
             state.cursor = document.total_chars()
             state.anchor = state.cursor
@@ -157,10 +157,10 @@ def test_history_near_the_32mib_boundary_truncates_oldest_transactions_and_resto
 
         snapshot = document.export_history()
         assert snapshot.persistable is True
-        assert snapshot.decoded_bytes <= 32 * 1024 * 1024
+        assert snapshot.decoded_bytes <= 64 * 1024 * 1024
         byte_limit = [t for t in snapshot.truncations if t.reason == "byte_limit"]
         assert len(byte_limit) == 1
-        # At least the oldest transaction had to go to fit under 32 MiB.
+        # At least the oldest transaction had to go to fit under 64 MiB.
         assert 0 < len(snapshot.transactions) < len(chunks)
 
         # The *current* saved content is the full concatenation regardless
@@ -178,11 +178,11 @@ def test_history_near_the_32mib_boundary_truncates_oldest_transactions_and_resto
 
 def test_history_export_snapshot_is_fast_near_the_boundary():
     history = EditHistory()
-    payload = os.urandom(15 * 1024 * 1024).hex()
+    payload = os.urandom(30 * 1024 * 1024).hex()
     for index in range(3):
         history.record(EditTransaction((EditOperation(0, "", f"{index}:{payload}"),)))
     start = time.monotonic()
     snapshot = history.export_snapshot()
     elapsed = time.monotonic() - start
     assert elapsed < 1.0
-    assert snapshot.decoded_bytes <= 32 * 1024 * 1024
+    assert snapshot.decoded_bytes <= 64 * 1024 * 1024

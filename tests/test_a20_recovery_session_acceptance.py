@@ -83,13 +83,13 @@ def _constant_command(node: ast.Call) -> str | None:
 
 def test_a20_history_and_storage_budgets_are_exact_and_bounded():
     history = EditHistory()
-    for index in range(60):
+    for index in range(110):
         history.record(EditTransaction((EditOperation(index, "", "x"),)))
-    assert len(history.export_snapshot().transactions) == 50
-    assert MAX_PACK_DECODED_BYTES == 32 << 20
+    assert len(history.export_snapshot().transactions) == 100
+    assert MAX_PACK_DECODED_BYTES == 64 << 20
     assert MAX_INPUT_HISTORY_STATES == 50
     assert MAX_FIND_REPLACE_DECODED_BYTES == 4 << 20
-    assert AGGREGATE_HISTORY_BYTES == 256 << 20
+    assert AGGREGATE_HISTORY_BYTES == 512 << 20
     assert RECOVERY_FREE_SPACE_RESERVE == 512 << 20
     assert CLOSED_HISTORY_RETENTION == HISTORY_RETENTION == timedelta(days=7)
     assert MAX_MANIFEST_BYTES == 1 << 20

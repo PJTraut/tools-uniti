@@ -71,7 +71,7 @@ class HistorySnapshot:
 class EditHistory:
     """Cursor-based immutable transaction history with saved-revision tracking."""
 
-    def __init__(self, max_transactions: int = 50) -> None:
+    def __init__(self, max_transactions: int = 100) -> None:
         if type(max_transactions) is not int or max_transactions <= 0:
             raise ValueError("max_transactions must be a positive integer")
         self._max_transactions = max_transactions
@@ -103,8 +103,8 @@ class EditHistory:
     def export_snapshot(
         self,
         *,
-        max_transactions: int = 50,
-        max_bytes: int = 32 << 20,
+        max_transactions: int = 100,
+        max_bytes: int = 64 << 20,
     ) -> HistorySnapshot:
         if type(max_transactions) is not int or max_transactions <= 0:
             raise ValueError("max_transactions must be a positive integer")

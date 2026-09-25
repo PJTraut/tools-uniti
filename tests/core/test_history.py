@@ -68,14 +68,14 @@ def test_empty_transaction_is_not_recorded():
     assert not history.modified
 
 
-def test_history_retains_only_the_latest_fifty_transactions():
+def test_history_retains_only_the_latest_hundred_transactions():
     history = EditHistory()
-    changes = [tx(index, "", str(index)) for index in range(51)]
+    changes = [tx(index, "", str(index)) for index in range(101)]
 
     for change in changes:
         history.record(change)
 
-    assert [history.undo() for _ in range(50)] == list(reversed(changes[1:]))
+    assert [history.undo() for _ in range(100)] == list(reversed(changes[1:]))
     assert history.can_undo is False
 
 

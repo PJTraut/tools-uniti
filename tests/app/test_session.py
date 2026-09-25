@@ -619,8 +619,12 @@ def test_pack_reference_rejects_bad_hash_and_unsafe_filename():
 
 @pytest.mark.parametrize("field", ["encoded_bytes", "decoded_bytes"])
 def test_pack_decoder_rejects_excessive_declared_lengths(field: str):
+    limits = {
+        "encoded_bytes": session_module.MAX_PACK_ENCODED_BYTES,
+        "decoded_bytes": session_module.MAX_PACK_DECODED_BYTES,
+    }
     envelope = json.loads(encode_history_pack(_history_pack()))
-    envelope[field] = (32 << 20) + 1
+    envelope[field] = limits[field] + 1
 
     with pytest.raises(ValueError, match="limit|no more"):
         decode_history_pack(_canonical_envelope(envelope))

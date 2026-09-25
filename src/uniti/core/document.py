@@ -457,8 +457,8 @@ class Document:
     def export_history(
         self,
         *,
-        max_transactions: int = 50,
-        max_bytes: int = 32 << 20,
+        max_transactions: int = 100,
+        max_bytes: int = 64 << 20,
     ) -> HistorySnapshot:
         self._ensure_open()
         return self._history.export_snapshot(
