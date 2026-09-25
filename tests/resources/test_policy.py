@@ -31,6 +31,8 @@ def test_packaged_policy_has_approved_a18_values():
     assert policy.gates["peak_rss_mib"].physical_ram_fraction_fail == 0.125
     assert policy.resources.max_cache_mib == 512
     assert policy.resources.physical_ram_fraction == 0.125
+    assert policy.resources.balloon_max_multiplier == 2.0
+    assert policy.resources.balloon_grab_fraction == 0.10
     assert policy.pressure.healthier_samples_before_recovery == 2
     assert policy.comparison.regression_failure_percent == 25
     assert policy.comparison.required_failure_confirmations == 2
@@ -87,6 +89,20 @@ def test_policy_rejects_inverted_warn_and_fail(tmp_path: Path):
     )
 
     with pytest.raises(ValueError, match="warn must not exceed fail"):
+        load_performance_policy(bad)
+
+
+def test_policy_rejects_a_balloon_multiplier_below_one(tmp_path: Path):
+    source = Path("src/uniti/resources/performance_policy.toml").read_text(
+        encoding="utf-8"
+    )
+    bad = tmp_path / "bad-balloon.toml"
+    bad.write_text(
+        source.replace("balloon_max_multiplier = 2.0", "balloon_max_multiplier = 0.5", 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="balloon_max_multiplier must be at least 1"):
         load_performance_policy(bad)
 
 

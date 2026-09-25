@@ -124,6 +124,40 @@ def test_main_window_periodically_observes_resource_memory_pressure():
     assert "sample_resources" in source
 
 
+def test_observe_resource_pressure_forwards_os_application_focus_state(
+    tmp_path: Path,
+):
+    """The cache-ballooning feature needs to know whether UNITI is the
+    OS-focused application; `_observe_resource_pressure` (the existing 1Hz
+    poll) is where that gets sampled and forwarded to `ResourceManager`,
+    rather than adding a separate signal connection per window."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        calls: list[bool] = []
+        window._resources.set_focused = calls.append
+        window._observe_resource_pressure()
+        # The offscreen QPA plugin reports ApplicationInactive by default;
+        # what matters is that the real `applicationState()` value reaches
+        # `set_focused` unmodified, not which value that happens to be.
+        assert calls == [
+            app.applicationState() == Qt.ApplicationState.ApplicationActive
+        ]
+    finally:
+        window.close()
+
+
 def test_pause_background_command_stays_in_existing_editor_view_category():
     source = SHORTCUT_POLICY.read_text(encoding="utf-8")
     assert '"view.pause_background"' in source

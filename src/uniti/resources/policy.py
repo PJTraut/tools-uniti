@@ -47,6 +47,8 @@ class ResourceLimits:
     physical_ram_fraction: float
     min_visible_cache_mib: int
     gui_core_reserve: int
+    balloon_max_multiplier: float
+    balloon_grab_fraction: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,6 +324,8 @@ def _parse_resources(raw: object) -> ResourceLimits:
         "physical_ram_fraction",
         "min_visible_cache_mib",
         "gui_core_reserve",
+        "balloon_max_multiplier",
+        "balloon_grab_fraction",
     }
     _exact_keys(values, required=keys, name="resources")
     result = ResourceLimits(
@@ -336,6 +340,14 @@ def _parse_resources(raw: object) -> ResourceLimits:
         ),
         gui_core_reserve=_integer(
             values["gui_core_reserve"], "resources.gui_core_reserve", minimum=1
+        ),
+        balloon_max_multiplier=_number(
+            values["balloon_max_multiplier"],
+            "resources.balloon_max_multiplier",
+            minimum=1.0,
+        ),
+        balloon_grab_fraction=_fraction(
+            values["balloon_grab_fraction"], "resources.balloon_grab_fraction"
         ),
     )
     if result.min_visible_cache_mib > result.max_cache_mib:

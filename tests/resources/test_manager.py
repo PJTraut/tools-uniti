@@ -136,6 +136,90 @@ def test_constrained_state_reduces_admission_and_cache():
         manager.shutdown()
 
 
+def test_focused_normal_state_balloons_the_cache_cap_in_tiered_steps():
+    manager = ResourceManager(
+        max_workers=1,
+        initial_snapshot=MemorySnapshot(physical=16 << 30, available=10 << 30),
+    )
+    try:
+        baseline = manager.cache.budget_bytes
+        ceiling = baseline * 2
+        assert manager.status.cache_baseline == baseline
+
+        previous = baseline
+        for _ in range(9):
+            manager.observe_resources(_snapshot(available=10 << 30))
+            assert previous < manager.cache.budget_bytes <= ceiling
+            previous = manager.cache.budget_bytes
+        # Never overshoots the 2x-baseline ceiling even after it's reached.
+        for _ in range(3):
+            manager.observe_resources(_snapshot(available=10 << 30))
+        assert manager.cache.budget_bytes == ceiling
+        assert manager.status.cache_baseline == baseline
+    finally:
+        manager.shutdown()
+
+
+def test_losing_focus_releases_ballooned_cache_to_baseline_immediately():
+    manager = ResourceManager(
+        max_workers=1,
+        initial_snapshot=MemorySnapshot(physical=16 << 30, available=10 << 30),
+    )
+    try:
+        baseline = manager.cache.budget_bytes
+        # Integer-truncated 10%-of-range steps land 2 bytes short of the
+        # exact ceiling after 10 ticks; a few extra ticks guarantee full
+        # convergence regardless of that rounding residue.
+        for _ in range(15):
+            manager.observe_resources(_snapshot(available=10 << 30))
+        assert manager.cache.budget_bytes == baseline * 2
+
+        manager.set_focused(False)
+        assert manager.cache.budget_bytes == baseline
+        assert manager.status.cache_budget == baseline
+
+        # Regrowth resumes from baseline, gradually, not from where it left off.
+        manager.set_focused(True)
+        manager.observe_resources(_snapshot(available=10 << 30))
+        assert baseline < manager.cache.budget_bytes < baseline * 2
+    finally:
+        manager.shutdown()
+
+
+def test_unfocused_normal_state_never_balloons():
+    manager = ResourceManager(
+        max_workers=1,
+        initial_snapshot=MemorySnapshot(physical=16 << 30, available=10 << 30),
+    )
+    try:
+        baseline = manager.cache.budget_bytes
+        manager.set_focused(False)
+        for _ in range(10):
+            manager.observe_resources(_snapshot(available=10 << 30))
+        assert manager.cache.budget_bytes == baseline
+    finally:
+        manager.shutdown()
+
+
+def test_pressure_during_balloon_snaps_the_cap_back_to_baseline():
+    manager = ResourceManager(
+        max_workers=4,
+        initial_snapshot=MemorySnapshot(16 << 30, 8 << 30),
+    )
+    try:
+        baseline = manager.cache.budget_bytes
+        for _ in range(15):
+            manager.observe_resources(_snapshot(available=10 << 30))
+        assert manager.cache.budget_bytes == baseline * 2
+
+        state = manager.observe_resources(_snapshot(available=2 << 30))
+        assert state is ResourceState.CONSTRAINED
+        assert manager.cache.budget_bytes <= 128 << 20
+        assert manager.cache.budget_bytes < baseline
+    finally:
+        manager.shutdown()
+
+
 def test_cpu_contention_enters_busy_and_two_healthy_samples_recover():
     manager = ResourceManager(
         max_workers=4,

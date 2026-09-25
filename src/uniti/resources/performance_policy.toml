@@ -72,6 +72,14 @@ max_cache_mib = 512
 physical_ram_fraction = 0.125
 min_visible_cache_mib = 16
 gui_core_reserve = 1
+# BF: opportunistic cache "ballooning" -- while UNITI is the focused
+# application and resources are NORMAL, the effective cache ceiling grows by
+# balloon_grab_fraction of currently-available system RAM per sample, up to
+# balloon_max_multiplier times the baseline max_cache_mib ceiling. It snaps
+# back to baseline immediately on focus loss or any non-NORMAL pressure
+# state, never gradually.
+balloon_max_multiplier = 2.0
+balloon_grab_fraction = 0.10
 
 [pressure]
 memory_normal_min_fraction = 0.25

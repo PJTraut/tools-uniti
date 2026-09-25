@@ -50,6 +50,7 @@ class ResourceStatus:
     free_disk: int
     cache_used: int
     cache_budget: int
+    cache_baseline: int
     active_workers: int
     active_worker_limit: int
     queued_tasks: int
@@ -87,7 +88,9 @@ class ResourceManager:
                 1,
                 min(8, logical_cores - self.policy.resources.gui_core_reserve),
             )
-        self._hard_cache_cap = self._cache_cap(memory.physical)
+        self._baseline_cache_cap = self._cache_cap(memory.physical)
+        self._hard_cache_cap = self._baseline_cache_cap
+        self._focused = True
         self.cache = CacheManager(budget_bytes=self._hard_cache_cap)
         self.workers = PriorityWorkerPool(
             max_workers=workers,
@@ -129,6 +132,59 @@ class ResourceManager:
             return minimum
         proportional = int(physical_memory * limits.physical_ram_fraction)
         return max(minimum, min(absolute, proportional))
+
+    def _balloon_ceiling(self) -> int:
+        return int(self._baseline_cache_cap * self.policy.resources.balloon_max_multiplier)
+
+    def _update_balloon(self, raw: ResourceSnapshot) -> None:
+        """Opportunistically grow the effective cache ceiling, one tiered
+        grab at a time, while focused and NORMAL; snap back to baseline
+        immediately the moment either condition stops holding.
+
+        Each grab is a fixed fraction (`balloon_grab_fraction`, e.g. 10%) of
+        the *total* baseline-to-ceiling range, not of whatever happens to be
+        available -- available memory can be many times the whole range, so
+        sizing the step off it directly would jump straight to the ceiling
+        in one sample instead of ramping up over several, defeating the
+        point of a tiered grab. The step is still capped by what's actually
+        free, as a defensive floor. Release is never tiered: losing focus or
+        NORMAL drops straight back to baseline so a sudden need for RAM
+        elsewhere is never left waiting on this cache to give it back
+        gradually."""
+
+        ceiling = self._balloon_ceiling()
+        if self._focused and self._state is ResourceState.NORMAL:
+            balloon_range = ceiling - self._baseline_cache_cap
+            step = int(balloon_range * self.policy.resources.balloon_grab_fraction)
+            step = max(0, min(step, max(0, raw.available_memory)))
+            self._hard_cache_cap = min(ceiling, self._hard_cache_cap + step)
+        else:
+            self._hard_cache_cap = self._baseline_cache_cap
+        self._hard_cache_cap = max(
+            self._baseline_cache_cap, min(self._hard_cache_cap, ceiling)
+        )
+
+    def set_focused(self, focused: bool) -> None:
+        """Record whether UNITI is the OS-focused application.
+
+        Losing focus releases any ballooned cache back to baseline
+        immediately (not gradually) on the next sample; grabbing more only
+        ever resumes gradually, one grab at a time, once refocused."""
+
+        focused = bool(focused)
+        if focused == self._focused:
+            return
+        self._focused = focused
+        if not focused and self._hard_cache_cap > self._baseline_cache_cap:
+            self._hard_cache_cap = self._baseline_cache_cap
+            self._apply_state()
+            self._status = replace(
+                self._status,
+                cache_used=self.cache.used_bytes,
+                cache_budget=self.cache.budget_bytes,
+                cache_baseline=self._baseline_cache_cap,
+            )
+            self._notify()
 
     @property
     def state(self) -> ResourceState:
@@ -266,6 +322,7 @@ class ResourceManager:
             free_disk=snapshot.free_disk,
             cache_used=self.cache.used_bytes,
             cache_budget=self.cache.budget_bytes,
+            cache_baseline=self._baseline_cache_cap,
             active_workers=self.workers.active_count,
             active_worker_limit=self.workers.active_limit,
             queued_tasks=self.workers.queued_count,
@@ -278,7 +335,7 @@ class ResourceManager:
         snapshot: ResourceSnapshot | None = None,
     ) -> ResourceState:
         raw = snapshot or self.sample_resources()
-        self._hard_cache_cap = self._cache_cap(raw.physical_memory)
+        self._baseline_cache_cap = self._cache_cap(raw.physical_memory)
         candidate = classify_resource_state(raw, self.policy)
         current_level = _SEVERITY[self._state]
         candidate_level = _SEVERITY[candidate]
@@ -295,6 +352,7 @@ class ResourceManager:
                 self._better_samples = 0
         else:
             self._better_samples = 0
+        self._update_balloon(raw)
         self._apply_state()
         self._status = self._make_status(raw)
         self._notify()

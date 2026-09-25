@@ -431,6 +431,11 @@ class UNITIMainWindow(QMainWindow):
         self._shortcut_warning_dialog = dialog
 
     def _observe_resource_pressure(self) -> None:
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            self._resources.set_focused(
+                app.applicationState() == Qt.ApplicationState.ApplicationActive
+            )
         self._apply_recovery_status()
         future = self._resource_probe_future
         if future is None:
