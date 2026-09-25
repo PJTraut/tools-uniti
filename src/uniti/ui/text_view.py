@@ -207,6 +207,7 @@ class UNITITextView(QAbstractScrollArea):
         self._line_highlights: dict[int, QColor] = {}
         self._line_markers: frozenset[int] = frozenset()
         self._line_span_highlights: dict[int, tuple[tuple[int, int, QColor], ...]] = {}
+        self._unicode_hex_flash_timer: QTimer | None = None
         self._theme_tokens = active_theme(app).editor
         self._theme_choice_id: str | None = None
         self._syntax_profile: SyntaxProfile = PLAIN_TEXT
@@ -363,6 +364,37 @@ class UNITITextView(QAbstractScrollArea):
         self._line_markers = frozenset(markers) if markers else frozenset()
         self._line_span_highlights = dict(spans) if spans else {}
         self.viewport().update()
+
+    _UNICODE_HEX_FLASH_MS = 500
+
+    def flash_unicode_hex_highlight(self, start: int, end: int) -> None:
+        """Briefly highlight `[start, end)` after a Unicode Hex ↔ Character
+        toggle (`EditorState.toggle_unicode_hex`), so the converted text is
+        visible at a glance. Reuses `current_match` (already contrast-checked
+        per theme, same precedent as the Compare cross-pane marker) at the
+        same alpha convention as the search-match highlight, rather than
+        adding a new theme role. A single-shot timer clears it; retriggering
+        before it fires restarts the timer instead of stacking flashes."""
+
+        if end <= start:
+            return
+        line = self.document.line_for_char(start)
+        line_start = self.document.line_start(line)
+        color = QColor(self._theme_tokens.current_match)
+        color.setAlpha(120)
+        self.set_line_highlights(
+            spans={line: ((start - line_start, end - line_start, color),)}
+        )
+        if self._unicode_hex_flash_timer is not None:
+            self._unicode_hex_flash_timer.stop()
+        self._unicode_hex_flash_timer = QTimer(self)
+        self._unicode_hex_flash_timer.setSingleShot(True)
+        self._unicode_hex_flash_timer.timeout.connect(self._clear_unicode_hex_flash)
+        self._unicode_hex_flash_timer.start(self._UNICODE_HEX_FLASH_MS)
+
+    def _clear_unicode_hex_flash(self) -> None:
+        self._unicode_hex_flash_timer = None
+        self.set_line_highlights()
 
     def set_theme_tokens(self, tokens: EditorThemeTokens) -> None:
         if not isinstance(tokens, EditorThemeTokens):

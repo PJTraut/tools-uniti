@@ -4292,6 +4292,9 @@ class UNITIMainWindow(QMainWindow):
             return
         if view.state.toggle_unicode_hex():
             view._state_changed()
+            span = view.state.last_unicode_hex_span
+            if span is not None:
+                view.flash_unicode_hex_highlight(*span)
 
     def _confirm_close(self, view: UNITITextView) -> bool:
         if not view.document.modified:

@@ -460,6 +460,17 @@ def test_toggle_unicode_hex_converts_plain_hex_run_to_character(tmp_path: Path):
         assert state.selection is None
 
 
+def test_toggle_unicode_hex_records_the_replaced_span(tmp_path: Path):
+    with _open(tmp_path, "type 0048") as document:
+        state = EditorState(document)
+        state.move_to(document.total_chars())
+        assert state.last_unicode_hex_span is None
+        state.toggle_unicode_hex()
+        assert state.last_unicode_hex_span == (5, 6)
+        state.toggle_unicode_hex()
+        assert state.last_unicode_hex_span == (5, 11)
+
+
 def test_toggle_unicode_hex_converts_u_plus_prefixed_run(tmp_path: Path):
     with _open(tmp_path, "before U+0041") as document:
         state = EditorState(document)

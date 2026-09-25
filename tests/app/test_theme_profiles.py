@@ -10,11 +10,15 @@ def profiles():
 
 
 def test_packaged_complete_immutable_and_round_trip(tmp_path):
-    from uniti.app.theme_profiles import ThemeProfileStore, COLOR_ROLES
-    paper, slate = profiles()
+    from uniti.app.theme_profiles import BUILTIN_IDS, ThemeProfileStore, COLOR_ROLES
+    packaged = {p.id: p for p in profiles()}
+    paper, slate = packaged['Paper'], packaged['Slate']
     assert paper.colors['editor.base'] == '#fbf7ef'
     assert slate.colors['editor.base'] == '#202830'
-    assert set(paper.colors) == set(slate.colors) == set(COLOR_ROLES)
+    non_native_ids = {i for i in BUILTIN_IDS if i not in ('System', 'Light', 'Dark')}
+    assert set(packaged) == non_native_ids
+    for profile in packaged.values():
+        assert set(profile.colors) == set(COLOR_ROLES)
     with pytest.raises(TypeError):
         paper.colors['editor.base'] = '#ffffff'
     custom = replace(paper, id='custom-one', name='My paper')

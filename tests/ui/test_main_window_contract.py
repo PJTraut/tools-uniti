@@ -1924,6 +1924,38 @@ def test_unicode_hex_toggle_command_converts_hex_run_in_current_view(tmp_path: P
         window.close()
 
 
+def test_unicode_hex_toggle_flashes_a_highlight_over_the_converted_text(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "hex.txt"
+    path.write_text("type 0048", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        assert view is not None
+        view.state.move_to(view.document.total_chars())
+
+        window.toggle_unicode_hex()
+
+        spans = view._line_span_highlights.get(0)
+        assert spans is not None
+        start_column, end_column, color = spans[0]
+        assert (start_column, end_column) == (5, 6)
+        assert color.alpha() == 120
+        assert view._unicode_hex_flash_timer is not None
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
 def test_unicode_hex_toggle_reverses_a_bare_trailing_letter_instead_of_a_short_hex_run(
     tmp_path: Path,
 ):

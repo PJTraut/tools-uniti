@@ -11,7 +11,16 @@ from types import MappingProxyType
 
 from .atomic_json import atomic_write_json
 
-BUILTIN_IDS = ('System', 'Light', 'Dark', 'Paper', 'Slate')
+BUILTIN_IDS = (
+    'System', 'Light', 'Dark', 'Paper', 'Slate',
+    'SolarizedDark', 'SolarizedLight', 'Monokai', 'Dracula', 'GruvboxDark', 'Nord',
+)
+# Packaged theme JSON filenames (in assets/themes/), in the order they're
+# offered — the ids above match each file's own "id" field.
+PACKAGED_THEME_FILES = (
+    'paper', 'slate',
+    'solarized_dark', 'solarized_light', 'monokai', 'dracula', 'gruvbox_dark', 'nord',
+)
 PALETTE_ROLES = ('Window', 'WindowText', 'Base', 'AlternateBase', 'ToolTipBase',
                  'ToolTipText', 'Text', 'Button', 'ButtonText', 'BrightText',
                  'Highlight', 'HighlightedText', 'Link', 'PlaceholderText')
@@ -68,7 +77,7 @@ class ThemeProfile:
 def packaged_profiles() -> tuple[ThemeProfile, ...]:
     root = files('uniti.ui').joinpath('assets', 'themes')
     return tuple(ThemeProfile.from_dict(json.loads(root.joinpath(name + '.json').read_text(encoding='utf-8')), packaged=True)
-                 for name in ('paper', 'slate'))
+                 for name in PACKAGED_THEME_FILES)
 
 
 @dataclass(frozen=True, slots=True)

@@ -54,6 +54,43 @@ def test_text_view_offscreen_smoke_when_pyside6_is_available(tmp_path: Path):
         view.close()
 
 
+def test_flash_unicode_hex_highlight_paints_the_span_then_clears_on_timeout(
+    tmp_path: Path,
+):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "view.txt"
+    path.write_text("type H", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        state = EditorState(document)
+        view = UNITITextView(state)
+        try:
+            view.flash_unicode_hex_highlight(5, 6)
+            spans = view._line_span_highlights.get(0)
+            assert spans is not None
+            start_column, end_column, color = spans[0]
+            assert (start_column, end_column) == (5, 6)
+            assert color.name() == view._theme_tokens.current_match.name()
+            assert color.alpha() == 120
+            timer = view._unicode_hex_flash_timer
+            assert timer is not None and timer.isSingleShot()
+
+            timer.timeout.emit()
+
+            assert view._line_span_highlights == {}
+            assert view._unicode_hex_flash_timer is None
+        finally:
+            view.close()
+
+
 def test_scrolling_to_the_end_fully_reveals_the_last_line(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

@@ -36,6 +36,7 @@ class EditorState:
     cursor: int = 0
     anchor: int = 0
     _preferred_column: int | None = None
+    last_unicode_hex_span: tuple[int, int] | None = None
 
     def export_state(self) -> EditorStateSnapshot:
         return EditorStateSnapshot(
@@ -368,7 +369,9 @@ class EditorState:
         character back into `U+XXXX` hex notation when no valid hex run
         precedes the cursor. A no-op (returns False) with an active
         selection, at the document start, or when the preceding text is an
-        out-of-range/surrogate hex value. Always one undoable edit."""
+        out-of-range/surrogate hex value. Always one undoable edit. On
+        success, `last_unicode_hex_span` records the replacement's
+        `(start, end)` offsets so the UI can flash-highlight it."""
 
         if self.selection is not None or self.cursor == 0:
             return False
@@ -386,6 +389,7 @@ class EditorState:
         self.cursor = start + len(replacement)
         self.anchor = self.cursor
         self._preferred_column = None
+        self.last_unicode_hex_span = (start, self.cursor)
         return True
 
     def undo(self) -> None:
