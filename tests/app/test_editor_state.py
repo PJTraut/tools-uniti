@@ -451,7 +451,7 @@ def test_visual_movement_known_limitation_uses_paragraph_direction_not_local_run
 
 
 def test_toggle_unicode_hex_converts_plain_hex_run_to_character(tmp_path: Path):
-    with _open(tmp_path, "type 48") as document:
+    with _open(tmp_path, "type 0048") as document:
         state = EditorState(document)
         state.move_to(document.total_chars())
         assert state.toggle_unicode_hex() is True
@@ -480,7 +480,7 @@ def test_toggle_unicode_hex_reverses_a_character_to_hex_notation(tmp_path: Path)
 
 
 def test_toggle_unicode_hex_round_trips_back_and_forth(tmp_path: Path):
-    with _open(tmp_path, "48") as document:
+    with _open(tmp_path, "0048") as document:
         state = EditorState(document)
         state.move_to(document.total_chars())
         state.toggle_unicode_hex()
@@ -492,13 +492,13 @@ def test_toggle_unicode_hex_round_trips_back_and_forth(tmp_path: Path):
 
 
 def test_toggle_unicode_hex_is_one_undoable_edit(tmp_path: Path):
-    with _open(tmp_path, "48") as document:
+    with _open(tmp_path, "0048") as document:
         state = EditorState(document)
         state.move_to(document.total_chars())
         state.toggle_unicode_hex()
         assert document.read(0, document.total_chars()) == "H"
         document.undo()
-        assert document.read(0, document.total_chars()) == "48"
+        assert document.read(0, document.total_chars()) == "0048"
 
 
 def test_toggle_unicode_hex_is_noop_with_active_selection(tmp_path: Path):

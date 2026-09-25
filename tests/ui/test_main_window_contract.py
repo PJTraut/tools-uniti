@@ -1907,7 +1907,7 @@ def test_unicode_hex_toggle_command_converts_hex_run_in_current_view(tmp_path: P
     from uniti.ui.main_window import UNITIMainWindow
 
     path = tmp_path / "hex.txt"
-    path.write_text("type 48", encoding="utf-8")
+    path.write_text("type 0048", encoding="utf-8")
     store = SettingsStore(tmp_path / "settings.json")
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow(settings_store=store)
@@ -1919,6 +1919,41 @@ def test_unicode_hex_toggle_command_converts_hex_run_in_current_view(tmp_path: P
         window.toggle_unicode_hex()
 
         assert view.document.read(0, view.document.total_chars()) == "type H"
+    finally:
+        window.close_all_documents(force=True)
+        window.close()
+
+
+def test_unicode_hex_toggle_reverses_a_bare_trailing_letter_instead_of_a_short_hex_run(
+    tmp_path: Path,
+):
+    """BF-089: a bare trailing "A" used to forward-convert as hex 0x0A (a
+    newline) rather than reversing to its own U+0041 -- a hex run shorter
+    than 4 digits is no longer recognized at all, so this now falls
+    through to the reverse (char -> U+XXXX) direction, which is what a
+    user typing one letter and invoking the toggle almost always means."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    path = tmp_path / "hex.txt"
+    path.write_text("A", encoding="utf-8")
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        view = window.open_path(path)
+        assert view is not None
+        view.state.move_to(view.document.total_chars())
+
+        window.toggle_unicode_hex()
+
+        assert view.document.read(0, view.document.total_chars()) == "U+0041"
     finally:
         window.close_all_documents(force=True)
         window.close()

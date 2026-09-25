@@ -4,7 +4,21 @@ import pytest
 def test_hex_run_matches_plain_digits():
     from uniti.core.unicode_hex import hex_run_before_cursor
 
-    assert hex_run_before_cursor("type 48") == (2, 0x48)
+    assert hex_run_before_cursor("type 0048") == (4, 0x48)
+
+
+def test_hex_run_requires_at_least_four_digits():
+    """BF-089: a run shorter than 4 digits is not a match at all -- it
+    falls through to the reverse (char -> U+XXXX) direction instead of
+    ambiguously converting forward as a short/control-character hex value
+    (e.g. a bare trailing "A" no longer converts as 0x0A)."""
+
+    from uniti.core.unicode_hex import hex_run_before_cursor
+
+    assert hex_run_before_cursor("A") is None
+    assert hex_run_before_cursor("41") is None
+    assert hex_run_before_cursor("041") is None
+    assert hex_run_before_cursor("U+41") is None
 
 
 def test_hex_run_matches_u_plus_prefix():

@@ -14,9 +14,18 @@ MAX_CODE_POINT = 0x10FFFF
 _SURROGATE_RANGE = range(0xD800, 0xE000)
 
 # Mirrors the well-known Microsoft Word Alt+X convention: a contiguous run
-# of 1-6 hex digits immediately before the cursor, with an optional `U+` or
+# of 4-6 hex digits immediately before the cursor, with an optional `U+` or
 # `0x` prefix. 6 digits covers every valid code point (0x10FFFF).
-_HEX_RUN_RE = re.compile(r"(?:[Uu]\+|0[xX])?([0-9A-Fa-f]{1,6})$")
+#
+# BF-089: the minimum was 1, not 4, until a beta tester flagged the
+# resulting ambiguity -- a bare trailing hex letter (e.g. "A") converted
+# forward as a control character (0x0A, a newline) instead of reversing to
+# its own U+0041 notation, which is what a user typing a single letter then
+# invoking the toggle almost always means. `hex_notation` below already
+# always renders at least 4 digits, so requiring the same minimum on the
+# way in is the same convention applied both directions, not an arbitrary
+# new rule -- and it matches how a real U+XXXX codepoint is always written.
+_HEX_RUN_RE = re.compile(r"(?:[Uu]\+|0[xX])?([0-9A-Fa-f]{4,6})$")
 
 # Bounded lookback window so this never reads an arbitrarily long line just
 # to check for a trailing hex run.

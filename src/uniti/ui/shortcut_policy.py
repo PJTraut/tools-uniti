@@ -32,7 +32,12 @@ _UNITI_FALLBACKS = {
     "editor.wrap": "Ctrl+Alt+W",
     "view.pause_background": "",
     "find.report_cycle": "Ctrl+Alt+R",
-    "editing.unicode_hex_toggle": "",
+    # BF-089: previously unbound, requiring manual setup in Hotkeys before
+    # the feature was reachable at all. Ctrl+Alt+X mirrors this app's own
+    # Ctrl+Alt+<mnemonic> convention (report_cycle/character_inspector/
+    # compare/wrap above) with the same letter Word's own Alt+X uses for
+    # this exact hex<->character convention.
+    "editing.unicode_hex_toggle": "Ctrl+Alt+X",
     "tools.character_inspector": "Ctrl+Alt+I",
     "tools.compare": "Ctrl+Alt+C",
 }
