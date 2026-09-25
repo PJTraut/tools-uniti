@@ -1,0 +1,15 @@
+# testing feedback from external users continued
+
+1) match : capturing groups - leave cell size the same , reduce text by 10% for "\1 : : etc.
+
+2) issue report in F/R regex: "blabla in col X" highlight with background tint
+
+3) rememer the list of characters column with in saved geomery for reopen
+
+4) copy/paste of whitespace to F/R windows while in REGEX mode: convet to characters to REGEX escape: CRLF to \r\n, TAB \t etc.
+
+5) improve UNICODE<>CHAR function, brainstorm
+
+6) WIN version has DOCK controls on F/R dialog.  - it does not work. the dropdown menu works.
+
+Should we activate this feature cross platform?
