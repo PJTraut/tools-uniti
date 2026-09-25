@@ -2426,6 +2426,34 @@ def test_find_replace_report_is_always_right_docked_and_zoom_is_independent(
         view.close()
 
 
+def test_find_replace_has_no_native_dock_widget_features():
+    """BF-094: a Windows tester found native "dock controls" on the F/R
+    dialog that don't work, while the existing "Attach/Detach Find &
+    Replace" command does. This window is never actually docked into a
+    real Qt dock area anywhere in this codebase (no addDockWidget call
+    exists), and the custom title bar (_FindReplaceTitleBar) already
+    replaces the native drag-to-move gesture with its own and draws no
+    close button -- so DockWidgetClosable/Floatable/Movable were always
+    inert, just visibly (and apparently, on Windows, badly) rendered by
+    the native Qt dock-widget machinery regardless. Removed at the
+    source, cross-platform, rather than only suppressed on Windows."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QDockWidget
+
+    from uniti.ui.find_replace import FindReplacePanel
+
+    app = QApplication.instance() or QApplication([])
+    panel = FindReplacePanel(lambda: None)
+    try:
+        assert panel.features() == QDockWidget.DockWidgetFeature.NoDockWidgetFeatures
+    finally:
+        panel.shutdown()
+        panel.close()
+
+
 def test_find_replace_is_topmost_and_clear_buttons_clear_only_their_input():
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

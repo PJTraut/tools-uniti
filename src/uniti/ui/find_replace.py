@@ -240,12 +240,20 @@ class FindReplaceWindow(QDockWidget):
         if group_provider is not None and not callable(group_provider):
             raise TypeError("group provider must be callable or None")
         super().__init__("Find / Replace", parent)
-        self.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
-        self.setFeatures(
-            QDockWidget.DockWidgetFeature.DockWidgetClosable
-            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
-            | QDockWidget.DockWidgetFeature.DockWidgetMovable
-        )
+        # BF-094: QDockWidget is used here purely as a convenient top-level
+        # floating-window base -- this window is never actually docked into
+        # a real Qt dock area (no addDockWidget call exists anywhere in this
+        # codebase), and the custom title bar installed below already
+        # replaces the native title bar's drag-to-move gesture with its own
+        # (see _FindReplaceTitleBar's docstring) and draws no close button
+        # of its own. Closable/Floatable/Movable are therefore genuinely
+        # inert everywhere -- placement is controlled exclusively through
+        # attach_to/detach and the "Attach/Detach Find & Replace" command,
+        # neither of which depends on these features -- but a Windows
+        # tester reported native "dock controls" that visibly render and
+        # don't work, which this removes at the source rather than trying
+        # to make an unused, platform-inconsistent Qt mechanism function.
+        self.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
         self._placement = "detached"
         self._changing_placement = False
         self._dock_host: QMainWindow | None = None
