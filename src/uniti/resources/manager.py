@@ -90,7 +90,11 @@ class ResourceManager:
             )
         self._baseline_cache_cap = self._cache_cap(memory.physical)
         self._hard_cache_cap = self._baseline_cache_cap
-        self._focused = True
+        # Ballooning is opt-in, not assumed: a headless/benchmark/CLI
+        # ResourceManager never calls `set_focused`, so it must never
+        # balloon on its own. Only `UNITIMainWindow`'s real
+        # `QApplication.applicationState()` poll promotes this to True.
+        self._focused = False
         self.cache = CacheManager(budget_bytes=self._hard_cache_cap)
         self.workers = PriorityWorkerPool(
             max_workers=workers,

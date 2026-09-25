@@ -142,6 +142,7 @@ def test_focused_normal_state_balloons_the_cache_cap_in_tiered_steps():
         initial_snapshot=MemorySnapshot(physical=16 << 30, available=10 << 30),
     )
     try:
+        manager.set_focused(True)
         baseline = manager.cache.budget_bytes
         ceiling = baseline * 2
         assert manager.status.cache_baseline == baseline
@@ -166,6 +167,7 @@ def test_losing_focus_releases_ballooned_cache_to_baseline_immediately():
         initial_snapshot=MemorySnapshot(physical=16 << 30, available=10 << 30),
     )
     try:
+        manager.set_focused(True)
         baseline = manager.cache.budget_bytes
         # Integer-truncated 10%-of-range steps land 2 bytes short of the
         # exact ceiling after 10 ticks; a few extra ticks guarantee full
@@ -187,13 +189,17 @@ def test_losing_focus_releases_ballooned_cache_to_baseline_immediately():
 
 
 def test_unfocused_normal_state_never_balloons():
+    """A freshly constructed manager starts unfocused by default -- ballooning
+    is opt-in via `set_focused(True)`, never assumed, so a headless/CLI/
+    benchmark caller that never calls it can't be surprised by cache growth
+    it never asked for."""
+
     manager = ResourceManager(
         max_workers=1,
         initial_snapshot=MemorySnapshot(physical=16 << 30, available=10 << 30),
     )
     try:
         baseline = manager.cache.budget_bytes
-        manager.set_focused(False)
         for _ in range(10):
             manager.observe_resources(_snapshot(available=10 << 30))
         assert manager.cache.budget_bytes == baseline
@@ -207,6 +213,7 @@ def test_pressure_during_balloon_snaps_the_cap_back_to_baseline():
         initial_snapshot=MemorySnapshot(16 << 30, 8 << 30),
     )
     try:
+        manager.set_focused(True)
         baseline = manager.cache.budget_bytes
         for _ in range(15):
             manager.observe_resources(_snapshot(available=10 << 30))
