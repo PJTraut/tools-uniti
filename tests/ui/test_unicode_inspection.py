@@ -56,40 +56,6 @@ def test_hold_inspection_respects_mode_and_ends_on_release_or_deactivation(app, 
             view.close()
 
 
-@pytest.mark.parametrize("height", [90, 400])
-def test_single_selected_codepoint_inspection_works_with_whitespace_off(app, tmp_path, height):
-    from PySide6.QtCore import QEvent, Qt
-    from uniti.app.editor_state import EditorState
-    from uniti.core.document import Document
-    from uniti.ui.text_view import UNITITextView
-
-    path = tmp_path / "selected.txt"
-    path.write_text("A\U0001f642\u200d", encoding="utf-8")
-    with Document.open(path, encoding="utf-8") as document:
-        view = UNITITextView(EditorState(document))
-        view.resize(500, height)
-        view.show()
-        view.setFocus()
-        app.processEvents()
-        view.state.anchor, view.state.cursor = 1, 2
-        try:
-            before = view.viewport().grab().toImage()
-            _key(app, view, True, Qt.Key.Key_Alt,
-                Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier)
-            assert "U+1F642" in view.selected_character_detail
-            assert "SLIGHTLY SMILING FACE" in view.selected_character_detail
-            assert not view.whitespace_details_visible
-            assert view.viewport().grab().toImage() != before
-            view.state.anchor = 0
-            assert view.selected_character_detail is None
-            app.sendEvent(app, QEvent(QEvent.Type.ApplicationDeactivate))
-            assert view.selected_character_detail is None
-            assert document.revision == 0
-        finally:
-            app.sendEvent(app, QEvent(QEvent.Type.ApplicationDeactivate))
-            view.close()
-
-
 def test_hotkeys_panel_configures_and_persists_inspection(app, tmp_path):
     from PySide6.QtWidgets import QPushButton
     from uniti.app.commands import CommandCategory

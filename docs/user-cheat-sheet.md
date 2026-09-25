@@ -67,8 +67,9 @@ Replace: Item \1: \2
 | Pretty-print JSON/XML/Markdown | Format → Format Document |
 | Compact JSON/XML to one line | Format → Minify Document |
 | Show hidden characters | View → Whitespace |
-| Temporary Unicode details | Hold Cmd+Option (Mac) / Ctrl+Alt (Windows/Linux) |
+| Temporary marker-type details | Hold Cmd+Option (Mac) / Ctrl+Alt (Windows/Linux) |
 | Inspect one code point | Tools → Character Inspector… |
+| Convert hex ↔ character (Word's Alt+X) | Ctrl+Alt+X |
 | Theme / contrast / colors | View → Theme → select profile / High Contrast / Edit Themes… |
 
 **“On save” is pending.** Format conversion takes effect on Save; wrap and whitespace markers only change the display.

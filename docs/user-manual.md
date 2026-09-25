@@ -142,9 +142,11 @@ This is text reformatting only, not a structural refactor: it never reorders JSO
 
 Use **View → Whitespace** to choose **Off**, **EOL**, **Spaces & Tabs**, **Invisible Unicode**, or **All**. Markers are display aids; they do not insert characters or change file bytes.
 
-For temporary details, hold **Cmd+Option** on macOS or **Ctrl+Alt** on Windows/Linux. This reveals details for the selected whitespace mode; selecting one Unicode code point also gives its inspection readout. Release the modifiers to hide the details. Customize the hold under **Hotkeys → Editor View → Hold to inspect Unicode**.
+For temporary details, hold **Cmd+Option** on macOS or **Ctrl+Alt** on Windows/Linux. This reveals which marker types are visible for the selected whitespace mode. Release the modifiers to hide the details. Customize the hold under **Hotkeys → Editor View → Hold to inspect Unicode**.
 
 For a dedicated readout, place the cursor at the character or select it and choose **Tools → Character Inspector…**. A visible character may contain several Unicode code points; the inspector describes one code point at a time.
+
+To convert between a character and its `U+XXXX` codepoint notation directly in the document, type at least 4 hex digits (optionally prefixed `U+` or `0x`) immediately before the cursor and press **Ctrl+Alt+X** (mirroring Microsoft Word's Alt+X) to replace them with the character; press it again with no valid trailing hex run to convert the character before the cursor back to `U+XXXX`.
 
 **View → Soft Line Wrap** wraps the display without inserting line endings. The editor's own zoom controls (also in **View**) are independent of the Find/Replace panel's zoom, which lives in the panel's own controls and affects only that panel.
 

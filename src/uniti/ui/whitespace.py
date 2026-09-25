@@ -60,12 +60,6 @@ def marker_detail(label: str) -> str:
     return " / ".join(parts)
 
 
-def character_detail(character: str) -> str:
-    aliases = {"\t": "CHARACTER TABULATION", "\n": "LINE FEED", "\r": "CARRIAGE RETURN"}
-    name = aliases.get(character) or unicodedata.name(character, "<no Unicode name>")
-    return f"U+{ord(character):04X} — {name}"
-
-
 def parse_whitespace_mode(value: object) -> WhitespaceMode:
     if isinstance(value, WhitespaceMode):
         return value

@@ -43,7 +43,6 @@ from uniti.ui.whitespace import (
     parse_whitespace_mode,
     shows_eol,
     marker_detail,
-    character_detail,
 )
 from uniti.ui.whitespace_painter import paint_compact_marker
 from uniti.ui.unicode_inspection import unicode_inspection
@@ -272,15 +271,6 @@ class UNITITextView(QAbstractScrollArea):
     @property
     def whitespace_details_visible(self) -> bool:
         return self._inspection.active and self._whitespace_mode != WhitespaceMode.OFF
-
-    @property
-    def selected_character_detail(self) -> str | None:
-        if self._disposed or not self._inspection.active or not self.hasFocus():
-            return None
-        selection = self.state.selection
-        if selection is None or selection[1] - selection[0] != 1:
-            return None
-        return character_detail(self.document.read(*selection))
 
     @property
     def inspection_entries(self) -> tuple[str, ...]:
@@ -1746,9 +1736,8 @@ class UNITITextView(QAbstractScrollArea):
         self._refresh_scrollbars(advance_index=False)
 
     def _paint_inspection_key(self, painter: QPainter) -> None:
-        detail = self.selected_character_detail
         entries = self.inspection_entries
-        if detail is None and not entries:
+        if not entries:
             return
         width = self.viewport().width() - self._gutter_width - 8
         if width < 40:
@@ -1760,11 +1749,11 @@ class UNITITextView(QAbstractScrollArea):
         columns = max(
             1, min(3, width // max(240, metrics.horizontalAdvance("NNBSP U+202F") + 36))
         )
-        header_rows = 2 if detail is not None else 1
+        header_rows = 1
         capacity = max(
             0, int(self.viewport().height() * 0.45) // row_height - header_rows
         )
-        if capacity == 0 and detail is None:
+        if capacity == 0:
             return
         shown = min(len(entries), capacity * columns)
         truncated = shown < len(entries)
@@ -1789,13 +1778,11 @@ class UNITITextView(QAbstractScrollArea):
                 painter.drawText(QPointF(x, y + metrics.ascent()), value)
 
             text(
-                "Unicode inspection — visible marker types",
+                "Visible marker types",
                 box.left() + 6,
                 box.top() + 4,
                 width - 12,
             )
-            if detail is not None:
-                text(detail, box.left() + 6, box.top() + row_height + 4, width - 12)
             labels = tuple(self._inspection_labels)
             for index, entry in enumerate(entries[:shown]):
                 row, column = divmod(index, columns)
@@ -1820,7 +1807,7 @@ class UNITITextView(QAbstractScrollArea):
                 text(entry, x + 28, y, width / columns - 40)
             if truncated:
                 text(
-                    f"+{len(entries) - shown} types; select one character for details",
+                    f"+{len(entries) - shown} types",
                     box.left() + 6,
                     box.top() + (header_rows + rows) * row_height + 4,
                     width - 12,
