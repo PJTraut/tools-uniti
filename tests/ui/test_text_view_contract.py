@@ -934,6 +934,53 @@ def test_text_view_keys_dispatch_word_document_and_page_navigation(tmp_path: Pat
         view.close()
 
 
+def test_tab_key_inserts_a_tab_character_instead_of_moving_focus(tmp_path: Path):
+    """Without a `focusNextPrevChild` override, Qt's own `QWidget.event()`
+    intercepts a plain Tab/Shift+Tab keypress for focus traversal *before*
+    `keyPressEvent` ever runs, silently swallowing the key -- a direct
+    `view.keyPressEvent(...)` call (as other tests use) bypasses that
+    interception entirely and can't catch this, so this test must dispatch
+    through the real Qt event path via `QTest.keyClick`."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "tab.txt"
+    path.write_text("hello", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        view = UNITITextView(EditorState(document))
+        other = QPushButton("other", container)
+        layout.addWidget(view)
+        layout.addWidget(other)
+        container.show()
+        view.setFocus()
+        app.processEvents()
+
+        view.state.move_to(document.total_chars())
+        QTest.keyClick(view, Qt.Key.Key_Tab)
+        app.processEvents()
+
+        assert app.focusWidget() is view
+        assert document.read(0, document.total_chars()) == "hello\t"
+
+        QTest.keyClick(view, Qt.Key.Key_Tab, Qt.KeyboardModifier.ShiftModifier)
+        app.processEvents()
+        assert app.focusWidget() is view
+
+        container.close()
+
+
 def test_text_view_zoom_changes_metrics_without_changing_document_text(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")

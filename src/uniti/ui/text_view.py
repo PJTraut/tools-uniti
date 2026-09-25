@@ -2280,6 +2280,19 @@ class UNITITextView(QAbstractScrollArea):
         else:
             self.state.move_left(selecting=selecting)
 
+    def focusNextPrevChild(self, next: bool) -> bool:
+        """Claim Tab/Shift+Tab as editor input rather than focus traversal.
+
+        Without this override, Qt's `QWidget.event()` intercepts a plain
+        Tab/Backtab keypress and calls this method *before* `keyPressEvent`
+        ever runs; a `True` return (the default) moves focus to the next
+        widget and the key event never reaches the editor at all, silently
+        eating tab-character input. Ctrl/Alt-modified Tab is unaffected --
+        Qt only performs this interception when neither modifier is held.
+        """
+
+        return False
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
         modifiers = event.modifiers()
