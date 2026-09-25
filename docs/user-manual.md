@@ -160,7 +160,7 @@ Use **View → Attach/Detach Find & Replace** to switch between the full-width b
 
 ## Appearance and shortcuts
 
-Choose **View → Theme** for System, Light, Dark, Paper, Slate, or a saved custom theme. **High Contrast** is a separate option.
+Choose **View → Theme** for System, Light, Dark, Paper, Slate, Solarized Dark, Solarized Light, Monokai, Dracula, Gruvbox Dark, Nord, or a saved custom theme. **High Contrast** is a separate option.
 
 To customize colors, open **Edit Themes…**, select a starting profile, and **Clone** it. Edit the name and colors, inspect the preview, then **Apply**. Built-in themes are read-only. **Cancel** restores the pre-preview appearance; **Reset** restores the draft's last applied or initial clone colors. Custom changes preview across windows.
 

@@ -33,7 +33,7 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 - bounded confidence/evidence inspection, serious exact-profile confirmation, explicit reinterpretation versus convert-on-save, and annotated malformed-byte preservation;
 - separate CR, LF, CRLF, mixed-EOL analysis/reporting, source-aware insertion, modeless mixed-EOL choices, explicit output conversion, truthful current/on-save wording, and post-save refresh across all shared views;
 - compact progressive byte/character and line indexes with bounded detail caches and no whole-file opening decode;
-- hybrid source/edit piece table, selections, atomic transactions, and a document Undo/Redo history persisted to the first of 50 transactions or 32 MiB decoded;
+- hybrid source/edit piece table, selections, atomic transactions, and a document Undo/Redo history persisted to the first of 100 transactions or 64 MiB decoded;
 - coalesced typing/backspace/delete plus Unicode-aware word, page, document, line, and Shift-extended navigation;
 - Cut, Copy, Paste, Select All, Go to Line, and protected Reload/Revert;
 - word, visual-line, and logical-line-through-break selection by double, triple, and quadruple click;
@@ -48,7 +48,7 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 - one-step undoable Replace All with no disk-rewrite history bypass;
 - held Unicode inspection through a bounded visible-marker key and single-selected-code-point readout, with a persisted modifier combination in Hotkeys → Editor View;
 - a scoped shared command registry and persisted Hotkeys popup for window, editor, and Find/Replace commands;
-- a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with application-wide System/Light/Dark/Paper/Slate and custom theme profiles, editable complete color roles, independent Standard/High Contrast, native shortcut display, and no duplicate pre-Cot top-level command groupings;
+- a compact `File | Edit | Format | View | Find | Tools | Hotkeys` menu bar with application-wide System/Light/Dark/Paper/Slate/Solarized Dark/Solarized Light/Monokai/Dracula/Gruvbox Dark/Nord and custom theme profiles, editable complete color roles, independent Standard/High Contrast, native shortcut display, and no duplicate pre-Cot top-level command groupings;
 - PySide6 multi-window shells, binary horizontal/vertical split panes, per-pane assign/split/dock controls, reversible view transfers with persisted return anchors, detachable tabs, independent synchronized views of one authoritative document, custom virtual viewport, clipboard, IME, menus, compact status, inspections, diagnostics, and one Recovery Center;
 - display-only Off, EOL, Spaces & Tabs, Invisible Unicode, and All whitespace modes with distinct special-space/zero-width symbols and LF `␊`, CR `␍`, CRLF `␍␊` markers, bounded terminator reads, and at most 4,096 marker operations per frame including visible overflow aggregation;
 - progressive Open, background full EOL analysis, cancellable far navigation, Find All, Replace All planning, and verified Save/Save As without GUI-thread long work;
@@ -94,7 +94,7 @@ The a20 Recovery & Session Alpha, a21 Editor Layout and Visibility workstream, a
 34. Closing the final editor window does not terminate the service; explicit Quit resolves Save/Discard/Cancel once per unique modified document before shutdown.
 35. Every view owns its cursor, selection, scroll, wrap viewport, and zoom while every view of one source shares one authoritative document and history.
 36. Durable session publication writes/syncs bounded packs before the manifest and the manifest before the current pointer; the previous complete generation remains available through successful replacement.
-37. Saved history is SHA-256-authorized, retained for seven days subject to a 256 MiB aggregate cap, and never permits an automatic overwrite after an external change.
+37. Saved history is SHA-256-authorized, retained for seven days subject to a 512 MiB aggregate cap, and never permits an automatic overwrite after an external change.
 38. Find and Replace histories retain at most 50 states each and together at most 4 MiB decoded; their current values are preserved when older states are pruned.
 39. Recovery journals are not disposable history: 64 MiB journals compact publish-before-retire, and the 512 MiB free-space reserve suppresses convenience-history writes before recovery evidence.
 40. Low-space tests inject capacity and write failures; they never consume real filesystem space to manufacture LOWDISK.

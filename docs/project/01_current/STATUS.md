@@ -62,7 +62,7 @@ This validates the local source promotion. Same-commit hosted, physical input, a
 - line numbers use an independent 80% font while preserving the editor baseline/row height, and progressive wrapped-row preparation settles gutter width before paint and hit testing;
 - pending EOL conversion is stated as “on save”; committed markers remain truthful before save, and successful save refreshes every view sharing the document;
 - Find/Replace uses the complete Lucide control set, while capture rows expose `\\N` labels separately and align every preview to one measured column without changing `Match N of M` headers; and
-- Paper and Slate are complete named profiles. Users can clone and edit profiles, preview across service windows, apply/cancel/reset/delete, and persist custom profiles plus active selection in one bounded atomic file. Packaged profiles are read-only and contrast remains independent;
+- Paper, Slate, Solarized Dark, Solarized Light, Monokai, Dracula, Gruvbox Dark, and Nord are complete named profiles. Users can clone and edit profiles, preview across service windows, apply/cancel/reset/delete, and persist custom profiles plus active selection in one bounded atomic file. Packaged profiles are read-only and contrast remains independent;
 - bundled Noto fallback preserves the native monospace primary, orders Han fallback by locale, and covers the selected Indic, Chinese, and Korean samples without OS font installation or runtime download; and
 - bounded shaped windows, grapheme-aware navigation/deletion, UTF-16 IME offsets, exact-width wrapping, and virtual preedit panning share Qt geometry while exact code-point inspection remains available.
 
@@ -103,11 +103,11 @@ BF-006 implementation is complete in candidate `3e20214`, but native Windows/mac
 
 | State | Implemented bound/policy |
 |---|---|
-| Document Undo/Redo persistence | newest 50 transactions or 32 MiB decoded per document, first limit reached |
+| Document Undo/Redo persistence | newest 100 transactions or 64 MiB decoded per document, first limit reached |
 | Find history | at most 50 states |
 | Replace history | at most 50 states |
 | Combined Find/Replace persistence | 4 MiB decoded; current field state survives history pruning |
-| Saved session/history union | 256 MiB physical cap across current and previous generation |
+| Saved session/history union | 512 MiB physical cap across current and previous generation |
 | Closed saved-document retention | seven days, subject to the aggregate cap |
 | Session structure | 1 MiB manifest; 32 windows; 128 leaves; 256 views; 128 documents |
 | Recovery compaction | 64 MiB per journal, publish before retirement |

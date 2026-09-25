@@ -37,11 +37,11 @@ The current source beta includes:
 - generation-published startup sessions with active-first lazy restore, SHA-256 external-change choices, seven-day saved-document continuity, and bounded per-document Undo/Redo restoration;
 - semantic crash-recovery journals that preserve transactions, Undo/Redo, save points, and evidence until an explicit recovery choice;
 - third-party `regex` search with engine-reconciled group identities, inline-switch and replacement-reference highlighting, structured diagnostics, and deterministic zero-width results;
-- integrated application ResourceManager with cache pressure, active/inactive document priorities, and shared background scheduling;
+- integrated application ResourceManager with cache pressure, opportunistic focused-and-idle cache ballooning (released to baseline immediately on focus loss or pressure), active/inactive document priorities, and shared background scheduling;
 - custom PySide6 `QAbstractScrollArea` editor viewport — Qt never owns the document;
-- tabs, native menus, persisted System/Light/Dark plus named Paper/Slate application themes, editable custom theme profiles, Cut/Copy/Paste, IME composition support, and an operational status bar;
+- tabs, native menus, persisted System/Light/Dark plus named Paper/Slate/Solarized Dark/Solarized Light/Monokai/Dracula/Gruvbox Dark/Nord application themes, editable custom theme profiles, Cut/Copy/Paste, IME composition support, and an operational status bar;
 - one service-owned topmost asynchronous regex-aware Find/Replace panel with persisted field state and Undo/Redo, complete theme-aware Lucide controls, cursor-relative Previous/Next independent of Find All, and a right-docked Match Report whose `\\N` capture labels share an aligned content column;
-- compact whitespace markers with distinct special-space and zero-width symbols, plus a held marker-type inspection key (`Ctrl+Alt` on Windows/Linux, `Cmd+Option` on macOS), configurable through **Hotkeys → Editor View**; a Word-Alt+X-style `Ctrl+Alt+X` toggle between typed hex and the actual character;
+- compact whitespace markers with distinct special-space and zero-width symbols, plus a held marker-type inspection key (`Ctrl+Alt` on Windows/Linux, `Cmd+Option` on macOS), configurable through **Hotkeys → Editor View**; a Word-Alt+X-style `Ctrl+Alt+X` toggle between typed hex and the actual character, briefly flash-highlighted in every theme;
 - separate **Reinterpret As** and **Convert on Save** controls;
 - source-aware inserted-EOL policy, explicit current-versus-on-save status, all-shared-view EOL refresh after save, invalid-byte viewport annotations, character inspector, settings paths, and diagnostics;
 - line numbers at 80% of the document point size with the document baseline and progressive width correction; and
