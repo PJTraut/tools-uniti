@@ -9,7 +9,6 @@ from pathlib import Path
 from uniti.core.durability import DurabilityResult
 
 from .atomic_json import atomic_write_json, preserve_invalid
-from .inspection_shortcut import DEFAULT_INSPECTION_MODIFIERS, normalize_inspection_modifiers
 
 SETTINGS_SCHEMA = 5
 MIN_EDITOR_TAB_WIDTH = 1
@@ -35,7 +34,6 @@ class Settings:
     theme_mode: str = "System"
     theme_contrast: str = "Standard"
     whitespace_mode: str = "off"
-    whitespace_inspect_modifiers: str = DEFAULT_INSPECTION_MODIFIERS
     editor_tab_width: int = DEFAULT_EDITOR_TAB_WIDTH
     find_replace_zoom_percent: int = 100
     # BF-092: the Match Report's own font size, tracked independently of
@@ -118,12 +116,6 @@ def _settings_from_payload(payload: object) -> Settings:
         "all",
     }:
         whitespace_mode = "off"
-    try:
-        inspection_modifiers = normalize_inspection_modifiers(
-            payload.get("whitespace_inspect_modifiers", DEFAULT_INSPECTION_MODIFIERS)
-        )
-    except (TypeError, ValueError):
-        inspection_modifiers = DEFAULT_INSPECTION_MODIFIERS
     editor_tab_width = payload.get("editor_tab_width", DEFAULT_EDITOR_TAB_WIDTH)
     if (
         not isinstance(editor_tab_width, int)
@@ -244,7 +236,6 @@ def _settings_from_payload(payload: object) -> Settings:
         theme_mode=theme_mode,
         theme_contrast=theme_contrast,
         whitespace_mode=whitespace_mode,
-        whitespace_inspect_modifiers=inspection_modifiers,
         editor_tab_width=editor_tab_width,
         find_replace_zoom_percent=find_replace_zoom_percent,
         find_replace_report_zoom_percent=find_replace_report_zoom_percent,

@@ -42,10 +42,8 @@ from uniti.ui.whitespace import (
     iter_character_markers,
     parse_whitespace_mode,
     shows_eol,
-    marker_detail,
 )
 from uniti.ui.whitespace_painter import paint_compact_marker
-from uniti.ui.unicode_inspection import unicode_inspection
 from uniti.ui.wrap_index import WrappedRowIndex
 
 
@@ -197,12 +195,9 @@ class UNITITextView(QAbstractScrollArea):
         self._progressive_navigation = False
         self._dock_return: DockReturnRecord | None = None
         self._whitespace_mode = WhitespaceMode.OFF
-        self._inspection_labels: dict[str, None] = {}
         app = QApplication.instance()
         if not isinstance(app, QApplication):
             raise RuntimeError("UNITITextView requires an existing QApplication")
-        self._inspection = unicode_inspection(app)
-        self._inspection.changed.connect(self.viewport().update)
         self._read_only = False
         self._line_highlights: dict[int, QColor] = {}
         self._line_markers: frozenset[int] = frozenset()
@@ -268,16 +263,6 @@ class UNITITextView(QAbstractScrollArea):
     @property
     def whitespace_mode(self) -> WhitespaceMode:
         return self._whitespace_mode
-
-    @property
-    def whitespace_details_visible(self) -> bool:
-        return self._inspection.active and self._whitespace_mode != WhitespaceMode.OFF
-
-    @property
-    def inspection_entries(self) -> tuple[str, ...]:
-        if not self.whitespace_details_visible:
-            return ()
-        return tuple(marker_detail(label) for label in self._inspection_labels)
 
     @property
     def theme_tokens(self) -> EditorThemeTokens:
@@ -800,7 +785,6 @@ class UNITITextView(QAbstractScrollArea):
         if self._disposed:
             return
         self._disposed = True
-        self._inspection.changed.disconnect(self.viewport().update)
         self._document_refresh_queued = False
         remove = self._remove_document_listener
         self._remove_document_listener = None
@@ -1317,9 +1301,6 @@ class UNITITextView(QAbstractScrollArea):
                 self._end_of_text_marker_x(left, label, rtl=rtl), baseline, label
             )
             return
-        if self.whitespace_details_visible:
-            for item in label.split(" / "):
-                self._inspection_labels[item.partition("×")[0]] = None
         if kind == WhitespaceKind.SPACE:
             painter.save()
             try:
@@ -1471,7 +1452,6 @@ class UNITITextView(QAbstractScrollArea):
 
     def paintEvent(self, event) -> None:
         del event
-        self._inspection_labels.clear()
         painter = QPainter(self.viewport())
         tokens = self._theme_tokens
         painter.fillRect(self.viewport().rect(), tokens.base)
@@ -1764,88 +1744,7 @@ class UNITITextView(QAbstractScrollArea):
             )
             marker_budget.remaining -= 1
 
-        self._paint_inspection_key(painter)
         self._refresh_scrollbars(advance_index=False)
-
-    def _paint_inspection_key(self, painter: QPainter) -> None:
-        entries = self.inspection_entries
-        if not entries:
-            return
-        width = self.viewport().width() - self._gutter_width - 8
-        if width < 40:
-            return
-        font = QFont(self.font())
-        font.setPointSizeF(max(6, font.pointSizeF() * 0.85))
-        metrics = QFontMetrics(font)
-        row_height = metrics.height() + 4
-        columns = max(
-            1, min(3, width // max(240, metrics.horizontalAdvance("NNBSP U+202F") + 36))
-        )
-        header_rows = 1
-        capacity = max(
-            0, int(self.viewport().height() * 0.45) // row_height - header_rows
-        )
-        if capacity == 0:
-            return
-        shown = min(len(entries), capacity * columns)
-        truncated = shown < len(entries)
-        if truncated:
-            shown = max(0, shown - columns)
-        rows = (shown + columns - 1) // columns
-        height = (header_rows + rows + int(truncated)) * row_height + 8
-        box = QRectF(
-            self._gutter_width + 4, self.viewport().height() - height - 4, width, height
-        )
-        painter.save()
-        try:
-            painter.setFont(font)
-            painter.fillRect(box, self._theme_tokens.gutter_base)
-            painter.setPen(self._theme_tokens.text)
-            painter.drawRect(box)
-
-            def text(value, x, y, available):
-                value = metrics.elidedText(
-                    value, Qt.TextElideMode.ElideRight, max(1, int(available))
-                )
-                painter.drawText(QPointF(x, y + metrics.ascent()), value)
-
-            text(
-                "Visible marker types",
-                box.left() + 6,
-                box.top() + 4,
-                width - 12,
-            )
-            labels = tuple(self._inspection_labels)
-            for index, entry in enumerate(entries[:shown]):
-                row, column = divmod(index, columns)
-                x = box.left() + column * width / columns + 6
-                y = box.top() + (header_rows + row) * row_height + 4
-                label = labels[index]
-                glyph = {
-                    "SPACE": "·",
-                    "TAB": "»",
-                    "LF": "␊",
-                    "CR": "␍",
-                    "CRLF": "␍␊",
-                }.get(label)
-                painter.setPen(self._theme_tokens.invisible_marker)
-                if glyph is not None:
-                    text(glyph, x, y, 28)
-                else:
-                    paint_compact_marker(
-                        painter, label, QRectF(x + 3, y, 12, row_height - 3)
-                    )
-                painter.setPen(self._theme_tokens.text)
-                text(entry, x + 28, y, width / columns - 40)
-            if truncated:
-                text(
-                    f"+{len(entries) - shown} types",
-                    box.left() + 6,
-                    box.top() + (header_rows + rows) * row_height + 4,
-                    width - 12,
-                )
-        finally:
-            painter.restore()
 
     def _char_for_point(self, x: float, y: float) -> int:
         visual_row = self.verticalScrollBar().value() + max(

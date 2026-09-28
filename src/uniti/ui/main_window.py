@@ -138,7 +138,7 @@ from uniti.ui.theme import (
     resolve_profile_editor_tokens,
 )
 from uniti.ui.whitespace import WhitespaceMode, parse_whitespace_mode
-from uniti.ui.unicode_inspection import unicode_inspection
+from uniti.ui.whitespace_legend import WhitespaceLegendWindow
 
 if TYPE_CHECKING:
     from uniti.app.service import UNITIService
@@ -256,9 +256,6 @@ class UNITIMainWindow(QMainWindow):
                 apply_theme(app, self._theme_state.active_id, self._settings.theme_contrast)
         shortcut_policy = build_shortcut_policy(
             self._settings.shortcut_overrides
-        )
-        unicode_inspection(QApplication.instance()).set_modifiers(
-            self._settings.whitespace_inspect_modifiers
         )
         self.shortcut_notices = shortcut_policy.notices
         self.shortcut_warning_count = 0
@@ -851,17 +848,6 @@ class UNITIMainWindow(QMainWindow):
         )
         self._save_settings()
 
-    def set_inspection_modifiers(self, modifiers: str) -> None:
-        controller = unicode_inspection(QApplication.instance())
-        controller.set_modifiers(modifiers)
-        for window in self._appearance_windows():
-            window._settings = dataclass_replace(
-                window._settings, whitespace_inspect_modifiers=controller.modifiers
-            )
-            if window._hotkeys_popup is not None:
-                window._hotkeys_popup.set_inspection_modifiers(controller.modifiers)
-        self._save_settings()
-
     def eventFilter(self, watched, event) -> bool:
         if (
             event.type() == QEvent.Type.KeyPress
@@ -919,6 +905,10 @@ class UNITIMainWindow(QMainWindow):
     @property
     def _character_inspector_dialog(self) -> CharacterInspectorDialog | None:
         return self._toggle_windows.get("character_inspector")
+
+    @property
+    def _whitespace_legend_window(self) -> WhitespaceLegendWindow | None:
+        return self._toggle_windows.get("whitespace_legend")
 
     @property
     def views(self) -> tuple[UNITITextView, ...]:
@@ -1385,6 +1375,11 @@ class UNITIMainWindow(QMainWindow):
             )
         )
         tools_menu.addAction(self._command_action("tools.compare", self.show_compare))
+        tools_menu.addAction(
+            self._command_action(
+                "tools.whitespace_legend", self.show_whitespace_legend
+            )
+        )
         tools_menu.addAction(
             self._action(
                 "Diagnostics…",
@@ -2315,10 +2310,6 @@ class UNITIMainWindow(QMainWindow):
     def show_hotkeys(self) -> HotkeysPopup:
         if self._hotkeys_popup is None:
             self._hotkeys_popup = HotkeysPopup(self._command_registry, self)
-            self._hotkeys_popup.set_inspection_modifiers(
-                self._settings.whitespace_inspect_modifiers
-            )
-            self._hotkeys_popup.inspectionShortcutChanged.connect(self.set_inspection_modifiers)
         self._hotkeys_popup.show_below(self.menuBar())
         return self._hotkeys_popup
 
@@ -3309,6 +3300,22 @@ class UNITIMainWindow(QMainWindow):
             initial_geometry=geometry,
             on_refresh=self._refresh_character_inspector,
             parent=self,
+        )
+
+    def show_whitespace_legend(self) -> None:
+        """Toggle window replacing the earlier "hold Ctrl+Alt/Cmd+Option"
+        gesture: a static reference of every whitespace/invisible-Unicode
+        marker, unlike the old overlay it never depended on what's
+        currently visible on screen. Same `_toggle_window` mechanism as
+        Character Inspector and Compare."""
+
+        self._toggle_window("whitespace_legend", self._build_whitespace_legend)
+
+    def _build_whitespace_legend(
+        self, zoom_percent: int, geometry: tuple[int, int, int, int] | None
+    ) -> WhitespaceLegendWindow:
+        return WhitespaceLegendWindow(
+            initial_zoom_percent=zoom_percent, initial_geometry=geometry, parent=self
         )
 
     def _character_inspector_single_payload(

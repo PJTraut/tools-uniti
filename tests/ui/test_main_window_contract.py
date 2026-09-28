@@ -2298,6 +2298,38 @@ def test_character_inspector_hotkey_toggles_open_and_closed(tmp_path: Path):
         window.close()
 
 
+def test_whitespace_legend_hotkey_toggles_open_and_closed(tmp_path: Path):
+    """Replaces the earlier "hold Ctrl+Alt/Cmd+Option" gesture with an
+    ordinary Ctrl+Alt+U toggle, same mechanism as Character Inspector/
+    Compare: pressing it again while open closes it instead of opening a
+    second one."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.settings import SettingsStore
+    from uniti.ui.main_window import UNITIMainWindow
+
+    store = SettingsStore(tmp_path / "settings.json")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=store)
+    try:
+        assert window._whitespace_legend_window is None
+        window.show_whitespace_legend()
+        app.processEvents()
+        first_window = window._whitespace_legend_window
+        assert first_window is not None
+        assert first_window.isVisible()
+
+        window.show_whitespace_legend()
+        app.processEvents()
+        assert window._whitespace_legend_window is None
+    finally:
+        window.close()
+
+
 def test_character_inspector_refresh_reflects_a_newer_selection(tmp_path: Path):
     """BF-076: the dialog stays open across selection changes (per its
     toggle-window/non-modal behavior), and previously had no way to pick

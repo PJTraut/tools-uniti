@@ -142,7 +142,7 @@ This is text reformatting only, not a structural refactor: it never reorders JSO
 
 Use **View → Whitespace** to choose **Off**, **EOL**, **Spaces & Tabs**, **Invisible Unicode**, or **All**. Markers are display aids; they do not insert characters or change file bytes.
 
-For temporary details, hold **Cmd+Option** on macOS or **Ctrl+Alt** on Windows/Linux. This reveals which marker types are visible for the selected whitespace mode. Release the modifiers to hide the details. Customize the hold under **Hotkeys → Editor View → Hold to inspect Unicode**.
+For a complete reference of every whitespace/invisible-Unicode marker the editor draws, its Unicode codepoint, and its color in the active theme, choose **Tools → Whitespace & Unicode Legend…** or press **Cmd+Option+U** on macOS or **Ctrl+Alt+U** on Windows/Linux. It's a toggle window: press the hotkey (or choose the menu item) again, or press Escape, to close it.
 
 For a dedicated readout, place the cursor at the character or select it and choose **Tools → Character Inspector…**. A visible character may contain several Unicode code points; the inspector describes one code point at a time.
 

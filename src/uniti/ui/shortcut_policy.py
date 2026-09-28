@@ -40,6 +40,11 @@ _UNITI_FALLBACKS = {
     "editing.unicode_hex_toggle": "Ctrl+Alt+X",
     "tools.character_inspector": "Ctrl+Alt+I",
     "tools.compare": "Ctrl+Alt+C",
+    # Replaces the earlier "hold Ctrl+Alt/Cmd+Option" gesture (a held,
+    # user-configurable 2+ modifier combo with no letter) with an ordinary
+    # toggle shortcut, same Ctrl+Alt+<mnemonic> convention as the others
+    # above -- U for Unicode.
+    "tools.whitespace_legend": "Ctrl+Alt+U",
 }
 
 
@@ -282,6 +287,13 @@ def _definitions() -> tuple[CommandDefinition, ...]:
             category.TOOLS,
             scope.WINDOW,
             "tools.compare",
+        ),
+        (
+            "tools.whitespace_legend",
+            "Whitespace & Unicode Legend…",
+            category.TOOLS,
+            scope.WINDOW,
+            "tools.whitespace_legend",
         ),
     )
 

@@ -47,19 +47,6 @@ _KNOWN_LABELS = {
 }
 
 
-def marker_detail(label: str) -> str:
-    parts = []
-    identities = {value: key for key, value in _KNOWN_LABELS.items()}
-    identities.update({"SPACE": " ", "TAB": "\t", "LF": "\n", "CR": "\r", "CRLF": "\r\n"})
-    for item in label.split(" / "):
-        name, separator, count = item.partition("×")
-        characters = identities.get(name)
-        code = " ".join(f"U+{ord(c):04X}" for c in characters) if characters else ""
-        detail = f"{name} {code}".strip()
-        parts.append(detail + (f" ×{count}" if separator else ""))
-    return " / ".join(parts)
-
-
 def parse_whitespace_mode(value: object) -> WhitespaceMode:
     if isinstance(value, WhitespaceMode):
         return value
