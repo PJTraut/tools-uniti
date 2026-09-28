@@ -809,6 +809,31 @@ class UNITIMainWindow(QMainWindow):
         if action is not None and not action.isChecked():
             action.setChecked(True)
 
+    def show_font_picker(self) -> None:
+        """View > Font… (BF-074) — lets the user override this one view's
+        font family, independent of the auto-resolved default. Unlike
+        Editor Theme/Syntax Profile, this isn't a bounded submenu of
+        checkable actions: the installed-font list is arbitrarily long,
+        so it's a searchable dialog instead."""
+
+        view = self.current_view
+        if view is None or not view.isEnabled():
+            return
+        from uniti.ui.font_family_picker import FontFamilyPicker
+
+        dialog = FontFamilyPicker(
+            view.font_family_choice,
+            default_family=view.default_font_family,
+            parent=self,
+        )
+        if dialog.exec():
+            self.set_editor_font_family(dialog.selected_family())
+
+    def set_editor_font_family(self, family: str | None) -> None:
+        view = self.current_view
+        if view is not None and view.isEnabled():
+            view.set_font_family_choice(family)
+
     def _prompt_custom_tab_width(self) -> None:
         view = self.current_view
         current_width = view.tab_width if view is not None else self._settings.editor_tab_width
@@ -1318,6 +1343,7 @@ class UNITIMainWindow(QMainWindow):
             syntax_choice_group.addAction(action)
             syntax_choice_menu.addAction(action)
             self._syntax_choice_actions[profile.key] = action
+        view_menu.addAction("Font…", self.show_font_picker)
         view_menu.addAction(
             "Convert Tabs to Spaces", self.convert_tabs_to_spaces
         )

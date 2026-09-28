@@ -32,6 +32,7 @@ from uniti.core.syntax_profiles import PLAIN_TEXT, PROFILES_BY_KEY, SyntaxProfil
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
 from uniti.ui.theme import EditorThemeTokens, active_theme
+from uniti.ui.bundled_fonts import ordered_families, register_bundled_fonts
 from uniti.ui.font_policy import resolve_editor_font
 from uniti.ui.text_layout import ShapedWindow, Utf16Map, direction_for_text
 from uniti.ui.horizontal_layout import HorizontalLayouts
@@ -224,6 +225,7 @@ class UNITITextView(QAbstractScrollArea):
         self._unicode_hex_flash_timer: QTimer | None = None
         self._theme_tokens = active_theme(app).editor
         self._theme_choice_id: str | None = None
+        self._font_family_choice: str | None = None
         self._syntax_profile: SyntaxProfile = PLAIN_TEXT
         self._syntax_choice_key: str | None = None
         self._syntax_colors = self._theme_tokens.syntax
@@ -431,6 +433,55 @@ class UNITITextView(QAbstractScrollArea):
         self._theme_choice_id = choice_id
         if tokens is not None:
             self.set_theme_tokens(tokens)
+
+    @property
+    def default_font_family(self) -> str:
+        """The auto-resolved family `font_family_choice=None` uses --
+        exposed read-only so callers (the font picker dialog) can label
+        the "use default" option without reaching into `_font_resolution`
+        directly."""
+
+        return self._font_resolution.resolved_family
+
+    @property
+    def font_family_choice(self) -> str | None:
+        """This view's own font-family override, independent of the
+        auto-resolved editor default — `None` means "use the
+        auto-resolved default" (the default: every view uses
+        `resolve_editor_font()`'s picked family plus the bundled Noto
+        fallback chain, unchanged from before this per-view override
+        existed)."""
+
+        return self._font_family_choice
+
+    def set_font_family_choice(self, family: str | None) -> None:
+        """BF-074: override this view's primary editor font family.
+        `family=None` reverts to the auto-resolved default. The bundled
+        Noto fallback chain still applies underneath the chosen primary
+        exactly as it does for the auto-resolved default (same
+        `ordered_families` call `resolve_editor_font` itself uses) --
+        choosing a different primary family is not a reason to reintroduce
+        tofu for scripts that family itself lacks glyphs for. Font
+        *weight*/*zoom* stay independent, exactly as they already are for
+        the default font: this only ever replaces `_base_font`'s family,
+        then re-derives point size/weight through the same `_apply_font`
+        every zoom/weight change already goes through."""
+
+        if family == self._font_family_choice:
+            return
+        self._font_family_choice = family
+        if family is None:
+            base = QFont(self._font_resolution.font)
+        else:
+            base = QFont(self._font_resolution.font)
+            base.setFamily(family)
+            base.setFamilies(ordered_families(family, register_bundled_fonts()))
+        self._base_font = base
+        self._base_point_size = self._base_font.pointSizeF()
+        if self._base_point_size <= 0:
+            self._base_point_size = 12.0
+            self._base_font.setPointSizeF(self._base_point_size)
+        self._apply_font()
 
     @property
     def syntax_profile(self) -> SyntaxProfile:
@@ -679,6 +730,8 @@ class UNITITextView(QAbstractScrollArea):
             extra["theme_choice_id"] = self._theme_choice_id
         if self._syntax_choice_key is not None:
             extra["syntax_choice_key"] = self._syntax_choice_key
+        if self._font_family_choice is not None:
+            extra["font_family_choice"] = self._font_family_choice
         return ViewRecord(
             self.view_id,
             document_id,
@@ -757,6 +810,13 @@ class UNITITextView(QAbstractScrollArea):
             # theme/profile store) right after this call returns; here we
             # only remember the choice for `export_state`/menu-sync.
             self._theme_choice_id = theme_choice_id
+        font_family_choice = record.extra.get("font_family_choice")
+        if isinstance(font_family_choice, str) and font_family_choice:
+            # Unlike theme choice, fully self-contained -- no app-level
+            # store needed to turn this back into a concrete font. A
+            # family no longer installed on this machine just falls back
+            # to Qt's own closest-match substitution, not a crash.
+            self.set_font_family_choice(font_family_choice)
         self.state.restore_state(
             EditorStateSnapshot(
                 record.cursor,

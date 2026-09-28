@@ -2108,9 +2108,15 @@ def test_per_view_settings_round_trip_through_view_state(tmp_path: Path):
     with Document.open(path, encoding="utf-8") as document:
         source = UNITITextView(EditorState(document))
 
-        # Unmodified: none of the four keys are written at all.
+        # Unmodified: none of the five keys are written at all.
         record = source.export_state("doc-1")
-        for key in ("whitespace_mode", "tab_width", "syntax_choice_key", "theme_choice_id"):
+        for key in (
+            "whitespace_mode",
+            "tab_width",
+            "syntax_choice_key",
+            "theme_choice_id",
+            "font_family_choice",
+        ):
             assert key not in record.extra
 
         source.set_whitespace_mode(WhitespaceMode.ALL)
@@ -2119,11 +2125,13 @@ def test_per_view_settings_round_trip_through_view_state(tmp_path: Path):
         custom_tokens = active_theme(app).editor
         assert isinstance(custom_tokens, EditorThemeTokens)
         source.set_theme_choice("Dark", custom_tokens)
+        source.set_font_family_choice("Courier New")
         record = source.export_state("doc-1")
         assert record.extra["whitespace_mode"] == "all"
         assert record.extra["tab_width"] == 8
         assert record.extra["syntax_choice_key"] == "markdown"
         assert record.extra["theme_choice_id"] == "Dark"
+        assert record.extra["font_family_choice"] == "Courier New"
 
         restored = UNITITextView(EditorState(document), view_id=record.view_id)
         restored.restore_state(record)
@@ -2135,9 +2143,52 @@ def test_per_view_settings_round_trip_through_view_state(tmp_path: Path):
         # the app's theme/profile store); `restore_state` only remembers
         # the choice id for that later step and for menu sync.
         assert restored.theme_choice_id == "Dark"
+        assert restored.font_family_choice == "Courier New"
 
         source.close()
         restored.close()
+        app.processEvents()
+
+
+def test_font_family_choice_keeps_the_bundled_noto_fallback_chain(tmp_path: Path):
+    """BF-074: switching the primary family must not reintroduce tofu for
+    scripts that family itself lacks glyphs for -- the bundled Noto
+    fallback chain applies underneath the chosen primary exactly as it
+    does for the auto-resolved default, via the same `ordered_families`
+    call `resolve_editor_font` itself uses."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.bundled_fonts import ordered_families, register_bundled_fonts
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "font-family-choice.txt"
+    path.write_text("alpha", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        default_family = view.default_font_family
+        assert view.font_family_choice is None
+        assert view._base_font.family() == default_family
+
+        expected_fallback = ordered_families("Courier New", register_bundled_fonts())
+        view.set_font_family_choice("Courier New")
+        assert view.font_family_choice == "Courier New"
+        assert view._base_font.family() == "Courier New"
+        assert list(view._base_font.families()) == expected_fallback
+        # default_font_family is read-only and unaffected by the override.
+        assert view.default_font_family == default_family
+
+        view.set_font_family_choice(None)
+        assert view.font_family_choice is None
+        assert view._base_font.family() == default_family
+
+        view.close()
         app.processEvents()
 
 
