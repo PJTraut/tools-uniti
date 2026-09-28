@@ -38,6 +38,57 @@ def test_compact_markers_are_distinct_and_transparent(app):
         images.append(image)
 
 
+def test_paint_whitespace_marker_is_usable_as_a_standalone_free_function(app):
+    """`paint_whitespace_marker`/`end_of_text_marker_x` were extracted out
+    of `UNITITextView` into free functions (mirroring `paint_compact_marker`,
+    which this itself calls for the generic/invisible-Unicode case) since
+    they only ever read a handful of narrow theme/metrics values -- confirm
+    they work called directly, with no `UNITITextView` instance at all,
+    not just through the view's thin delegating wrapper methods."""
+
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
+    from uniti.ui.whitespace import WhitespaceKind
+    from uniti.ui.whitespace_painter import end_of_text_marker_x, paint_whitespace_marker
+
+    metrics = QFontMetrics(app.font())
+    tokens = SimpleNamespace(
+        space_marker=QColor("#ff00ff"),
+        tab_marker=QColor("#00ff00"),
+        eol_marker=QColor("#0000ff"),
+        invisible_marker=QColor("#ffff00"),
+    )
+
+    def render(kind, label, x1=4.0, x2=20.0, y=0.0):
+        image = QImage(64, 32, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        paint_whitespace_marker(
+            painter, kind, label, x1, x2, y,
+            theme_tokens=tokens, row_ascent=14.0, line_height=20.0,
+            cell_width=8.0, metrics=metrics,
+        )
+        painter.end()
+        return image
+
+    space = render(WhitespaceKind.SPACE, "SPACE")
+    tab = render(WhitespaceKind.TAB, "TAB")
+    eol = render("eol", "LF")
+    invisible = render(WhitespaceKind.INVISIBLE, "ZWSP")
+    for image in (space, tab, eol, invisible):
+        assert any(
+            image.pixelColor(x, y).alpha() for x in range(64) for y in range(32)
+        )
+    assert space != tab != eol != invisible
+
+    assert end_of_text_marker_x(10, "x", metrics, rtl=False) == 13
+    assert end_of_text_marker_x(10, "x", metrics, rtl=True) == (
+        10 - 3 - metrics.horizontalAdvance("x")
+    )
+
+
 def test_whitespace_positions_after_supplementary_character(app, tmp_path, monkeypatch):
     from PySide6.QtGui import QTextLayout
     from uniti.app.editor_state import EditorState

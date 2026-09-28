@@ -43,7 +43,11 @@ from uniti.ui.whitespace import (
     parse_whitespace_mode,
     shows_eol,
 )
-from uniti.ui.whitespace_painter import paint_compact_marker
+from uniti.ui.whitespace_painter import (
+    end_of_text_marker_x,
+    paint_compact_marker,
+    paint_whitespace_marker,
+)
 from uniti.ui.wrap_index import WrappedRowIndex
 
 
@@ -1304,23 +1308,11 @@ class UNITITextView(QAbstractScrollArea):
         return float(value[0] if isinstance(value, tuple) else value)
 
     def _end_of_text_marker_x(self, left: int, glyph: str, *, rtl: bool) -> int:
-        """`left` is a boundary point at the true visual edge of already-
-        drawn content — the end-of-line position, or the last marker drawn
-        before an overflow indicator — not a real character's own span
-        (contrast `_paint_whitespace_marker`'s SPACE/TAB/INVISIBLE cases,
-        which nudge into a real, already-bounded span and need no direction
-        awareness). A fixed rightward nudge only lands in empty margin for
-        LTR, where "further along reading direction" is also "further
-        right on screen": for RTL, reading continues to the *left* of
-        `left`, so the same rightward nudge draws the marker glyph back on
-        top of the text it's meant to sit past. Placing the glyph's own
-        rendered width entirely to the left of `left` gives real
-        clearance instead of merely flipping the nudge's sign, which would
-        still let the glyph's rightward extent bleed into the text.
-        """
-        if not rtl:
-            return left + 3
-        return left - 3 - self._metrics.horizontalAdvance(glyph)
+        """See `uniti.ui.whitespace_painter.end_of_text_marker_x` for the
+        full behavior; kept as a thin delegating wrapper since tests
+        already call/monkeypatch it as a bound method on the view."""
+
+        return end_of_text_marker_x(left, glyph, self._metrics, rtl=rtl)
 
     def _paint_whitespace_marker(
         self,
@@ -1333,53 +1325,24 @@ class UNITITextView(QAbstractScrollArea):
         *,
         rtl: bool = False,
     ) -> None:
-        tokens = self._theme_tokens
-        baseline = y + self._row_ascent
-        # BF-064: `x1`/`x2` come from `x_for_cp`, whose ordering flips on a
-        # right-to-left line (see `_span_rect`) — the visual left edge of
-        # the marker's span is whichever of the two is smaller, not always
-        # x1 (the character's *logical* start).
-        left = int(round(min(x1, x2)))
-        if kind == "overflow":
-            painter.setPen(tokens.invisible_marker)
-            painter.drawText(
-                self._end_of_text_marker_x(left, label, rtl=rtl), baseline, label
-            )
-            return
-        if kind == WhitespaceKind.SPACE:
-            painter.save()
-            try:
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(tokens.space_marker)
-                center = QPointF((x1 + x2) / 2.0, y + self._line_height / 2.0)
-                diameter = min(abs(x2 - x1) * 0.5, self._metrics.height() * 0.25)
-                radius = max(0.5, diameter / 2.0)
-                painter.drawEllipse(center, radius, radius)
-            finally:
-                painter.restore()
-            return
-        elif kind == WhitespaceKind.TAB:
-            painter.setPen(tokens.tab_marker)
-            painter.drawText(left + 1, baseline, "»")
-            return
-        elif kind == "eol":
-            painter.setPen(tokens.eol_marker)
-            glyph = {"LF": "␊", "CR": "␍", "CRLF": "␍␊"}[label]
-            painter.drawText(
-                self._end_of_text_marker_x(left, glyph, rtl=rtl), baseline, glyph
-            )
-            return
-        else:
-            painter.setPen(tokens.invisible_marker)
-            width = max(4.0, self._cell_width * 0.8)
-            center = (x1 + x2) / 2 if abs(x2 - x1) >= 0.5 else x1
-            paint_compact_marker(
-                painter,
-                label,
-                QRectF(center - width / 2, y + 1, width, self._line_height - 2),
-            )
-            return
+        """See `uniti.ui.whitespace_painter.paint_whitespace_marker` for
+        the full behavior; kept as a thin delegating wrapper since tests
+        already call/monkeypatch it as a bound method on the view."""
+
+        paint_whitespace_marker(
+            painter,
+            kind,
+            label,
+            x1,
+            x2,
+            y,
+            theme_tokens=self._theme_tokens,
+            row_ascent=self._row_ascent,
+            line_height=self._line_height,
+            cell_width=self._cell_width,
+            metrics=self._metrics,
+            rtl=rtl,
+        )
 
     def _paint_whitespace_for_row(
         self,
