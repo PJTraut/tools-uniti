@@ -20,11 +20,8 @@ from PySide6.QtGui import (
     QAction,
     QActionGroup,
     QCloseEvent,
-    QColor,
     QIcon,
     QKeySequence,
-    QPainter,
-    QPixmap,
     QShortcut,
 )
 from PySide6.QtWidgets import (
@@ -113,6 +110,7 @@ from uniti.ui.compare_pane import (
     ComparePane,
 )
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
+from uniti.ui.document_groups_and_recent_files import DocumentGroupsAndRecentFiles
 from uniti.ui.dogfood_evidence import DogfoodEvidenceController
 from uniti.ui.file_format_dialogs import (
     LineEndingReportDialog,
@@ -331,6 +329,7 @@ class UNITIMainWindow(QMainWindow):
         self._toggle_windows: dict[str, QWidget] = {}
         self._toggle_window_manager = ToggleWindowManager(self)
         self._dogfood = DogfoodEvidenceController(self)
+        self._groups_and_recent_files = DocumentGroupsAndRecentFiles(self)
         self._markdown_preview_timer = QTimer(self)
         self._markdown_preview_timer.setSingleShot(True)
         self._markdown_preview_timer.setInterval(300)
@@ -1427,13 +1426,10 @@ class UNITIMainWindow(QMainWindow):
                 self._find_replace_shortcuts[definition.command_id] = shortcut
 
     def _remember_directory(self, path: str | Path) -> None:
-        directory = str(Path(path).parent)
-        self._settings = dataclass_replace(self._settings, last_directory=directory)
-        self._save_settings()
+        return self._groups_and_recent_files._remember_directory(path)
 
     def _record_recent_file(self, path: str | Path) -> None:
-        if self._recent_files_store is not None:
-            self._recent_files_store.record_opened(str(Path(path)))
+        return self._groups_and_recent_files._record_recent_file(path)
 
     def new_window(self):
         if self._service is None:
@@ -1679,189 +1675,34 @@ class UNITIMainWindow(QMainWindow):
 
     @staticmethod
     def _group_swatch_icon(color: str) -> QIcon:
-        size = 12
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.setBrush(QColor(color))
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(1, 1, size - 2, size - 2)
-        finally:
-            painter.end()
-        return QIcon(pixmap)
+        return DocumentGroupsAndRecentFiles._group_swatch_icon(color)
 
     def _refresh_group_indicator(self, view_id: str) -> None:
-        if self._service is None:
-            return
-        leaf = self._panes.leaf_for_view(view_id)
-        if leaf is None:
-            return
-        index = leaf.index_of(view_id)
-        if index < 0:
-            return
-        entry = self._service.documents.entry_for_view(view_id)
-        group = next(
-            (g for g in self._groups if entry is not None and g.id == entry.group_id),
-            None,
-        )
-        leaf.tabs.setTabIcon(
-            index, self._group_swatch_icon(group.color) if group is not None else QIcon()
-        )
+        return self._groups_and_recent_files._refresh_group_indicator(view_id)
 
     def _refresh_all_group_indicators(self) -> None:
-        for view_id in self._panes.view_ids:
-            self._refresh_group_indicator(view_id)
+        return self._groups_and_recent_files._refresh_all_group_indicators()
 
     def _set_document_group(self, document_id: str, group_id: str | None) -> None:
-        if self._service is None:
-            return
-        self._service.documents.set_group(document_id, group_id)
-        entry = self._service.documents.get(document_id)
-        if self._recent_files_store is not None:
-            self._recent_files_store.record_group(str(entry.canonical_path), group_id)
-        for view_id in entry.view_ids:
-            self._refresh_group_indicator(view_id)
+        return self._groups_and_recent_files._set_document_group(document_id, group_id)
 
     def _group_by_id(self, group_id: str) -> object | None:
-        return next((group for group in self._groups if group.id == group_id), None)
+        return self._groups_and_recent_files._group_by_id(group_id)
 
     def _save_group(self, group_id: str) -> None:
-        """BF-081: persist the paths of every currently open document
-        carrying ``group_id`` onto that group's record, so it can later be
-        reopened with ``_open_group``. Untitled and already-closed
-        documents have no reopenable path and are skipped."""
-
-        if self._service is None or self._group_store is None:
-            return
-        index = next(
-            (i for i, group in enumerate(self._groups) if group.id == group_id), None
-        )
-        if index is None:
-            return
-        paths = tuple(
-            str(entry.canonical_path)
-            for entry in self._service.documents.entries
-            if entry.group_id == group_id and entry.view_ids and not entry.is_untitled
-        )
-        updated = dataclass_replace(self._groups[index], saved_paths=paths)
-        groups = self._groups[:index] + (updated,) + self._groups[index + 1 :]
-        try:
-            self._group_store.save(groups)
-        except ValueError as exc:
-            self.statusBar().showMessage(str(exc)[:256], 5000)
-            return
-        self._groups = groups
-        self.statusBar().showMessage(
-            f'Saved {len(paths)} file(s) to group "{updated.name}".', 5000
-        )
+        return self._groups_and_recent_files._save_group(group_id)
 
     def _close_group(self, group_id: str) -> None:
-        """BF-081: close every open tab currently carrying ``group_id``,
-        prompting per unsaved document exactly like an ordinary Close would
-        (matching ``close_all_documents``, BF-084)."""
-
-        if self._service is None:
-            return
-        for view_id in reversed(self.view_ids):
-            entry = self._service.documents.entry_for_view(view_id)
-            if entry is not None and entry.group_id == group_id:
-                if not self._close_view_id(view_id, force=False):
-                    return
+        return self._groups_and_recent_files._close_group(group_id)
 
     def _open_group(self, group_id: str) -> None:
-        """BF-081: reopen every path saved onto ``group_id`` (an already
-        open path is focused instead, per ``open_path``) and (re)assign it
-        to the group -- restoring membership, not tab order/position."""
-
-        group = self._group_by_id(group_id)
-        if group is None or self._service is None:
-            return
-        failed = 0
-        for raw_path in group.saved_paths:
-            try:
-                view = self.open_path(Path(raw_path))
-            except Exception:
-                failed += 1
-                continue
-            if view is None:
-                continue
-            entry = self._service.documents.entry_for_view(view.view_id)
-            if entry is not None and entry.group_id != group_id:
-                self._set_document_group(entry.document_id, group_id)
-        if failed:
-            self.statusBar().showMessage(
-                f'Could not open {failed} file(s) from group "{group.name}".', 5000
-            )
+        return self._groups_and_recent_files._open_group(group_id)
 
     def _show_group_menu(self, view_id: str, position: QPoint) -> None:
-        if self._service is None:
-            return
-        entry = self._service.documents.entry_for_view(view_id)
-        if entry is None:
-            return
-        menu = QMenu(self)
-        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        none_action = menu.addAction("No Group")
-        none_action.setCheckable(True)
-        none_action.setChecked(entry.group_id is None)
-        none_action.triggered.connect(
-            lambda _checked=False, document_id=entry.document_id: (
-                self._set_document_group(document_id, None)
-            )
-        )
-        if self._groups:
-            menu.addSeparator()
-        for group in self._groups:
-            action = menu.addAction(self._group_swatch_icon(group.color), group.name)
-            action.setCheckable(True)
-            action.setChecked(entry.group_id == group.id)
-            action.triggered.connect(
-                lambda _checked=False,
-                document_id=entry.document_id,
-                group_id=group.id: self._set_document_group(document_id, group_id)
-            )
-        openable = [group for group in self._groups if group.saved_paths]
-        if openable:
-            menu.addSeparator()
-            for group in openable:
-                action = menu.addAction(f'Open Saved "{group.name}"')
-                action.triggered.connect(
-                    lambda _checked=False, group_id=group.id: self._open_group(group_id)
-                )
-        current_group = (
-            self._group_by_id(entry.group_id) if entry.group_id is not None else None
-        )
-        if current_group is not None:
-            menu.addSeparator()
-            save_action = menu.addAction(f'Save Group "{current_group.name}"')
-            save_action.triggered.connect(
-                lambda _checked=False, group_id=current_group.id: self._save_group(group_id)
-            )
-            close_action = menu.addAction(f'Close Group "{current_group.name}"')
-            close_action.triggered.connect(
-                lambda _checked=False, group_id=current_group.id: self._close_group(group_id)
-            )
-        menu.addSeparator()
-        manage_action = menu.addAction("Manage Groups…")
-        manage_action.triggered.connect(self.show_document_group_editor)
-        menu.popup(position)
+        return self._groups_and_recent_files._show_group_menu(view_id, position)
 
     def show_document_group_editor(self) -> None:
-        from uniti.ui.document_group_editor import DocumentGroupEditor
-
-        editor = DocumentGroupEditor(self._groups, self)
-        if editor.exec() and self._group_store is not None:
-            groups = editor.groups()
-            self._group_store.save(groups)
-            removed_ids = {g.id for g in self._groups} - {g.id for g in groups}
-            self._groups = groups
-            if self._service is not None and removed_ids:
-                for entry in self._service.documents.entries:
-                    if entry.group_id in removed_ids:
-                        self._service.documents.set_group(entry.document_id, None)
-            self._refresh_all_group_indicators()
+        return self._groups_and_recent_files.show_document_group_editor()
 
     def show_extension_profile_editor(self) -> None:
         from uniti.ui.extension_profile_editor import ExtensionProfileEditor
@@ -2046,102 +1887,21 @@ class UNITIMainWindow(QMainWindow):
                 )
 
     def _populate_recent_files_menu(self) -> None:
-        menu = self._recent_files_menu
-        menu.clear()
-        entries = (
-            self._recent_files_store.load_entries()
-            if self._recent_files_store is not None
-            else ()
-        )
-        if not entries:
-            empty_action = menu.addAction("(No Recent Files)")
-            empty_action.setEnabled(False)
-            return
-        names = [Path(entry.path).name for entry in entries]
-        duplicated_names = {name for name in names if names.count(name) > 1}
-        for entry, name in zip(entries, names):
-            label = (
-                f"{name}  ({Path(entry.path).parent})" if name in duplicated_names else name
-            )
-            group = (
-                self._group_by_id(entry.group_id) if entry.group_id is not None else None
-            )
-            action = (
-                menu.addAction(self._group_swatch_icon(group.color), label)
-                if group is not None
-                else menu.addAction(label)
-            )
-            action.setToolTip(entry.path)
-            action.triggered.connect(
-                lambda _checked=False, path=entry.path: self._open_recent_file(path)
-            )
-        menu.addSeparator()
-        menu.addAction("Clear Recent Files", self._clear_recent_files)
+        return self._groups_and_recent_files._populate_recent_files_menu()
 
     def _open_recent_file(self, path: str) -> None:
-        """BF-082: reopening a recent file restores the DocumentGroup it
-        last carried, when that group still exists."""
-
-        group_id = None
-        if self._recent_files_store is not None:
-            match = next(
-                (
-                    entry
-                    for entry in self._recent_files_store.load_entries()
-                    if entry.path == path
-                ),
-                None,
-            )
-            group_id = match.group_id if match is not None else None
-        try:
-            view = self.open_path(path)
-        except Exception as exc:
-            QMessageBox.critical(self, "Open Failed", f"{path}\n\n{exc}")
-            return
-        if (
-            group_id is not None
-            and view is not None
-            and self._service is not None
-            and any(group.id == group_id for group in self._groups)
-        ):
-            entry = self._service.documents.entry_for_view(view.view_id)
-            if entry is not None and entry.group_id != group_id:
-                self._set_document_group(entry.document_id, group_id)
+        return self._groups_and_recent_files._open_recent_file(path)
 
     def _clear_recent_files(self) -> None:
-        if self._recent_files_store is not None:
-            self._recent_files_store.clear()
+        return self._groups_and_recent_files._clear_recent_files()
 
     _OPEN_FOLDER_WARN_THRESHOLD = 100
 
-    _OPEN_FOLDER_GROUP_PALETTE = (
-        "#e06c75",
-        "#61afef",
-        "#98c379",
-        "#e5c07b",
-        "#c678dd",
-        "#56b6c2",
-        "#d19a66",
-    )
-
     def _next_group_color(self) -> str:
-        used = {group.color for group in self._groups}
-        for color in self._OPEN_FOLDER_GROUP_PALETTE:
-            if color not in used:
-                return color
-        return self._OPEN_FOLDER_GROUP_PALETTE[
-            len(self._groups) % len(self._OPEN_FOLDER_GROUP_PALETTE)
-        ]
+        return self._groups_and_recent_files._next_group_color()
 
     def _unique_group_id(self, name: str) -> str:
-        base = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-")[:64] or "group"
-        existing = {group.id for group in self._groups}
-        candidate = base
-        suffix = 2
-        while candidate in existing:
-            candidate = f"{base}-{suffix}"[:64]
-            suffix += 1
-        return candidate
+        return self._groups_and_recent_files._unique_group_id(name)
 
     def open_folder_by_type(self) -> None:
         """BF-029/ADR-0009: open every file of one chosen type from a folder
