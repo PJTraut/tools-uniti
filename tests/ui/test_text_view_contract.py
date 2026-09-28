@@ -777,6 +777,154 @@ def test_syntax_start_state_cache_is_cleared_on_edit_and_profile_change(
             view.close()
 
 
+def test_tokenize_cache_avoids_recomputing_tokens_on_a_pure_repaint(tmp_path: Path):
+    """Perf fix: `SyntaxProfile.tokenize` used to run fresh for every
+    visible row on every single repaint, even a pure scroll/cursor-blink
+    that touches no text -- a second repaint with nothing changed should
+    hit the memoized `(text, state_in)` result instead of calling the
+    tokenizer again."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from dataclasses import replace
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.core.syntax_profiles import profile_for_extension
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "sample.xml"
+    path.write_text("<a><b>text</b></a>\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            base_profile = profile_for_extension("xml")
+            calls: list[None] = []
+
+            def counting_tokenize(text, state):
+                calls.append(None)
+                return base_profile.tokenize(text, state)
+
+            view.set_syntax_profile(replace(base_profile, tokenize=counting_tokenize))
+            view.resize(320, 200)
+            view.show()
+            app.processEvents()
+            view.viewport().repaint()
+            app.processEvents()
+            first_paint_calls = len(calls)
+            assert first_paint_calls > 0
+
+            view.viewport().repaint()
+            app.processEvents()
+            assert len(calls) == first_paint_calls  # served from cache, not recomputed
+        finally:
+            view.close()
+
+
+def test_tokenize_cache_is_cleared_on_edit_and_profile_change(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.core.syntax_profiles import PLAIN_TEXT, profile_for_extension
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "sample.xml"
+    path.write_text("<a><b>text</b></a>\n", encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            view.set_syntax_profile(profile_for_extension("xml"))
+            view.resize(320, 200)
+            view.show()
+            app.processEvents()
+            view.viewport().repaint()
+            app.processEvents()
+            assert view._tokenize_cache  # populated by painting
+
+            view.refresh_document_revision()
+            assert view._tokenize_cache == {}
+
+            view.viewport().repaint()
+            app.processEvents()
+            assert view._tokenize_cache  # rebuilt by the next paint
+
+            view.set_syntax_profile(PLAIN_TEXT)
+            assert view._tokenize_cache == {}
+        finally:
+            view.close()
+
+
+def test_tokenize_cache_never_serves_stale_tokens_after_an_edit(tmp_path: Path):
+    """The invalidation trigger above proves the cache dict gets cleared;
+    this proves clearing it actually prevents a *wrong color* from a
+    prior paint leaking into the next one -- edits a string token into a
+    number token at the same position and checks the repainted color
+    tracks the new content, not a stale cached result."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QColor
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.core.syntax_profiles import profile_for_extension
+    from uniti.ui.syntax_theme import syntax_category_palette
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "sample.json"
+    text = '{"key": 1}'
+    path.write_text(text, encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            view.set_syntax_profile(profile_for_extension("json"))
+            view.resize(320, 100)
+            view.show()
+            app.processEvents()
+            view.viewport().repaint()
+            app.processEvents()
+            assert view._tokenize_cache  # the first paint populated it
+
+            # Replace the `"key"` string token with a `123` number token at
+            # the same starting position.
+            document.replace(1, 6, "123")
+            view.refresh_document_revision()
+            view.viewport().repaint()
+            app.processEvents()
+
+            image = view.viewport().grab().toImage()
+            x_start = view._gutter_width + view._metrics.horizontalAdvance("{")
+            x_end = x_start + view._metrics.horizontalAdvance("123")
+            y = view._line_height // 2
+
+            expected_color = syntax_category_palette(view.theme_tokens.base)["number"]
+            stale_string_color = syntax_category_palette(view.theme_tokens.base)["string"]
+
+            def distance(left: QColor, right: QColor) -> int:
+                return sum(
+                    (a - b) ** 2 for a, b in zip(left.getRgb()[:3], right.getRgb()[:3])
+                )
+
+            closest = min(
+                (image.pixelColor(x, y) for x in range(x_start, x_end)),
+                key=lambda color: distance(color, expected_color),
+            )
+            assert distance(closest, expected_color) < distance(closest, stale_string_color)
+        finally:
+            view.close()
+
+
 def test_syntax_highlighting_degrades_gracefully_on_a_cold_cache(tmp_path: Path):
     """Scrolling straight into a region whose start state was never
     computed (e.g. a jump past unvisited lines) must not crash — it falls

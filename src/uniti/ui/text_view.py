@@ -152,6 +152,20 @@ class UNITITextView(QAbstractScrollArea):
         self._preedit_formats = ()
         self._preedit_cursor_visible = True
         self._shape_cache = OrderedDict()
+        # Memoizes `SyntaxProfile.tokenize(text, state_in)` per visible row,
+        # same LRU discipline as `_shape_cache` right above (bounded at 64,
+        # pop-and-reinsert on hit, evict oldest past the cap) -- tokenizing
+        # is otherwise redone from scratch on every single repaint for
+        # every visible row, even a pure scroll or cursor blink that
+        # touches no text. `(text, state_in)` is a safe key: both are
+        # already proven immutable/hashable (`SyntaxToken`/profile state
+        # are frozen dataclasses or plain values), and a row's tokens only
+        # ever depend on its own text plus the parse state carried into it
+        # -- never on theme/color, which is resolved separately at paint
+        # time from `self._syntax_colors`, so this cache does not need to
+        # be cleared on a theme change. Cleared at the same two triggers
+        # `_syntax_start_states` already clears at, immediately below.
+        self._tokenize_cache = OrderedDict()
         # BF-064: one detected base direction per logical line, reused by
         # every window belonging to that line (a window frequently starts
         # mid-line — a wrapped continuation row, a horizontal-scroll
@@ -424,6 +438,7 @@ class UNITITextView(QAbstractScrollArea):
             return
         self._syntax_profile = profile
         self._syntax_start_states.clear()
+        self._tokenize_cache.clear()
         self.viewport().update()
 
     @property
@@ -774,6 +789,7 @@ class UNITITextView(QAbstractScrollArea):
         self._match_index = MatchIndex(())
         self._line_directions.clear()
         self._syntax_start_states.clear()
+        self._tokenize_cache.clear()
         self._refresh_scrollbars(advance_index=False)
         line = self.document.line_for_char(self.state.cursor)
         column = self.state.cursor - self.document.line_start(line)
@@ -1065,6 +1081,22 @@ class UNITITextView(QAbstractScrollArea):
             self._shape_cache.popitem(last=False)
         return shaped
 
+    def _tokenize(self, text: str, state_in: object):
+        """Memoized `self._syntax_profile.tokenize(text, state_in)` -- same
+        LRU discipline as `_shape` right above. Safe to key on just
+        `(text, state_in)` without the profile itself: `set_syntax_profile`
+        clears this cache wholesale on any profile change (see its own
+        comment), so a stale cross-profile hit can never occur."""
+
+        key = (text, state_in)
+        cached = self._tokenize_cache.pop(key, None)
+        if cached is None:
+            cached = self._syntax_profile.tokenize(text, state_in)
+        self._tokenize_cache[key] = cached
+        while len(self._tokenize_cache) > 64:
+            self._tokenize_cache.popitem(last=False)
+        return cached
+
     def _composition_pan(self, shaped: ShapedWindow, text_x: float) -> float:
         """Pan only the virtual composition row; preserve document scroll state."""
         if shaped.preedit is None:
@@ -1197,7 +1229,7 @@ class UNITITextView(QAbstractScrollArea):
                 if line_number is not None
                 else self._syntax_profile.initial_state
             )
-            tokens, state_out = self._syntax_profile.tokenize(text, state_in)
+            tokens, state_out = self._tokenize(text, state_in)
             if line_number is not None and column_start == 0:
                 self._syntax_start_states[line_number + 1] = state_out
             for token in tokens:
