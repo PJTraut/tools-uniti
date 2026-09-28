@@ -153,8 +153,9 @@ class UNITITextView(QAbstractScrollArea):
         self._preedit_cursor_visible = True
         self._shape_cache = OrderedDict()
         # Memoizes `SyntaxProfile.tokenize(text, state_in)` per visible row,
-        # same LRU discipline as `_shape_cache` right above (bounded at 64,
-        # pop-and-reinsert on hit, evict oldest past the cap) -- tokenizing
+        # same LRU discipline as `_shape_cache` right above (bounded by
+        # `_cache_capacity()`, pop-and-reinsert on hit, evict oldest past
+        # the cap) -- tokenizing
         # is otherwise redone from scratch on every single repaint for
         # every visible row, even a pure scroll or cursor blink that
         # touches no text. `(text, state_in)` is a safe key: both are
@@ -1077,9 +1078,21 @@ class UNITITextView(QAbstractScrollArea):
                 align_width_px=align_width_px,
             )
         self._shape_cache[key] = shaped
-        while len(self._shape_cache) > 64:
+        while len(self._shape_cache) > self._cache_capacity():
             self._shape_cache.popitem(last=False)
         return shaped
+
+    def _cache_capacity(self) -> int:
+        """Shared LRU cap for `_shape_cache`/`_tokenize_cache`: a fixed 64
+        was fine for a typical viewport (~40-60 visible rows) but a
+        soft-wrapped or unusually tall window can exceed that on every
+        single paint, causing evict-then-reshape/re-tokenize churn right
+        where the cache is supposed to help most. Sized off the viewport's
+        own current visible-row count (never below 64, the previous
+        constant, so a small window doesn't shrink below prior behavior)
+        rather than a number picked for one particular window size."""
+
+        return max(64, self._visible_line_capacity() * 2)
 
     def _tokenize(self, text: str, state_in: object):
         """Memoized `self._syntax_profile.tokenize(text, state_in)` -- same
@@ -1093,7 +1106,7 @@ class UNITITextView(QAbstractScrollArea):
         if cached is None:
             cached = self._syntax_profile.tokenize(text, state_in)
         self._tokenize_cache[key] = cached
-        while len(self._tokenize_cache) > 64:
+        while len(self._tokenize_cache) > self._cache_capacity():
             self._tokenize_cache.popitem(last=False)
         return cached
 

@@ -824,6 +824,44 @@ def test_tokenize_cache_avoids_recomputing_tokens_on_a_pure_repaint(tmp_path: Pa
             view.close()
 
 
+def test_cache_capacity_scales_with_visible_row_count(tmp_path: Path):
+    """`_shape_cache`/`_tokenize_cache` used to be capped at a fixed 64
+    entries regardless of window size -- fine for a typical viewport but a
+    soft-wrapped or unusually tall window could exceed 64 visible rows on
+    every single paint, evicting-and-recomputing entries that are still
+    on screen. The cap should never shrink below the old 64 floor, but
+    must grow for a genuinely taller viewport."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "many-lines.txt"
+    path.write_text("\n".join(f"line {i}" for i in range(500)), encoding="utf-8")
+    app = QApplication.instance() or QApplication([])
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        try:
+            view.show()
+            app.processEvents()
+
+            view.resize(400, 300)
+            app.processEvents()
+            assert view._cache_capacity() == 64
+
+            view.resize(400, 3000)
+            app.processEvents()
+            assert view._cache_capacity() > 64
+            assert view._cache_capacity() >= view._visible_line_capacity() * 2
+        finally:
+            view.close()
+
+
 def test_tokenize_cache_is_cleared_on_edit_and_profile_change(tmp_path: Path):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
