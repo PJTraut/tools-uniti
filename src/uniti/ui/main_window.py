@@ -113,6 +113,7 @@ from uniti.ui.compare_pane import (
     ComparePane,
 )
 from uniti.ui.diagnostics_dialog import DiagnosticsDialog
+from uniti.ui.dogfood_evidence import DogfoodEvidenceController
 from uniti.ui.file_format_dialogs import (
     LineEndingReportDialog,
     OpenFormatDialog,
@@ -137,6 +138,7 @@ from uniti.ui.theme import (
     resolve_editor_tokens,
     resolve_profile_editor_tokens,
 )
+from uniti.ui.toggle_window import ToggleWindowManager
 from uniti.ui.whitespace import WhitespaceMode, parse_whitespace_mode
 from uniti.ui.whitespace_legend import WhitespaceLegendWindow
 
@@ -321,11 +323,14 @@ class UNITIMainWindow(QMainWindow):
         # One generic tracker for every "toggle window" (2026-09-20
         # request: "one global function to manage toggle windows") --
         # Compare, Character Inspector, and any future one -- keyed by a
-        # short window identifier. See `_toggle_window`/
-        # `_on_toggle_window_closed` below; `_compare_pane`/
+        # short window identifier. See `ToggleWindowManager`
+        # (`uniti.ui.toggle_window`, `self._toggle_window_manager` below)
+        # for open/close/persist logic; `_compare_pane`/
         # `_character_inspector_dialog` stay as read-only convenience
         # properties over this dict.
         self._toggle_windows: dict[str, QWidget] = {}
+        self._toggle_window_manager = ToggleWindowManager(self)
+        self._dogfood = DogfoodEvidenceController(self)
         self._markdown_preview_timer = QTimer(self)
         self._markdown_preview_timer.setSingleShot(True)
         self._markdown_preview_timer.setInterval(300)
@@ -3413,79 +3418,12 @@ class UNITIMainWindow(QMainWindow):
         dialog.refresh(text, output_encoding=output_encoding, invalid_bytes=invalid_bytes)
 
     def _toggle_window(self, key: str, factory) -> QWidget | None:
-        """One generic open/close/geometry-and-zoom-persistence manager
-        for every "toggle window" (2026-09-20 request: "one global
-        function to manage toggle windows") -- Compare, Character
-        Inspector, and any future one. A call while `key`'s window is
-        already open closes it instead of opening another (matching Find:
-        the hotkey toggles). `factory(zoom_percent, geometry)` builds a
-        new window using the last-persisted values for `key` (or the
-        defaults if none exist yet), or returns `None` to decline opening
-        at all -- e.g. the user cancelled a document/file picker, or
-        there was nothing to inspect -- in which case nothing is shown or
-        tracked. Whatever closes the window (this method again, its own
-        Close action, Escape, or window chrome) is caught via its
-        `closeRequested` signal if it has one (`ComparePane`), else
-        `QDialog`'s own `finished` (`CharacterInspectorDialog`), and
-        persists its final geometry (always) and `zoom_percent` (if the
-        window exposes that property) back to `Settings`."""
+        """See `ToggleWindowManager.toggle` (`uniti.ui.toggle_window`) for
+        the full behavior; kept as a thin delegating wrapper so every
+        existing `show_*` caller (`show_character_inspector`, `show_compare`,
+        `show_whitespace_legend`, ...) needs no change."""
 
-        existing = self._toggle_windows.get(key)
-        if existing is not None:
-            existing.close()
-            return None
-        zoom_percent = self._settings.toggle_window_zoom_percent.get(key, 100)
-        geometry = self._settings.toggle_window_geometry.get(key)
-        window = factory(zoom_percent, geometry)
-        if window is None:
-            return None
-        self._toggle_windows[key] = window
-        close_signal = getattr(window, "closeRequested", None)
-        if close_signal is None:
-            close_signal = window.finished
-        close_signal.connect(
-            lambda *_args, key=key, window=window: self._on_toggle_window_closed(
-                key, window
-            )
-        )
-        window.show()
-        window.raise_()
-        window.activateWindow()
-        return window
-
-    def _on_toggle_window_closed(self, key: str, window: QWidget) -> None:
-        if self._toggle_windows.get(key) is not window:
-            return
-        del self._toggle_windows[key]
-        geometry = window.geometry()
-        geometries = dict(self._settings.toggle_window_geometry)
-        geometries[key] = (
-            geometry.x(),
-            geometry.y(),
-            geometry.width(),
-            geometry.height(),
-        )
-        updates: dict[str, object] = {"toggle_window_geometry": geometries}
-        zoom_percent = getattr(window, "zoom_percent", None)
-        if isinstance(zoom_percent, int):
-            zoom_percents = dict(self._settings.toggle_window_zoom_percent)
-            zoom_percents[key] = zoom_percent
-            updates["toggle_window_zoom_percent"] = zoom_percents
-        # BF-087: same optional-property pattern as zoom_percent above --
-        # only a window that exposes `splitter_sizes` (Character Inspector's
-        # list/detail split) gets an entry; others are left untouched.
-        splitter_sizes = getattr(window, "splitter_sizes", None)
-        if (
-            isinstance(splitter_sizes, tuple)
-            and len(splitter_sizes) == 2
-            and all(isinstance(size, int) for size in splitter_sizes)
-        ):
-            splitter_sizes_by_key = dict(self._settings.toggle_window_splitter_sizes)
-            splitter_sizes_by_key[key] = splitter_sizes
-            updates["toggle_window_splitter_sizes"] = splitter_sizes_by_key
-        self._settings = dataclass_replace(self._settings, **updates)
-        self._save_settings()
-        window.deleteLater()
+        return self._toggle_window_manager.toggle(key, factory)
 
     def show_diagnostics(self) -> None:
         documents = list(dict.fromkeys(view.document for view in self.views))
@@ -3589,55 +3527,10 @@ class UNITIMainWindow(QMainWindow):
         return pane
 
     def export_dogfood_evidence(self):
-        if self._service is None:
-            return None
-        initial = (
-            Path(self._settings.last_directory or "")
-            / "uniti-dogfood-evidence.json"
-        )
-        selected, _filter = QFileDialog.getSaveFileName(
-            self,
-            "Export Dogfood Evidence",
-            str(initial),
-            "JSON Files (*.json)",
-        )
-        if not selected:
-            return None
-        try:
-            handle = self._service.export_dogfood_evidence(Path(selected))
-        except (RuntimeError, ValueError):
-            QMessageBox.warning(
-                self,
-                "Dogfood Evidence Unavailable",
-                "UNITI could not start the evidence export.",
-            )
-            return None
-        self.statusBar().showMessage("Dogfood evidence export started.", 5000)
-        return handle
+        return self._dogfood.export_dogfood_evidence()
 
     def clear_dogfood_evidence(self):
-        if self._service is None:
-            return None
-        answer = QMessageBox.question(
-            self,
-            "Clear Dogfood Evidence",
-            "Clear all locally stored UNITI dogfood evidence?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return None
-        try:
-            handle = self._service.clear_dogfood_evidence()
-        except RuntimeError:
-            QMessageBox.warning(
-                self,
-                "Dogfood Evidence Unavailable",
-                "UNITI could not start clearing the evidence.",
-            )
-            return None
-        self.statusBar().showMessage("Clearing dogfood evidence…", 5000)
-        return handle
+        return self._dogfood.clear_dogfood_evidence()
 
     def set_pause_background(self, paused: bool) -> None:
         self._resources.pause_background(bool(paused))

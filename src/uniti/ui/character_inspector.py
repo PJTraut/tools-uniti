@@ -638,8 +638,9 @@ class CharacterInspectorDialog(QDialog):
     @property
     def splitter_sizes(self) -> tuple[int, int] | None:
         """BF-087: the list/detail splitter's current position, for
-        `UNITIMainWindow._on_toggle_window_closed` to persist across
-        reopens (mirrors the existing `zoom_percent` property) -- `None`
+        `ToggleWindowManager._on_closed` (`uniti.ui.toggle_window`) to
+        persist across reopens (mirrors the existing `zoom_percent`
+        property) -- `None`
         for a single-character dialog, which never builds a splitter.
         Reads the live splitter directly (not just `self._splitter_sizes`,
         which only updates once the user actually drags it or an initial
