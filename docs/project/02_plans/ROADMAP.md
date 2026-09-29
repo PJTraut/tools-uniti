@@ -22,6 +22,8 @@ The historical milestone names remain stable links to their acceptance requireme
 
 The [feedback transition plan](2026-09-08-b1-feedback-b2-transition-plan.md) records the B1→B2 implementation and remaining work; later promotions have no separate transition plan document beyond their ADR ([ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md) for B2→B3, [ADR-0012](../05_decisions/ADR-0012-b4-version-and-qualification.md) for B3→B4) and their milestone plan itself. The [feedback log](../BETA_FEEDBACK.md) tracks each BF item; the [outstanding work pools](2026-09-16-outstanding-work-pools.md) document clusters what's still open into batches for planning the next pass. The [current status](../01_current/STATUS.md) separates local tests, hosted results, physical input checks, and release evidence.
 
+The [isolated file-type environment framework plan](2026-09-29-environment-framework-e1-e4-plan.md) (Phase E1 implemented; see [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)) is a separate engineering-track initiative running alongside B4 — it does not gate B4's qualification and is not itself a version-qualification milestone.
+
 A21 Cross-Platform Alpha and earlier completed milestones remain in [Implemented](../03_implemented/README.md). A22 source infrastructure and the beta feedback code are implemented, but unfinished milestone acceptance records remain here.
 
 ## Queue rules
