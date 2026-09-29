@@ -1,7 +1,7 @@
 # ADR-0013: Isolated File-Type Environment Framework — Ownership Boundary
 
 Date: 2026-09-29
-Status: accepted (implementation planned, phased E1–E4 — see the [implementation plan](../02_plans/2026-09-29-environment-framework-e1-e4-plan.md); not yet started)
+Status: accepted (Phase E1 implemented; E2–E4 planned — see the [implementation plan](../02_plans/2026-09-29-environment-framework-e1-e4-plan.md))
 
 ## Context
 
@@ -26,7 +26,7 @@ This decision reconciles the spec's architecture against those facts before furt
 
 ## Consequences
 
-- `core/environment.py`, `core/environment_edit.py`, `core/decoration.py`, `core/resource_profile.py` will be new, Qt-free, headless-testable modules (Phase E1).
+- `core/environment.py`, `core/environment_edit.py`, `core/decoration.py`, `core/resource_profile.py` are new, Qt-free, headless-testable modules (Phase E1, implemented; `tests/test_file_environment.py`, `tests/test_resource_profile.py`).
 - Phase E2 will add `environment_key` to `DocumentEntry` and `FileEnvironmentManager` to `UNITIService`; Phase E3/E4 will add `core/environments/{json,xml,yaml}_environment.py` as light-environment proofs, each pairing a `syntax_profiles.py` decoration adapter with one bounded, honest validation capability — before any SFM/USFM design work begins.
 - SFM/USFM and Markdown rich-environment work (Phase E5 onward) is named but not designed by this decision — per this project's own documentation rules, that needs its own design record once E4 is proven.
 - Nothing in this decision changes the status of any [Parked Capability Catalog](../04_parked/CATALOG.md) entry.

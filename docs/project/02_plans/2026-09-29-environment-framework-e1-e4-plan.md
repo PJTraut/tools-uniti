@@ -1,7 +1,7 @@
 # Isolated File-Type Environments (E0–E4) — Implementation Plan
 
 Date: 2026-09-29
-Status: **Planned. Implementation not yet started.** See "Scope" below for what E0–E4 covers and what it deliberately does not.
+Status: **Phase E1 implemented.** E2–E4 planned, not yet implemented. See "Scope" below for what E0–E4 covers and what it deliberately does not.
 Origin: an external architecture spec (`@externalresources/UNITI_Claude_Code_Environment_Handover_Spec.md`) proposing isolated file-type environments layered on the canonical document, reviewed and reconciled against this codebase before any code was written. See [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md) for the reconciliation decisions this plan implements.
 Milestone: a new engineering-track initiative alongside the active [B4 milestone](v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) — not a version-qualification item itself, and not blocking B4. Referenced from [ROADMAP.md](ROADMAP.md)'s "Current work" section.
 
@@ -17,9 +17,18 @@ Goal of E0–E4: prove the environment seam is real — lazy activation, Plain f
 
 **Explicitly out of scope (future, separate design docs):** generic SFM detection and lossless tokenizer, `.STY` raw/normalized parsing and layering, USFM validation/navigation, a generic rich-view/source-map framework, SFM Standard/Formatted editable views, and a Markdown rich environment. Per this project's documentation rules, SFM/STY design deserves its own record once E4 has proven the framework — it is not designed here, only named as Phase E5+ for sequencing.
 
-## Task breakdown
+## Progress
 
-**E1 — Core skeleton.** `core/environment.py` (`EnvironmentContext`, `Environment` protocol, `PlainEnvironment`), `core/environment_edit.py` (`EnvironmentEditFacade`, wrapping `Document`'s existing mutators — no new transaction type), `core/decoration.py` (`DecorationProvider`, wrapping `syntax_profiles.SyntaxProfile`), `core/resource_profile.py` (`ResourceProfile`). Qt-free, headless-tested.
+**Phase E1 implemented 2026-09-29**, matching the design below:
+
+- `core/environment.py`: `EnvironmentContext` (constructed via `EnvironmentContext.for_document(document)`, holding an `EnvironmentEditFacade` and a `ResourceProfile`), the `Environment` protocol (`activate`/`deactivate`/`decoration_provider`), and `PlainEnvironment` — the always-available fallback, wrapping `syntax_profiles.PLAIN_TEXT` via `SyntaxProfileDecorationAdapter` rather than returning no provider at all, so every environment (including Plain) has a uniform, non-optional decoration contract.
+- `core/environment_edit.py`: `EnvironmentEditFacade`, delegating straight to `Document.insert`/`delete`/`replace`/`replace_many`/`revision`/`snapshot`/`iter_text` — no new transaction shape.
+- `core/decoration.py`: `DecorationProvider` protocol and `SyntaxProfileDecorationAdapter`, wrapping (not reimplementing) `syntax_profiles.SyntaxProfile`.
+- `core/resource_profile.py`: `ResourceProfile(size_bytes)` with `tier() -> "small"|"large"` (threshold `ENVIRONMENT_LARGE_FILE_BYTES = 1 << 20`, matching the order of magnitude of the existing ad hoc gate in `main_window.py` without sharing state with it) and an `allow_full_parse` convenience property.
+- Tests: `tests/test_file_environment.py` (10 cases — named to avoid a pytest module-name collision with the pre-existing `tests/bootstrap/test_environment.py`, which covers the unrelated bootstrap/runtime `EnvironmentManager`) and `tests/test_resource_profile.py` (4 cases). Both are pure Python, zero PySide6 — constructing a real `Document.open(tmp_path)` and exercising the facade/context directly.
+- Full suite green: 2,184 passed, 6 platform skips, no regressions.
+
+## Task breakdown
 
 **E2 — Registry + service/window wiring.** `DocumentEntry.environment_key`, `app/file_environment_manager.py`'s `FileEnvironmentManager` (owned by `UNITIService`, per ADR-0013 decision 4), `ui/main_window.py` resolving and threading the key through document open/replace. The existing per-view manual override stays untouched.
 
