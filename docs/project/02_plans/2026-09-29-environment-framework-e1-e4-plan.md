@@ -1,7 +1,7 @@
 # Isolated File-Type Environments (E0–E4) — Implementation Plan
 
 Date: 2026-09-29
-Status: **Phases E1–E3 implemented.** E4 planned, not yet implemented. See "Scope" below for what E0–E4 covers and what it deliberately does not.
+Status: **Phases E1–E4 implemented.** E5 onward (SFM/USFM, Markdown rich environments) intentionally not designed here — see "Scope" below.
 Origin: an external architecture spec (`@externalresources/UNITI_Claude_Code_Environment_Handover_Spec.md`) proposing isolated file-type environments layered on the canonical document, reviewed and reconciled against this codebase before any code was written. See [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md) for the reconciliation decisions this plan implements.
 Milestone: a new engineering-track initiative alongside the active [B4 milestone](v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) — not a version-qualification item itself, and not blocking B4. Referenced from [ROADMAP.md](ROADMAP.md)'s "Current work" section.
 
@@ -45,11 +45,15 @@ Goal of E0–E4: prove the environment seam is real — lazy activation, Plain f
 - `app/service.py`: when `file_environments` isn't injected, `UNITIService.__init__` registers `JsonEnvironment` into the freshly-constructed `FileEnvironmentManager` (an injected manager is left exactly as the caller built it — this composition-root wiring is deliberately not inside `FileEnvironmentManager` itself, keeping it format-agnostic and independently testable).
 - Tests: `tests/test_json_environment.py` (7 cases), pure Python.
 
-## Task breakdown
+**Phase E4 implemented 2026-09-29**, same pattern as E3:
 
-**E4 — XML and YAML light environments.** Same pattern as E3, proving the framework generalizes before committing to the materially larger SFM/USFM design.
+- `core/environments/xml_environment.py` (new): `XmlEnvironment` adapts `syntax_profiles.XML`; `validate()` uses the standard library's `xml.etree.ElementTree.fromstring` for real well-formedness checking (not a hand-rolled tag matcher, and no new dependency). Unlike JSON's streaming validator, `ElementTree` needs the whole document in memory, so this only runs when `context.resource_profile.allow_full_parse` is true — the framework's first real consumer of that gate — and treats an empty/whitespace-only document as having no findings rather than reporting `ElementTree`'s own "no element found" error.
+- `core/environments/yaml_environment.py` (new): `YamlEnvironment` adapts `syntax_profiles.YAML`; `validate()` adds one bounded, dependency-free check — a line whose leading indentation contains a literal tab, which the YAML spec forbids for block structure. No third-party YAML library was added; this stays a streaming, line-oriented scan like JSON's, needing no resource-profile gate.
+- `app/service.py`: `XmlEnvironment`/`YamlEnvironment` registered alongside `JsonEnvironment` in the same non-injected-manager branch.
+- Tests: `tests/test_xml_environment.py` (5 cases, including one exercising the `allow_full_parse` gate directly), `tests/test_yaml_environment.py` (5 cases).
+- Full suite green: 2,212 passed, 6 platform skips, no regressions.
 
-**E5+ (named only, no design here):** generic SFM detection + lossless tokenizer + `.STY` raw/normalized parsing; USFM validation/navigation; generic rich-view/source-map framework; SFM Standard View; SFM Formatted View; Markdown rich environment. Each gets its own plan/design record once E4 lands.
+**E5+ (named only, no design here):** generic SFM detection + lossless tokenizer + `.STY` raw/normalized parsing; USFM validation/navigation; generic rich-view/source-map framework; SFM Standard View; SFM Formatted View; Markdown rich environment. Each gets its own plan/design record once a consumer for `EnvironmentFinding`/`validate()` exists in the UI (nothing in `main_window.py`/`ui/` surfaces these findings yet — E3/E4 prove the seam at the Core level only; wiring a diagnostics panel or inline markers to it is deliberately left for whichever future phase actually needs it, per this project's "smallest change for the next phase" principle).
 
 ## Regression risks and how this plan avoids them
 

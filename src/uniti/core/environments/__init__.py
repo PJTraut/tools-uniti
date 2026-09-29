@@ -10,5 +10,7 @@ dependency direction app -> core, not core -> app.
 from __future__ import annotations
 
 from .json_environment import JsonEnvironment
+from .xml_environment import XmlEnvironment
+from .yaml_environment import YamlEnvironment
 
-__all__ = ["JsonEnvironment"]
+__all__ = ["JsonEnvironment", "XmlEnvironment", "YamlEnvironment"]

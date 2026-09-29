@@ -1,7 +1,7 @@
 # ADR-0013: Isolated File-Type Environment Framework — Ownership Boundary
 
 Date: 2026-09-29
-Status: accepted (Phases E1–E3 implemented; E4 planned — see the [implementation plan](../02_plans/2026-09-29-environment-framework-e1-e4-plan.md))
+Status: accepted (Phases E1–E4 implemented — see the [implementation plan](../02_plans/2026-09-29-environment-framework-e1-e4-plan.md))
 
 ## Context
 
@@ -27,7 +27,7 @@ This decision reconciles the spec's architecture against those facts before furt
 ## Consequences
 
 - `core/environment.py`, `core/environment_edit.py`, `core/decoration.py`, `core/resource_profile.py` are new, Qt-free, headless-testable modules (Phase E1, implemented; `tests/test_file_environment.py`, `tests/test_resource_profile.py`).
-- Phase E2 added `environment_key` to `DocumentEntry` and `FileEnvironmentManager` to `UNITIService`; Phase E3 added `core/environments/json_environment.py` as the first light-environment proof, pairing a `syntax_profiles.py` decoration adapter with bracket-match validation (`EnvironmentFinding`); Phase E4 will add the XML/YAML counterparts before any SFM/USFM design work begins.
+- Phase E2 added `environment_key` to `DocumentEntry` and `FileEnvironmentManager` to `UNITIService`; Phase E3/E4 added `core/environments/{json,xml,yaml}_environment.py` as light-environment proofs, each pairing a `syntax_profiles.py` decoration adapter with one bounded, honest validation capability (JSON bracket-matching, XML well-formedness via the standard library's `ElementTree` gated by `ResourceProfile.allow_full_parse`, YAML tab-indentation detection) — before any SFM/USFM design work begins.
 - SFM/USFM and Markdown rich-environment work (Phase E5 onward) is named but not designed by this decision — per this project's own documentation rules, that needs its own design record once E4 is proven.
 - Nothing in this decision changes the status of any [Parked Capability Catalog](../04_parked/CATALOG.md) entry.
 

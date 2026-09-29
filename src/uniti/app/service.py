@@ -277,9 +277,14 @@ class UNITIService:
         self.documents.add_remove_listener(_cleanup_untitled_backing_file)
         if file_environments is None:
             self.file_environments = FileEnvironmentManager()
-            from uniti.core.environments import JsonEnvironment
+            from uniti.core.environments import (
+                JsonEnvironment,
+                XmlEnvironment,
+                YamlEnvironment,
+            )
 
-            self.file_environments.register(JsonEnvironment.key, JsonEnvironment)
+            for environment_type in (JsonEnvironment, XmlEnvironment, YamlEnvironment):
+                self.file_environments.register(environment_type.key, environment_type)
         else:
             self.file_environments = file_environments
         self.windows = windows or WindowManager()
