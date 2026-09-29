@@ -17,6 +17,7 @@ from uniti.resources.tasks import TaskHandle, TaskKind, TaskSpec
 
 from .document_registry import DocumentEntry, DocumentRegistry
 from .dogfood import Durability, Operation, Outcome, ResourceBand
+from .file_environment_manager import FileEnvironmentManager
 from .session import MAX_VIEWS, MAX_WINDOWS, DockReturnRecord
 from .window_manager import ViewLocation, WindowManager
 
@@ -253,6 +254,7 @@ class UNITIService:
         recovery_manager: RecoveryManager,
         session_capture: Callable[[bool], SessionSnapshot] | None = None,
         documents: DocumentRegistry | None = None,
+        file_environments: FileEnvironmentManager | None = None,
         windows: WindowManager | None = None,
         service_id: str | None = None,
         build_identity: str | None = None,
@@ -273,6 +275,7 @@ class UNITIService:
         self.recovery = recovery_manager
         self.documents = documents or DocumentRegistry()
         self.documents.add_remove_listener(_cleanup_untitled_backing_file)
+        self.file_environments = file_environments or FileEnvironmentManager()
         self.windows = windows or WindowManager()
         self._instance_service = instance_service
         self._session_capture = session_capture

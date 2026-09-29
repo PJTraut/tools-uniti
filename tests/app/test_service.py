@@ -672,6 +672,32 @@ def test_document_group_assignment_updates_registry_and_tab_icon(tmp_path: Path)
         _stop_desktop_service(app, service)
 
 
+def test_opening_a_document_through_a_service_owned_window_sets_environment_key(
+    tmp_path: Path,
+):
+    app, service, _recovery = _desktop_service(tmp_path)
+    json_path = tmp_path / "data.json"
+    json_path.write_text("{}", encoding="utf-8")
+    plain_path = tmp_path / "notes.txt"
+    plain_path.write_text("hello", encoding="utf-8")
+    window = service.new_window()
+    try:
+        window.open_path(json_path)
+        window.open_path(plain_path)
+
+        json_entry = service.documents.find_path(json_path)
+        plain_entry = service.documents.find_path(plain_path)
+
+        assert json_entry is not None and json_entry.environment_key == "json"
+        assert plain_entry is not None and plain_entry.environment_key == "plain_text"
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
 def test_group_menu_lists_groups_and_marks_the_assigned_one(
     tmp_path: Path, monkeypatch
 ):

@@ -1,7 +1,7 @@
 # Isolated File-Type Environments (E0–E4) — Implementation Plan
 
 Date: 2026-09-29
-Status: **Phase E1 implemented.** E2–E4 planned, not yet implemented. See "Scope" below for what E0–E4 covers and what it deliberately does not.
+Status: **Phases E1–E2 implemented.** E3–E4 planned, not yet implemented. See "Scope" below for what E0–E4 covers and what it deliberately does not.
 Origin: an external architecture spec (`@externalresources/UNITI_Claude_Code_Environment_Handover_Spec.md`) proposing isolated file-type environments layered on the canonical document, reviewed and reconciled against this codebase before any code was written. See [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md) for the reconciliation decisions this plan implements.
 Milestone: a new engineering-track initiative alongside the active [B4 milestone](v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) — not a version-qualification item itself, and not blocking B4. Referenced from [ROADMAP.md](ROADMAP.md)'s "Current work" section.
 
@@ -28,9 +28,16 @@ Goal of E0–E4: prove the environment seam is real — lazy activation, Plain f
 - Tests: `tests/test_file_environment.py` (10 cases — named to avoid a pytest module-name collision with the pre-existing `tests/bootstrap/test_environment.py`, which covers the unrelated bootstrap/runtime `EnvironmentManager`) and `tests/test_resource_profile.py` (4 cases). Both are pure Python, zero PySide6 — constructing a real `Document.open(tmp_path)` and exercising the facade/context directly.
 - Full suite green: 2,184 passed, 6 platform skips, no regressions.
 
-## Task breakdown
+**Phase E2 implemented 2026-09-29**, matching the design below:
 
-**E2 — Registry + service/window wiring.** `DocumentEntry.environment_key`, `app/file_environment_manager.py`'s `FileEnvironmentManager` (owned by `UNITIService`, per ADR-0013 decision 4), `ui/main_window.py` resolving and threading the key through document open/replace. The existing per-view manual override stays untouched.
+- `app/document_registry.py`: `DocumentEntry` gains `environment_key: str = "plain_text"`. `adopt()` and `replace_document()` gain an optional `environment_key` parameter; when omitted, a new private `_default_environment_key(path)` resolves it via `profile_for_extension(path.suffix).key` (no overrides — this registry stays self-sufficient, no new `Settings` dependency). `replace_document()` only recomputes the key when the path actually changes, leaving an explicitly-set key untouched across a same-path replacement (e.g. a reload).
+- `app/file_environment_manager.py` (new): `FileEnvironmentManager` — `resolve_key(suffix, overrides)` (thin wrapper over `profile_for_extension`, so both the new per-document default and the pre-existing per-view manual override share one resolution path) and `activate_for(document, environment_key)`, which is deliberately **stateless** — see the module's own docstring for why a persistent per-document binding table (mirroring `RecoveryManager.attach`/`detach`) is deferred rather than built speculatively.
+- `app/service.py`: `UNITIService` gains `self.file_environments = file_environments or FileEnvironmentManager()`, alongside `self.documents`/`self.recovery` — matching decision 4 in ADR-0013 exactly.
+- `ui/main_window.py`: constructor gains `file_environment_manager: FileEnvironmentManager | None = None`, resolved the same defensive way `recovery_manager`/`settings_store` already are. `_add_document()`'s `documents.adopt(...)` call and the Save-As/reload `documents.replace_document(...)` call both now pass `environment_key=self._file_environment_manager.resolve_key(path.suffix, self._settings.syntax_extension_overrides)` — the existing `view.set_syntax_profile(profile_for_extension(...))` line is untouched.
+- Tests: `tests/test_file_environment_manager.py` (6 cases), 3 new cases in `tests/app/test_document_registry.py` (default resolution, explicit override, recompute-only-on-path-change), and one service+window integration test in `tests/app/test_service.py` (`test_opening_a_document_through_a_service_owned_window_sets_environment_key`, following the existing `service.new_window()` + `open_path()` pattern used by neighboring tests in that file).
+- Full suite green: 2,195 passed, 6 platform skips, no regressions.
+
+## Task breakdown
 
 **E3 — First light environment: JSON.** `core/environments/json_environment.py`, adapting `syntax_profiles.JSON` for decoration and adding bracket-match validation as the framework's first real value-add beyond passthrough decoration.
 

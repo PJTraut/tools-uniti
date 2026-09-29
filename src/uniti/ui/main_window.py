@@ -46,6 +46,7 @@ from uniti.app.commands import (
     CommandScope,
 )
 from uniti.app.editor_state import EditorState
+from uniti.app.file_environment_manager import FileEnvironmentManager
 from uniti.app.platform_policy import native_paths_equal, normalize_native_path
 from uniti.app.recovery_manager import RecoveryHealth, RecoveryManager
 from uniti.app.session import MAX_VIEWS
@@ -204,6 +205,7 @@ class UNITIMainWindow(QMainWindow):
         recovery_manager: RecoveryManager | None = None,
         settings_store: SettingsStore | None = None,
         resource_manager: ResourceManager | None = None,
+        file_environment_manager: FileEnvironmentManager | None = None,
         startup_snapshot: Mapping[str, object] | None = None,
     ) -> None:
         super().__init__(parent)
@@ -213,13 +215,23 @@ class UNITIMainWindow(QMainWindow):
         self.window_id = window_id or uuid.uuid4().hex
         if service is not None and any(
             item is not None
-            for item in (recovery_manager, settings_store, resource_manager)
+            for item in (
+                recovery_manager,
+                settings_store,
+                resource_manager,
+                file_environment_manager,
+            )
         ):
             raise ValueError(
                 "service-owned windows cannot override process services"
             )
         self._recovery_manager = (
             service.recovery if service is not None else recovery_manager
+        )
+        self._file_environment_manager = (
+            service.file_environments
+            if service is not None
+            else file_environment_manager or FileEnvironmentManager()
         )
         self._settings_store = (
             service.settings if service is not None else settings_store
@@ -2123,8 +2135,13 @@ class UNITIMainWindow(QMainWindow):
         if self._service is not None:
             entry = self._service.documents.find_path(document.path)
             if entry is None:
+                environment_key = self._file_environment_manager.resolve_key(
+                    document.path.suffix, self._settings.syntax_extension_overrides
+                )
                 entry = self._service.documents.adopt(
-                    document, is_untitled=is_untitled
+                    document,
+                    is_untitled=is_untitled,
+                    environment_key=environment_key,
                 )
                 adopted = True
             elif entry.document is not document:
@@ -2966,6 +2983,9 @@ class UNITIMainWindow(QMainWindow):
                 entry.document_id,
                 replacement,
                 allow_path_change=allow_path_change,
+                environment_key=self._file_environment_manager.resolve_key(
+                    replacement.path.suffix, self._settings.syntax_extension_overrides
+                ),
             )
             self._service.track_document(entry)
             if initial_eol_report is not None:

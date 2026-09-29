@@ -10,6 +10,7 @@ from pathlib import Path
 
 from uniti.core.document import Document
 from uniti.core.file_identity import SavedFileStamp
+from uniti.core.syntax_profiles import profile_for_extension
 
 from .platform_policy import native_paths_equal, normalize_native_path
 
@@ -34,10 +35,20 @@ class DocumentEntry:
     closed_at: datetime | None
     group_id: str | None = None
     is_untitled: bool = False
+    environment_key: str = "plain_text"
 
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _default_environment_key(path: Path) -> str:
+    """Extension-only default (ADR-0013); no user-override dict is threaded
+    through here so this registry stays self-sufficient without a Settings
+    dependency. A caller that knows about `Settings.syntax_extension_overrides`
+    (`FileEnvironmentManager.resolve_key`) may pass an explicit key instead."""
+
+    return profile_for_extension(path.suffix).key
 
 
 def _identifier(value: str, label: str) -> str:
@@ -117,6 +128,7 @@ class DocumentRegistry:
         document_id: str | None = None,
         saved_stamp: SavedFileStamp | None = None,
         is_untitled: bool = False,
+        environment_key: str | None = None,
     ) -> DocumentEntry:
         if not isinstance(document, Document):
             raise TypeError("document must be a Document")
@@ -153,6 +165,7 @@ class DocumentRegistry:
             None,
             None,
             is_untitled,
+            environment_key or _default_environment_key(canonical_path),
         )
         self._entries[selected_id] = entry
         self._documents[id(document)] = selected_id
@@ -250,6 +263,7 @@ class DocumentRegistry:
         replacement: Document,
         *,
         allow_path_change: bool = False,
+        environment_key: str | None = None,
     ) -> Document:
         """Atomically replace one authority while retaining its view bindings.
 
@@ -283,6 +297,9 @@ class DocumentRegistry:
         entry.last_active_at = _datetime(self._clock(), "clock result")
         if path_changed:
             entry.is_untitled = False
+            entry.environment_key = environment_key or _default_environment_key(
+                canonical_path
+            )
         original.close()
         return original
 

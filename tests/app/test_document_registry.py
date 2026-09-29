@@ -253,6 +253,64 @@ def test_replace_document_with_path_change_rejects_a_path_owned_elsewhere(
         registry.close_all()
 
 
+def test_adopt_defaults_environment_key_from_extension(tmp_path: Path):
+    plain = _open_document(tmp_path, "doc.txt")
+    (tmp_path / "doc.json").write_text("{}", encoding="utf-8")
+    json_document = Document.open(tmp_path / "doc.json")
+    registry = DocumentRegistry(clock=lambda: NOW)
+    try:
+        assert registry.adopt(plain).environment_key == "plain_text"
+        assert registry.adopt(json_document).environment_key == "json"
+    finally:
+        registry.close_all()
+
+
+def test_adopt_accepts_an_explicit_environment_key_override(tmp_path: Path):
+    document = _open_document(tmp_path, "doc.usj")
+    registry = DocumentRegistry(clock=lambda: NOW)
+    try:
+        entry = registry.adopt(document, environment_key="json")
+        assert entry.environment_key == "json"
+    finally:
+        registry.close_all()
+
+
+def test_replace_document_recomputes_environment_key_only_on_path_change(
+    tmp_path: Path,
+):
+    scratch = _open_document(tmp_path, "Untitled.txt")
+    (tmp_path / "real.json").write_text("{}", encoding="utf-8")
+    real = Document.open(tmp_path / "real.json")
+    registry = DocumentRegistry(clock=lambda: NOW)
+    entry = registry.adopt(scratch, is_untitled=True)
+    try:
+        assert entry.environment_key == "plain_text"
+
+        registry.replace_document(entry.document_id, real, allow_path_change=True)
+
+        assert entry.environment_key == "json"
+    finally:
+        registry.close_all()
+
+
+def test_replace_document_leaves_environment_key_unchanged_when_path_is_unchanged(
+    tmp_path: Path,
+):
+    # Deliberately overridden to something the extension (.txt) would not
+    # itself default to, so this test actually distinguishes "left alone"
+    # from "recomputed and happened to match".
+    original = _open_document(tmp_path, "doc.txt")
+    replacement = Document.open(original.path)
+    registry = DocumentRegistry(clock=lambda: NOW)
+    entry = registry.adopt(original, environment_key="json")
+    try:
+        registry.replace_document(entry.document_id, replacement)
+
+        assert entry.environment_key == "json"
+    finally:
+        registry.close_all()
+
+
 def test_replacing_document_authority_accepts_a_hard_link_to_the_same_file(
     tmp_path: Path,
 ):
