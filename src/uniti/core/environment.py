@@ -22,6 +22,7 @@ from typing import Protocol
 from .decoration import DecorationProvider, SyntaxProfileDecorationAdapter
 from .document import Document
 from .environment_edit import EnvironmentEditFacade
+from .environment_findings import EnvironmentFinding
 from .resource_profile import ResourceProfile
 from .syntax_profiles import PLAIN_TEXT
 
@@ -53,6 +54,8 @@ class Environment(Protocol):
     @property
     def decoration_provider(self) -> DecorationProvider | None: ...
 
+    def validate(self, context: EnvironmentContext) -> tuple[EnvironmentFinding, ...]: ...
+
 
 class PlainEnvironment:
     """Always-available fallback: no enhanced behavior, never fails.
@@ -76,3 +79,7 @@ class PlainEnvironment:
     @property
     def decoration_provider(self) -> DecorationProvider | None:
         return self._decoration_provider
+
+    def validate(self, context: EnvironmentContext) -> tuple[EnvironmentFinding, ...]:
+        del context
+        return ()

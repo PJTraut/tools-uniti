@@ -1,7 +1,7 @@
 # Isolated File-Type Environments (E0–E4) — Implementation Plan
 
 Date: 2026-09-29
-Status: **Phases E1–E2 implemented.** E3–E4 planned, not yet implemented. See "Scope" below for what E0–E4 covers and what it deliberately does not.
+Status: **Phases E1–E3 implemented.** E4 planned, not yet implemented. See "Scope" below for what E0–E4 covers and what it deliberately does not.
 Origin: an external architecture spec (`@externalresources/UNITI_Claude_Code_Environment_Handover_Spec.md`) proposing isolated file-type environments layered on the canonical document, reviewed and reconciled against this codebase before any code was written. See [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md) for the reconciliation decisions this plan implements.
 Milestone: a new engineering-track initiative alongside the active [B4 milestone](v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) — not a version-qualification item itself, and not blocking B4. Referenced from [ROADMAP.md](ROADMAP.md)'s "Current work" section.
 
@@ -37,9 +37,15 @@ Goal of E0–E4: prove the environment seam is real — lazy activation, Plain f
 - Tests: `tests/test_file_environment_manager.py` (6 cases), 3 new cases in `tests/app/test_document_registry.py` (default resolution, explicit override, recompute-only-on-path-change), and one service+window integration test in `tests/app/test_service.py` (`test_opening_a_document_through_a_service_owned_window_sets_environment_key`, following the existing `service.new_window()` + `open_path()` pattern used by neighboring tests in that file).
 - Full suite green: 2,195 passed, 6 platform skips, no regressions.
 
-## Task breakdown
+**Phase E3 implemented 2026-09-29**, matching the design below, with one naming decision made concrete: this codebase's "Diagnostics" (`app/diagnostics.py`, `DiagnosticsDialog`) already means app-health/startup telemetry, unrelated to a per-document validation finding, so the new result type is `EnvironmentFinding` (`core/environment_findings.py`), not `Diagnostic` — a fourth same-name-different-meaning collision avoided in this initiative (after `FileEnvironmentManager` and the `EditTransaction` reconciliation).
 
-**E3 — First light environment: JSON.** `core/environments/json_environment.py`, adapting `syntax_profiles.JSON` for decoration and adding bracket-match validation as the framework's first real value-add beyond passthrough decoration.
+- `core/environment_findings.py` (new): `FindingSeverity` (`INFO`/`WARNING`/`ERROR`) and `EnvironmentFinding(start, end, severity, message, code)`.
+- `core/environment.py`: the `Environment` protocol gains `validate(context) -> tuple[EnvironmentFinding, ...]`; `PlainEnvironment.validate` returns `()`.
+- `core/environments/__init__.py`, `core/environments/json_environment.py` (new): `JsonEnvironment` adapts `syntax_profiles.JSON` via `SyntaxProfileDecorationAdapter` for `decoration_provider`, and its `validate()` adds real bracket-match validation (`{}`/`[]` nesting, ignoring brackets inside string literals, handling escaped quotes) — streamed chunk-by-chunk via `context.edits.iter_text()`, so it never materializes the whole document and needed no resource-profile gate.
+- `app/service.py`: when `file_environments` isn't injected, `UNITIService.__init__` registers `JsonEnvironment` into the freshly-constructed `FileEnvironmentManager` (an injected manager is left exactly as the caller built it — this composition-root wiring is deliberately not inside `FileEnvironmentManager` itself, keeping it format-agnostic and independently testable).
+- Tests: `tests/test_json_environment.py` (7 cases), pure Python.
+
+## Task breakdown
 
 **E4 — XML and YAML light environments.** Same pattern as E3, proving the framework generalizes before committing to the materially larger SFM/USFM design.
 

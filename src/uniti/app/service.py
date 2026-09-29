@@ -275,7 +275,13 @@ class UNITIService:
         self.recovery = recovery_manager
         self.documents = documents or DocumentRegistry()
         self.documents.add_remove_listener(_cleanup_untitled_backing_file)
-        self.file_environments = file_environments or FileEnvironmentManager()
+        if file_environments is None:
+            self.file_environments = FileEnvironmentManager()
+            from uniti.core.environments import JsonEnvironment
+
+            self.file_environments.register(JsonEnvironment.key, JsonEnvironment)
+        else:
+            self.file_environments = file_environments
         self.windows = windows or WindowManager()
         self._instance_service = instance_service
         self._session_capture = session_capture
