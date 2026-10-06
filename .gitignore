@@ -10,3 +10,6 @@ build/
 .worktrees/
 ci-results/
 .DS_Store
+
+# Local external reference material
+/@externalresources/
