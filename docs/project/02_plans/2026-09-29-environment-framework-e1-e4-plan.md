@@ -1,7 +1,7 @@
 # Isolated File-Type Environments (E0–E4) — Implementation Plan
 
 Date: 2026-09-29
-Status: **Phases E1–E4 implemented.** E5 onward (SFM/USFM, Markdown rich environments) intentionally not designed here — see "Scope" below.
+Status: **Phases E1–E4 implemented.** E5 onward (SFM/USFM, Markdown rich environments) intentionally not designed here — see "Scope" below. Phase E5 (SFM foundation) now has its own plan: [2026-09-29-environment-framework-e5-sfm-foundation-plan.md](2026-09-29-environment-framework-e5-sfm-foundation-plan.md). Phase E6 (USFM layer): [2026-09-30-environment-framework-e6-usfm-layer-plan.md](2026-09-30-environment-framework-e6-usfm-layer-plan.md).
 Origin: an external architecture spec (`@externalresources/UNITI_Claude_Code_Environment_Handover_Spec.md`) proposing isolated file-type environments layered on the canonical document, reviewed and reconciled against this codebase before any code was written. See [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md) for the reconciliation decisions this plan implements.
 Milestone: a new engineering-track initiative alongside the active [B4 milestone](v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) — not a version-qualification item itself, and not blocking B4. Referenced from [ROADMAP.md](ROADMAP.md)'s "Current work" section.
 
@@ -53,7 +53,11 @@ Goal of E0–E4: prove the environment seam is real — lazy activation, Plain f
 - Tests: `tests/test_xml_environment.py` (5 cases, including one exercising the `allow_full_parse` gate directly), `tests/test_yaml_environment.py` (5 cases).
 - Full suite green: 2,212 passed, 6 platform skips, no regressions.
 
-**E5+ (named only, no design here):** generic SFM detection + lossless tokenizer + `.STY` raw/normalized parsing; USFM validation/navigation; generic rich-view/source-map framework; SFM Standard View; SFM Formatted View; Markdown rich environment. Each gets its own plan/design record once a consumer for `EnvironmentFinding`/`validate()` exists in the UI (nothing in `main_window.py`/`ui/` surfaces these findings yet — E3/E4 prove the seam at the Core level only; wiring a diagnostics panel or inline markers to it is deliberately left for whichever future phase actually needs it, per this project's "smallest change for the next phase" principle).
+**Phase E5 (SFM foundation) implemented 2026-09-29** — generic SFM detection (`.usfm` extension mapping added), a lossless tokenizer, a permissive source tree, and `.STY` raw/normalized/layered parsing. See its own record: [2026-09-29-environment-framework-e5-sfm-foundation-plan.md](2026-09-29-environment-framework-e5-sfm-foundation-plan.md).
+
+**Phase E6 (USFM layer) implemented 2026-09-30** — baseline `usfm.sty` (vendored, hash-verified), the `UsfmEnvironment`, chapter/verse navigation, and a `usfmtc` reference-validation adapter. See its own record: [2026-09-30-environment-framework-e6-usfm-layer-plan.md](2026-09-30-environment-framework-e6-usfm-layer-plan.md).
+
+**E7+ (named only, no design here):** generic rich-view/source-map framework; SFM Standard View; SFM Formatted View; Markdown rich environment. Each gets its own plan/design record once a consumer for `EnvironmentFinding`/`validate()` exists in the UI (nothing in `main_window.py`/`ui/` surfaces these findings yet — E3–E6 prove the seam at the Core level only; wiring a diagnostics panel or inline markers to it is deliberately left for whichever future phase actually needs it, per this project's "smallest change for the next phase" principle).
 
 ## Regression risks and how this plan avoids them
 

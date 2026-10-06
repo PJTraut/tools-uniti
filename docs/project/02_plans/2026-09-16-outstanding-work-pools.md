@@ -26,7 +26,7 @@ Seven items from a batch of external beta-tester feedback ([BF-076](../BETA_FEED
 
 **Still open:**
 
-- [BF-082](../BETA_FEEDBACK.md#bf-082--file-tabs-stack-files-per-group-longer-filenames-paging-nav) — File tabs: per-group stacking, horizontal groups/vertical files, paging nav. **New architecture, in progress.** Scoped with the user 2026-09-21: per-split stacking — each `PaneLeaf` gets its own horizontal group row/vertical file stack, layered onto the existing `EditorPaneTree` split model, not a window-wide concept spanning splits. Interaction model refined 2026-09-22 and built as an interactive HTML prototype for the user (and a tester) to try before real code — the actual `panes.py`/`_DetachableTabBar` rework is blocked on that feedback. The Recent-Files sub-piece (longer list, remembers/restores a file's group) has already landed independently.
+- [BF-082](../BETA_FEEDBACK.md#bf-082--file-tabs-stack-files-per-group-longer-filenames-paging-nav) — File tabs: per-group stacking, horizontal groups/vertical files, paging nav. **Implemented 2026-10-02 as an opt-in mode (View > Grouped Tabs); awaiting native/tester confirmation.** Scoped with the user 2026-09-21: per-split stacking — each `PaneLeaf` gets its own horizontal group row/vertical file stack, layered onto the existing `EditorPaneTree` split model, not a window-wide concept spanning splits. Interaction model refined 2026-09-22 and built as an interactive HTML prototype for the user (and a tester) to try before real code — the actual `panes.py`/`_DetachableTabBar` rework is blocked on that feedback. The Recent-Files sub-piece (longer list, remembers/restores a file's group) has already landed independently.
 
 ## Pool 0b — 2026-09-22/23 feedback batch
 
