@@ -1,0 +1,62 @@
+"""Vendored official USFM baseline stylesheet (ADR-0013, Phase E6).
+
+`assets/usfm.sty` is vendored verbatim from a pinned upstream commit — see
+`assets/manifest.json` for provenance (source repository, pinned revision,
+sha256) and the licensing note recorded there: the upstream `ubsicap/usfm`
+repository declares no LICENSE file, so this is vendored as de facto
+standard USFM marker-metadata reference data (a marker schema, not
+application code) per an explicit project decision, not because its
+licensing is settled.
+
+Loading is deliberately lazy and cached (`functools.lru_cache`): nothing at
+package-import time reads or parses this file — only `UsfmEnvironment.
+__init__`, which itself is only constructed when a `.usfm` document is
+opened (`FileEnvironmentManager.activate_for`), triggers the first call.
+Every subsequent `.usfm` open in the same process reuses the cached,
+already-parsed sheet instead of re-parsing ~3,500 lines each time.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+from functools import lru_cache
+from pathlib import Path
+
+from .sty import RawStyleSheet, parse_raw_stylesheet
+
+logger = logging.getLogger("uniti.environment.usfm")
+
+_ASSETS_ROOT = Path(__file__).parent / "assets"
+_STYLESHEET_ID = "usfm-baseline"
+
+
+@lru_cache(maxsize=1)
+def load_usfm_baseline() -> RawStyleSheet:
+    """Load and verify the vendored official `usfm.sty`.
+
+    Never raises: a missing/corrupt/tampered asset logs and returns an empty
+    `RawStyleSheet` rather than failing `UsfmEnvironment` activation — the
+    same "degrade, never refuse" rule every environment in this framework
+    follows (ADR-0013 decision 6).
+    """
+
+    try:
+        manifest = json.loads((_ASSETS_ROOT / "manifest.json").read_text(encoding="utf-8"))
+        entry = next(e for e in manifest["stylesheets"] if e["id"] == _STYLESHEET_ID)
+        path = _ASSETS_ROOT / entry["path"]
+        if Path(entry["path"]).name != entry["path"]:
+            raise ValueError("invalid asset path")
+        data = path.read_bytes()
+        if len(data) != entry["bytes"]:
+            raise ValueError("asset size mismatch")
+        if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+            raise ValueError("asset hash mismatch")
+        return parse_raw_stylesheet(data.decode("utf-8"))
+    except (OSError, ValueError, KeyError, TypeError, StopIteration, json.JSONDecodeError):
+        logger.exception("failed to load vendored usfm.sty baseline; USFM structural knowledge disabled")
+        return RawStyleSheet(())
+
+
+__all__ = ["load_usfm_baseline"]

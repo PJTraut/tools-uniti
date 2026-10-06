@@ -44,6 +44,9 @@ class Settings:
     find_replace_attached_height: int | None = None
     shortcut_overrides: dict[str, str] = field(default_factory=dict)
     syntax_extension_overrides: dict[str, str] = field(default_factory=dict)
+    # BF-082 (opt-in): per-split group slots plus a Recent strip instead of
+    # one flat tab row.
+    grouped_tabs: bool = False
     # One generic persistence mechanism for every "toggle window" (a
     # single hotkey opens/closes it again) other than Find/Replace, which
     # predates this and has its own dedicated fields above -- Character
@@ -244,6 +247,7 @@ def _settings_from_payload(payload: object) -> Settings:
         find_replace_attached_height=find_replace_attached_height,
         shortcut_overrides=shortcut_overrides,
         syntax_extension_overrides=syntax_extension_overrides,
+        grouped_tabs=payload.get("grouped_tabs") is True,
         toggle_window_geometry=toggle_window_geometry,
         toggle_window_zoom_percent=toggle_window_zoom_percent,
         toggle_window_splitter_sizes=toggle_window_splitter_sizes,

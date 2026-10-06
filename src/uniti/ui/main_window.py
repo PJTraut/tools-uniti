@@ -62,17 +62,10 @@ from uniti.core.document import Document
 from uniti.core.durability import DurabilityLevel
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
-from uniti.core.reformatters import (
-    MAX_REFORMAT_CHARS,
-    ReformatFailure,
-    reformatter_for_key,
-)
+from uniti.core.environments.markdown_environment import MARKDOWN_PREVIEW_FEATURE
+from uniti.core.environments.sfm.stylesheet_support import IMPORT_STYLESHEET_FEATURE
 from uniti.core.syntax_profiles import (
-    MARKDOWN,
-    PLAIN_TEXT,
     PROFILES,
-    PROFILES_BY_KEY,
-    profile_for_extension,
 )
 from uniti.core.index_jobs import (
     LineNavigationResult,
@@ -231,8 +224,15 @@ class UNITIMainWindow(QMainWindow):
         self._file_environment_manager = (
             service.file_environments
             if service is not None
-            else file_environment_manager or FileEnvironmentManager()
+            else file_environment_manager
+            or FileEnvironmentManager.with_builtin_environments()
         )
+        from uniti.ui.environment_controller import EnvironmentController
+
+        self._environment = EnvironmentController(self)
+        from uniti.ui.rich_view_controller import RichViewController
+
+        self._rich_views = RichViewController(self)
         self._settings_store = (
             service.settings if service is not None else settings_store
         )
@@ -342,6 +342,9 @@ class UNITIMainWindow(QMainWindow):
         self._toggle_window_manager = ToggleWindowManager(self)
         self._dogfood = DogfoodEvidenceController(self)
         self._groups_and_recent_files = DocumentGroupsAndRecentFiles(self)
+        from uniti.ui.grouped_tabs import GroupedTabsController
+
+        self._grouped_tabs = GroupedTabsController(self)
         self._markdown_preview_timer = QTimer(self)
         self._markdown_preview_timer.setSingleShot(True)
         self._markdown_preview_timer.setInterval(300)
@@ -799,20 +802,18 @@ class UNITIMainWindow(QMainWindow):
     def set_syntax_choice(self, choice_key: str | None) -> None:
         """Per-view syntax-profile override (View > Syntax Profile) —
         forces this one document to a specific profile regardless of what
-        the extension→profile mapping (View > Text-Type Profiles…)
+        the extension→environment mapping (View > File Type Environments…)
         would otherwise assign it. `None` returns to following the
         mapping."""
 
         view = self.current_view
         if view is not None and view.isEnabled():
-            if choice_key is not None:
-                profile = PROFILES_BY_KEY.get(choice_key, PLAIN_TEXT)
-            else:
-                profile = profile_for_extension(
-                    view.document.path.suffix,
-                    self._settings.syntax_extension_overrides,
-                )
-            view.set_syntax_choice(choice_key, profile)
+            view.set_syntax_choice(
+                choice_key,
+                self._environment.effective_profile(
+                    view, choice_key, use_view_choice=False
+                ),
+            )
         self._sync_syntax_choice_action(view)
 
     def _sync_syntax_choice_action(self, view: UNITITextView | None) -> None:
@@ -1168,17 +1169,6 @@ class UNITIMainWindow(QMainWindow):
                 self._action(eol, None, lambda eol=eol: self.set_output_eol(eol))
             )
 
-        format_menu.addSeparator()
-        self._format_document_action = self._action(
-            "Format Document", None, self.format_current_document
-        )
-        self._minify_document_action = self._action(
-            "Minify Document", None, self.minify_current_document
-        )
-        format_menu.addAction(self._format_document_action)
-        format_menu.addAction(self._minify_document_action)
-        self._refresh_reformat_actions()
-
         view_menu = self.menuBar().addMenu("&View")
         theme_menu = view_menu.addMenu("&Theme")
         theme_group = QActionGroup(self)
@@ -1201,13 +1191,24 @@ class UNITIMainWindow(QMainWindow):
         )
         theme_menu.addAction(self._high_contrast_action)
         view_menu.addAction("Document Groups…", self.show_document_group_editor)
+        self._grouped_tabs_action = QAction("Grouped Tabs", self)
+        self._grouped_tabs_action.setCheckable(True)
+        self._grouped_tabs_action.setChecked(self._settings.grouped_tabs)
+        self._grouped_tabs_action.toggled.connect(self._grouped_tabs.set_enabled)
+        view_menu.addAction(self._grouped_tabs_action)
         view_menu.addAction(
-            "Text-Type Profiles…", self.show_extension_profile_editor
+            "File Type Environments…", self.show_environment_assignment_editor
         )
-        self._markdown_preview_action = QAction("Markdown Preview", self)
-        self._markdown_preview_action.setCheckable(True)
-        self._markdown_preview_action.triggered.connect(self.toggle_markdown_preview)
-        view_menu.addAction(self._markdown_preview_action)
+        # BF-062's preview is the Markdown environment's host feature: it
+        # lives in that environment's menu (ADR-0014), not under View.
+        self._markdown_preview_action = self._command_action(
+            "environment.preview", self.toggle_markdown_preview, checkable=True
+        )
+        self._markdown_preview_action.setText("Markdown Preview")
+        self.addAction(self._markdown_preview_action)
+        self._environment.register_host_action(
+            MARKDOWN_PREVIEW_FEATURE, self._markdown_preview_action
+        )
         self._refresh_markdown_preview_action()
 
         view_menu.addSeparator()
@@ -1409,6 +1410,36 @@ class UNITIMainWindow(QMainWindow):
                 self._find_replace.toggle_report,
             )
         )
+
+        # Cross-environment command slots (ADR-0014): registered commands
+        # with rebindable shortcuts, each running the active environment's
+        # command of the same local id. Added to the window itself so their
+        # shortcuts work even while the slot isn't in the current menu.
+        slot_actions = {
+            local_id: self._command_action(
+                f"environment.{local_id}",
+                lambda local_id=local_id: self._environment.run_command(local_id),
+            )
+            for local_id in ("format", "minify", "validate", "go_to", "inspect")
+        }
+        # ADR-0015: "Load Stylesheet…" needs a file dialog, so it is a host
+        # feature the SFM/USFM environments declare and the window implements.
+        self._import_stylesheet_action = QAction("Load Stylesheet…", self)
+        self._import_stylesheet_action.triggered.connect(
+            lambda _checked=False: self._environment.import_stylesheet()
+        )
+        self._environment.register_host_action(
+            IMPORT_STYLESHEET_FEATURE, self._import_stylesheet_action
+        )
+        plain_mode_action = self._command_action(
+            "environment.plain_mode",
+            self._environment.toggle_plain_mode,
+            checkable=True,
+        )
+        for action in (*slot_actions.values(), plain_mode_action):
+            self.addAction(action)
+        self._environment.register_slot_actions(slot_actions, plain_mode_action)
+        self._environment.build_menu(self.menuBar())
 
         tools_menu = self.menuBar().addMenu("&Tools")
         tools_menu.addAction(
@@ -1742,34 +1773,62 @@ class UNITIMainWindow(QMainWindow):
     def show_document_group_editor(self) -> None:
         return self._groups_and_recent_files.show_document_group_editor()
 
-    def show_extension_profile_editor(self) -> None:
-        from uniti.ui.extension_profile_editor import ExtensionProfileEditor
+    def show_environment_assignment_editor(self) -> None:
+        """View > File Type Environments… (ADR-0014): which extensions open
+        in which environment, e.g. both `.usfm` and `.sfm` as USFM."""
 
-        editor = ExtensionProfileEditor(self._settings.syntax_extension_overrides, self)
+        from uniti.ui.environment_assignment_editor import (
+            EnvironmentAssignmentEditor,
+        )
+
+        editor = EnvironmentAssignmentEditor(
+            self._settings.syntax_extension_overrides, self
+        )
         if editor.exec():
-            overrides = editor.overrides()
-            self._settings = dataclass_replace(
-                self._settings, syntax_extension_overrides=overrides
-            )
-            self._save_settings()
-            self._refresh_all_syntax_profiles()
+            self.set_extension_assignments(editor.overrides())
+
+    def set_extension_assignments(self, overrides: dict[str, str]) -> None:
+        """Persist a new extension→environment map and re-resolve every
+        open document's environment from it."""
+
+        self._settings = dataclass_replace(
+            self._settings, syntax_extension_overrides=dict(overrides)
+        )
+        self._save_settings()
+        if self._service is not None:
+            # Re-resolves (and syncs) each entry; pinned documents keep their pin.
+            for entry in self._service.documents.entries:
+                self._environment.environment_key_for(entry.document)
+        self._refresh_all_syntax_profiles()
+        self._environment_state_changed(self.current_view)
 
     def _refresh_all_syntax_profiles(self) -> None:
-        """Re-resolve every view's syntax profile from the (possibly just
-        changed) extension→profile mapping — except a view with its own
-        per-view override (View > Syntax Profile), which deliberately
-        doesn't follow the mapping."""
+        """Re-resolve every view's rendered profile from its document's
+        (possibly just reassigned) environment. A view with its own
+        per-view override (View > Syntax Profile) keeps it, and a view in
+        Plain Text Mode stays plain."""
 
         for view_id in self._panes.view_ids:
             view = self.view_for_id(view_id)
-            if view is None or view.syntax_choice_key is not None:
+            if view is None:
                 continue
-            view.set_syntax_profile(
-                profile_for_extension(
-                    view.document.path.suffix,
-                    self._settings.syntax_extension_overrides,
-                )
+            view.set_syntax_profile(self._environment.effective_profile(view))
+
+    def _environment_state_changed(self, view: UNITITextView | None) -> None:
+        """An environment-facing change (Plain Text Mode, reassignment):
+        refresh everything gated on the active view's environment."""
+
+        if (
+            view is not None
+            and view is self._markdown_preview_target_view
+            and not self._environment.offers_host_feature(
+                view, MARKDOWN_PREVIEW_FEATURE
             )
+        ):
+            self._close_markdown_preview()
+        self._rich_views.on_environment_changed(view)
+        self._environment.refresh()
+        self._refresh_markdown_preview_action()
 
     def _disconnect_view(self, view: UNITITextView) -> None:
         for signal in (
@@ -1786,6 +1845,7 @@ class UNITIMainWindow(QMainWindow):
                 pass
         for action in self._command_actions.values():
             view.removeAction(action)
+        self._environment.forget_view(view.view_id)
 
     def view_location(self, view_id: str) -> ViewLocation:
         leaf = self._panes.leaf_for_view(view_id)
@@ -2162,11 +2222,7 @@ class UNITIMainWindow(QMainWindow):
         view.set_soft_wrap(self._settings.soft_wrap)
         view.set_whitespace_mode(self._settings.whitespace_mode)
         view.set_tab_width(self._settings.editor_tab_width)
-        view.set_syntax_profile(
-            profile_for_extension(
-                document.path.suffix, self._settings.syntax_extension_overrides
-            )
-        )
+        view.set_syntax_profile(self._environment.default_profile_for(document))
         app = QApplication.instance()
         if isinstance(app, QApplication):
             view.set_theme_tokens(active_theme(app).editor)
@@ -2188,6 +2244,10 @@ class UNITIMainWindow(QMainWindow):
             self._show_mixed_eol_report(view, initial_eol_report)
         if restore_record is not None:
             view.restore_state(restore_record)
+            # Plain Text Mode is restored as a flag; render from it now.
+            view.set_syntax_profile(self._environment.effective_profile(view))
+            if view is self.current_view:
+                self._rich_views.on_current_view_changed(view)
             self._panes.set_dock_mode(
                 view.view_id,
                 "dock" if view.dock_return is not None else "undock",
@@ -2428,13 +2488,18 @@ class UNITIMainWindow(QMainWindow):
             self._set_status_document(view)
         if view is self._markdown_preview_target_view:
             self._markdown_preview_timer.start()
+        self._rich_views.on_view_state_changed(view)
 
     def _on_current_changed(self, _index: int) -> None:
         self._find_replace.document_changed()
         view = self.current_view
         for widget in self.views:
             widget.document.set_resource_active(widget is view)
-        self._refresh_reformat_actions()
+        self._rich_views.on_current_view_changed(view)
+        # Recorded even while grouped tabs are off, so turning them on shows
+        # a meaningful Recent strip straight away.
+        self._grouped_tabs.note_active(None if view is None else view.view_id)
+        self._environment.refresh()
         if self._markdown_preview is not None:
             target = self._markdown_preview_target_view
             if target is not None and not self._contains_view(target):
@@ -2442,7 +2507,9 @@ class UNITIMainWindow(QMainWindow):
                 self._close_markdown_preview()
             elif (
                 view is not None
-                and view.syntax_profile is MARKDOWN
+                and self._environment.offers_host_feature(
+                    view, MARKDOWN_PREVIEW_FEATURE
+                )
                 and view is not target
             ):
                 self._markdown_preview_target_view = view
@@ -2605,22 +2672,6 @@ class UNITIMainWindow(QMainWindow):
         _convert_and_set_output_eol(view.document, eol)
         self._on_view_state_changed(view)
 
-    def _refresh_reformat_actions(self) -> None:
-        format_action = getattr(self, "_format_document_action", None)
-        if format_action is None:
-            # Menus (and these actions) are built after the pane tree, whose
-            # construction can synchronously fire the active-view-changed
-            # signal that reaches this method first.
-            return
-        view = self.current_view
-        reformatter = (
-            None if view is None else reformatter_for_key(view.syntax_profile.key)
-        )
-        format_action.setEnabled(reformatter is not None)
-        self._minify_document_action.setEnabled(
-            reformatter is not None and reformatter.can_minify
-        )
-
     def toggle_markdown_preview(self) -> None:
         """BF-062: open/close a read-only Markdown preview split beside the
         editor, tracking whichever Markdown tab is active."""
@@ -2629,7 +2680,9 @@ class UNITIMainWindow(QMainWindow):
             self._close_markdown_preview()
             return
         view = self.current_view
-        if view is None or view.syntax_profile is not MARKDOWN:
+        if not self._environment.offers_host_feature(
+            view, MARKDOWN_PREVIEW_FEATURE
+        ):
             return
         from uniti.ui.markdown_preview import MarkdownPreviewPane
 
@@ -2665,53 +2718,21 @@ class UNITIMainWindow(QMainWindow):
         if action is None:
             return
         view = self.current_view
-        is_markdown = view is not None and view.syntax_profile is MARKDOWN
+        is_markdown = self._environment.offers_host_feature(
+            view, MARKDOWN_PREVIEW_FEATURE
+        )
         action.setEnabled(is_markdown or self._markdown_preview is not None)
         action.setChecked(self._markdown_preview is not None)
 
-    def _reformat_current_document(self, *, minify: bool) -> None:
-        view = self.current_view
-        if view is None or not view.isEnabled():
-            return
-        reformatter = reformatter_for_key(view.syntax_profile.key)
-        if reformatter is None or (minify and not reformatter.can_minify):
-            return
-        document = view.document
-        total_chars = document.total_chars()
-        if total_chars > MAX_REFORMAT_CHARS:
-            QMessageBox.warning(
-                self,
-                "Document Too Large",
-                "This document is larger than "
-                f"{MAX_REFORMAT_CHARS:,} characters. Formatting requires "
-                "reading the whole document into memory, so it is not "
-                "offered above that size.",
-            )
-            return
-        text = document.read(0, total_chars)
-        action = reformatter.minify if minify else reformatter.format
-        try:
-            formatted = action(text)
-        except ReformatFailure as exc:
-            error = exc.error
-            location = (
-                f" (line {error.line}, column {error.column})"
-                if error.line is not None
-                else ""
-            )
-            QMessageBox.critical(
-                self,
-                "Minify Failed" if minify else "Format Failed",
-                f"{error.message}{location}",
-            )
-            return
-        document.replace(0, total_chars, formatted)
+    def format_current_document(self) -> bool:
+        """Run the active document's environment's Format Document."""
 
-    def format_current_document(self) -> None:
-        self._reformat_current_document(minify=False)
+        return self._environment.run_command("format")
 
-    def minify_current_document(self) -> None:
-        self._reformat_current_document(minify=True)
+    def minify_current_document(self) -> bool:
+        """Run the active document's environment's Minify Document."""
+
+        return self._environment.run_command("minify")
 
     @staticmethod
     def _exact_profile(profile: EncodingProfile | str) -> EncodingProfile:
@@ -3037,7 +3058,12 @@ class UNITIMainWindow(QMainWindow):
         view._wrap_index = None
         view._wrap_signature = None
         view._refresh_scrollbars(advance_index=False)
+        # A path change (Save As) can move the document to another
+        # environment (ADR-0014); re-render and re-menu from it.
+        view.set_syntax_profile(self._environment.effective_profile(view))
         view._state_changed()
+        if view is self.current_view:
+            self._environment_state_changed(view)
         if initial_eol_report is None or not initial_eol_complete:
             self._schedule_eol_analysis(view)
         elif initial_eol_report.kind == "MIXED":

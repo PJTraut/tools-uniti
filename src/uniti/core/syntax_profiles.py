@@ -267,6 +267,13 @@ XML = SyntaxProfile("xml", "XML", _xml_tokenize)
 JSON = SyntaxProfile("json", "JSON", _regex_tokenizer(_JSON_RULES))
 YAML = SyntaxProfile("yaml", "YAML", _yaml_tokenize)
 SFM = SyntaxProfile("sfm", "SFM", _regex_tokenizer(_SFM_RULES))
+# USFM's lexical marker syntax is identical to generic SFM's (backslash marker,
+# optional numeric suffix, optional trailing `*`), so it reuses the same rule
+# set — a distinct profile key exists only so the `.usfm` extension gets its
+# own `Environment` (Phase E6's `UsfmEnvironment`, ADR-0013) independently of
+# `.sfm`'s generic one, via the shared `profile_for_extension` resolver both
+# environment-key and decoration-key resolution already go through.
+USFM = SyntaxProfile("usfm", "USFM", _regex_tokenizer(_SFM_RULES))
 CSV = SyntaxProfile("csv", "CSV", _regex_tokenizer(_CSV_RULES))
 TSV = SyntaxProfile("tsv", "TSV", _regex_tokenizer(_TSV_RULES))
 
@@ -277,6 +284,7 @@ PROFILES: tuple[SyntaxProfile, ...] = (
     JSON,
     YAML,
     SFM,
+    USFM,
     CSV,
     TSV,
 )
@@ -293,6 +301,7 @@ DEFAULT_EXTENSION_PROFILES: dict[str, str] = {
     "yaml": "yaml",
     "yml": "yaml",
     "sfm": "sfm",
+    "usfm": "usfm",
     "csv": "csv",
     "tsv": "tsv",
 }

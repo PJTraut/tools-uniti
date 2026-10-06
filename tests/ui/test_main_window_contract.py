@@ -1602,7 +1602,7 @@ def test_font_weight_hotkeys_reach_the_focused_editor(tmp_path: Path):
         app.processEvents()
 
 
-def test_format_document_actions_enable_only_for_recognized_syntax_types(
+def test_format_document_actions_follow_the_active_documents_environment(
     tmp_path: Path,
 ):
     if importlib.util.find_spec("PySide6") is None:
@@ -1622,22 +1622,28 @@ def test_format_document_actions_enable_only_for_recognized_syntax_types(
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow()
     try:
+        environment = window._environment
         json_view = window.open_path(json_path)
-        assert window._format_document_action.isEnabled() is True
-        assert window._minify_document_action.isEnabled() is True
+        assert environment.menu.title() == "JSON"
+        assert environment.command_actions["format"].isEnabled() is True
+        assert environment.command_actions["minify"].isEnabled() is True
 
         md_view = window.open_path(md_path)
-        assert window._format_document_action.isEnabled() is True
-        assert window._minify_document_action.isEnabled() is False
+        assert environment.menu.title() == "Markdown"
+        assert environment.command_actions["format"].isEnabled() is True
+        assert "minify" not in environment.command_actions
 
         window.open_path(txt_path)
-        assert window._format_document_action.isEnabled() is False
-        assert window._minify_document_action.isEnabled() is False
+        assert environment.menu.title() == "Plain Text"
+        assert environment.command_actions == {}
+        assert window.format_current_document() is False
 
         window._select_view(json_view)
-        assert window._format_document_action.isEnabled() is True
+        assert environment.command_available("format") is True
+        assert window.format_current_document() is True
+        assert json_view.document.read(0, json_view.document.total_chars()) == '{\n  "a": 1\n}\n'
         window._select_view(md_view)
-        assert window._minify_document_action.isEnabled() is False
+        assert environment.command_available("minify") is False
     finally:
         window.close_all_documents(force=True)
         window.close()
@@ -1723,13 +1729,13 @@ def test_format_document_declines_documents_over_the_size_cap(
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QMessageBox
 
-    import uniti.ui.main_window as main_window_module
+    import uniti.core.reformatters as reformatters_module
     from uniti.ui.main_window import UNITIMainWindow
 
     path = tmp_path / "data.json"
     path.write_text('{"a": 1}', encoding="utf-8")
 
-    monkeypatch.setattr(main_window_module, "MAX_REFORMAT_CHARS", 4)
+    monkeypatch.setattr(reformatters_module, "MAX_REFORMAT_CHARS", 4)
     shown = {}
     monkeypatch.setattr(
         QMessageBox,
@@ -2025,7 +2031,7 @@ def test_unicode_hex_toggle_reverses_a_bare_trailing_letter_instead_of_a_short_h
         window.close()
 
 
-def test_extension_profile_editor_updates_settings_and_refreshes_open_views(
+def test_environment_assignment_editor_updates_settings_and_refreshes_open_views(
     tmp_path: Path,
 ):
     if importlib.util.find_spec("PySide6") is None:
@@ -2049,16 +2055,19 @@ def test_extension_profile_editor_updates_settings_and_refreshes_open_views(
         view = window.open_path(usj_path)
         assert view.syntax_profile is PLAIN_TEXT
 
+        assert window._environment.menu.title() == "Plain Text"
+
         with patch(
-            "uniti.ui.extension_profile_editor.ExtensionProfileEditor.exec",
+            "uniti.ui.environment_assignment_editor.EnvironmentAssignmentEditor.exec",
             return_value=QDialog.DialogCode.Accepted,
         ), patch(
-            "uniti.ui.extension_profile_editor.ExtensionProfileEditor.overrides",
+            "uniti.ui.environment_assignment_editor.EnvironmentAssignmentEditor.overrides",
             return_value={"usj": "json"},
         ):
-            window.show_extension_profile_editor()
+            window.show_environment_assignment_editor()
 
         assert view.syntax_profile is JSON
+        assert window._environment.menu.title() == "JSON"
         assert store.load().syntax_extension_overrides == {"usj": "json"}
     finally:
         window.close_all_documents(force=True)

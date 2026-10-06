@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "stylesheets": [
+    {
+      "path": "usfm.sty",
+      "id": "usfm-baseline",
+      "sourceRepository": "https://github.com/ubsicap/usfm",
+      "sourcePath": "sty/usfm.sty",
+      "sourceRevision": "69838c870133bb0c9f7b42f741053c08cd7b29e0",
+      "sourceRevisionDate": "2025-01-16T14:59:16Z",
+      "declaredVersion": "3.0.11",
+      "bytes": 97589,
+      "sha256": "cc6a55dd25f7a5b8fb0f7417824f97923d67899ce2317e0c3b0910835c7cd393",
+      "license": "unknown",
+      "licenseNote": "The ubsicap/usfm repository declares no LICENSE file (GitHub API reports license: null) as of the pinned revision. Vendored as the de facto standard USFM marker-metadata reference per explicit project decision (docs/project/02_plans/2026-09-30-environment-framework-e6-usfm-layer-plan.md); this is a marker-schema/reference-data file, not application code."
+    }
+  ]
+}

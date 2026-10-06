@@ -45,6 +45,18 @@ _UNITI_FALLBACKS = {
     # toggle shortcut, same Ctrl+Alt+<mnemonic> convention as the others
     # above -- U for Unicode.
     "tools.whitespace_legend": "Ctrl+Alt+U",
+    # ADR-0014 environment command slots: each runs the active document's
+    # environment's command of the same local id (Format runs JSON's,
+    # XML's or Markdown's format), disabled where the environment has none.
+    # Same Ctrl+Alt+<mnemonic> convention; Format takes Shift because
+    # Ctrl+Alt+F is the macOS standard Replace.
+    "environment.format": "Ctrl+Alt+Shift+F",
+    "environment.minify": "",
+    "environment.validate": "Ctrl+Alt+V",
+    "environment.go_to": "Ctrl+Alt+G",
+    "environment.preview": "Ctrl+Alt+P",
+    "environment.plain_mode": "Ctrl+Alt+T",
+    "environment.inspect": "Ctrl+Alt+S",
 }
 
 
@@ -295,6 +307,13 @@ def _definitions() -> tuple[CommandDefinition, ...]:
             scope.WINDOW,
             "tools.whitespace_legend",
         ),
+        ("environment.format", "Format Document", category.ENVIRONMENT, scope.WINDOW, "environment.format"),
+        ("environment.minify", "Minify Document", category.ENVIRONMENT, scope.WINDOW, "environment.minify"),
+        ("environment.validate", "Validate Document", category.ENVIRONMENT, scope.WINDOW, "environment.validate"),
+        ("environment.go_to", "Go to Environment Location…", category.ENVIRONMENT, scope.WINDOW, "environment.go_to"),
+        ("environment.preview", "Preview", category.ENVIRONMENT, scope.WINDOW, "environment.preview"),
+        ("environment.plain_mode", "Plain Text Mode", category.ENVIRONMENT, scope.WINDOW, "environment.plain_mode"),
+        ("environment.inspect", "Inspect at Cursor", category.ENVIRONMENT, scope.WINDOW, "environment.inspect"),
     )
 
     def resolve(specification: object) -> str:

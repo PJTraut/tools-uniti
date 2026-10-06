@@ -17,6 +17,7 @@ build on this seam without changing it.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from .decoration import DecorationProvider, SyntaxProfileDecorationAdapter
@@ -33,12 +34,27 @@ class EnvironmentContext:
 
     edits: EnvironmentEditFacade
     resource_profile: ResourceProfile
+    # ADR-0015: where the document lives (read-only discovery of sibling
+    # files such as a project's `.sty`), and the invoking view's caret and
+    # selection anchor when a command runs from a view.
+    document_path: Path | None = None
+    caret: int | None = None
+    anchor: int | None = None
 
     @classmethod
-    def for_document(cls, document: Document) -> "EnvironmentContext":
+    def for_document(
+        cls,
+        document: Document,
+        *,
+        caret: int | None = None,
+        anchor: int | None = None,
+    ) -> "EnvironmentContext":
         return cls(
             edits=EnvironmentEditFacade(document),
             resource_profile=ResourceProfile(size_bytes=document.source.size),
+            document_path=document.path,
+            caret=caret,
+            anchor=anchor,
         )
 
 
@@ -55,6 +71,10 @@ class Environment(Protocol):
     def decoration_provider(self) -> DecorationProvider | None: ...
 
     def validate(self, context: EnvironmentContext) -> tuple[EnvironmentFinding, ...]: ...
+
+    # Optional (ADR-0014): `commands() -> tuple[EnvironmentCommand, ...]`,
+    # read through `environment_commands.environment_commands()`, which
+    # treats a missing or failing `commands` as "offers none".
 
 
 class PlainEnvironment:
@@ -82,4 +102,7 @@ class PlainEnvironment:
 
     def validate(self, context: EnvironmentContext) -> tuple[EnvironmentFinding, ...]:
         del context
+        return ()
+
+    def commands(self) -> tuple:
         return ()

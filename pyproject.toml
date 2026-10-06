@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 dependencies = [
     "regex==2026.5.9",
     "unicodedataplus==16.0.0.post1",
+    "usfmtc>=0.4",
 ]
 
 [project.scripts]
@@ -29,6 +30,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "uniti.resources" = ["performance_policy.toml"]
 "uniti.ui" = ["assets/lucide/*.svg", "assets/lucide/LICENSE", "assets/lucide/README.md", "assets/themes/*.json", "assets/fonts/*.otf", "assets/fonts/manifest.json", "assets/fonts/licenses/*"]
+"uniti.core.environments.sfm" = ["assets/usfm.sty", "assets/manifest.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

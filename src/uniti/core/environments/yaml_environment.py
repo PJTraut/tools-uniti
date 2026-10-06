@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from uniti.core.decoration import DecorationProvider, SyntaxProfileDecorationAdapter
 from uniti.core.environment import EnvironmentContext
+from uniti.core.environment_commands import EnvironmentCommand, validate_command
 from uniti.core.environment_findings import EnvironmentFinding, FindingSeverity
 from uniti.core.syntax_profiles import YAML
 
@@ -38,6 +39,9 @@ class YamlEnvironment:
     @property
     def decoration_provider(self) -> DecorationProvider | None:
         return self._decoration_provider
+
+    def commands(self) -> tuple[EnvironmentCommand, ...]:
+        return (validate_command(self, label="Check Indentation"),)
 
     def validate(self, context: EnvironmentContext) -> tuple[EnvironmentFinding, ...]:
         findings: list[EnvironmentFinding] = []

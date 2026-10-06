@@ -276,15 +276,7 @@ class UNITIService:
         self.documents = documents or DocumentRegistry()
         self.documents.add_remove_listener(_cleanup_untitled_backing_file)
         if file_environments is None:
-            self.file_environments = FileEnvironmentManager()
-            from uniti.core.environments import (
-                JsonEnvironment,
-                XmlEnvironment,
-                YamlEnvironment,
-            )
-
-            for environment_type in (JsonEnvironment, XmlEnvironment, YamlEnvironment):
-                self.file_environments.register(environment_type.key, environment_type)
+            self.file_environments = FileEnvironmentManager.with_builtin_environments()
         else:
             self.file_environments = file_environments
         self.windows = windows or WindowManager()
@@ -1320,6 +1312,40 @@ class UNITIService:
             close_empty_source=True,
             close_failed_target=created,
         )
+
+    def undock_views(self, view_ids):
+        """Move several views (BF-082: a whole tab group) into one new
+        window, each remembering its own dock-return location."""
+
+        self._ensure_running()
+        view_ids = tuple(view_ids)
+        if not view_ids:
+            raise ValueError("no views to undock")
+        anchors = []
+        for view_id in view_ids:
+            source = self.windows.window_for_view(view_id)
+            if source is None:
+                raise KeyError(view_id)
+            location = getattr(source, "view_location")(view_id)
+            anchors.append(
+                DockReturnRecord(location.window_id, location.pane_id, location.tab_index)
+            )
+        window = self.new_window()
+        moved = None
+        try:
+            for view_id, anchor in zip(view_ids, anchors):
+                moved = self._transfer_view(
+                    view_id,
+                    window.window_id,
+                    dock_return=anchor,
+                    close_failed_target=moved is None,
+                )
+        except Exception:
+            if window in self.windows.windows and not tuple(window.view_ids):
+                window.close()
+            raise
+        window.show()
+        return window
 
     def move_view_to_new_window(self, view_id: str):
         return self.undock_view(view_id)

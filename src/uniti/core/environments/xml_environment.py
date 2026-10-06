@@ -21,6 +21,7 @@ import xml.etree.ElementTree as ET
 
 from uniti.core.decoration import DecorationProvider, SyntaxProfileDecorationAdapter
 from uniti.core.environment import EnvironmentContext
+from uniti.core.environment_commands import EnvironmentCommand, reformat_commands, validate_command
 from uniti.core.environment_findings import EnvironmentFinding, FindingSeverity
 from uniti.core.syntax_profiles import XML
 
@@ -42,6 +43,9 @@ class XmlEnvironment:
     @property
     def decoration_provider(self) -> DecorationProvider | None:
         return self._decoration_provider
+
+    def commands(self) -> tuple[EnvironmentCommand, ...]:
+        return (*reformat_commands("xml"), validate_command(self, label="Check Well-Formedness"))
 
     def validate(self, context: EnvironmentContext) -> tuple[EnvironmentFinding, ...]:
         if not context.resource_profile.allow_full_parse:

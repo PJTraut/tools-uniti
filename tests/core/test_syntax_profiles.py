@@ -164,6 +164,19 @@ def test_sfm_tokenizes_backslash_markers():
     assert text[tokens[0].start : tokens[0].end] == r"\v"
 
 
+def test_usfm_extension_maps_to_its_own_profile():
+    assert profile_for_extension("usfm").key == "usfm"
+
+
+def test_usfm_tokenizes_backslash_markers_like_sfm():
+    profile = profile_for_extension("usfm")
+    text = r"\v 1 In the beginning God created"
+    tokens = _tokenize(profile, text)
+    assert len(tokens) == 1
+    assert tokens[0].category == "keyword"
+    assert text[tokens[0].start : tokens[0].end] == r"\v"
+
+
 def test_csv_tokenizes_quoted_fields_and_commas():
     profile = profile_for_extension("csv")
     text = 'a,b,"c,d"'

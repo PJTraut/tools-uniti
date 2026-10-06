@@ -228,6 +228,10 @@ class UNITITextView(QAbstractScrollArea):
         self._font_family_choice: str | None = None
         self._syntax_profile: SyntaxProfile = PLAIN_TEXT
         self._syntax_choice_key: str | None = None
+        # ADR-0014 Plain Text Mode ("plain text within the environment").
+        self.environment_plain_mode = False
+        # ADR-0015: which rich view (provider key) this tab shows beside it.
+        self.rich_view_key: str | None = None
         self._syntax_colors = self._theme_tokens.syntax
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
@@ -732,6 +736,10 @@ class UNITITextView(QAbstractScrollArea):
             extra["syntax_choice_key"] = self._syntax_choice_key
         if self._font_family_choice is not None:
             extra["font_family_choice"] = self._font_family_choice
+        if self.environment_plain_mode:
+            extra["environment_plain_mode"] = True
+        if self.rich_view_key is not None:
+            extra["rich_view"] = self.rich_view_key
         return ViewRecord(
             self.view_id,
             document_id,
@@ -804,6 +812,11 @@ class UNITITextView(QAbstractScrollArea):
         syntax_choice_key = record.extra.get("syntax_choice_key")
         if isinstance(syntax_choice_key, str) and syntax_choice_key in PROFILES_BY_KEY:
             self.set_syntax_choice(syntax_choice_key, PROFILES_BY_KEY[syntax_choice_key])
+        # Only remembered here; `UNITIMainWindow` re-renders from it right
+        # after this call (the profile depends on the document's environment).
+        self.environment_plain_mode = record.extra.get("environment_plain_mode") is True
+        rich_view = record.extra.get("rich_view")
+        self.rich_view_key = rich_view if isinstance(rich_view, str) and rich_view else None
         theme_choice_id = record.extra.get("theme_choice_id")
         if isinstance(theme_choice_id, str):
             # Tokens are resolved by `UNITIMainWindow` (needs the app's

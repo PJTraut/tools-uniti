@@ -40,6 +40,9 @@ def test_menu_bar_uses_compact_coteditor_reference_structure():
         "Edit",
         "Format",
         "View",
+        # ADR-0014: the active document's environment menu, retitled per
+        # document ("Environment" with nothing open).
+        "Environment",
         "Tools",
         "Hotkeys",
     ]
@@ -73,7 +76,16 @@ def test_menu_bar_uses_compact_coteditor_reference_structure():
         if top_level.menu() is not None
         for action in _descendant_actions(top_level.menu())
     }
-    assert set(window._command_actions.values()) <= reachable
+    # ADR-0014 environment slots appear in the environment menu only when
+    # the active document's environment offers them; they are attached to
+    # the window so their shortcuts always resolve.
+    environment_slots = {
+        action
+        for command_id, action in window._command_actions.items()
+        if command_id.startswith("environment.")
+    }
+    assert environment_slots <= set(window.actions())
+    assert set(window._command_actions.values()) - environment_slots <= reachable
     window.close()
 
 
@@ -98,6 +110,7 @@ def test_hotkeys_popup_has_horizontal_categories_and_binding_columns(tmp_path: P
         "Editor View",
         "F/R View",
         "Tools",
+        "Environment",
     ]
     assert [popup.table.horizontalHeaderItem(i).text() for i in range(3)] == [
         "Command",

@@ -1345,3 +1345,95 @@ def test_quit_save_failure_preserves_windows_and_previous_session(
     window.close()
     qapp.processEvents()
     service.request_quit(lambda _entry: QuitChoice.DISCARD)
+
+
+def test_environment_pin_and_plain_text_mode_round_trip_through_a_session(
+    qapp,
+    tmp_path: Path,
+):
+    """ADR-0014: a document's explicit environment and a view's Plain Text
+    Mode ride in the existing `extra` blobs, and the pin is applied before
+    the view opens so it renders in the pinned environment from the start."""
+
+    store, loaded, _paths = _published_session(tmp_path, document_count=1)
+    manifest = loaded.manifest
+    assert manifest is not None
+    manifest = replace(
+        manifest,
+        documents=tuple(
+            replace(record, extra={"environment_override": "usfm"})
+            for record in manifest.documents
+        ),
+        views=tuple(
+            replace(record, extra={"environment_plain_mode": True})
+            for record in manifest.views
+        ),
+    )
+    store.publish(SessionSnapshot(manifest, loaded.packs, None))
+    reloaded = store.load_latest()
+    assert reloaded.manifest is not None
+
+    service = _restoring_service(tmp_path, store)
+    service.restore_shell(
+        reloaded.manifest,
+        pack_loader=lambda document_id: store.load_document_pack(
+            reloaded.manifest, document_id
+        ),
+    )
+    restored = service.restore_active()
+    assert restored is not None
+    window = service.windows.windows[0]
+    view = window.view_for_id("view-0")
+    assert view is not None
+    window._select_view(view)
+
+    entry = service.documents.entry_for_view("view-0")
+    assert entry.environment_override == "usfm"
+    assert window._environment.environment_key_for(view.document) == "usfm"
+    assert view.environment_plain_mode is True
+    assert view.syntax_profile.key == "plain_text"
+    assert window._environment.menu.title() == "USFM (Plain Text)"
+
+    window._environment.set_plain_mode(False)
+    assert view.syntax_profile.key == "usfm"
+
+    snapshot = service.capture_session()
+    document_record = snapshot.manifest.documents[0]
+    view_record = next(item for item in snapshot.manifest.views if item.view_id == "view-0")
+    assert document_record.extra == {"environment_override": "usfm"}
+    assert "environment_plain_mode" not in view_record.extra
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
+def test_restored_tab_reopens_its_rich_view(qapp, tmp_path: Path):
+    """ADR-0015: a tab's rich-view choice rides in `ViewRecord.extra` and the
+    pane reopens beside it after restore."""
+
+    store, loaded, _paths = _published_session(tmp_path, document_count=1)
+    manifest = loaded.manifest
+    manifest = replace(
+        manifest,
+        documents=tuple(replace(r, extra={"environment_override": "usfm"}) for r in manifest.documents),
+        views=tuple(replace(r, extra={"rich_view": "sfm.formatted"}) for r in manifest.views),
+    )
+    store.publish(SessionSnapshot(manifest, loaded.packs, None))
+    reloaded = store.load_latest()
+    service = _restoring_service(tmp_path, store)
+    service.restore_shell(
+        reloaded.manifest,
+        pack_loader=lambda document_id: store.load_document_pack(reloaded.manifest, document_id),
+    )
+    assert service.restore_active() is not None
+    window = service.windows.windows[0]
+    view = window.view_for_id("view-0")
+    window._select_view(view)
+    qapp.processEvents()
+
+    assert view.rich_view_key == "sfm.formatted"
+    assert window._rich_views.target_view is view
+    assert window._rich_views.current_key == "sfm.formatted"
+    snapshot = service.capture_session()
+    assert next(v for v in snapshot.manifest.views if v.view_id == "view-0").extra["rich_view"] == "sfm.formatted"
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()

@@ -89,6 +89,9 @@ class DocumentGroupsAndRecentFiles:
         leaf.tabs.setTabIcon(
             index, self._group_swatch_icon(group.color) if group is not None else QIcon()
         )
+        grouped_tabs = getattr(owner, "_grouped_tabs", None)
+        if grouped_tabs is not None and grouped_tabs.enabled:
+            grouped_tabs.refresh_leaf(leaf)  # BF-082: membership changed
 
     def _refresh_all_group_indicators(self) -> None:
         owner = self._owner

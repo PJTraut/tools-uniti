@@ -36,6 +36,10 @@ class DocumentEntry:
     group_id: str | None = None
     is_untitled: bool = False
     environment_key: str = "plain_text"
+    # ADR-0014: an explicit per-document environment choice ("open this
+    # file as…"), overriding the extension mapping; persisted in the
+    # session's document `extra` blob.
+    environment_override: str | None = None
 
 
 def _utc_now() -> datetime:
@@ -181,6 +185,24 @@ class DocumentRegistry:
         if group_id is not None:
             _identifier(group_id, "document group ID")
         entry.group_id = group_id
+
+    def set_environment_key(self, document_id: str, environment_key: str) -> None:
+        """Reassign a document's environment (ADR-0014: extension reassignment)."""
+
+        entry = self.get(document_id)
+        entry.environment_key = _identifier(environment_key, "environment key")
+
+    def set_environment_override(
+        self, document_id: str, environment_key: str | None
+    ) -> None:
+        """Pin (or with `None`, unpin) one document's environment (ADR-0014)."""
+
+        entry = self.get(document_id)
+        entry.environment_override = (
+            None
+            if environment_key is None
+            else _identifier(environment_key, "environment key")
+        )
 
     def entry_for_view(self, view_id: str) -> DocumentEntry | None:
         document_id = self._views.get(_identifier(view_id, "view ID"))

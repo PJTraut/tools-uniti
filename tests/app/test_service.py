@@ -2428,3 +2428,154 @@ def test_reload_replaces_shared_document_authority_in_every_view(tmp_path: Path)
         second.close()
         app.processEvents()
         _stop_desktop_service(app, service)
+
+
+def test_reassigning_an_extension_re_resolves_open_documents_environment_key(
+    tmp_path: Path,
+):
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "book.sfm"
+    path.write_text("\\id GEN\n\\c 1\n\\v 1 text\n", encoding="utf-8")
+    window = service.new_window()
+    try:
+        view = window.open_path(path)
+        entry = service.documents.find_path(path)
+        assert entry is not None and entry.environment_key == "sfm"
+
+        window.set_extension_assignments({"sfm": "usfm"})
+
+        assert entry.environment_key == "usfm"
+        assert view.syntax_profile.key == "usfm"
+        assert window._environment.menu.title() == "USFM"
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_pinned_document_keeps_its_environment_through_extension_reassignment(
+    tmp_path: Path,
+):
+    app, service, _recovery = _desktop_service(tmp_path)
+    text = "\\id GEN\n\\c 1\n\\v 1 text\n"
+    pinned_path = tmp_path / "pinned.sfm"
+    follower_path = tmp_path / "follower.sfm"
+    pinned_path.write_text(text, encoding="utf-8")
+    follower_path.write_text(text, encoding="utf-8")
+    window = service.new_window()
+    try:
+        pinned = window.open_path(pinned_path)
+        window._environment.set_document_environment("usfm")
+        follower = window.open_path(follower_path)
+
+        window.set_extension_assignments({"sfm": "plain_text"})
+
+        pinned_entry = service.documents.find_path(pinned_path)
+        assert pinned_entry.environment_override == "usfm"
+        assert pinned_entry.environment_key == "usfm"
+        assert service.documents.find_path(follower_path).environment_key == "plain_text"
+        assert pinned.syntax_profile.key == "usfm"
+        assert follower.syntax_profile.key == "plain_text"
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_grouped_tabs_show_group_slots_and_a_recent_strip(tmp_path: Path):
+    """BF-082 (opt-in): per-split group slots with dropdowns, an Ungrouped
+    slot, and the tab bar reduced to a Recent strip."""
+
+    from PySide6.QtCore import Qt
+
+    from uniti.app.document_groups import DocumentGroup
+    from uniti.ui.grouped_tabs import RECENT_LIMIT, visible_tab_texts
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    window = service.new_window()
+    try:
+        views = []
+        for index in range(RECENT_LIMIT + 3):
+            path = tmp_path / f"file-{index}.txt"
+            path.write_text(str(index), encoding="utf-8")
+            views.append(window.open_path(path))
+        window._groups = (DocumentGroup("A", "Alpha", "#e06c75"),)
+        for view in views[:3]:
+            entry = service.documents.entry_for_view(view.view_id)
+            window._set_document_group(entry.document_id, "A")
+        leaf = window.panes.leaf_for_view(views[0].view_id)
+        assert window._grouped_tabs.enabled is False
+        assert len(visible_tab_texts(leaf)) == len(views)
+
+        window._grouped_tabs_action.setChecked(True)
+        assert service.settings.load().grouped_tabs is True
+
+        bar = leaf.cornerWidget(Qt.Corner.TopLeftCorner)
+        assert [button.text() for button in bar.buttons.values()] == ["Alpha (3)", f"Ungrouped ({len(views) - 3})"]
+        visible = visible_tab_texts(leaf)
+        assert len(visible) <= RECENT_LIMIT + 1
+        assert views[-1].document.path.name in visible
+
+        alpha_menu = bar.buttons["A"].menu()
+        assert [action.text() for action in alpha_menu.actions()] == ["file-0.txt", "file-1.txt", "file-2.txt"]
+        alpha_menu.actions()[0].trigger()
+        assert window.current_view is views[0]
+        bar = leaf.cornerWidget(Qt.Corner.TopLeftCorner)
+        assert bar.buttons["A"].isChecked() is True
+        assert "file-0.txt" in visible_tab_texts(leaf)
+
+        window._grouped_tabs_action.setChecked(False)
+        assert len(visible_tab_texts(leaf)) == len(views)
+        assert not isinstance(leaf.cornerWidget(Qt.Corner.TopLeftCorner), type(bar))
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)
+
+
+def test_dragging_a_group_slot_off_the_bar_moves_the_group_to_a_new_window(tmp_path: Path):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    from uniti.app.document_groups import DocumentGroup
+
+    app, service, _recovery = _desktop_service(tmp_path)
+    window = service.new_window()
+    window.show()
+    try:
+        views = []
+        for index in range(4):
+            path = tmp_path / f"g-{index}.txt"
+            path.write_text(str(index), encoding="utf-8")
+            views.append(window.open_path(path))
+        window._groups = (DocumentGroup("A", "Alpha", "#e06c75"),)
+        for view in views[:2]:
+            window._set_document_group(service.documents.entry_for_view(view.view_id).document_id, "A")
+        window._grouped_tabs_action.setChecked(True)
+        app.processEvents()
+        leaf = window.panes.leaf_for_view(views[3].view_id)
+        button = leaf.cornerWidget(Qt.Corner.TopLeftCorner).buttons["A"]
+
+        QTest.mousePress(button, Qt.MouseButton.LeftButton, pos=QPoint(5, 5))
+        QTest.mouseMove(button, QPoint(5, 200))
+        QTest.mouseRelease(button, Qt.MouseButton.LeftButton, pos=QPoint(5, 200))
+        app.processEvents()
+
+        windows = [w for _id, w in service.windows.items]
+        assert len(windows) == 2
+        moved = next(w for w in windows if w is not window)
+        assert set(moved.view_ids) == {views[0].view_id, views[1].view_id}
+        assert set(window.view_ids) == {views[2].view_id, views[3].view_id}
+        assert all(v.dock_return is not None for v in views[:2])
+    finally:
+        for _window_id, open_window in service.windows.items:
+            open_window.close_all_documents(force=True)
+            open_window.close()
+        app.processEvents()
+        _stop_desktop_service(app, service)

@@ -21,6 +21,7 @@ class CommandCategory(StrEnum):
     EDITOR_VIEW = "Editor View"
     FIND_REPLACE_VIEW = "F/R View"
     TOOLS = "Tools"
+    ENVIRONMENT = "Environment"
 
 
 @dataclass(frozen=True, slots=True)

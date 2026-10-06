@@ -548,6 +548,7 @@ class SessionController:
             document_id=pack.document_id,
             saved_stamp=pack.saved_stamp,
         )
+        self._restore_entry_environment(entry, document_record)
         self._restored_history_generations[pack.document_id] = pack.generation
         self.track_document(entry, hash_saved=False)
         document.add_history_listener(
@@ -597,6 +598,7 @@ class SessionController:
             document_id=result.document_id,
             saved_stamp=result.saved_stamp,
         )
+        self._restore_entry_environment(entry, record)
         self.track_document(entry, hash_saved=False)
         self._service.recovery.attach(result.document)
         for view_id in record.view_ids:
@@ -643,6 +645,19 @@ class SessionController:
                 if item.document_id == active_document_id
             )
             self._restore_entry_timestamps(entry, record)
+
+    @staticmethod
+    def _restore_entry_environment(entry: object, record: object) -> None:
+        """Re-pin a document's explicit environment choice (ADR-0014) before
+        its views open, so they render in it from the start. An unknown key
+        (a newer build's environment) is ignored, not trusted."""
+
+        from uniti.core.environments.catalog import ENVIRONMENTS_BY_KEY
+
+        override = None if record is None else record.extra.get("environment_override")
+        if isinstance(override, str) and override in ENVIRONMENTS_BY_KEY:
+            entry.environment_override = override
+            entry.environment_key = override
 
     @staticmethod
     def _restore_entry_timestamps(entry: object, record: object) -> None:
