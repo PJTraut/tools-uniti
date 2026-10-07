@@ -233,6 +233,13 @@ class UNITIMainWindow(QMainWindow):
         from uniti.ui.rich_view_controller import RichViewController
 
         self._rich_views = RichViewController(self)
+        from uniti.ui.environment_window import ReferenceSync
+
+        # Side-by-side sync by scripture reference (ADR-0017), every window.
+        self._reference_sync = ReferenceSync(self)
+        # (environment key, group id) once this is an environment window.
+        self.environment_window: tuple[str, str | None] | None = None
+        self._environment_bar = None
         self._settings_store = (
             service.settings if service is not None else settings_store
         )
@@ -1789,18 +1796,23 @@ class UNITIMainWindow(QMainWindow):
 
     def set_extension_assignments(self, overrides: dict[str, str]) -> None:
         """Persist a new extension→environment map and re-resolve every
-        open document's environment from it."""
+        open document's environment from it, in every window — a window
+        left on the old map would sync its stale keys back to the shared
+        registry and write the old map on its next settings save."""
 
-        self._settings = dataclass_replace(
-            self._settings, syntax_extension_overrides=dict(overrides)
-        )
+        windows = self._appearance_windows()
+        for window in windows:
+            window._settings = dataclass_replace(
+                window._settings, syntax_extension_overrides=dict(overrides)
+            )
         self._save_settings()
         if self._service is not None:
             # Re-resolves (and syncs) each entry; pinned documents keep their pin.
             for entry in self._service.documents.entries:
                 self._environment.environment_key_for(entry.document)
-        self._refresh_all_syntax_profiles()
-        self._environment_state_changed(self.current_view)
+        for window in windows:
+            window._refresh_all_syntax_profiles()
+            window._environment_state_changed(window.current_view)
 
     def _refresh_all_syntax_profiles(self) -> None:
         """Re-resolve every view's rendered profile from its document's
@@ -1846,6 +1858,7 @@ class UNITIMainWindow(QMainWindow):
         for action in self._command_actions.values():
             view.removeAction(action)
         self._environment.forget_view(view.view_id)
+        self._rich_views.forget(view)
 
     def view_location(self, view_id: str) -> ViewLocation:
         leaf = self._panes.leaf_for_view(view_id)
@@ -1903,6 +1916,7 @@ class UNITIMainWindow(QMainWindow):
         )
         self._tabs = leaf.tabs
         self._schedule_eol_analysis(view)
+        self._rich_views.sync(view)
         view.setFocus()
         return view
 
@@ -2246,8 +2260,7 @@ class UNITIMainWindow(QMainWindow):
             view.restore_state(restore_record)
             # Plain Text Mode is restored as a flag; render from it now.
             view.set_syntax_profile(self._environment.effective_profile(view))
-            if view is self.current_view:
-                self._rich_views.on_current_view_changed(view)
+            self._rich_views.sync(view)
             self._panes.set_dock_mode(
                 view.view_id,
                 "dock" if view.dock_return is not None else "undock",
@@ -2489,6 +2502,10 @@ class UNITIMainWindow(QMainWindow):
         if view is self._markdown_preview_target_view:
             self._markdown_preview_timer.start()
         self._rich_views.on_view_state_changed(view)
+        if view is self.current_view:
+            if self._environment_bar is not None:
+                self._environment_bar.follow_caret(view)
+            self._reference_sync.schedule(view)
 
     def _on_current_changed(self, _index: int) -> None:
         self._find_replace.document_changed()
@@ -2500,6 +2517,8 @@ class UNITIMainWindow(QMainWindow):
         # a meaningful Recent strip straight away.
         self._grouped_tabs.note_active(None if view is None else view.view_id)
         self._environment.refresh()
+        if self._environment_bar is not None:
+            self._environment_bar.refresh()
         if self._markdown_preview is not None:
             target = self._markdown_preview_target_view
             if target is not None and not self._contains_view(target):
@@ -2527,13 +2546,51 @@ class UNITIMainWindow(QMainWindow):
             # title/status when no documents remain at all.
             if not self.views:
                 self._status.clear_document()
-                self.setWindowTitle("UNITI")
+                self.setWindowTitle(self._title_prefix())
             return
         self._set_status_document(view)
         line = view.document.line_for_char(view.state.cursor)
         column = view.state.cursor - view.document.line_start(line)
         self._status.update_cursor(line, column)
-        self.setWindowTitle(f"UNITI — {view.document.path.name}")
+        self.setWindowTitle(f"{self._title_prefix()} — {view.document.path.name}")
+
+    def _title_prefix(self) -> str:
+        if self._environment_bar is None:
+            return "UNITI"
+        return f"UNITI — {self._environment_bar.window_title_prefix()}"
+
+    # --- environment windows (ADR-0017) -------------------------------------
+
+    def set_environment_window(self, environment_key: str, group_id: str | None) -> None:
+        """Make this an environment window: the frame (mode switch, and for
+        USFM the Book/Chapter/Verse selector) of `environment_key`, for the
+        files of document group `group_id` (None: ungrouped files)."""
+
+        from uniti.ui.environment_window import EnvironmentBar
+
+        if self.environment_window == (environment_key, group_id):
+            return
+        if self._environment_bar is not None:
+            self.removeToolBar(self._environment_bar)
+            self._environment_bar.deleteLater()
+        self.environment_window = (environment_key, group_id)
+        self._environment_bar = EnvironmentBar(self, environment_key, group_id)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._environment_bar)
+        # The toolbar holds the mode switch; tabs don't repeat it.
+        self._rich_views.set_mode_selector_visible(False)
+        self._on_current_changed(self._tabs.currentIndex())
+
+    def move_to_environment_window(self, view: UNITITextView | None = None):
+        """Move a tab to its environment's window for its document group,
+        creating that window the first time (Dock returns it here)."""
+
+        view = view if view is not None else self.current_view
+        if view is None or self._service is None:
+            return None
+        entry = self._service.documents.entry_for_view(view.view_id)
+        group_id = None if entry is None else entry.group_id
+        key = self._environment.environment_key_for(view.document)
+        return self._service.move_to_environment_window(view.view_id, key, group_id)
 
     @staticmethod
     def _analyze_path_eol(
@@ -3964,8 +4021,19 @@ class UNITIMainWindow(QMainWindow):
         self._on_current_changed(self._tabs.currentIndex())
         return result
 
+    def _current_rich_pane(self):
+        """The current tab's in-place rich view (Standard/Preview), if any:
+        Edit-menu commands act on what the tab shows, so a read-only
+        Preview can't be edited through them."""
+
+        return self._rich_views.pane_for(self.current_view)
+
     def undo_current(self) -> None:
         if self._find_replace.undo_focused_input():
+            return
+        pane = self._current_rich_pane()
+        if pane is not None:
+            pane.undo()
             return
         view = self.current_view
         if view is None or not view.isEnabled() or not view.document.can_undo:
@@ -3975,6 +4043,10 @@ class UNITIMainWindow(QMainWindow):
 
     def redo_current(self) -> None:
         if self._find_replace.redo_focused_input():
+            return
+        pane = self._current_rich_pane()
+        if pane is not None:
+            pane.redo()
             return
         view = self.current_view
         if view is None or not view.isEnabled() or not view.document.can_redo:
@@ -3987,6 +4059,10 @@ class UNITIMainWindow(QMainWindow):
         if field is not None:
             field.copy()
             return
+        pane = self._current_rich_pane()
+        if pane is not None:
+            pane.editor.copy()
+            return
         view = self.current_view
         if view is not None and view.isEnabled():
             view.copy_selection()
@@ -3995,6 +4071,10 @@ class UNITIMainWindow(QMainWindow):
         field = self._find_replace.focused_input()
         if field is not None:
             field.cut()
+            return
+        pane = self._current_rich_pane()
+        if pane is not None:
+            pane.cut()
             return
         view = self.current_view
         if view is not None and view.isEnabled():
@@ -4005,6 +4085,10 @@ class UNITIMainWindow(QMainWindow):
         if field is not None:
             field.paste()
             return
+        pane = self._current_rich_pane()
+        if pane is not None:
+            pane.paste()
+            return
         view = self.current_view
         if view is not None and view.isEnabled():
             view.paste_clipboard()
@@ -4013,6 +4097,10 @@ class UNITIMainWindow(QMainWindow):
         field = self._find_replace.focused_input()
         if field is not None:
             field.selectAll()
+            return
+        pane = self._current_rich_pane()
+        if pane is not None:
+            pane.editor.selectAll()
             return
         view = self.current_view
         if view is None or not view.isEnabled():

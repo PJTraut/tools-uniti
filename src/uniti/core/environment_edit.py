@@ -31,6 +31,9 @@ class EnvironmentEditFacade:
     def snapshot(self):
         return self._document.snapshot()
 
+    def total_chars(self) -> int:
+        return self._document.total_chars()
+
     def iter_text(
         self,
         start: int = 0,

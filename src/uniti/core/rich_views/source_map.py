@@ -4,9 +4,9 @@ A projection is a gap-free sequence of `Segment`s covering the whole source
 in order. Each segment says how one source range appears in the view:
 
 - `TEXT` — shown verbatim, 1:1 offsets, freely editable;
-- `MARKER` — source syntax shown as a protected token (Standard View);
+- `MARKER` — source syntax shown as a protected token (SFM Standard);
   its view text may differ from the source (``\\v`` shown as ``v``);
-- `HIDDEN` — source syntax with no view text at all (Formatted View);
+- `HIDDEN` — source syntax with no view text at all (SFM Preview);
 - `GENERATED` — view text with no source (e.g. a paragraph break the
   view inserts before a paragraph marker it hides).
 
@@ -18,6 +18,10 @@ from __future__ import annotations
 import bisect
 from dataclasses import dataclass
 from enum import StrEnum
+
+
+# Marker of the zero-width HIDDEN segment holding the `\r` of a CRLF.
+EOL_MARKER = "eol"
 
 
 class SegmentRole(StrEnum):
@@ -61,6 +65,7 @@ class SourceMap:
             assert segment.view_end >= segment.view_start
             if segment.role is SegmentRole.TEXT:
                 assert segment.source_end - segment.source_start == segment.view_end - segment.view_start
+                assert "\r" not in self.view_text[segment.view_start : segment.view_end]
             if segment.role is SegmentRole.HIDDEN:
                 assert segment.view_end == segment.view_start
             if segment.role is SegmentRole.GENERATED:
@@ -139,6 +144,19 @@ class SourceMap:
             if segment.view_end > start and segment.view_start < end:
                 result.append(segment)
         return tuple(result)
+
+    def hidden_eol_ending_at(self, offset: int) -> bool:
+        """Whether source `offset` directly follows the hidden `\r` of a CRLF."""
+
+        index = bisect.bisect_right(self._source_starts, offset - 1) - 1
+        if not 0 <= index < len(self.segments):
+            return False
+        segment = self.segments[index]
+        return (
+            segment.role is SegmentRole.HIDDEN
+            and segment.marker == EOL_MARKER
+            and segment.source_end == offset
+        )
 
     def segment_at_view(self, position: int) -> Segment | None:
         for segment in self.segments:

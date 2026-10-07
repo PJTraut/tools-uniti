@@ -181,8 +181,8 @@ def reformat_commands(reformatter_key: str) -> Sequence[EnvironmentCommand]:
             # Read at run time (not import time) so the cap stays one
             # patchable module constant.
             limit = reformatters.MAX_REFORMAT_CHARS
-            text = document_text(context)
-            if len(text) > limit:
+            # Check the size before materialising the whole document.
+            if context.edits.total_chars() > limit:
                 return ShowMessage(
                     "Document Too Large",
                     "This document is larger than "
@@ -193,6 +193,7 @@ def reformat_commands(reformatter_key: str) -> Sequence[EnvironmentCommand]:
                 )
             action = reformatter.minify if minify else reformatter.format
             assert action is not None
+            text = document_text(context)
             try:
                 return ReplaceDocumentText(action(text))
             except ReformatFailure as exc:

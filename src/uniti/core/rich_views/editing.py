@@ -52,7 +52,11 @@ def plan_view_edit(source_map: SourceMap, view_start: int, view_end: int, text: 
         if end <= start:
             continue
         source_start = segment.source_start + (start - segment.view_start)
-        deletions.append((source_start, source_start + (end - start)))
+        source_end = source_start + (end - start)
+        if source_map.hidden_eol_ending_at(source_start):
+            # Deleting the `\n` of a CRLF takes its hidden `\r` with it.
+            source_start -= 1
+        deletions.append((source_start, source_end))
 
     if not deletions:
         if text:

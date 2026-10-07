@@ -414,12 +414,18 @@ class SessionController:
         self._generation = manifest.generation
         self._created_at = manifest.created_at
         self._updated_at = manifest.updated_at
+        from .session_runtime import environment_window_identity
+
         for record in manifest.windows:
             window = existing_windows.get(record.window_id)
             if window is None:
-                service.new_window(record)
+                window = service.new_window(record)
             else:
                 window.restore_window_record(record)
+            identity = environment_window_identity(record.root, self._views)
+            set_environment_window = getattr(window, "set_environment_window", None)
+            if identity is not None and callable(set_environment_window):
+                set_environment_window(*identity)
         find_record = merge_find_replace_history(
             manifest.find_replace,
             find_replace_pack,

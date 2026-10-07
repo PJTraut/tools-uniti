@@ -32,6 +32,28 @@ from .session import (
 )
 
 
+# ViewRecord.extra key naming the environment window a view was in (ADR-0017).
+ENVIRONMENT_WINDOW_EXTRA = "environment_window"
+
+
+def environment_window_identity(
+    root: PaneRecord, views: dict[str, ViewRecord]
+) -> tuple[str, str | None] | None:
+    """The (environment key, group id) a saved window's views name, if any."""
+
+    pending = [root]
+    while pending:
+        pane = pending.pop()
+        pending.extend(pane.children)
+        for view_id in pane.view_ids:
+            record = views.get(view_id)
+            value = None if record is None else record.extra.get(ENVIRONMENT_WINDOW_EXTRA)
+            if isinstance(value, dict) and isinstance(value.get("environment"), str):
+                group = value.get("group")
+                return value["environment"], group if isinstance(group, str) and group else None
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class RestoreSeal:
     document_id: str
@@ -174,7 +196,19 @@ def capture_service_session(
                 raise RuntimeError("live view is not bound to a document")
             if entry.document_id in excluded_document_ids:
                 continue
-            views.append(view.export_state(entry.document_id))
+            record = view.export_state(entry.document_id)
+            identity = getattr(window, "environment_window", None)
+            if identity is not None:
+                # Rides in the view's `extra` (no window-schema change);
+                # restore_shell rebuilds the environment window from it.
+                record = replace(
+                    record,
+                    extra={
+                        **record.extra,
+                        ENVIRONMENT_WINDOW_EXTRA: {"environment": identity[0], "group": identity[1] or ""},
+                    },
+                )
+            views.append(record)
 
     retained_view_ids = frozenset(view.view_id for view in views)
     document_view_order: dict[str, int] = {}

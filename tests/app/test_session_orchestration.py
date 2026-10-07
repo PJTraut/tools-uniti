@@ -1430,10 +1430,40 @@ def test_restored_tab_reopens_its_rich_view(qapp, tmp_path: Path):
     window._select_view(view)
     qapp.processEvents()
 
-    assert view.rich_view_key == "sfm.formatted"
+    # A choice saved under the old "Formatted View" key reopens as Preview.
+    assert view.rich_view_key == "sfm.preview"
     assert window._rich_views.target_view is view
-    assert window._rich_views.current_key == "sfm.formatted"
+    assert window._rich_views.current_key == "sfm.preview"
     snapshot = service.capture_session()
-    assert next(v for v in snapshot.manifest.views if v.view_id == "view-0").extra["rich_view"] == "sfm.formatted"
+    assert next(v for v in snapshot.manifest.views if v.view_id == "view-0").extra["rich_view"] == "sfm.preview"
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
+def test_restored_session_rebuilds_its_environment_window(qapp, tmp_path: Path):
+    """ADR-0017: an environment window's identity rides in its views'
+    `ViewRecord.extra`, and restore_shell rebuilds the window's frame."""
+
+    store, loaded, _paths = _published_session(tmp_path, document_count=1)
+    manifest = loaded.manifest
+    manifest = replace(
+        manifest,
+        documents=tuple(replace(r, extra={"environment_override": "usfm"}) for r in manifest.documents),
+        views=tuple(
+            replace(r, extra={"environment_window": {"environment": "usfm", "group": "A"}})
+            for r in manifest.views
+        ),
+    )
+    store.publish(SessionSnapshot(manifest, loaded.packs, None))
+    reloaded = store.load_latest()
+    service = _restoring_service(tmp_path, store)
+    service.restore_shell(
+        reloaded.manifest,
+        pack_loader=lambda document_id: store.load_document_pack(reloaded.manifest, document_id),
+    )
+    window = service.windows.windows[0]
+    assert window.environment_window == ("usfm", "A")
+    assert window._environment_bar is not None
+    assert service.environment_window_for("usfm", "A") is window
     service.request_quit(lambda _entry: None)
     qapp.processEvents()

@@ -68,3 +68,5 @@ Update 2026-10-03: [ADR-0016](ADR-0016-rich-view-persistence-notes-export-placem
 
 - [ADR-0013](ADR-0013-environment-framework-ownership-boundary.md) and [ADR-0014](ADR-0014-environment-workbench-and-extension-assignment.md) — extended; decision 6 of ADR-0013 holds unchanged.
 - [E6 plan](../02_plans/2026-09-30-environment-framework-e6-usfm-layer-plan.md) — its "later phases" list is resolved here.
+
+Update 2026-10-07: [ADR-0017](ADR-0017-environment-windows-in-place-views-reference-sync.md) supersedes decision 5. Rich views are now shown in place of the tab's Source editor, not beside it. Formatted View is now **Preview** (read-only), and Standard is formatted with its markers shown inline. Every look comes from the stylesheet.

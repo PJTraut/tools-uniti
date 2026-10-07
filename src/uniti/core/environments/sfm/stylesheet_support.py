@@ -2,6 +2,10 @@
 
 Both environments get the same capabilities; they differ only in whether an
 official baseline sits under the project layers (USFM yes, generic SFM no).
+The Standard/Preview views are the one exception: rendering a generic SFM
+document with no stylesheet would show every marker as unknown, so they
+render over the USFM baseline (project and loaded layers still win).
+Validation, placement and the Style Inspector never see that fallback.
 """
 
 from __future__ import annotations
@@ -29,7 +33,7 @@ IMPORT_STYLESHEET_FEATURE = "sfm.import_stylesheet"
 
 class StylesheetSupport:
     """Mixin: layered `.sty` registry, Style Inspector, stylesheet import,
-    and the Standard/Formatted rich views (ADR-0015)."""
+    and the Standard/Preview rich views (ADR-0015)."""
 
     _baseline: RawStyleSheet | None = None
 
@@ -38,9 +42,22 @@ class StylesheetSupport:
         self._document_path: Path | None = None
         self._imported: list[StyleLayer] = []
         self._layered = LayeredStyleRegistry(build_layers(baseline, None))
+        self._view_styles = self._presentation_styles()
 
     def _rebuild_styles(self) -> None:
         self._layered = LayeredStyleRegistry(build_layers(self._baseline, self._document_path, self._imported))
+        self._view_styles = self._presentation_styles()
+
+    def _presentation_styles(self) -> LayeredStyleRegistry:
+        """What the rich views render with (see the module docstring)."""
+
+        if self._baseline is not None:
+            return self._layered
+        from .usfm_baseline import load_usfm_baseline
+
+        return LayeredStyleRegistry(
+            build_layers(load_usfm_baseline(), self._document_path, self._imported)
+        )
 
     def activate(self, context: EnvironmentContext) -> None:
         self._document_path = context.document_path
@@ -57,15 +74,16 @@ class StylesheetSupport:
         return self._layered.registry
 
     def view_providers(self) -> tuple:
-        """Standard and Formatted editable views over the live layered styles."""
+        """Standard (editable) and Preview (read-only) views over the live
+        layered styles."""
 
-        from .views import SfmFormattedView, SfmStandardView
+        from .views import SfmPreviewView, SfmStandardView
 
         providers = getattr(self, "_view_providers", None)
         if providers is None:
             providers = (
-                SfmStandardView(lambda: self._layered),
-                SfmFormattedView(lambda: self._layered),
+                SfmStandardView(lambda: self._view_styles),
+                SfmPreviewView(lambda: self._view_styles),
             )
             self._view_providers = providers
         return providers

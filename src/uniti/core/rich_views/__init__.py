@@ -7,7 +7,7 @@ edits. The canonical document stays the only source of truth (ADR-0002,
 ADR-0013 decision 6) — a rich view never serializes its own text back.
 """
 
-from .projection import BlockFormat, Projection, ProjectionBuilder, SpanFormat
+from .projection import BlockFormat, NoteSection, Projection, ProjectionBuilder, SpanFormat
 from .source_map import Segment, SegmentRole, SourceMap
 from .editing import EditPlan, EditRejected, plan_view_edit
 from .provider import EditorViewProvider, ViewCommand, environment_view_providers
@@ -17,6 +17,7 @@ __all__ = [
     "EditPlan",
     "EditRejected",
     "EditorViewProvider",
+    "NoteSection",
     "Projection",
     "ProjectionBuilder",
     "Segment",

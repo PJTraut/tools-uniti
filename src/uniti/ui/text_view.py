@@ -91,12 +91,19 @@ def _zero_width_visible(
     return row_start <= position < row_end or (owns_end and position == row_end)
 
 
+# Rich views saved under an earlier key (sessions keep the per-tab choice).
+_RENAMED_RICH_VIEWS = {"sfm.formatted": "sfm.preview"}
+
+
 class UNITITextView(QAbstractScrollArea):
     """Paint only visible logical text; the UNITI Document remains authoritative."""
 
     stateChanged = Signal()
     cursorPositionChanged = Signal(int, int)
     zoomChanged = Signal(int)
+    # Font (family, zoom, weight) or theme tokens changed: anything drawing
+    # alongside this view (the rich-view pane) should re-render to match.
+    appearanceChanged = Signal()
     fontWeightChanged = Signal(int)
     wrapChanged = Signal(bool)
     navigationRequested = Signal(str, bool)
@@ -414,6 +421,7 @@ class UNITITextView(QAbstractScrollArea):
         self._theme_tokens = tokens
         self._syntax_colors = tokens.syntax
         self.viewport().update()
+        self.appearanceChanged.emit()
 
     @property
     def theme_choice_id(self) -> str | None:
@@ -679,6 +687,7 @@ class UNITITextView(QAbstractScrollArea):
         font.setWeight(QFont.Weight(self._font_weight))
         self.setFont(font)
         self._rebuild_metrics()
+        self.appearanceChanged.emit()
 
     def set_zoom_percent(self, percent: int) -> None:
         percent = max(50, min(500, int(percent)))
@@ -816,6 +825,7 @@ class UNITITextView(QAbstractScrollArea):
         # after this call (the profile depends on the document's environment).
         self.environment_plain_mode = record.extra.get("environment_plain_mode") is True
         rich_view = record.extra.get("rich_view")
+        rich_view = _RENAMED_RICH_VIEWS.get(rich_view, rich_view)
         self.rich_view_key = rich_view if isinstance(rich_view, str) and rich_view else None
         theme_choice_id = record.extra.get("theme_choice_id")
         if isinstance(theme_choice_id, str):

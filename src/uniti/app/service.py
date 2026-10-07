@@ -1326,26 +1326,95 @@ class UNITIService:
             source = self.windows.window_for_view(view_id)
             if source is None:
                 raise KeyError(view_id)
+            view = getattr(source, "view_for_id")(view_id)
+            if view is None:
+                raise KeyError(view_id)
+            existing = getattr(view, "dock_return", None)
+            if isinstance(existing, DockReturnRecord):
+                # Already undocked: keep its original home so "Dock" still
+                # returns it there, not to this temporary window.
+                anchors.append((existing, True))
+                continue
             location = getattr(source, "view_location")(view_id)
             anchors.append(
-                DockReturnRecord(location.window_id, location.pane_id, location.tab_index)
+                (
+                    DockReturnRecord(location.window_id, location.pane_id, location.tab_index),
+                    False,
+                )
             )
         window = self.new_window()
         moved = None
         try:
-            for view_id, anchor in zip(view_ids, anchors):
+            for view_id, (anchor, was_undocked) in zip(view_ids, anchors):
                 moved = self._transfer_view(
                     view_id,
                     window.window_id,
                     dock_return=anchor,
+                    close_empty_source=was_undocked,
                     close_failed_target=moved is None,
                 )
         except Exception:
-            if window in self.windows.windows and not tuple(window.view_ids):
-                window.close()
+            if window in self.windows.windows:
+                if tuple(window.view_ids):
+                    # Some views already moved: show them rather than
+                    # stranding documents in a hidden window.
+                    window.show()
+                else:
+                    window.close()
             raise
         window.show()
         return window
+
+    def environment_window_for(self, environment_key: str, group_id: str | None):
+        """The open environment window of `environment_key` and `group_id`."""
+
+        for _window_id, window in self.windows.items:
+            if getattr(window, "environment_window", None) == (environment_key, group_id):
+                return window
+        return None
+
+    def move_to_environment_window(self, view_id: str, environment_key: str, group_id: str | None):
+        """Move a view into the environment window of its environment and
+        document group (ADR-0017), creating it on first use. Like undock,
+        the view remembers its home, so Dock takes it back there."""
+
+        self._ensure_running()
+        source = self.windows.window_for_view(view_id)
+        if source is None:
+            raise KeyError(view_id)
+        target = self.environment_window_for(environment_key, group_id)
+        if target is source:
+            return target
+        view = getattr(source, "view_for_id")(view_id)
+        if view is None:
+            raise KeyError(view_id)
+        existing = getattr(view, "dock_return", None)
+        if isinstance(existing, DockReturnRecord):
+            anchor, was_undocked = existing, True
+        else:
+            location = getattr(source, "view_location")(view_id)
+            anchor = DockReturnRecord(location.window_id, location.pane_id, location.tab_index)
+            was_undocked = False
+        created = target is None
+        if created:
+            target = self.new_window()
+            target.set_environment_window(environment_key, group_id)
+        try:
+            self._transfer_view(
+                view_id,
+                target.window_id,
+                dock_return=anchor,
+                close_empty_source=was_undocked,
+                close_failed_target=created,
+            )
+        except Exception:
+            if created and target in self.windows.windows and not tuple(target.view_ids):
+                target.close()
+            raise
+        target.show()
+        target.raise_()
+        target.activateWindow()
+        return target
 
     def move_view_to_new_window(self, view_id: str):
         return self.undock_view(view_id)

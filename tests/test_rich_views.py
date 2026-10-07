@@ -17,7 +17,7 @@ from uniti.core.environments.sfm.semantic import (
 )
 from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
-from uniti.core.environments.sfm.views import SfmFormattedView, SfmStandardView, presentation_attrs, sty_color
+from uniti.core.environments.sfm.views import SfmPreviewView, SfmStandardView, presentation_attrs, sty_color
 from uniti.core.rich_views import (
     EditRejected,
     ProjectionBuilder,
@@ -41,8 +41,8 @@ def _apply(source: str, plan) -> str:
     return result
 
 
-def _formatted():
-    return SfmFormattedView(lambda: STYLES)
+def _preview():
+    return SfmPreviewView(lambda: STYLES)
 
 
 def _standard():
@@ -70,7 +70,7 @@ def test_builder_rejects_gaps_and_mismatched_text():
         builder.build(5)
 
 
-@pytest.mark.parametrize("view_factory", [_standard, _formatted, MarkdownRenderedView])
+@pytest.mark.parametrize("view_factory", [_standard, _preview, MarkdownRenderedView])
 def test_projections_satisfy_source_map_invariants(view_factory):
     source = SOURCE if view_factory is not MarkdownRenderedView else "# T\n- a **b** `c` [d](e)\n> q\n```\nx\n```\n"
     projection = view_factory().project(source)
@@ -83,50 +83,101 @@ def test_projections_satisfy_source_map_invariants(view_factory):
 
 
 def test_text_round_trips_through_the_map_in_every_view():
-    for view in (_standard(), _formatted()):
+    for view in (_standard(), _preview()):
         projection = view.project(SOURCE)
         for segment in projection.source_map.segments:
             if segment.role is SegmentRole.TEXT:
-                assert projection.text[segment.view_start : segment.view_end] == SOURCE[segment.source_start : segment.source_end]
+                shown = projection.text[segment.view_start : segment.view_end]
+                source = SOURCE[segment.source_start : segment.source_end]
+                # Line breaks inside a paragraph flow as spaces.
+                assert all(a == b or (b == "\n" and a == " ") for a, b in zip(shown, source, strict=True))
+
+
+@pytest.mark.parametrize("view_factory", [_standard, _preview])
+def test_crlf_sources_project_like_lf_with_no_carriage_returns(view_factory):
+    crlf = SOURCE.replace("\n", "\r\n")
+    projection = view_factory().project(crlf)
+    projection.source_map.check()
+    assert projection.text == view_factory().project(SOURCE).text
+    assert "\r" not in projection.text
+    word = crlf.index("Creation")
+    assert projection.text[projection.source_map.source_to_view(word) :].startswith("Creation")
+
+
+def test_deleting_a_crlf_line_break_removes_both_characters():
+    source = "\\p one\r\ntwo\r\n\\p three"
+    projection = _standard().project(source)
+    projection.source_map.check()
+    position = projection.text.index("three") - 1  # the block break before \\p
+    position = projection.text.index("\n", projection.text.index("two"))
+    plan = plan_view_edit(projection.source_map, position, position + 1, "")
+    assert _apply(source, plan) == "\\p one\r\ntwo\\p three"
+
+
+def test_preview_leaves_out_book_metadata_but_keeps_its_source_mapped():
+    source = "\\id GEN\n\\h Genesis\n\\toc1 The Book of Genesis\n\\rem note\n\\mt1 Genesis\n\\p Text\n"
+    projection = _preview().project(source)
+    projection.source_map.check()
+    assert projection.text == "Genesis\nText\n"
+    assert projection.source_map.source_to_view(source.index("Book")) == 0
+
+
+def test_lone_carriage_returns_are_line_breaks_too():
+    projection = _preview().project("\\p one\r\\p two")
+    projection.source_map.check()
+    assert projection.text == "one\ntwo"
 
 
 # --- SFM views ----------------------------------------------------------------
 
 
-def test_formatted_view_hides_markers_and_formats_styles():
-    projection = _formatted().project(SOURCE)
-    assert projection.text == "GEN Genesis\n1\nThe Creation\n1In the beginning God created.\n2Earth \\zz odd\n"
+def test_preview_hides_markers_and_formats_styles():
+    projection = _preview().project(SOURCE)
+    # Book metadata (\\id) is left out of the print-like preview.
+    assert projection.text == "1\nThe Creation\n1In the beginning God created. 2Earth \\zz odd\n"
     spans = {(span.marker, projection.text[span.view_start : span.view_end]) for span in projection.spans}
     assert ("bd", "beginning") in spans and ("v", "1") in spans and ("c", "1") in spans
     assert ("zz", "\\zz") in spans  # unknown marker stays visible, protected
     blocks = {block.marker: dict(block.attrs) for block in projection.blocks}
     assert blocks["s1"]["align"] == "center" and blocks["s1"]["bold"] == "yes"
-    assert blocks["id"]["muted"] == "yes"
+    assert "id" not in blocks
+    standard = _standard().project(SOURCE)
+    assert standard.text.startswith("\\id GEN Genesis\n")  # still shown in Standard
+    # Styling comes only from the stylesheet: nothing is muted by the view.
+    assert not any("muted" in block.attrs for block in standard.blocks)
 
 
-def test_formatted_view_breaks_inline_paragraph_markers_onto_new_lines():
-    projection = _formatted().project("\\p one \\q1 two")
+def test_preview_breaks_inline_paragraph_markers_onto_new_lines():
+    projection = _preview().project("\\p one \\q1 two")
     assert projection.text == "one \ntwo"
     generated = [s for s in projection.source_map.segments if s.role is SegmentRole.GENERATED]
     assert len(generated) == 1
 
 
-def test_standard_view_keeps_every_marker_visible():
+def test_standard_view_keeps_every_marker_visible_as_a_tag():
     projection = _standard().project(SOURCE)
-    assert projection.text == SOURCE
+    assert projection.text == (
+        "\\id GEN Genesis\n\\c 1\n\\s1 The Creation\n"
+        "\\p \\v 1 In the \\bd beginning\\bd* God created. \\v 2 Earth \\zz odd\n"
+    )
     markers = [s for s in projection.source_map.segments if s.role is SegmentRole.MARKER]
-    assert [SOURCE[s.source_start : s.source_end] for s in markers][:3] == ["\\id", "\\c", "\\s1"]
+    assert [SOURCE[s.source_start : s.source_end].strip() for s in markers][:3] == ["\\id", "\\c", "\\s1"]
+    tags = [projection.text[s.view_start : s.view_end] for s in projection.spans if s.attrs.get("marker_token")]
+    assert tags[:4] == ["\\id", "\\c", "\\s1", "\\p"]
+    # STY formatting applies in Standard too.
+    blocks = {block.marker: dict(block.attrs) for block in projection.blocks}
+    assert blocks["s1"]["bold"] == "yes" and blocks["s1"]["align"] == "center"
 
 
 def test_typing_at_the_end_of_a_bold_word_stays_inside_the_style():
-    projection = _formatted().project(SOURCE)
+    projection = _preview().project(SOURCE)
     position = projection.text.index("beginning") + len("beginning")
     result = _apply(SOURCE, plan_view_edit(projection.source_map, position, position, "s"))
     assert "\\bd beginnings\\bd*" in result
 
 
 def test_deleting_across_hidden_markers_keeps_the_markers():
-    projection = _formatted().project(SOURCE)
+    projection = _preview().project(SOURCE)
     start = projection.text.index("the begin")
     end = start + len("the begin")
     result = _apply(SOURCE, plan_view_edit(projection.source_map, start, end, ""))
@@ -145,7 +196,7 @@ def test_typing_inside_a_protected_marker_is_rejected():
 def test_random_view_edits_never_corrupt_markers():
     rng = random.Random(7)
     source = SOURCE
-    view = _formatted()
+    view = _preview()
     for _ in range(200):
         projection = view.project(source)
         length = len(projection.text)
@@ -206,7 +257,8 @@ def test_marker_choice_lists_come_from_the_registry():
 
 
 def test_view_commands_run_in_source_offsets():
-    commands = {command.command_id: command for command in _formatted().view_commands()}
+    assert _preview().view_commands() == ()  # Preview is read-only
+    commands = {command.command_id: command for command in _standard().view_commands()}
     source = "\\p In the beginning"
     plan = commands["bold"].run(source, 10, 19, None)
     assert _apply(source, plan) == "\\p In the \\bd beginning\\bd*"
@@ -217,8 +269,8 @@ def test_view_commands_run_in_source_offsets():
 
 
 def test_environments_offer_their_view_providers():
-    assert [p.key for p in environment_view_providers(UsfmEnvironment())] == ["sfm.standard", "sfm.formatted"]
-    assert [p.key for p in environment_view_providers(SfmEnvironment())] == ["sfm.standard", "sfm.formatted"]
+    assert [p.key for p in environment_view_providers(UsfmEnvironment())] == ["sfm.standard", "sfm.preview"]
+    assert [p.key for p in environment_view_providers(SfmEnvironment())] == ["sfm.standard", "sfm.preview"]
     assert [p.key for p in environment_view_providers(MarkdownEnvironment())] == ["markdown.rendered"]
     assert environment_view_providers(object()) == ()
 
@@ -253,27 +305,28 @@ def test_markdown_commands_wrap_and_set_headings():
     assert _apply("# t", commands["heading"].run("# t", 2, 2, "Body")) == "t"
 
 
-def test_formatted_view_renders_notes_with_caller_and_brackets():
+def test_preview_moves_notes_below_the_text_leaving_their_callers():
     source = "\\p In the beginning\\f + \\fr 1.1: \\ft Or, When\\f* God."
-    projection = _formatted().project(source)
+    projection = _preview().project(source)
     projection.source_map.check()
-    assert projection.text == "In the beginning+[1.1: Or, When] God."
+    assert projection.text == "In the beginninga God."
     spans = {(s.marker, projection.text[s.view_start : s.view_end]): dict(s.attrs) for s in projection.spans}
-    assert spans[("caller", "+")]["superscript"] == "yes"
-    assert spans[("f", "+[1.1: Or, When]")]["muted"] == "yes"
+    # The caller's look comes from the built-in `f::caller` rule.
+    assert spans[("caller", "a")] == {"superscript": "yes", "bold": "yes"}
     generated = [s for s in projection.source_map.segments if s.role is SegmentRole.GENERATED]
-    assert [projection.text[s.view_start : s.view_end] for s in generated] == ["[", "]"]
-    # Typing inside the note text edits the note's source.
-    position = projection.text.index("When") + 4
-    result = _apply(source, plan_view_edit(projection.source_map, position, position, "ever"))
-    assert "\\ft Or, Whenever\\f*" in result
+    assert [projection.text[s.view_start : s.view_end] for s in generated] == ["a"]
+    (section,) = projection.notes
+    assert (section.key, section.label) == ("f", "Footnotes")
+    assert section.projection.text == "a 1.1: Or, When"
 
 
-def test_formatted_view_lays_out_table_rows_with_tabs():
+def test_preview_lays_out_table_rows_with_tabs():
     source = "\\tr \\th1 Tribe \\th2 Count\n\\tr \\tc1 Judah \\tcr2 74,600\n"
-    projection = _formatted().project(source)
+    projection = _preview().project(source)
     projection.source_map.check()
     assert projection.text == "Tribe \tCount\nJudah \t74,600\n"
     assert all(block.attrs.get("table_row") == "yes" for block in projection.blocks)
-    bold = [projection.text[s.view_start : s.view_end] for s in projection.spans if s.attrs.get("bold") == "yes"]
-    assert "Tribe " in bold and not any("Judah" in text for text in bold)
+    # Cells are styled by their cell marker's STY entry (usfm.sty: th1 italic).
+    italic = [projection.text[s.view_start : s.view_end] for s in projection.spans if s.attrs.get("italic") == "yes"]
+    assert "Tribe " in italic and not any("Judah" in text for text in italic)
+    assert not any(s.attrs.get("bold") for s in projection.spans)

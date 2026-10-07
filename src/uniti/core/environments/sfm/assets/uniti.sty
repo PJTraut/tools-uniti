@@ -1,0 +1,31 @@
+# uniti.sty - UNITI presentation rules (built-in)
+#
+# Ordinary .sty records whose \Marker is a CSS-like selector instead of a
+# marker name. They take the normal STY fields (FontSize, Bold, Italic,
+# Superscript, SpaceBefore, LeftMargin, FirstLineIndent, ...) and apply on
+# top of the styled marker's own style in UNITI's Standard and Preview views.
+#
+#   \Marker p+q1        a \q1 paragraph straight after a \p paragraph
+#   \Marker f::caller   the caller of a footnote
+#
+# Several selectors can share one record, separated by commas. A numberless
+# marker and its level-1 form match each other (q = q1, s = s1). A flag such
+# as \Bold is turned off again with "\Bold -".
+#
+# Project rules go in a file named uniti.sty next to the book files. It
+# layers on top of every other stylesheet, and Paratext and PTXprint never
+# read it.
+
+\Marker f::caller, fe::caller, ef::caller
+\Name Note caller - Footnote
+\Superscript
+\Bold
+
+\Marker x::caller, ex::caller
+\Name Note caller - Cross Reference
+\Superscript
+\Italic
+
+\Marker p+q1, p+q2, p+q3, q1+p, q2+p, q3+p
+\Name Blank line between prose and poetry
+\SpaceBefore 12

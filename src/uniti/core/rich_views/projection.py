@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
-from .source_map import Segment, SegmentRole, SourceMap
+from .source_map import EOL_MARKER, Segment, SegmentRole, SourceMap
 
 # Recognized presentation attributes (all optional):
 #   bold, italic, underline, superscript, smallcaps, monospace, muted,
@@ -43,11 +43,26 @@ class BlockFormat:
 
 
 @dataclass(frozen=True, slots=True)
+class NoteSection:
+    """An auxiliary projection shown below the main text (SFM Preview's notes frame).
+
+    `projection` covers the whole source like any projection, with
+    everything but this class's note bodies hidden, so a view position in
+    it maps back to the note's source.
+    """
+
+    key: str  # note marker, e.g. "f", "x"
+    label: str  # display label, plural, e.g. "Footnotes", "Cross References"
+    projection: "Projection"
+
+
+@dataclass(frozen=True, slots=True)
 class Projection:
     provider_key: str
     source_map: SourceMap
     blocks: tuple[BlockFormat, ...] = ()
     spans: tuple[SpanFormat, ...] = ()
+    notes: tuple[NoteSection, ...] = ()
 
     @property
     def text(self) -> str:
@@ -93,12 +108,43 @@ class ProjectionBuilder:
         self._source_position = source_end
         return segment
 
-    def text(self, source_end: int, source_text: str) -> Segment:
-        """Verbatim source text up to `source_end` (`source_text` is that slice)."""
+    def text(self, source_end: int, source_text: str, *, line_break: str = "\n") -> Segment:
+        """Source text up to `source_end` (`source_text` is that slice).
+
+        Every line break (``\n``, ``\r\n`` or a lone ``\r``) is shown as
+        the single character `line_break` — ``"\n"``, or ``" "`` where the
+        view flows source lines into one paragraph. The ``\r`` of a CRLF
+        becomes a zero-width hidden ``eol`` segment, so view text never
+        holds a ``\r``: a UI text widget collapses ``\r\n`` to one
+        paragraph break, which would shift every later view offset.
+        """
 
         if len(source_text) != source_end - self._source_position:
             raise ValueError("text segment length must match its source range")
-        return self._add(SegmentRole.TEXT, source_end, source_text, None)
+        if len(line_break) != 1:
+            raise ValueError("line_break must be one character")
+        if "\r" not in source_text and (line_break == "\n" or "\n" not in source_text):
+            return self._add(SegmentRole.TEXT, source_end, source_text, None)
+        position = self._source_position
+        run: list[str] = []
+        segment: Segment | None = None
+        index = 0
+        while index < len(source_text):
+            char = source_text[index]
+            if char == "\r" and index + 1 < len(source_text) and source_text[index + 1] == "\n":
+                if run:
+                    segment = self._add(SegmentRole.TEXT, position + index, "".join(run), None)
+                    run = []
+                segment = self._add(SegmentRole.HIDDEN, position + index + 1, "", EOL_MARKER)
+                run.append(line_break)
+                index += 2
+                continue
+            run.append(line_break if char in "\r\n" else char)
+            index += 1
+        if run:
+            segment = self._add(SegmentRole.TEXT, source_end, "".join(run), None)
+        assert segment is not None
+        return segment
 
     def marker(self, source_end: int, label: str, marker: str | None = None) -> Segment:
         return self._add(SegmentRole.MARKER, source_end, label, marker)
@@ -117,11 +163,11 @@ class ProjectionBuilder:
         if attrs:
             self._blocks.append(BlockFormat(view_start, view_end, MappingProxyType(dict(attrs)), marker))
 
-    def build(self, source_length: int) -> Projection:
+    def build(self, source_length: int, notes: tuple[NoteSection, ...] = ()) -> Projection:
         if self._source_position != source_length:
             raise ValueError("projection must cover the whole source")
         source_map = SourceMap(tuple(self._segments), "".join(self._view), source_length)
-        return Projection(self.provider_key, source_map, tuple(self._blocks), tuple(self._spans))
+        return Projection(self.provider_key, source_map, tuple(self._blocks), tuple(self._spans), tuple(notes))
 
 
 def identity_projection(provider_key: str, source: str) -> Projection:

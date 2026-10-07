@@ -105,6 +105,7 @@ def test_usfm_environment_layers_project_stylesheets_on_activation(tmp_path: Pat
         environment.activate(context)
         assert [layer.name for layer in environment.layered_styles.layers] == [
             "usfm.sty (official)",
+            "uniti.sty (built-in)",
             "custom.sty",
             "ptxprint-mods.sty",
         ]
@@ -144,7 +145,7 @@ def test_import_stylesheet_layers_on_top_and_can_be_reloaded(tmp_path: Path):
         assert environment.import_stylesheet(extra) is True
         assert environment.import_stylesheet(extra) is True  # re-import replaces, not duplicates
         assert environment.layered_styles.layers[-1].origin is StyleOrigin.UNITI_IMPORT
-        assert len(environment.layered_styles.layers) == 4
+        assert len(environment.layered_styles.layers) == 5
         assert environment.layered_styles.formatting("q1")["fontsize"] == "9"
         assert environment.import_stylesheet(tmp_path / "missing.sty") is False
         reload = next(c for c in environment_commands(environment) if c.command_id == "reload_stylesheets")

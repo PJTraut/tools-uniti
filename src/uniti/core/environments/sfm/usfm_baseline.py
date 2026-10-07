@@ -14,6 +14,9 @@ __init__`, which itself is only constructed when a `.usfm` document is
 opened (`FileEnvironmentManager.activate_for`), triggers the first call.
 Every subsequent `.usfm` open in the same process reuses the cached,
 already-parsed sheet instead of re-parsing ~3,500 lines each time.
+
+`assets/uniti.sty` is UNITI's own built-in presentation-rule layer (see
+`style_layers.py`), listed in the same manifest and loaded the same way.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ logger = logging.getLogger("uniti.environment.usfm")
 
 _ASSETS_ROOT = Path(__file__).parent / "assets"
 _STYLESHEET_ID = "usfm-baseline"
+_UNITI_BUILTIN_ID = "uniti-builtin"
 
 
 @lru_cache(maxsize=1)
@@ -42,9 +46,23 @@ def load_usfm_baseline() -> RawStyleSheet:
     follows (ADR-0013 decision 6).
     """
 
+    return _load_asset(_STYLESHEET_ID, "failed to load vendored usfm.sty baseline; USFM structural knowledge disabled")
+
+
+@lru_cache(maxsize=1)
+def load_uniti_builtin() -> RawStyleSheet:
+    """Load and verify UNITI's built-in `uniti.sty` presentation rules.
+
+    Never raises: a broken asset leaves the views without the default rules.
+    """
+
+    return _load_asset(_UNITI_BUILTIN_ID, "failed to load built-in uniti.sty; default presentation rules disabled")
+
+
+def _load_asset(stylesheet_id: str, failure: str) -> RawStyleSheet:
     try:
         manifest = json.loads((_ASSETS_ROOT / "manifest.json").read_text(encoding="utf-8"))
-        entry = next(e for e in manifest["stylesheets"] if e["id"] == _STYLESHEET_ID)
+        entry = next(e for e in manifest["stylesheets"] if e["id"] == stylesheet_id)
         path = _ASSETS_ROOT / entry["path"]
         if Path(entry["path"]).name != entry["path"]:
             raise ValueError("invalid asset path")
@@ -55,8 +73,8 @@ def load_usfm_baseline() -> RawStyleSheet:
             raise ValueError("asset hash mismatch")
         return parse_raw_stylesheet(data.decode("utf-8"))
     except (OSError, ValueError, KeyError, TypeError, StopIteration, json.JSONDecodeError):
-        logger.exception("failed to load vendored usfm.sty baseline; USFM structural knowledge disabled")
+        logger.exception(failure)
         return RawStyleSheet(())
 
 
-__all__ = ["load_usfm_baseline"]
+__all__ = ["load_uniti_builtin", "load_usfm_baseline"]

@@ -7,7 +7,7 @@ so an exported file reads like a hand-written one. Never modifies any layer.
 
 from __future__ import annotations
 
-from .style_layers import LayeredStyleRegistry, StyleOrigin, clean_value
+from .style_layers import BUILTIN_ORIGINS, LayeredStyleRegistry, clean_value
 
 
 def _effective_entries(registry: LayeredStyleRegistry, marker: str, layers) -> list[tuple[str, str | None]]:
@@ -58,14 +58,15 @@ def export_resolved(registry: LayeredStyleRegistry) -> str:
 
 
 def export_overrides(registry: LayeredStyleRegistry) -> str:
-    """Only what the non-baseline layers change relative to the baseline.
+    """Only what the project/imported layers change relative to what ships
+    with UNITI (the official baseline and the built-in `uniti.sty` rules).
 
-    A marker the baseline doesn't define is exported whole; for one it does,
-    only the keys whose effective value differs. With no baseline (generic
-    SFM), this equals the resolved export.
+    A marker (or rule) the shipped layers don't define is exported whole;
+    for one they do, only the keys whose effective value differs. With no
+    baseline (generic SFM), this equals the resolved export.
     """
 
-    base_layers = [layer for layer in registry.layers if layer.origin is StyleOrigin.USFM_BASE]
+    base_layers = [layer for layer in registry.layers if layer.origin in BUILTIN_ORIGINS]
     blocks = []
     for marker in _marker_order(registry):
         effective = _effective_entries(registry, marker, registry.layers)

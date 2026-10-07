@@ -58,6 +58,7 @@ from uniti.core.environments.catalog import (
     descriptor_for_key,
 )
 from uniti.core.syntax_profiles import PLAIN_TEXT, PROFILES_BY_KEY, SyntaxProfile
+from uniti.ui.rich_view import PLAIN_TEXT_LABEL
 
 if TYPE_CHECKING:
     from uniti.core.document import Document
@@ -86,6 +87,7 @@ class EnvironmentController:
         self._owned_command_actions: list[QAction] = []
         self.plain_mode_action: QAction | None = None
         self.assignment_action: QAction | None = None
+        self.move_to_window_action: QAction | None = None
 
     # --- resolution -------------------------------------------------------
 
@@ -300,8 +302,9 @@ class EnvironmentController:
         menu.addAction(self.assignment_action)
 
     def _add_view_switcher(self, menu: QMenu, view: "UNITITextView") -> None:
-        """"View As" block (ADR-0015 view switcher): Source only, or Source
-        plus one of the environment's editable rich views beside it."""
+        """"View As" block: the tab's mode — Plain Text (the Source editor)
+        or one of the environment's rich views shown in its place (SFM:
+        Standard, Preview; ADR-0017)."""
 
         rich_views = self._window._rich_views
         providers = rich_views.providers_for(view)
@@ -311,15 +314,15 @@ class EnvironmentController:
         group = QActionGroup(self._window)
         group.setExclusive(True)
         self._owned_command_actions.append(group)  # deleted on rebuild too
-        showing = rich_views.current_key if rich_views.target_view is view else None
-        entries = [(None, "Source Only")] + [(provider.key, provider.label) for provider in providers]
+        showing = rich_views.key_for(view)
+        entries = [(None, PLAIN_TEXT_LABEL)] + [(provider.key, provider.label) for provider in providers]
         self.view_actions = {}
         for key, label in entries:
             action = QAction(label, self._window)
             action.setCheckable(True)
             action.setChecked(key == showing)
             action.triggered.connect(
-                lambda _checked=False, key=key: rich_views.show(key) if key is not None else rich_views.close()
+                lambda _checked=False, key=key, view=view: rich_views.set_mode(key, view)
             )
             group.addAction(action)
             menu.addAction(action)
@@ -385,8 +388,27 @@ class EnvironmentController:
         if is_plain_environment:
             menu.addAction(self._no_tools_action)
             return
+        self._add_window_entries(menu, view, descriptor.key)
         menu.addSeparator()
         menu.addAction(self.plain_mode_action)
+
+    def _add_window_entries(self, menu: QMenu, view: "UNITITextView", environment_key: str) -> None:
+        """Environment window (ADR-0017) and, for scripture, reference sync."""
+
+        from uniti.ui.environment_window import REFERENCE_ENVIRONMENTS
+
+        window = self._window
+        menu.addSeparator()
+        move = QAction("Move to Environment Window", window)
+        move.setToolTip("Move this file to the window of its environment and document group")
+        in_place = window.environment_window is not None and window.environment_window[0] == environment_key
+        move.setEnabled(window._service is not None and not in_place)
+        move.triggered.connect(lambda _checked=False, view=view: window.move_to_environment_window(view))
+        menu.addAction(move)
+        self._owned_command_actions.append(move)
+        self.move_to_window_action = move
+        if environment_key in REFERENCE_ENVIRONMENTS:
+            menu.addAction(window._reference_sync.action)
 
     # --- running commands ---------------------------------------------------
 

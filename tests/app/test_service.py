@@ -1676,6 +1676,75 @@ def test_undock_records_exact_source_and_dock_returns_there(tmp_path: Path):
         _stop_desktop_service(app, service)
 
 
+def _cleanup_service(app, service) -> None:
+    for _window_id, open_window in service.windows.items:
+        open_window.close_all_documents(force=True)
+        open_window.close()
+    app.processEvents()
+    _stop_desktop_service(app, service)
+
+
+def test_undock_views_keeps_an_already_undocked_views_original_home(tmp_path: Path):
+    app, service, _recovery = _desktop_service(tmp_path)
+    paths = [tmp_path / "home.txt", tmp_path / "group-a.txt", tmp_path / "group-b.txt"]
+    for path in paths:
+        path.write_text(path.stem, encoding="utf-8")
+    home = service.new_window()
+    _anchor_view, first, second = (home.open_path(path) for path in paths)
+    first_home = home.view_location(first.view_id)
+    second_home = home.view_location(second.view_id)
+    try:
+        temporary = service.undock_view(first.view_id)
+        service._transfer_view(second.view_id, temporary.window_id, dock_return=DockReturnRecord(
+            home.window_id, second_home.pane_id, second_home.tab_index
+        ))
+
+        grouped = service.undock_views((first.view_id, second.view_id))
+
+        assert first.dock_return == DockReturnRecord(
+            home.window_id, first_home.pane_id, first_home.tab_index
+        )
+        assert second.dock_return == DockReturnRecord(
+            home.window_id, second_home.pane_id, second_home.tab_index
+        )
+        assert temporary not in service.windows.windows
+        assert service.dock_view(first.view_id) is home
+        assert grouped in service.windows.windows
+    finally:
+        _cleanup_service(app, service)
+
+
+def test_undock_views_partial_failure_shows_the_views_it_already_moved(
+    tmp_path: Path, monkeypatch
+):
+    app, service, _recovery = _desktop_service(tmp_path)
+    paths = [tmp_path / "one.txt", tmp_path / "two.txt", tmp_path / "three.txt"]
+    for path in paths:
+        path.write_text(path.stem, encoding="utf-8")
+    source = service.new_window()
+    _kept, first, second = (source.open_path(path) for path in paths)
+    real_transfer = service._transfer_view
+    calls = []
+
+    def failing_transfer(view_id, *args, **kwargs):
+        calls.append(view_id)
+        if len(calls) == 2:
+            raise ValueError("destination full")
+        return real_transfer(view_id, *args, **kwargs)
+
+    monkeypatch.setattr(service, "_transfer_view", failing_transfer)
+    try:
+        with pytest.raises(ValueError, match="destination full"):
+            service.undock_views((first.view_id, second.view_id))
+
+        holder = service.windows.window_for_view(first.view_id)
+        assert holder is not source
+        assert holder.isVisible()
+        assert service.windows.window_for_view(second.view_id) is source
+    finally:
+        _cleanup_service(app, service)
+
+
 def test_dock_falls_back_from_missing_pane_then_missing_window(tmp_path: Path):
     app, service, _recovery = _desktop_service(tmp_path)
     path = tmp_path / "fallback.txt"
@@ -2453,6 +2522,29 @@ def test_reassigning_an_extension_re_resolves_open_documents_environment_key(
             open_window.close()
         app.processEvents()
         _stop_desktop_service(app, service)
+
+
+def test_reassigning_an_extension_updates_every_open_window(tmp_path: Path):
+    app, service, _recovery = _desktop_service(tmp_path)
+    path = tmp_path / "book.sfm"
+    path.write_text("\\id GEN\n\\c 1\n\\v 1 text\n", encoding="utf-8")
+    first = service.new_window()
+    second = service.new_window()
+    try:
+        first.open_path(path)
+        other_view = second.open_path(path)
+        entry = service.documents.find_path(path)
+
+        first.set_extension_assignments({"sfm": "usfm"})
+        # A refresh in the other window must not sync the old key back.
+        second._refresh_all_syntax_profiles()
+        second._environment.environment_key_for(other_view.document)
+
+        assert second._settings.syntax_extension_overrides == {"sfm": "usfm"}
+        assert other_view.syntax_profile.key == "usfm"
+        assert entry.environment_key == "usfm"
+    finally:
+        _cleanup_service(app, service)
 
 
 def test_pinned_document_keeps_its_environment_through_extension_reassignment(

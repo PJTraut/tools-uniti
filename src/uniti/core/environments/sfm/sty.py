@@ -21,7 +21,7 @@ Scope deliberately excludes, for this phase:
   already keep the raw field text (`RawStyleEntry.raw_line`), so a
   loss-minimizing writer has what it needs whenever E6+ actually wants one.
 - Typographic/presentation fields (`FontSize`, `Justification`, margins,
-  ...). Those belong to the Formatted View (Phase E9), not to structural
+  ...). Those belong to the Standard/Preview views (Phase E9), not to structural
   validation or the marker inspector this phase enables. Unrecognized
   fields, typographic or otherwise, still round-trip through
   `SfmStyle.extensions` rather than being silently dropped.

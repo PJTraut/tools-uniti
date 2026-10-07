@@ -38,3 +38,7 @@ ADR-0015 listed what it left undone: remembering a rich view across sessions, no
   - importing or migrating a project's stylesheet into a UNITI-managed layer (spec §39 "Import"/"Update existing");
   - a session-override style layer;
   - native/hosted confirmation of all of the above.
+
+Update 2026-10-07: [ADR-0017](ADR-0017-environment-windows-in-place-views-reference-sync.md) changes two decisions:
+- Decision 1: the per-tab choice still holds, but each tab now gets its own pane, in place of its Source editor.
+- Decision 2: Preview moves notes into a frame below the text, and styles cells and notes from the stylesheet only.

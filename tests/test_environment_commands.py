@@ -88,6 +88,21 @@ def test_format_failure_is_an_error_message_not_an_exception(tmp_path: Path):
     assert "line 1" in result.text
 
 
+def test_format_checks_size_before_reading_the_document(tmp_path: Path, monkeypatch):
+    import uniti.core.environment_commands as commands_module
+    import uniti.core.reformatters as reformatters_module
+
+    monkeypatch.setattr(reformatters_module, "MAX_REFORMAT_CHARS", 4)
+
+    def refuse(_context):
+        raise AssertionError("document text read before the size check")
+
+    monkeypatch.setattr(commands_module, "document_text", refuse)
+    with _context(tmp_path, '{"a": [1, 2]}') as context:
+        result = _command(JsonEnvironment(), "format").run(context, None)
+    assert isinstance(result, ShowMessage) and result.title == "Document Too Large"
+
+
 def test_xml_offers_format_minify_and_validate():
     ids = [command.command_id for command in environment_commands(XmlEnvironment())]
     assert ids == ["format", "minify", "validate"]
@@ -149,6 +164,14 @@ def test_csv_column_counts_respect_quoted_fields():
         "row 6 has 4 fields; expected 3",
     ]
     assert text[findings[0].start : findings[0].end] == "4,5"
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_csv_column_count_ranges_follow_every_line_ending(newline: str):
+    text = newline.join(["a,b", "c,d", "e,f,g", "h,i"]) + newline
+    findings = column_count_findings(text, ",", "csv")
+    assert [f.message for f in findings] == ["row 3 has 3 fields; expected 2"]
+    assert text[findings[0].start : findings[0].end] == "e,f,g"
 
 
 def test_tsv_environment_validates_through_its_command(tmp_path: Path):

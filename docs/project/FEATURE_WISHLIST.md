@@ -20,3 +20,10 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
 - Idea: Paratext ships `.sty` stylesheet files (per the user, "a terrible hybrid DTD and stylesheet" format) that define the actual set of valid SFM markers and per-marker properties, including style type and formatting. These could inform a richer SFM profile — validating markers against a real stylesheet and coloring by marker kind rather than one flat `keyword` category for everything.
 - Not yet scoped at all: whether UNITI would parse a user-supplied `.sty` file directly, bundle a default/standard one, or something else; the `.sty` format itself (described only qualitatively so far, not yet inspected against a real file); and how this would interact with the existing extension→profile mapping model.
 - Reference, provided by the user 2026-09-18: [USFM 3.1 documentation](https://docs.usfm.bible/usfm/3.1/index.html), which also covers USJ (the JSON-serialized form of USFM — relevant to the existing JSON profile too, not just SFM). Not yet read/incorporated into this entry's scoping.
+
+## USFM per-chapter view
+
+- Noted: 2026-10-07, from USFM field-test feedback ("have option to view per chapter or per book"). Paused by the user the same day, pending the environment window work.
+- Idea: an option to show a USFM document one chapter at a time instead of the whole book. The chapter would come from the environment window's Book/Chapter/Verse selector.
+- Current state: Standard and Preview project the whole document (up to 1 MiB) through `layout_projection` (`src/uniti/core/environments/sfm/views.py`). Plain Text shows the whole file.
+- Open questions: does narrowing apply to Plain Text too? That would need a narrowed or folded `UNITITextView`, which doesn't exist. For Standard and Preview, the projection could cover only the chapter's source range, with the rest of the source hidden. How do Find/Replace and the caret behave outside the visible chapter?

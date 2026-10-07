@@ -24,9 +24,15 @@ MAX_FINDINGS = 500
 
 
 def _line_offsets(text: str) -> list[int]:
+    """Line starts, splitting exactly as `StringIO(newline="")` does (on
+    `\n`, `\r\n` and lone `\r`) so they agree with `csv.reader.line_num`."""
+
     offsets = [0]
+    length = len(text)
     for index, char in enumerate(text):
         if char == "\n":
+            offsets.append(index + 1)
+        elif char == "\r" and (index + 1 >= length or text[index + 1] != "\n"):
             offsets.append(index + 1)
     return offsets
 
@@ -52,7 +58,11 @@ def column_count_findings(text: str, delimiter: str, code_prefix: str) -> tuple[
             if len(row) != expected:
                 # A row spans its lines up to (not including) the newline
                 # that ends its last line.
-                end = line_offsets[row_end_line] - 1 if row_end_line < len(line_offsets) else len(text)
+                end = line_offsets[row_end_line] if row_end_line < len(line_offsets) else len(text)
+                if end > start and text[end - 1] == "\n":
+                    end -= 1
+                if end > start and text[end - 1] == "\r":
+                    end -= 1
                 findings.append(
                     EnvironmentFinding(
                         start,
