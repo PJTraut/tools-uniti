@@ -124,8 +124,16 @@ class EnvironmentController:
             self._window._service.documents.set_environment_key(entry.document_id, key)
         return key
 
-    def set_document_environment(self, environment_key: str | None, view: "UNITITextView | None" = None) -> None:
-        """Pin the active document to `environment_key`; `None` follows its extension."""
+    def set_document_environment(
+        self, environment_key: str | None, view: "UNITITextView | None" = None, *, move: bool = True
+    ) -> None:
+        """Pin the active document to `environment_key`; `None` follows its extension.
+
+        The file then lives in its environment (ADR-0017): with `move`, a
+        file pinned to an environment moves into that environment's window
+        for its group, and a file in an environment window that no longer
+        matches its environment moves out to the right one.
+        """
 
         view = view if view is not None else self._window.current_view
         if view is None:
@@ -140,9 +148,18 @@ class EnvironmentController:
             self._standalone_overrides.pop(document, None)
         else:
             self._standalone_overrides[document] = environment_key
-        self.environment_key_for(document)
+        key = self.environment_key_for(document)
         self._window._refresh_all_syntax_profiles()
         self._window._environment_state_changed(view)
+        window = self._window
+        if not move or window._service is None or window.view_for_id(view.view_id) is not view:
+            return
+        in_environment_window = window.environment_window is not None
+        if environment_key is not None or (in_environment_window and window.environment_window[0] != key):
+            entry = window._service.documents.entry_for_view(view.view_id)
+            group_id = None if entry is None else entry.group_id
+            if window.environment_window != (key, group_id):
+                window.move_to_environment_window(view)
 
     def active_for(self, document: "Document") -> ActiveEnvironment:
         return self._window._file_environment_manager.active_for(
@@ -387,6 +404,8 @@ class EnvironmentController:
         self._add_view_switcher(menu, view)
         if is_plain_environment:
             menu.addAction(self._no_tools_action)
+            # Plain text files get an environment window too.
+            self._add_window_entries(menu, view, descriptor.key)
             return
         self._add_window_entries(menu, view, descriptor.key)
         menu.addSeparator()
@@ -401,7 +420,11 @@ class EnvironmentController:
         menu.addSeparator()
         move = QAction("Move to Environment Window", window)
         move.setToolTip("Move this file to the window of its environment and document group")
-        in_place = window.environment_window is not None and window.environment_window[0] == environment_key
+        group_id = None
+        if window._service is not None:
+            entry = window._service.documents.entry_for_view(view.view_id)
+            group_id = None if entry is None else entry.group_id
+        in_place = window.environment_window == (environment_key, group_id)
         move.setEnabled(window._service is not None and not in_place)
         move.triggered.connect(lambda _checked=False, view=view: window.move_to_environment_window(view))
         menu.addAction(move)

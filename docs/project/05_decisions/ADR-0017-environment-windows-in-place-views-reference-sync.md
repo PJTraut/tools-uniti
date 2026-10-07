@@ -33,7 +33,12 @@ The user's answers to the open questions, the same day:
    - Edit-menu Undo/Redo/Cut/Copy/Paste/Select All act on the pane, so a read-only Preview can't be edited through the menu. The pane also claims its own navigation and zoom keys ahead of the Source editor's shortcuts.
    - The per-tab choice is still `UNITITextView.rich_view_key` in `ViewRecord.extra["rich_view"]`. The pane's × button is gone: Plain Text is the first mode.
 2. **Environment windows** ("environment panel").
-   - **Move to Environment Window** (environment menu, every environment except Plain Text) moves a tab into the window for its environment and document group, e.g. "USFM — A". The window is created on first use (`UNITIService.move_to_environment_window`). Like undock, the tab remembers its home, so Dock takes it back.
+   - **Move to Environment Window** (environment menu, every environment including Plain Text: a plain text file gets a "Plain Text — A" window, with no rich modes and no selector) moves a tab into the window for its environment and document group, e.g. "USFM — A". The window is created on first use (`UNITIService.move_to_environment_window`). Like undock, the tab remembers its home, so Dock takes it back.
+   - A file lives in its environment (follow-up, 2026-10-07):
+     - A file opened inside an environment window (File > Open, Recent Files, Book) is pinned to the window's environment and joins its group. If it's already open elsewhere, it moves in.
+     - When the file's extension isn't assigned to that environment, an "Open as <environment>?" confirmation comes first; Cancel doesn't open it.
+     - Choosing an environment in **Environment for This Document** moves the file into that environment's window, and a file whose environment no longer matches its environment window moves out to the right one.
+     - Opening a file in an ordinary window doesn't move it.
    - An environment window is an ordinary UNITI window plus an environment frame: an `EnvironmentBar` toolbar with the environment and group, the Plain Text / Standard / Preview switch, and for USFM/SFM a Book / Chapter / Verse selector and the sync toggle.
    - This narrows ADR-0004 decision 7 ("no toolbar is added"): ordinary windows still have no toolbar, and only environment windows carry this frame.
    - Its identity is saved in each of its views' `ViewRecord.extra["environment_window"]`, so there is no window-schema change. `restore_shell` rebuilds the frame before any document loads.

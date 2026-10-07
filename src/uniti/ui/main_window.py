@@ -240,6 +240,7 @@ class UNITIMainWindow(QMainWindow):
         # (environment key, group id) once this is an environment window.
         self.environment_window: tuple[str, str | None] | None = None
         self._environment_bar = None
+        self._opening_into_environment = False
         self._settings_store = (
             service.settings if service is not None else settings_store
         )
@@ -2317,6 +2318,12 @@ class UNITIMainWindow(QMainWindow):
         *,
         profile: EncodingProfile | None = None,
     ) -> UNITITextView | None:
+        if (
+            self.environment_window is not None
+            and self._service is not None
+            and not self._opening_into_environment
+        ):
+            return self._open_in_environment(Path(path), profile)
         started_at = time.monotonic()
         if self._service is not None:
             existing = self._service.documents.find_path(Path(path))
@@ -2579,6 +2586,52 @@ class UNITIMainWindow(QMainWindow):
         # The toolbar holds the mode switch; tabs don't repeat it.
         self._rich_views.set_mode_selector_visible(False)
         self._on_current_changed(self._tabs.currentIndex())
+
+    def _open_in_environment(self, path: Path, profile: EncodingProfile | None) -> UNITITextView | None:
+        """A file opened in an environment window lives there (ADR-0017):
+        pinned to the window's environment, after an "are you sure" when
+        its extension isn't assigned to that environment, and in the
+        window's group. A file already open elsewhere moves here."""
+
+        key, group_id = self.environment_window
+        known = (
+            self._file_environment_manager.resolve_key(path.suffix, self._settings.syntax_extension_overrides)
+            == key
+        )
+        if not known and not self._confirm_environment_pin(path, key):
+            return None
+        self._opening_into_environment = True
+        try:
+            view = self.open_path(path, profile=profile)
+        finally:
+            self._opening_into_environment = False
+        entry = None if view is None else self._service.documents.entry_for_view(view.view_id)
+        if view is None or entry is None:
+            return view
+        if group_id is not None and entry.group_id != group_id:
+            self._set_document_group(entry.document_id, group_id)
+        if self.view_for_id(view.view_id) is not view:
+            # Open in another window: bring it into this one.
+            self._service.move_to_environment_window(view.view_id, key, group_id)
+        if self._environment.environment_key_for(view.document) != key:
+            self._environment.set_document_environment(key, view, move=False)
+        return view
+
+    def _confirm_environment_pin(self, path: Path, environment_key: str) -> bool:
+        from uniti.core.environments.catalog import descriptor_for_key
+
+        label = descriptor_for_key(environment_key).label
+        extension = path.suffix or "(no extension)"
+        answer = QMessageBox.question(
+            self,
+            f"Open as {label}?",
+            f"{extension} files aren't assigned to the {label} environment.\n\n"
+            f"Open “{path.name}” as {label} anyway? It will be pinned to {label} "
+            "and live in this window.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     def move_to_environment_window(self, view: UNITITextView | None = None):
         """Move a tab to its environment's window for its document group,

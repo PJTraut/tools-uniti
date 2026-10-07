@@ -78,6 +78,13 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
     _open(window, tmp_path, "notes.txt", "hi")
     assert environment.menu.title() == "Plain Text"
     assert "Plain Text Mode" not in _menu_texts(window)
+    # Plain text gets an environment window too (no reference sync).
+    assert _menu_texts(window) == [
+        "No environment tools for plain text",
+        "Move to Environment Window",
+        "Environment for This Document",
+        "File Type Environments…",
+    ]
 
 
 def test_menu_sits_between_view_and_tools(window):

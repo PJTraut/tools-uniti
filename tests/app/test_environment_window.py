@@ -266,3 +266,93 @@ def test_sync_can_be_turned_off(desktop, tmp_path: Path):
     main._reference_sync._sync_now()
 
     assert right.state.cursor == before
+
+
+def test_plain_text_files_get_an_environment_window(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "notes.txt", "hello"))
+    _group(main, service, view, "A")
+    main._select_view(view)
+    assert main._environment.move_to_window_action.isEnabled()
+
+    window = main.move_to_environment_window(view)
+
+    assert window.environment_window == ("plain_text", "A")
+    assert window.windowTitle() == "UNITI — Plain Text — A — notes.txt"
+    bar = window._environment_bar
+    assert list(bar.mode_actions) == [None]  # no rich views for plain text
+    assert bar.book.isHidden() and bar.chapter.isHidden()
+    # Already home: the entry is there but has nothing to do.
+    assert window._environment.move_to_window_action.isEnabled() is False
+
+
+def _usfm_window(service, tmp_path: Path):
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    _group(main, service, view, "A")
+    return main, main.move_to_environment_window(view)
+
+
+def test_a_file_opened_in_an_environment_window_lives_there(desktop, tmp_path: Path):
+    app, service = desktop
+    _main, window = _usfm_window(service, tmp_path)
+    asked = []
+    window._confirm_environment_pin = lambda path, key: asked.append(path.name) or True
+
+    opened = window.open_path(_write(tmp_path, "02EXO.usfm", _EXO))
+
+    assert asked == []  # .usfm belongs to USFM: no question
+    assert window.view_for_id(opened.view_id) is opened
+    entry = service.documents.entry_for_view(opened.view_id)
+    assert entry.group_id == "A" and entry.environment_override is None
+
+
+def test_an_unknown_extension_asks_before_it_is_pinned(desktop, tmp_path: Path):
+    app, service = desktop
+    _main, window = _usfm_window(service, tmp_path)
+    notes = _write(tmp_path, "notes.txt", "\\p plain words\n")
+
+    window._confirm_environment_pin = lambda path, key: False
+    assert window.open_path(notes) is None
+    assert service.documents.find_path(notes) is None
+
+    asked = []
+    window._confirm_environment_pin = lambda path, key: asked.append((path.name, key)) or True
+    opened = window.open_path(notes)
+
+    assert asked == [("notes.txt", "usfm")]
+    assert window.view_for_id(opened.view_id) is opened
+    entry = service.documents.entry_for_view(opened.view_id)
+    assert entry.environment_override == "usfm"
+    assert window._environment.environment_key_for(opened.document) == "usfm"
+    assert window._environment.menu.title() == "USFM"
+
+
+def test_opening_a_file_open_elsewhere_moves_it_into_the_environment_window(desktop, tmp_path: Path):
+    app, service = desktop
+    main, window = _usfm_window(service, tmp_path)
+    exodus = main.open_path(_write(tmp_path, "02EXO.usfm", _EXO))
+    home = main.view_location(exodus.view_id)
+
+    opened = window.open_path(exodus.document.path)
+
+    assert opened is exodus and window.view_for_id(exodus.view_id) is exodus
+    assert exodus.dock_return is not None and exodus.dock_return.window_id == home.window_id
+
+
+def test_assigning_an_environment_moves_the_file_into_its_window(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "notes.txt", "\\p words\n"))
+    _group(main, service, view, "A")
+
+    main._environment.set_document_environment("usfm", view)
+
+    window = service.environment_window_for("usfm", "A")
+    assert window is not None and window.view_for_id(view.view_id) is view
+
+    # Re-assigned inside an environment window: it moves to the new one.
+    window._environment.set_document_environment("plain_text", view)
+    plain = service.environment_window_for("plain_text", "A")
+    assert plain is not None and plain.view_for_id(view.view_id) is view
