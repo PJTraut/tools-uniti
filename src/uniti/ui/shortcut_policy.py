@@ -123,6 +123,13 @@ def _definitions() -> tuple[CommandDefinition, ...]:
             scope.WINDOW,
             None,
         ),
+        (
+            "file.open_usfm_project",
+            "Open USFM Project…",
+            category.FILE,
+            scope.WINDOW,
+            None,
+        ),
         ("file.save", "Save", category.FILE, scope.WINDOW, standard.Save),
         ("file.save_as", "Save As…", category.FILE, scope.WINDOW, standard.SaveAs),
         ("file.reload", "Reload/Revert from Disk", category.FILE, scope.WINDOW, "file.reload"),

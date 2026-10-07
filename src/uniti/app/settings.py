@@ -286,6 +286,12 @@ class SettingsStore:
         from .recent_files import RecentFilesStore
         return RecentFilesStore(self.path.with_name("recent-files.json"))
 
+    @property
+    def recent_projects(self):
+        """The separate atomic authority for Recent Projects (ADR-0018)."""
+        from .recent_projects import RecentProjectsStore
+        return RecentProjectsStore(self.path.with_name("recent-projects.json"))
+
     def load(self) -> Settings:
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))

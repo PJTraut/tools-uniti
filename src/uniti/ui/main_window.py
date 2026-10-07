@@ -267,6 +267,10 @@ class UNITIMainWindow(QMainWindow):
             if self._settings_store is not None
             else None
         )
+        from uniti.ui.usfm_projects import UsfmProjectController
+
+        # Open USFM Project… and Recent Projects (ADR-0018).
+        self._usfm_projects = UsfmProjectController(self)
         app = QApplication.instance()
         if isinstance(app, QApplication) and not preview_active(app):
             profile = self._theme_state.resolve()
@@ -1068,8 +1072,14 @@ class UNITIMainWindow(QMainWindow):
                 "file.open_folder_by_type", self.open_folder_by_type
             )
         )
+        file_menu.addAction(
+            self._command_action(
+                "file.open_usfm_project", self._usfm_projects.open_project_dialog
+            )
+        )
         self._recent_files_menu = file_menu.addMenu("Recent Files")
         self._recent_files_menu.aboutToShow.connect(self._populate_recent_files_menu)
+        self._usfm_projects.build_menu(file_menu)
         file_menu.addSeparator()
         file_menu.addAction(
             self._command_action("file.save", self.start_save_current)
@@ -2387,6 +2397,7 @@ class UNITIMainWindow(QMainWindow):
             raise
         self._remember_directory(path)
         self._record_recent_file(path)
+        self._usfm_projects.note_opened(view)
         if self._service is not None:
             self._service.record_dogfood(
                 Operation.DOCUMENT_OPEN,
@@ -2513,6 +2524,7 @@ class UNITIMainWindow(QMainWindow):
             if self._environment_bar is not None:
                 self._environment_bar.follow_caret(view)
             self._reference_sync.schedule(view)
+            self._usfm_projects.note_caret(view)
 
     def _on_current_changed(self, _index: int) -> None:
         self._find_replace.document_changed()
@@ -2598,6 +2610,11 @@ class UNITIMainWindow(QMainWindow):
             self._file_environment_manager.resolve_key(path.suffix, self._settings.syntax_extension_overrides)
             == key
         )
+        if not known and key == "usfm":
+            from uniti.ui.usfm_projects import is_project_book
+
+            # A Paratext project's books are USFM whatever their extension.
+            known = is_project_book(path)
         if not known and not self._confirm_environment_pin(path, key):
             return None
         self._opening_into_environment = True

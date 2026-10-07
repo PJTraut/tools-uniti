@@ -1,7 +1,7 @@
 # USFM Projects, Single Files, and Versification — Plan
 
 Date: 2026-10-07
-Status: **In progress**. P1 is implemented (2026-10-07); P2–P5 are next.
+Status: **In progress**. P1 and P2 are implemented (2026-10-07); P3–P5 are next.
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md): environment windows, the Book/Chapter/Verse selector, and reference sync within a group.
 Origin: user, 2026-10-07: "single file vs 'working folder' for USFM; plan this... should we need to 'open folder' for 'project' view and 'open file' for single files outside of projects? how would we compare BK:CH:VS for 'files' only".
 
@@ -67,6 +67,15 @@ Tests: `tests/test_paratext_project.py` (11).
   - UNITI stores only the Recent Projects list and per-project last position.
   - Project folders are read-only to it: nothing is written into them, there's no watching and no recursion.
   - There's no project manifest, and no project-wide commands beyond the existing Find/Replace scopes.
+
+**Implemented 2026-10-07** ([ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md)):
+- `app/recent_projects.py` (`RecentProjectsStore`, `SettingsStore.recent_projects`);
+- `ui/usfm_projects.py` (`UsfmProjectController`);
+- the registered `file.open_usfm_project` command, with no default shortcut.
+
+A project's books open pinned to USFM without the "Open as USFM?" prompt. Opening a project book as a plain file records its project. The position is saved 1.5 s after the caret settles.
+
+Tests: `tests/app/test_usfm_projects.py` (8).
 
 ### P3: Project-aware USFM environment
 
