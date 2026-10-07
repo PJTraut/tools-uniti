@@ -1,7 +1,7 @@
 # USFM Projects, Single Files, and Versification — Plan
 
 Date: 2026-10-07
-Status: **Proposed**, waiting for the go-ahead to implement.
+Status: **In progress**. P1 is implemented (2026-10-07); P2–P5 are next.
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md): environment windows, the Book/Chapter/Verse selector, and reference sync within a group.
 Origin: user, 2026-10-07: "single file vs 'working folder' for USFM; plan this... should we need to 'open folder' for 'project' view and 'open file' for single files outside of projects? how would we compare BK:CH:VS for 'files' only".
 
@@ -48,6 +48,15 @@ It provides:
 - `project_for_file(path)`: the project whose folder holds `path`, if any.
 
 Tests: fixture projects, including PrePart/PostPart variants, `41MAT` vs. `MAT` forms, a missing book file, and a broken `Settings.xml`.
+
+**Implemented 2026-10-07** in `sfm/paratext_project.py`:
+- `ParatextProject.load`, with `books()`, `book_for()`, `book_path()`, `book_names()` (from `BookNames.xml`) and `owns()`;
+- `BookNaming`, `book_file_number`, `PARATEXT_BOOKS`, `VERSIFICATIONS` (default English);
+- `project_for_file`, cached until `Settings.xml` changes.
+
+Both naming styles are read: Paratext 8+ `<Naming>` and the older `FileName*` elements. A book whose file doesn't follow the naming pattern is found by its `\id` among files with the pattern's prefix and suffix (at most 400 files read).
+
+Tests: `tests/test_paratext_project.py` (11).
 
 ### P2: Open USFM Project… and Recent Projects (UI)
 
