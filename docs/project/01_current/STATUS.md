@@ -20,6 +20,37 @@ The user directed the project to move beyond A22 after the beta feedback work wa
 
 The critical BF-002 affected-host confirmation, physical Chinese/Korean IME qualification, and same-commit hosted validation also remain open. Source integration and version advancement do not supply those results. The [Roadmap](../02_plans/ROADMAP.md) records the revised development and qualification order.
 
+## Environment track (2026-09-29 → 2026-10-08)
+
+A separate engineering track alongside B4. It doesn't gate B4's qualification. Its order is the [roadmap's environment track queue](../02_plans/ROADMAP.md#environment-track-queue).
+
+| Item | Current value |
+|---|---|
+| Branch | `usfm-field-test`, 15 commits ahead of local `main` (`21164ea`), from `35f6fe4` to `d57dac5`. Not merged into `main`, not pushed. |
+| Decisions | [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)–[ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md) |
+| Plans (all implemented) | [USFM field test](../02_plans/2026-10-07-usfm-field-test-plan.md); [projects and versification](../02_plans/2026-10-07-usfm-projects-and-versification-plan.md) P1–P5; [field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R1–R8 |
+| User documentation | [Environments](../../environments/README.md) (one page per environment), [USFM Stylesheet Rules](../../usfm-stylesheet-rules.md) |
+| Schema changes | None. New persisted values ride in existing `extra` blobs, and the new user files (`recent-projects.json`, `Environments/…`) sit next to the settings. |
+
+What it does:
+- Every file lives in an environment. Opening asks "Open in <Environment> Environment / Open as Plain Text".
+- Environment windows (one per environment and document group) have a toolbar: the Plain Text / Standard / Preview mode switch and, for USFM, a Book/Chapter/Verse selector. Standard and Preview are shown in place, styled entirely from layered `.sty` stylesheets plus `uniti.sty` presentation rules, and Preview has a notes frame.
+- USFM covers `.sfm` and `.usfm`, nested `\+` markers, milestones and `\cat`.
+- Side-by-side sync works within a document group, mapped by versification and across books.
+- Paratext projects (`Settings.xml`) open with Open USFM Project…, and Recent Projects remembers them.
+- Per-environment user configuration with **Configuration Files…**, reload on save, and a report of undefined markers on open.
+
+Local verification at `d57dac5`, 2026-10-08:
+- **Full suite: 2,547 passed, 6 platform skips.** `tests/performance/test_ux_scenarios.py::test_resource_recovery_scenario_restores_parallel_capacity` was deselected: it fails on this host and fails identically on `21164ea` in a clean worktree, so it predates this track.
+- **One unexplained crash.** One full run on 2026-10-08 ended in a fault-handler crash. The later runs, including two with `-X faulthandler` and saved output, all passed, so it couldn't be reproduced and the test is unknown.
+- **Speed.** Plain Text → Standard on a 220 KB book was measured offscreen in a window at 41 s before R1 and 0.86 s after.
+
+Not yet verified:
+- the live app with native input;
+- a real Paratext project (the book-file numbering and the `Settings.xml` fields were implemented from memory);
+- hosted CI;
+- any affected-host check.
+
 ## B4 source promotion
 
 Fresh local validation on the B4 promotion working tree, 2026-09-20:

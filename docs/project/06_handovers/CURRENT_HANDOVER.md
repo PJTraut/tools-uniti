@@ -1,6 +1,6 @@
 # UNITI Current Handover
 
-Captured: 2026-09-20
+Captured: 2026-09-20; environment track section updated 2026-10-08
 
 This is a continuation snapshot. [Current Status](../01_current/STATUS.md) owns the baseline and verification evidence; the [Documentation System](../00_governance/DOCUMENTATION_SYSTEM.md) defines authority.
 
@@ -47,5 +47,22 @@ The latest complete four-lane hosted feedback pass remains [run `34253008439`](h
 BF-074 (font family selection) landed 2026-09-28 at `e80d634`, after this handover's `366ea42` capture point; see the [Beta Feedback Log](../BETA_FEEDBACK.md) for implementation and verification. BF-094 (Windows native Find/Replace dock controls) received native Windows confirmation 2026-09-25.
 
 Since `366ea42`, `main` also gained several `main_window.py` god-object extraction refactors and the [isolated file-type environment framework](../02_plans/2026-09-29-environment-framework-e1-e4-plan.md) (Phases E1–E4, complete 2026-09-29 per [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)) — a separate engineering track running alongside B4 that does not gate its qualification. This handover's version identity, verification evidence, and "Remaining work" list above predate all of this and describe the `366ea42` tip only; [Current Status](../01_current/STATUS.md) and the [Roadmap](../02_plans/ROADMAP.md) are the canonical sources for what has landed since.
+
+## Environment track state (2026-10-08)
+
+The environment track (file-type environments, USFM) is on branch `usfm-field-test`, 15 commits ahead of local `main` (`21164ea`), at `d57dac5`. It isn't merged into `main` or pushed. [Current Status](../01_current/STATUS.md#environment-track-2026-09-29--2026-10-08) has what it contains and its verification: full suite 2,547 passed with 6 platform skips, plus one unreproduced crash. The [roadmap's environment track queue](../02_plans/ROADMAP.md#environment-track-queue) is complete. Users' documentation is [Environments](../../environments/README.md).
+
+Next safe actions, in order:
+1. With the user, run the live app against a real Paratext project. Check:
+   - **Open USFM Project…:** book-file naming and numbering, `Settings.xml` fields, `BookNames.xml`;
+   - **Display:** Standard/Preview speed and rendering;
+   - **Projects:** the Book selector;
+   - **Sync and versification** across two projects in one group;
+   - **Undefined markers:** the report on a real book.
+
+   The Paratext file numbering and `Settings.xml` field names were written from memory (`sfm/paratext_project.py`).
+2. Merge `usfm-field-test` into `main` once the user asks (it fast-forwards).
+3. Watch for the unreproduced full-suite crash; run with `-X faulthandler` and keep the output.
+4. Wishlist items stay paused: the USFM per-chapter view, and the footnote category filter.
 
 Use the [Roadmap](../02_plans/ROADMAP.md) for ordering, the [B4 milestone](../02_plans/v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) for the current scope table, and [Development](../01_current/DEVELOPMENT.md) for bootstrap and validation commands. Historical implementation details remain in [Implemented](../03_implemented/README.md), dated handovers, and Git history.
