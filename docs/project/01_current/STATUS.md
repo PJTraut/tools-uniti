@@ -26,19 +26,25 @@ A separate engineering track alongside B4. It doesn't gate B4's qualification. I
 
 | Item | Current value |
 |---|---|
-| Branch | `usfm-field-test`, 15 commits ahead of local `main` (`21164ea`), from `35f6fe4` to `d57dac5`. Not merged into `main`, not pushed. |
-| Decisions | [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)–[ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md) |
-| Plans (all implemented) | [USFM field test](../02_plans/2026-10-07-usfm-field-test-plan.md); [projects and versification](../02_plans/2026-10-07-usfm-projects-and-versification-plan.md) P1–P5; [field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R1–R8 |
+| Branch | `usfm-field-test`, 29 commits ahead of local `main` (`21164ea`), from `35f6fe4` to `2a3ca75`. Not merged into `main`, not pushed. |
+| Decisions | [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)–[ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md) |
+| Plans (all implemented) | [USFM field test](../02_plans/2026-10-07-usfm-field-test-plan.md); [projects and versification](../02_plans/2026-10-07-usfm-projects-and-versification-plan.md) P1–P5; [field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R1–R8; [field test round 3](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T7 |
 | User documentation | [Environments](../../environments/README.md) (one page per environment), [USFM Stylesheet Rules](../../usfm-stylesheet-rules.md) |
-| Schema changes | None. New persisted values ride in existing `extra` blobs, and the new user files (`recent-projects.json`, `Environments/…`) sit next to the settings. |
+| Schema changes | None. New persisted values ride in existing `extra` blobs; the new user files (`recent-projects.json`, and per environment `Environments/<Environment>/groups.json`, `windows.json`, `projects.json`) sit next to the settings; `settings.json` gained an optional `read_only_folders` list without a schema bump. |
 
 What it does:
-- Every file lives in an environment. Opening asks "Open in <Environment> Environment / Open as Plain Text".
-- Environment windows (one per environment and document group) have a toolbar: the Plain Text / Standard / Preview mode switch and, for USFM, a Book/Chapter/Verse selector. Standard and Preview are shown in place, styled entirely from layered `.sty` stylesheets plus `uniti.sty` presentation rules, and Preview has a notes frame.
+- Every file lives in an environment. Opening asks "Open in <Environment> Environment / Open as Plain Text". USFM assumes a Paratext project: a USFM file outside one is plain text.
+- Environment windows are named per environment ("USFM A", "USFM B", renameable) and have a toolbar: the window's name, the current file's group, the Plain Text / Standard / Preview mode switch and, for USFM, a Book/Chapter/Verse selector. Standard and Preview are shown in place, styled entirely from layered `.sty` stylesheets plus `uniti.sty` presentation rules, and Preview has a notes frame.
+- In a USFM window a tab is a project, titled with its short name; changing the book changes it in the tab, asking before leaving unsaved changes. A tab's menu moves it, with all its books, between up to four splits and between windows.
+- Each environment has its own groups. In USFM a group belongs to a project, colours its tab, and binds projects for side-by-side sync across windows, mapped by versification and across books.
 - USFM covers `.sfm` and `.usfm`, nested `\+` markers, milestones and `\cat`.
-- Side-by-side sync works within a document group, mapped by versification and across books.
 - Paratext projects (`Settings.xml`) open with Open USFM Project…, and Recent Projects remembers them.
 - Per-environment user configuration with **Configuration Files…**, reload on save, and a report of undefined markers on open.
+- Read-only folders: files in them can't be changed or saved in place.
+
+Local verification of round 3, 2026-10-08. Each phase's full suite ran (from T3 on in a separate worktree at the phase's commit, importing that tree's code), with the same deselected test as below:
+- T1 `9a575d1`: 2,564 passed (and the 2 tests it broke, fixed in the same commit); T2 `c58135b`: 2,573; T3 `95a3253`: 2,581; T4 `bb47e25`: 2,588; T5 `eff5ecd`: 2,593; T6 `5790d51`: 2,600; T7 `2a3ca75`: **2,605 passed**. Each with 6 platform skips.
+- **The unexplained crash came back once.** The first T2 run stopped at 36% with no summary. macOS's crash report (`Python-2026-10-08-201356.ips`) shows `EXC_BREAKPOINT`/`SIGTRAP` (`brk 1`) inside `_PyEval_EvalFrameDefault` on the main thread (Python 3.12.4). `faulthandler` doesn't catch `SIGTRAP`, which is why nothing was printed. The test then running was `tests/core/test_snapshot.py::test_snapshot_freezes_edit_blocks_before_live_append` (number 986), a core test, which passes alone; the rerun passed in full. An earlier report the same day (`Python-2026-10-08-135925.ips`) is a `SIGSEGV`. Both point at interpreter state damaged earlier in the run, most likely by Qt objects from the UI tests, not at the test running when it crashed.
 
 Local verification at `d57dac5`, 2026-10-08:
 - **Full suite: 2,547 passed, 6 platform skips.** `tests/performance/test_ux_scenarios.py::test_resource_recovery_scenario_restores_parallel_capacity` was deselected: it fails on this host and fails identically on `21164ea` in a clean worktree, so it predates this track.
@@ -55,6 +61,7 @@ User field check in the live app, 2026-10-08:
   - Book-file naming resolved every present book in both projects.
 
 Not yet verified:
+- the user trying round 3 in the live app: project tabs, named windows, per-environment and per-project groups, sync across windows, the tab menu and read-only folders;
 - the user trying versification and sync in the live app;
 - Paratext book-file numbering and `Settings.xml` fields beyond `usNIVv3` and `ruCARSv3`;
 - hosted CI;

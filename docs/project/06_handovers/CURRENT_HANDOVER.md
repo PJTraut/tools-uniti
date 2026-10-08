@@ -50,15 +50,12 @@ Since `366ea42`, `main` also gained several `main_window.py` god-object extracti
 
 ## Environment track state (2026-10-08)
 
-The environment track (file-type environments, USFM) is on branch `usfm-field-test`, 15 commits ahead of local `main` (`21164ea`), at `d57dac5`. It isn't merged into `main` or pushed. [Current Status](../01_current/STATUS.md#environment-track-2026-09-29--2026-10-08) has what it contains and its verification: full suite 2,547 passed with 6 platform skips, plus one unreproduced crash. The [roadmap's environment track queue](../02_plans/ROADMAP.md#environment-track-queue) is complete. Users' documentation is [Environments](../../environments/README.md).
+The environment track (file-type environments, USFM) is on branch `usfm-field-test`, 29 commits ahead of local `main` (`21164ea`), at `2a3ca75`. It isn't merged into `main` or pushed. [Current Status](../01_current/STATUS.md#environment-track-2026-09-29--2026-10-08) has what it contains and its verification. The [roadmap's environment track queue](../02_plans/ROADMAP.md#environment-track-queue) is complete through [field test round 3](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T7 ([ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md)). Users' documentation is [Environments](../../environments/README.md).
 
 Next safe actions, in order:
-1. With the user, finish the live-app check against real Paratext projects.
-   - **Already reported 2026-10-08:** Standard/Preview speed is acceptable; no undefined markers so far; a book without `\h` now shows its id alone in the Book list.
-   - **Done 2026-10-08 against the real `usNIVv3` and `ruCARSv3` (see Status):** versification and sync. Three fixes came out of it.
-   - **Still to try:** the user's own live-app pass of sync and versification, and other projects' `Settings.xml` and book naming.
+1. With the user, the live-app check of round 3: project tabs and changing books (with the save question), USFM A/B windows and renaming, groups per environment and per project, sync across windows, the tab menu (splits, windows, Dock) and read-only folders. Also still open from round 2: versification and sync by hand, and other projects' `Settings.xml` and book naming.
 2. Merge `usfm-field-test` into `main` once the user asks (it fast-forwards).
-3. Watch for the unreproduced full-suite crash; run with `-X faulthandler` and keep the output.
-4. Wishlist items stay paused: the USFM per-chapter view, and the footnote category filter.
+3. Watch for the intermittent full-suite crash (a `SIGTRAP` or `SIGSEGV` in the interpreter, once each on 2026-10-08). `faulthandler` doesn't catch `SIGTRAP`; macOS's crash reports in `~/Library/Logs/DiagnosticReports/Python-*.ips` do, and the log's dot count gives the test that was running.
+4. Wishlist items stay paused: the USFM per-chapter view, the footnote category filter, USFM files outside a project, and spellcheck from Paratext's word lists (planned in round 3, not queued).
 
 Use the [Roadmap](../02_plans/ROADMAP.md) for ordering, the [B4 milestone](../02_plans/v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) for the current scope table, and [Development](../01_current/DEVELOPMENT.md) for bootstrap and validation commands. Historical implementation details remain in [Implemented](../03_implemented/README.md), dated handovers, and Git history.
