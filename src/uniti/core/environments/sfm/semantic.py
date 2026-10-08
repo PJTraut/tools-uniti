@@ -10,6 +10,7 @@ from collections.abc import Callable
 
 from uniti.core.rich_views.editing import EditPlan, EditRejected
 
+from .markers import NOTE_MARKERS, is_closing, is_milestone, is_milestone_close, marker_name
 from .nodes import SfmNode, SfmNodeKind
 from .parser import parse_sfm
 from .sty import StyleRegistry
@@ -18,19 +19,33 @@ from .tokens import SfmTokenKind
 
 
 def _bare(marker: str) -> str:
-    return marker.lstrip("\\").rstrip("*")
+    return marker_name(marker)
+
+
+def _opening(token_text: str) -> bool:
+    return not (is_closing(token_text) or is_milestone(token_text) or is_milestone_close(token_text))
 
 
 def apply_character_style(source: str, start: int, end: int, marker: str) -> EditPlan:
-    """Wrap [start, end) in ``\\marker …\\marker*``."""
+    """Wrap [start, end) in ``\\marker …\\marker*`` — or, inside another
+    character style, the nested ``\\+marker …\\+marker*`` (USFM 3)."""
 
     marker = _bare(marker)
     if start > end:
         start, end = end, start
     if start == end:
         raise EditRejected("select text to style first")
-    opener = f"\\{marker} "
-    closer = f"\\{marker}*"
+    enclosing = _innermost_character(parse_sfm(tokenize_sfm(source)), start)
+    nested = (
+        enclosing is not None
+        and enclosing.marker is not None
+        and _bare(enclosing.marker) not in NOTE_MARKERS
+        and enclosing.start < start
+        and end < enclosing.end
+    )
+    prefix = "+" if nested else ""
+    opener = f"\\{prefix}{marker} "
+    closer = f"\\{prefix}{marker}*"
     return EditPlan(((start, start, opener), (end, end, closer)), end + len(opener) + len(closer))
 
 
@@ -64,7 +79,7 @@ def governing_paragraph_marker(source: str, offset: int, registry: StyleRegistry
     for token in tokenize_sfm(source):
         if token.start >= offset and found is not None:
             break
-        if token.kind is not SfmTokenKind.MARKER or token.text.endswith("*"):
+        if token.kind is not SfmTokenKind.MARKER or not _opening(token.text):
             continue
         if token.start > offset:
             break

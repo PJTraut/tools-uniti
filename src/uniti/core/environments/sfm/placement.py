@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from uniti.core.environment_findings import EnvironmentFinding, FindingSeverity
 
+from .markers import is_closing, is_milestone, is_milestone_close, is_nested, marker_name
 from .nodes import SfmNode, SfmNodeKind
 from .parser import parse_sfm
 from .sty import StyleRegistry
@@ -33,7 +34,7 @@ MAX_PLACEMENT_FINDINGS = 500
 
 
 def _bare(marker: str) -> str:
-    return marker.lstrip("\\").rstrip("*")
+    return marker_name(marker)
 
 
 def _pairs(node: SfmNode, pairs: dict[int, int]) -> None:
@@ -59,7 +60,9 @@ def placement_findings(text: str, registry: StyleRegistry) -> tuple[EnvironmentF
     for token in tokens:
         while open_spans and open_spans[-1][1] <= token.start:
             open_spans.pop()
-        if token.kind is not SfmTokenKind.MARKER or token.text.endswith("*"):
+        if token.kind is not SfmTokenKind.MARKER or is_closing(token.text):
+            continue
+        if is_milestone(token.text) or is_milestone_close(token.text):
             continue
         marker = _bare(token.text)
         style = registry.style_for(marker)
@@ -76,8 +79,14 @@ def placement_findings(text: str, registry: StyleRegistry) -> tuple[EnvironmentF
             if paragraph is not None:
                 contexts.add(paragraph)
             contexts.update(span for span, _end in open_spans)
+        # `\+name` declares itself nested: it belongs inside the character
+        # style around it.
+        nested_ok = is_nested(token.text) and any(
+            ((registry.style_type(span) or "").lower() == "character") for span, _end in open_spans
+        )
         ok = (
             not allowed
+            or nested_ok
             or bool(contexts.intersection(allowed))
             or ("NEST" in allowed and any(
                 ((registry.style_type(span) or "").lower() == "character") for span, _end in open_spans

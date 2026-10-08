@@ -1,6 +1,7 @@
 """Lossless generic-SFM tokenizer (Phase E5).
 
-Splits raw SFM/USFM source into `MARKER` tokens (`\\word`, `\\word*`) and
+Splits raw SFM/USFM source into `MARKER` tokens (`\\word`, `\\word*`,
+nested `\\+word`, milestones `\\word-s`/`\\word-e` and their `\\*`) and
 `TEXT` tokens (everything between them), preserving exact spans so the
 source can always be reconstructed byte-for-byte from the token stream.
 This is deliberately a lexer, not a parser: it does not know which markers
@@ -14,7 +15,10 @@ from collections.abc import Sequence
 
 from .tokens import SfmToken, SfmTokenKind
 
-_MARKER_RE = re.compile(r"\\[A-Za-z][A-Za-z0-9]*\*?")
+# `\name`, `\name*`, nested `\+name` / `\+name*`, milestones `\name-s` /
+# `\name-e`, column ranges `\th1-2`, and a milestone's closing `\*` (see
+# `markers.py`).
+_MARKER_RE = re.compile(r"\\(?:\*|\+?[A-Za-z][A-Za-z0-9]*(?:-(?:[se](?![A-Za-z0-9])|\d+))?\*?)")
 
 
 def tokenize_sfm(text: str) -> tuple[SfmToken, ...]:

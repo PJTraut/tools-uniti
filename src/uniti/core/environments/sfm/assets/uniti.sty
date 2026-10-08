@@ -12,6 +12,9 @@
 # marker and its level-1 form match each other (q = q1, s = s1). A flag such
 # as \Bold is turned off again with "\Bold -".
 #
+# A record with an ordinary marker name (\Marker nd) changes that
+# marker's own style, like any other stylesheet layer.
+#
 # Project rules go in a file named uniti.sty next to the book files. It
 # layers on top of every other stylesheet, and Paratext and PTXprint never
 # read it.
@@ -29,3 +32,8 @@
 \Marker p+q1, p+q2, p+q3, q1+p, q2+p, q3+p
 \Name Blank line between prose and poetry
 \SpaceBefore 12
+
+\Marker nd
+\Name nd - Name of Deity, shown in small capitals
+\SmallCaps
+\Underline -

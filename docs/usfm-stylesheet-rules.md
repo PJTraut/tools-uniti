@@ -51,6 +51,18 @@ Other examples:
 \Italic
 ```
 
+## Changing a marker's own style
+
+A record with an ordinary marker name changes that marker's style, like any stylesheet layer. The built-in rules use this to show the name of God in small capitals instead of the official `usfm.sty`'s underline:
+
+```
+\Marker nd
+\SmallCaps
+\Underline -
+```
+
+Nested markers such as `\+it` inside `\nd` take the style of `\it`, applied on top of `\nd`'s, so the text is italic small capitals.
+
 ## Turning something off
 
 A flag field is turned off with `-`. For example, cross-reference callers that aren't italic:

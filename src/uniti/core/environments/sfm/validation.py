@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from uniti.core.environment_findings import EnvironmentFinding, FindingSeverity
 
+from .markers import is_closing, is_milestone, is_milestone_close
 from .tokenizer import tokenize_sfm
 from .tokens import SfmTokenKind
 
@@ -26,7 +27,9 @@ def unmatched_end_marker_findings(text: str) -> tuple[EnvironmentFinding, ...]:
     for token in tokenize_sfm(text):
         if token.kind is not SfmTokenKind.MARKER:
             continue
-        if not token.text.endswith("*"):
+        if is_milestone(token.text) or is_milestone_close(token.text):
+            continue  # milestones close themselves with `\*`
+        if not is_closing(token.text):
             open_markers.append(token.text)
             continue
         base = token.text[:-1]

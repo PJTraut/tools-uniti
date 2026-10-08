@@ -1,7 +1,7 @@
 # USFM Field Test, Round 2 — Plan
 
 Date: 2026-10-08
-Status: **In progress**. R1 is implemented (2026-10-08); R2–R8 are ready (D1–D4 decided 2026-10-08).
+Status: **In progress**. R1, R4b and R2 are implemented (2026-10-08); R3–R8 are ready (D1–D4 decided 2026-10-08).
 Origin: `@externalresources/field_test_feedback` (2026-10-08).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
 
@@ -79,6 +79,21 @@ The `benchmarks/` scenario isn't added: the benchmark corpora are plain-text kin
 - **Nesting:** an inner style applies on top of the outer one. `\nd xx \+it yy\+it*\nd*` gives "yy" both `\nd`'s and `\it`'s formatting. Inside notes, `\+xt …\+xt*` is styled as `\xt`.
 - **`\nd` is small caps (D3).** The built-in `uniti.sty` gains `\Marker nd` with `\SmallCaps` and `\Underline -`, so the feedback example renders "yy" as small-caps italic. A project or user `uniti.sty` can change it back.
 - **Tests:** the feedback example; `\+xt` inside `\f`; an unclosed `\+it`; and Standard showing `\+it` as its own tag.
+
+**Implemented 2026-10-08.**
+- **`sfm/markers.py`** is the one definition of marker forms (`marker_name`, `is_closing`, `is_nested`, `is_milestone`, `is_milestone_close`, `NOTE_MARKERS`). Views, semantic commands, placement, inspection and validation all use it.
+- **Tokenizer:** reads `\+name`, `\+name*`, `\name-s`, `\name-e`, `\*` and `\th1-2`, losslessly.
+- **Parser:** pairs `\+name` with `\+name*`, and keeps milestones as leaves.
+- **Views:**
+  - A nested style applies on top of its parent's.
+  - A nested `\+xt` doesn't end the `\ft` around it.
+  - A milestone with its attributes is one protected tag in Standard and hidden in Preview.
+  - Preview hides a character span's `|attributes` (`\w king|lemma="king"\w*` shows "king").
+- **Applying a character style** inside another one writes the nested `\+name … \+name*`, except inside a note's body.
+- **Checks:** placement accepts `\+name` inside any character style. End-marker validation no longer flags a milestone's `\*`.
+- **`\nd`:** the built-in `uniti.sty` gains `\Marker nd` (`\SmallCaps`, `\Underline -`), with the asset manifest's size and hash updated.
+
+Tests: `tests/test_sfm_markers.py` (10). It covers marker names, lossless tokenizing of every form, nested pairing, the feedback example (small-caps italic "yy"), Standard tags, `\+xt` in a footnote, milestones and attributes, column ranges, nested apply, and validation, placement and inspection with nesting and milestones.
 
 ### R3 — `\cat` in Preview notes (item 4)
 - Preview shows a note's category as generated, protected `[People]` text right after its caller in the notes frame, and hides the `\cat`/`\cat*` markers.

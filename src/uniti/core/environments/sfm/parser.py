@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from .markers import is_closing, is_milestone, is_milestone_close
 from .nodes import SfmNode, SfmNodeKind
 from .tokens import SfmToken, SfmTokenKind
 
@@ -46,7 +47,11 @@ def parse_sfm(tokens: Sequence[SfmToken]) -> SfmNode:
         if token.kind is SfmTokenKind.TEXT:
             stack[-1].children.append(SfmNode(SfmNodeKind.TEXT, token.start, token.end))
             continue
-        if token.text.endswith("*"):
+        if is_milestone(token.text) or is_milestone_close(token.text):
+            # Milestones never enclose text: always leaves.
+            stack[-1].children.append(SfmNode(SfmNodeKind.MARKER, token.start, token.end, marker=token.text))
+            continue
+        if is_closing(token.text):
             base = token.text[:-1]
             match_index = next(
                 (i for i in range(len(stack) - 1, 0, -1) if stack[i].marker == base),

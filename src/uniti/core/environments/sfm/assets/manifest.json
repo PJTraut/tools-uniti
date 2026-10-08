@@ -18,10 +18,10 @@
       "path": "uniti.sty",
       "id": "uniti-builtin",
       "sourceRepository": "first-party (UNITI)",
-      "bytes": 1115,
-      "sha256": "fc2f694e56399065425efb4611f2c30c2259d49dc0406b834c3e2ddc2078f297",
+      "bytes": 1324,
+      "sha256": "cde25008fdf70b8c7b67eda187532db2c78c786cbf77289344ae142793e67481",
       "license": "project",
-      "licenseNote": "UNITI's own default presentation rules (selector records: sibling rules and note callers) for the SFM/USFM Standard and Preview views; see sfm/style_layers.py."
+      "licenseNote": "UNITI's own default presentation rules (selector records: sibling rules and note callers; marker overrides such as \\\\nd in small capitals) for the SFM/USFM Standard and Preview views; see sfm/style_layers.py."
     }
   ]
 }

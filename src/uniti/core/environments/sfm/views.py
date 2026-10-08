@@ -44,6 +44,7 @@ from uniti.core.rich_views.editing import EditPlan
 from uniti.core.rich_views.projection import NoteSection, Projection, ProjectionBuilder
 from uniti.core.rich_views.provider import ViewCommand
 
+from .markers import is_closing, is_milestone, is_milestone_close, is_nested, marker_name
 from .nodes import SfmNode, SfmNodeKind
 from .parser import parse_sfm
 from .semantic import (
@@ -78,7 +79,39 @@ _ALIGN = {"left": "left", "center": "center", "right": "right", "both": "justify
 
 
 def _bare(marker: str) -> str:
-    return marker.lstrip("\\").rstrip("*")
+    return marker_name(marker)
+
+
+def _milestone_end(tokens, index: int) -> int:
+    """Where a milestone (``\\qt-s |who="Pilate"\\*``) ends: after its own
+    ``\\*`` when one follows (its attributes may sit between)."""
+
+    token = tokens[index]
+    if is_milestone_close(token.text):
+        return token.end
+    for offset in (1, 2):
+        following = tokens[index + offset] if index + offset < len(tokens) else None
+        if following is None:
+            break
+        if following.kind is SfmTokenKind.MARKER:
+            return following.end if is_milestone_close(following.text) else token.end
+        if "\n" in following.text or "\r" in following.text:
+            break
+    return token.end
+
+
+def _attribute_start(tokens, index: int, closers: dict[int, int]) -> int | None:
+    """Where ``|attributes`` start in text token `index`, when they run up to
+    the end marker of the character span they belong to (``\\w word|x\\w*``)."""
+
+    token = tokens[index]
+    bar = token.text.find("|")
+    following = tokens[index + 1] if index + 1 < len(tokens) else None
+    if bar < 0 or following is None or following.kind is not SfmTokenKind.MARKER:
+        return None
+    if not is_closing(following.text) or following.start not in closers:
+        return None
+    return token.start + bar
 
 
 def sty_color(value: str) -> str | None:
@@ -224,7 +257,7 @@ class _SfmViewBase:
 def _starts_block(marker_text: str, registry) -> bool:
     """Whether marker token `marker_text` begins a new view block."""
 
-    if marker_text.endswith("*"):
+    if is_closing(marker_text) or is_milestone(marker_text) or is_milestone_close(marker_text):
         return False
     marker = _bare(marker_text)
     if marker == "c":
@@ -485,12 +518,34 @@ def layout_projection(source: str, styles: LayeredStyleRegistry, key: str, *, sh
                 pending_number = None
                 emit_text(token.end, keep_break=keep_break)
                 continue
+            attributes = None if show_markers else _attribute_start(tokens, index, closers)
+            if attributes is not None:
+                # Preview: `|attributes` of a character span aren't text.
+                emit_text(attributes, keep_break=False)
+                builder.hidden(token.end, "attributes")
+                continue
             emit_text(token.end, keep_break=keep_break)
             continue
 
+        if is_milestone(token.text) or is_milestone_close(token.text):
+            # A milestone marks a position, never text: one protected tag,
+            # attributes and all, in Standard; nothing in Preview.
+            unit_end = _milestone_end(tokens, index)
+            if show_markers:
+                view_start = builder.view_position
+                builder.marker(unit_end, source[token.start : unit_end], _bare(token.text) or "milestone")
+                add_span(view_start, builder.view_position, {"marker_token": "yes"}, "milestone")
+            else:
+                builder.hidden(unit_end, "milestone")
+            skip_until = unit_end
+            continue
+
         marker = _bare(token.text)
-        close_implicit()
-        if token.text.endswith("*"):
+        if not is_nested(token.text):
+            # A nested style (`\\+xt`) sits inside the note-internal style
+            # around it rather than ending it.
+            close_implicit()
+        if is_closing(token.text):
             opener = closers.get(token.start)
             if opener is None:
                 visible_token(token.end, token.text, marker)
@@ -641,19 +696,28 @@ def _note_body(builder: ProjectionBuilder, source: str, tokens, styles, pairs, c
                 spans.append((implicit[0], builder.view_position, attrs, implicit[1]))
             implicit = None
 
-    for token in tokens:
-        if token.end <= note.body_start:
+    for index, token in enumerate(tokens):
+        if token.end <= note.body_start or token.end <= builder.source_position:
             continue
         if token.start >= note.closer_start:
             break
         if token.kind is SfmTokenKind.TEXT:
             end = min(token.end, note.closer_start)
-            if end > builder.source_position:
+            attributes = _attribute_start(tokens, index, closers)
+            if attributes is not None and attributes < end:
+                if attributes > builder.source_position:
+                    builder.text(attributes, source[builder.source_position : attributes], line_break=" ")
+                builder.hidden(end, "attributes")
+            elif end > builder.source_position:
                 builder.text(end, source[builder.source_position : end], line_break=" ")
             continue
+        if is_milestone(token.text) or is_milestone_close(token.text):
+            builder.hidden(min(_milestone_end(tokens, index), note.closer_start), "milestone")
+            continue
         marker = _bare(token.text)
-        close_implicit()
-        if token.text.endswith("*"):
+        if not is_nested(token.text):
+            close_implicit()
+        if is_closing(token.text):
             opener = closers.get(token.start)
             for index in range(len(open_spans) - 1, -1, -1):
                 if open_spans[index][0] == opener:

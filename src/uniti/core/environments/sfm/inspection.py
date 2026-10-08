@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .parser import parse_sfm
+from .markers import is_closing, is_milestone, is_milestone_close, marker_name
 from .nodes import SfmNode, SfmNodeKind
+from .parser import parse_sfm
 from .style_layers import LayeredStyleRegistry, PropertyValue
 from .tokenizer import tokenize_sfm
 from .tokens import SfmTokenKind
@@ -30,7 +31,7 @@ class MarkerInspection:
 
 
 def _bare(marker: str) -> str:
-    return marker.lstrip("\\").rstrip("*")
+    return marker_name(marker)
 
 
 def _enclosing_character(node: SfmNode, offset: int) -> str | None:
@@ -56,9 +57,9 @@ def marker_at(text: str, offset: int) -> str | None:
     for token in tokens:
         if token.start >= offset:
             break
-        if token.kind is not SfmTokenKind.MARKER:
+        if token.kind is not SfmTokenKind.MARKER or is_milestone(token.text) or is_milestone_close(token.text):
             continue
-        if token.text.endswith("*"):
+        if is_closing(token.text):
             base = token.text[:-1]
             for index in range(len(open_markers) - 1, -1, -1):
                 if open_markers[index] == base:
