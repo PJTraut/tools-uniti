@@ -50,8 +50,12 @@ Jumping, here or with **Go to Chapter:Verse…** (Ctrl+Alt+G), puts the verse a 
 ## Side-by-side sync
 
 When two or more splits of one window show files of the **same document group**, moving the caret in one moves the others to the same chapter and verse, and highlights the verse in all of them.
-- If another split shows a different book, it switches to a tab of that book in the same split, if there is one.
-- Verse bridges (`\v 10-12`) and parts (`\v 11a`) are matched.
+- **Versification:** the reference is mapped into each text's own versification, so English Ps 51:1 lands on 51:3 in a text numbered like the original.
+- **Different book:** if another split shows a different book, it switches to a tab of that book in the same split.
+  - Failing that, a **Paratext project** text opens the project's file of that book, in that split and view mode. You stay where you were.
+  - A **single file** without the book stays put, and the status bar says so ("GEN isn't in 02EXO.usfm").
+- **Book selector:** choosing a book in the Book selector carries the group's other splits to that book the same way.
+- **Bridges and parts:** verse bridges (`\v 10-12`) and parts (`\v 11a`) are matched.
 - Ungrouped files don't sync.
 - Turn sync on or off with **Sync Side-by-Side by Reference** (toolbar or menu).
 

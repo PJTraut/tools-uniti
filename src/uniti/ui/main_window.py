@@ -244,6 +244,8 @@ class UNITIMainWindow(QMainWindow):
         self.environment_window: tuple[str, str | None] | None = None
         self._environment_bar = None
         self._opening_into_environment = False
+        # Sync opening a book in another split: no popups (P5).
+        self._quiet_open = False
         self._settings_store = (
             service.settings if service is not None else settings_store
         )
@@ -2461,7 +2463,8 @@ class UNITIMainWindow(QMainWindow):
             self._environment.set_document_environment(PLAIN_ENVIRONMENT_KEY, view, move=False)
         self._usfm_projects.note_opened(view)
         # Markup no loaded definition covers pops up a report (R7, D4).
-        self._environment.report_undefined_on_open(view)
+        if not self._quiet_open:
+            self._environment.report_undefined_on_open(view)
         if self._service is not None:
             self._service.record_dogfood(
                 Operation.DOCUMENT_OPEN,

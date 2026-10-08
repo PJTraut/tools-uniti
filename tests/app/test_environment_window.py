@@ -660,3 +660,118 @@ def test_a_texts_versification_can_be_chosen_and_is_saved(desktop, tmp_path: Pat
     restored = SimpleNamespace(versification=None, environment_override=None, environment_key="usfm")
     SessionController._restore_entry_environment(restored, record)
     assert restored.versification == "org"
+
+
+# --- P5: sync across books and versifications ---------------------------------------
+
+_PSA_A = "\\id PSA A\n\\c 51\n\\p\n\\v 1 Have mercy.\n\\v 2 Wash me.\n\\v 3 For I know.\n"
+_PSA_B = "\\id PSA B\n\\c 51\n\\d Title\n\\p\n\\v 1 For the director.\n\\v 2 When Nathan.\n\\v 3 Have mercy.\n"
+
+
+def _two_splits(service, left_path: Path, right_path: Path, group: str = "A"):
+    main = service.new_window()
+    left = main.open_path(left_path)
+    right_document = main.open_path(right_path)
+    _group(main, service, left, group)
+    _group(main, service, right_document, group)
+    main._select_view(left)
+    clone = main.split_right()
+    leaf = main.panes.leaf_for_view(clone.view_id)
+    entry = service.documents.entry_for_view(right_document.view_id)
+    right = main.assign_document_to_pane(entry.document_id, leaf.pane_id)
+    main._close_view_id(clone.view_id)
+    main._select_view(left)
+    return main, left, right, leaf
+
+
+def test_sync_maps_the_reference_into_each_texts_versification(desktop, tmp_path: Path):
+    app, service = desktop
+    main, left, right, _leaf = _two_splits(
+        service, _write(tmp_path / "en", "19PSA.usfm", _PSA_A), _write(tmp_path / "orig", "19PSA.usfm", _PSA_B)
+    )
+    main._environment.set_versification("org", right)  # numbered like the original text
+
+    left.state.move_to(_PSA_A.index("Have mercy"))
+    left._state_changed()
+    assert main._reference_sync.sync_from(left) == 1
+
+    # English Ps 51:1 is the original's 51:3.
+    assert right.state.cursor == _PSA_B.index("\\v 3")
+
+
+def _niv_project(folder: Path) -> Path:
+    from uniti.core.environments.sfm.paratext_project import PARATEXT_BOOKS
+
+    present = "".join("1" if code in ("GEN", "EXO") else "0" for code in PARATEXT_BOOKS)
+    _write(
+        folder,
+        "Settings.xml",
+        "<ScriptureText><Name>NIV</Name>"
+        f'<Naming PrePart="" PostPart="NIV.SFM" BookNameForm="41MAT" /><BooksPresent>{present}</BooksPresent>'
+        "</ScriptureText>",
+    )
+    _write(folder, "01GENNIV.SFM", _GEN_B)
+    return _write(folder, "02EXONIV.SFM", _EXO)
+
+
+def test_a_project_split_opens_its_own_book_to_follow(desktop, tmp_path: Path):
+    app, service = desktop
+    exodus = _niv_project(tmp_path / "NIV")
+    main, left, right, leaf = _two_splits(service, _write(tmp_path / "mine", "01GEN.usfm", _GEN_A), exodus)
+    main._rich_views.show("sfm.preview", right)
+
+    left.state.move_to(_GEN_A.index("Alpha two"))
+    left._state_changed()
+    assert main._reference_sync.sync_from(left) == 1
+
+    shown = leaf.active_view
+    assert shown.document.path == tmp_path / "NIV" / "01GENNIV.SFM"
+    assert shown.state.cursor == _GEN_B.index("\\v 2")
+    assert main.current_view is left  # activation stays with the source
+    assert service.documents.entry_for_view(shown.view_id).group_id == "A"
+    assert main._rich_views.key_for(shown) == "sfm.preview"  # the split's mode carries over
+    assert shown.view_id not in main._environment.undefined_dialogs  # no popup from a sync
+
+
+def test_a_single_file_without_the_book_stays_with_a_notice(desktop, tmp_path: Path):
+    app, service = desktop
+    main, left, right, leaf = _two_splits(
+        service, _write(tmp_path / "a", "01GEN.usfm", _GEN_A), _write(tmp_path / "b", "02EXO.usfm", _EXO)
+    )
+    before = right.state.cursor
+
+    left.state.move_to(_GEN_A.index("Alpha two"))
+    left._state_changed()
+
+    assert main._reference_sync.sync_from(left) == 0
+    assert leaf.active_view is right and right.state.cursor == before
+    assert main.statusBar().currentMessage().startswith("GEN isn't in 02EXO.usfm")
+
+
+def test_choosing_a_book_carries_the_groups_splits_along(desktop, tmp_path: Path):
+    app, service = desktop
+    niv_exodus = _niv_project(tmp_path / "NIV")
+    niv_genesis = tmp_path / "NIV" / "01GENNIV.SFM"
+    mine = tmp_path / "mine"
+    _write(mine, "02EXO.usfm", _EXO)
+    main = service.new_window()
+    left = main.open_path(_write(mine, "01GEN.usfm", _GEN_A))
+    right = main.open_path(niv_genesis)
+    for view in (left, right):
+        _group(main, service, view, "A")
+    window = main.move_to_environment_window(left)
+    main.move_to_environment_window(right)
+    window._select_view(left)
+    clone = window.split_right()
+    right_leaf = window.panes.leaf_for_view(clone.view_id)
+    entry = service.documents.entry_for_view(right.view_id)
+    window.assign_document_to_pane(entry.document_id, right_leaf.pane_id)
+    window._close_view_id(clone.view_id)
+    window._select_view(left)
+    assert right_leaf.active_view.document.path == niv_genesis
+
+    window._environment_bar.open_book(mine / "02EXO.usfm")
+
+    assert window.current_view.document.path == mine / "02EXO.usfm"
+    # The project text follows to its own EXO, in its split.
+    assert right_leaf.active_view.document.path == niv_exodus

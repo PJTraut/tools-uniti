@@ -43,6 +43,7 @@ from uniti.core.environments.sfm.references import (
     book_header_for_path,
     book_rank,
 )
+from uniti.core.environments.sfm.versification import map_reference
 from uniti.ui.rich_view import PLAIN_TEXT_LABEL, reference_highlight_color
 
 if TYPE_CHECKING:
@@ -158,7 +159,13 @@ class ReferenceSync(QObject):
         self.sync_from(view)
 
     def sync_from(self, source: "UNITITextView") -> int:
-        """Bring the other splits to `source`'s reference; returns how many moved."""
+        """Bring the other splits to `source`'s reference; returns how many moved.
+
+        Plan P5: the reference is mapped into each text's own
+        versification; a project text showing another book opens the
+        project's file of this book in its split; a single file without
+        this book stays where it is, with a notice.
+        """
 
         group = self._group_of(source)
         key = self._environment_key(source)
@@ -166,50 +173,123 @@ class ReferenceSync(QObject):
         if group is None or source_map is None or source_map.book is None:
             self.clear()
             return 0
+        book = source_map.book
         reference = source_map.reference_at(source.state.cursor)
         source_verse = source_map.find(reference.chapter, reference.verse)
-        matched: list[tuple[UNITITextView, ReferenceMap, Verse]] = []
+        environment = self._window._environment
+        source_versification = environment.versification_for(source.document)
         source_leaf = self._window._panes.leaf_for_view(source.view_id)
-        for target in self._targets(source, source_leaf, group, source_map.book):
+        missing: list[str] = []
+        moves: list[tuple[UNITITextView, int, tuple[int, int] | None]] = []
+        for target in self._targets(source, source_leaf, group, book, missing):
             target_map = self.maps.for_document(target.document)
-            verse = None if target_map is None else target_map.find(reference.chapter, reference.verse)
-            if verse is not None:
-                matched.append((target, target_map, verse))
+            if target_map is None:
+                continue
+            chapter, verse = map_reference(
+                book, reference.chapter, reference.verse, source_versification, environment.versification_for(target.document)
+            )
+            found = target_map.find(chapter, verse)
+            if found is not None:
+                moves.append((target, found.start, target_map.verse_range(found)))
+            elif reference.verse is None:
+                # The caret is in a heading or before the first chapter:
+                # follow the chapter (or the book's start).
+                start = target_map.chapter_start(chapter) if chapter is not None else 0
+                moves.append((target, 0 if start is None else start, None))
         self._syncing = True
         try:
             self.clear()
-            if not matched or source_verse is None:
-                return 0
-            self._highlight(source, source_map.verse_range(source_verse))
-            for target, target_map, verse in matched:
-                start, end = target_map.verse_range(verse)
+            if source_verse is not None and any(span is not None for _target, _start, span in moves):
+                self._highlight(source, source_map.verse_range(source_verse))
+            for target, start, span in moves:
                 self._move(target, start)
-                self._highlight(target, (start, end))
+                if span is not None:
+                    self._highlight(target, span)
         finally:
             self._syncing = False
-        return len(matched)
+        if missing:
+            self._window.statusBar().showMessage(
+                f"{book} isn't in {', '.join(missing)}: {'that split stays' if len(missing) == 1 else 'those splits stay'} where it is",
+                6000,
+            )
+        return len(moves)
 
-    def _targets(self, source, source_leaf, group: str, book: str) -> list["UNITITextView"]:
-        """Per other split: its shown tab if it has `book` of `group`, else
-        another tab of that split that does (which is then shown)."""
+    def _targets(self, source, source_leaf, group: str, book: str, missing: list[str]) -> list["UNITITextView"]:
+        """Per other split showing a text of `group`: its shown tab when it
+        has `book`; else another tab of that split that does (then shown);
+        else, for a Paratext project text, the project's file of `book`
+        (opened in that split). A single file without `book` is listed in
+        `missing` and stays."""
+
+        from uniti.core.environments.sfm.paratext_project import project_for_file
 
         targets = []
         for shown in self._visible_views():
             if shown is source:
                 continue
             leaf = self._window._panes.leaf_for_view(shown.view_id)
-            if leaf is None or leaf is source_leaf:
+            if leaf is None or leaf is source_leaf or not self._in_group(shown, group):
                 continue
             if self._matches(shown, group, book):
                 targets.append(shown)
                 continue
-            for view_id in leaf.view_ids:
-                candidate = self._window.view_for_id(view_id)
-                if candidate is not None and candidate is not shown and self._matches(candidate, group, book):
-                    self._show_tab(leaf, candidate, source)
-                    targets.append(candidate)
-                    break
+            candidate = next(
+                (
+                    view
+                    for view in (self._window.view_for_id(view_id) for view_id in leaf.view_ids)
+                    if view is not None and view is not shown and self._matches(view, group, book)
+                ),
+                None,
+            )
+            if candidate is not None:
+                self._show_tab(leaf, candidate, source)
+                targets.append(candidate)
+                continue
+            project = project_for_file(shown.document.path)
+            project_book = None if project is None else project.book_for(book)
+            opened = None if project_book is None else self._open_in_split(shown, project_book.path, source, group)
+            if opened is not None:
+                targets.append(opened)
+            else:
+                missing.append(shown.document.path.name)
         return targets
+
+    def _in_group(self, view: "UNITITextView", group: str) -> bool:
+        return self._group_of(view) == group and self._environment_key(view) in REFERENCE_ENVIRONMENTS
+
+    def _open_in_split(self, shown: "UNITITextView", path: Path, source: "UNITITextView", group: str):
+        """Open `path` in `shown`'s split, in `shown`'s view mode and group,
+        without a popup and without taking activation from `source`."""
+
+        from uniti.ui.open_mode import OpenMode
+
+        window = self._window
+        mode = window._rich_views.key_for(shown)
+        leaf = window._panes.leaf_for_view(shown.view_id)
+        opened = None
+        self._syncing = True
+        window._quiet_open = True
+        try:
+            window._panes.activate_view(shown.view_id)
+            opened = window.open_path(path, open_mode=OpenMode.HERE)
+            if opened is not None and window.view_for_id(opened.view_id) is opened:
+                service = window._service
+                entry = None if service is None else service.documents.entry_for_view(opened.view_id)
+                if entry is not None and entry.group_id != group:
+                    window._set_document_group(entry.document_id, group)
+                if mode is not None:
+                    window._rich_views.show(mode, opened)
+            else:
+                opened = None
+        except Exception:  # an unreadable book never breaks sync
+            opened = None
+        finally:
+            window._quiet_open = False
+            window._panes.activate_view(source.view_id)
+            self._syncing = False
+        if opened is not None and window._panes.leaf_for_view(opened.view_id) is not leaf:
+            return None
+        return opened
 
     def _matches(self, view: "UNITITextView", group: str, book: str) -> bool:
         if self._group_of(view) != group or self._environment_key(view) not in REFERENCE_ENVIRONMENTS:
@@ -636,6 +716,9 @@ class EnvironmentBar(QToolBar):
         if mode is not None:
             window._rich_views.show(mode, opened)
         self.refresh()
+        if window._reference_sync.enabled:
+            # Every split of the group follows to this book (P5).
+            window._reference_sync.sync_from(opened)
         return opened
 
 

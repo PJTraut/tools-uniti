@@ -1,7 +1,7 @@
 # USFM Projects, Single Files, and Versification — Plan
 
 Date: 2026-10-07
-Status: **In progress**. P1–P4 are implemented (P1–P3 on 2026-10-07, P4 on 2026-10-08). P5 is next (see the [roadmap](ROADMAP.md#environment-track-queue)).
+Status: **Implemented**: P1–P3 on 2026-10-07, P4–P5 on 2026-10-08. Hand checks with a real Paratext project are still open (see Verification plan).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md): environment windows, the Book/Chapter/Verse selector, and reference sync within a group.
 Origin: user, 2026-10-07: "single file vs 'working folder' for USFM; plan this... should we need to 'open folder' for 'project' view and 'open file' for single files outside of projects? how would we compare BK:CH:VS for 'files' only".
 
@@ -123,6 +123,24 @@ Tests: `tests/test_sfm_versification.py` (9) and `tests/app/test_environment_win
 - for a single-file target in another book: no move, and a "BOOK isn't in this file" notice.
 
 Choosing a book in one split's Book selector moves every split of the group to that book: project texts open it, single files stay.
+
+**Implemented 2026-10-08.**
+- **`ReferenceSync.sync_from`:**
+  - maps the reference from the source's versification into each target's (`map_reference`);
+  - lands on the verse when found;
+  - follows the chapter or book start when the caret is in a heading.
+- **`_targets`:** per other split of the group,
+  - its shown tab with the book;
+  - otherwise another tab of that split with the book (then shown);
+  - otherwise, for a Paratext project text, the project's file of the book. `_open_in_split` opens it in that split, in the split's view mode and the group, without the undefined-markup popup (`_quiet_open`) or the open dialog, and hands activation back to the source.
+  - A single file without the book stays, and the status bar says "GEN isn't in 02EXO.usfm".
+- **The Book selector** syncs after opening a book, so every split of the group follows to it.
+
+Tests: `tests/app/test_environment_window.py` +4:
+- versification-mapped sync (English Ps 51:1 → Original 51:3);
+- a project split opening its own book quietly, keeping its mode;
+- a single file staying with a notice;
+- the Book selector carrying a project split from GEN to EXO.
 
 ## Verification plan
 
