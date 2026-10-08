@@ -126,7 +126,7 @@ Tests: `tests/app/test_environment_window.py` +4: verse in every mode and cleari
 - **Widths:** fixed display areas of 10 em for Book and 3 em each for Chapter and Verse (`_fix_display_width`, through the style's `CT_ComboBox` size). The Book list still opens wide enough for whole headers, and the current book's full label and path are in its tooltip.
 - **Book label:** the id from `\id\s\w{3}` plus the whole content of the `\h` line. `sfm/references.book_header` reads both, and `\h` only counts within the first 10 lines (`HEADER_BLOCK_LINES`); `\h1` isn't `\h`.
   - Open books are read from the document, so unsaved edits count. Other books are read from the file's start, cached until the file changes (`book_header_for_path`).
-  - A project book without `\h` falls back to its `BookNames.xml` name, then to the id alone. A file without `\id` shows its file name.
+  - A book without `\h` shows its id alone. Since 2026-10-08 (user) there's no `BookNames.xml` fallback. A file without `\id` shows its file name.
 - **Tests:** `tests/test_sfm_references.py` +1 (header block, 10-line limit, `\h1`, cache); `tests/app/test_environment_window.py` +1 (right edge, widths, label); updated Book-list expectations.
 
 ### R5 — One USFM environment for `.sfm` and `.usfm` (item 1, D1: group them)

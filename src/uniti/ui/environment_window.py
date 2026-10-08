@@ -553,9 +553,9 @@ class EnvironmentBar(QToolBar):
             self._books_project = project.folder
             books = []
             for book in project.books():
-                # The book's id and its \h line; BookNames.xml's name when
-                # the book has no \h in its header block.
-                name = self._header_of(book.path).header or book.name
+                # The book's id and its \h line; the id alone when its header
+                # block has no \h (user, 2026-10-08).
+                name = self._header_of(book.path).header
                 books.append((f"{book.code} {name}" if name else book.code, book.path))
             self._books = tuple(books)
         return list(self._books)

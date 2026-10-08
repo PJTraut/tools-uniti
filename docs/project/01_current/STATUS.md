@@ -45,9 +45,15 @@ Local verification at `d57dac5`, 2026-10-08:
 - **One unexplained crash.** One full run on 2026-10-08 ended in a fault-handler crash. The later runs, including two with `-X faulthandler` and saved output, all passed, so it couldn't be reproduced and the test is unknown.
 - **Speed.** Plain Text → Standard on a 220 KB book was measured offscreen in a window at 41 s before R1 and 0.86 s after.
 
+User field check in the live app, 2026-10-08:
+- **Standard/Preview switching speed:** acceptable.
+- **Book list:** a book without `\h` must show its `\id` code alone. Changed the same day.
+- **Undefined-markers report:** none found in the files tried so far.
+- **Not tested yet:** versification and side-by-side sync.
+
 Not yet verified:
-- the live app with native input;
-- a real Paratext project (the book-file numbering and the `Settings.xml` fields were implemented from memory);
+- versification and sync with real projects;
+- Paratext book-file numbering and the `Settings.xml` fields across real projects (implemented from memory);
 - hosted CI;
 - any affected-host check.
 

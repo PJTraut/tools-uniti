@@ -53,14 +53,9 @@ Since `366ea42`, `main` also gained several `main_window.py` god-object extracti
 The environment track (file-type environments, USFM) is on branch `usfm-field-test`, 15 commits ahead of local `main` (`21164ea`), at `d57dac5`. It isn't merged into `main` or pushed. [Current Status](../01_current/STATUS.md#environment-track-2026-09-29--2026-10-08) has what it contains and its verification: full suite 2,547 passed with 6 platform skips, plus one unreproduced crash. The [roadmap's environment track queue](../02_plans/ROADMAP.md#environment-track-queue) is complete. Users' documentation is [Environments](../../environments/README.md).
 
 Next safe actions, in order:
-1. With the user, run the live app against a real Paratext project. Check:
-   - **Open USFM Project…:** book-file naming and numbering, `Settings.xml` fields, `BookNames.xml`;
-   - **Display:** Standard/Preview speed and rendering;
-   - **Projects:** the Book selector;
-   - **Sync and versification** across two projects in one group;
-   - **Undefined markers:** the report on a real book.
-
-   The Paratext file numbering and `Settings.xml` field names were written from memory (`sfm/paratext_project.py`).
+1. With the user, finish the live-app check against real Paratext projects.
+   - **Already reported 2026-10-08:** Standard/Preview speed is acceptable; no undefined markers so far; a book without `\h` now shows its id alone in the Book list.
+   - **Still to try:** versification and side-by-side sync across two projects in one group, and book-file naming and numbering across projects. The Paratext file numbering and `Settings.xml` field names were written from memory (`sfm/paratext_project.py`).
 2. Merge `usfm-field-test` into `main` once the user asks (it fast-forwards).
 3. Watch for the unreproduced full-suite crash; run with `-X faulthandler` and keep the output.
 4. Wishlist items stay paused: the USFM per-chapter view, and the footnote category filter.

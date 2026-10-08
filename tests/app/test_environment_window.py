@@ -150,8 +150,9 @@ def test_book_selector_lists_a_projects_books_and_opens_them_into_the_group(desk
     bar = window._environment_bar
     window._rich_views.show("sfm.preview", view)
 
-    # \h wins; BookNames.xml names a book without one (GEN here).
-    assert [bar.book.itemText(index) for index in range(bar.book.count())] == ["GEN Genesis", "EXO Exodus"]
+    # The id and the \h line; a book without \h (GEN here) shows its id
+    # alone, even though BookNames.xml names it.
+    assert [bar.book.itemText(index) for index in range(bar.book.count())] == ["GEN", "EXO Exodus"]
     assert window.windowTitle() == "UNITI — USFM — Ungrouped — NIV11 — 01GENNIV11.SFM"
     assert "NIV11" in bar.title.text()
 

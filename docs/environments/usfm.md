@@ -42,7 +42,7 @@ The environment window's toolbar has **Book**, **Chapter** and **Verse** at its 
   - in a Paratext project, the project's books;
   - otherwise, the open files of this window's group.
 
-  Each book shows its `\id` code and its `\h` line, e.g. "GEN Genesis". UNITI looks for `\h` in the book's first 10 lines; a project book without one uses its `BookNames.xml` name. Choosing a book opens it in this window and group, in the current mode.
+  Each book shows its `\id` code and its `\h` line, e.g. "GEN Genesis". UNITI looks for `\h` in the book's first 10 lines; a book without one shows just its code. Choosing a book opens it in this window and group, in the current mode.
 - **Chapter** and **Verse** jump to that place and follow the caret as it moves.
 
 Jumping, here or with **Go to Chapter:Verse…** (Ctrl+Alt+G), puts the verse a third of the way down and highlights it in every mode. The highlight clears when the caret leaves the verse.
