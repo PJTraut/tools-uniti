@@ -169,7 +169,8 @@ class ProjectTabs:
         project = self.project_of(view)
         name = project.name if project is not None else view.document.path.name
         books = books if books is not None else self.books_of(view)
-        return name + ("*" if any(book.document.modified for book in books) else "")
+        lock = "🔒 " if view.document.read_only else ""  # a read-only folder (T7)
+        return lock + name + ("*" if any(book.document.modified for book in books) else "")
 
     def group_color(self, view: "UNITITextView") -> str | None:
         window = self._window

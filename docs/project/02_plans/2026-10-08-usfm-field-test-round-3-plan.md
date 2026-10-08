@@ -1,7 +1,7 @@
 # USFM Field Test, Round 3 — Plan
 
 Date: 2026-10-08
-Status: **Accepted** (2026-10-08, decisions D1–D5 settled). In progress.
+Status: **Implemented** (2026-10-08): T1–T7. The spellcheck plan is in the wishlist, not queued.
 Origin: `@externalresources/field_test_feedback` (2026-10-08, the day's second round) and the user's answers the same day.
 Changes: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) decisions 2–4 (an environment window per group, the Book selector, sync within one window) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md)'s consequence that "a document group is still which splits move together". A new ADR-0019 records the replacement when T3 lands.
 
@@ -281,6 +281,19 @@ Tests: `tests/app/test_tab_menu.py` (7): the menu's entries; an ordinary window'
   - every edit path is blocked;
   - Save is blocked;
   - turning it on for a project that's open.
+
+**Implemented 2026-10-08.**
+- **`Document.set_read_only` / `read_only`**: `insert`, `delete`, `replace`, `replace_many`, `apply_replacement_plan`, `undo`, `redo` and `save` raise `DocumentReadOnlyError` (a `PermissionError`) while it's set. Recovery replay isn't an edit and stays allowed; `export_copy` (Save As) works.
+- **`app/read_only.py`**: `is_read_only_path`, `read_only_folder_for`, `with_folder`. **`Settings.read_only_folders`** holds the list (at most 256, no settings schema bump: a missing key reads as empty).
+- **The window** (`_apply_read_only`, run whenever a view is connected and after Save As replaces its document) sets the document's and the view's read-only state; `set_read_only_folders` / `set_folder_read_only` re-apply it in every window.
+  - Save, Undo and Redo refuse with "01GEN.usfm is in a read-only folder: use Save As… to save a copy elsewhere".
+  - The tab gets "🔒 " (also on a project tab) and the title "(read-only)".
+  - Standard isn't editable (`RichViewPane.editable`).
+  - Find/Replace: Replace refuses ("… is read-only"), Replace All reports "the file is read-only", and Replace in all documents leaves read-only files out ("; 1 read-only").
+  - Configuration Files… won't Create there; Add Definitions / Edit Stylesheet use your own `uniti.sty` for a project in a read-only folder.
+- **UI:** View → **Read-Only Folders…** (`ui/read_only_folders.py`: Add Folder…, Remove) and **Read Only** on a project tab's menu.
+
+Tests: `tests/app/test_read_only_folders.py` (5): paths in or below a folder; a file that can't be changed or saved (document, Save, title, lock, Standard, the file on disk); turning a project read-only from its tab, keeping the unsaved edit, and back; Replace leaving the file alone; definitions going to your rules. Updated: the settings payload and the project tab's menu ("Read Only").
 
 ## Spellcheck from `hyphenatedWords.txt` (item 8) — plan only, not queued
 

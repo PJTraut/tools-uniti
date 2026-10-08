@@ -655,6 +655,8 @@ class RichViewPane(QWidget):
 
     @property
     def editable(self) -> bool:
+        if self.document is not None and getattr(self.document, "read_only", False):
+            return False  # a file in a read-only folder (round 3 T7)
         return self.provider is not None and getattr(self.provider, "editable", True)
 
     def bind(

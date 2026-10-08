@@ -46,7 +46,7 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 | 14 | T4 — One tab per project, titled with its short name; changing the book changes it in the tab, asking to save | implemented 2026-10-08 | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
 | 15 | T5 — Projects belong to groups; the group colours the tab and binds projects for sync across windows | implemented 2026-10-08 | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
 | 16 | T6 — The tab's menu: Group, Split (up to four splits, Unsplit) and Window (new, other, Dock) | implemented 2026-10-08 | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
-| 17 | T7 — Read-only folders | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
+| 17 | T7 — Read-only folders | implemented 2026-10-08 | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
 
 Wishlist, not queued: the USFM per-chapter view, choosing which footnote categories Preview shows, USFM files outside a project, and spellcheck from Paratext's word lists ([wishlist](../FEATURE_WISHLIST.md)).
 

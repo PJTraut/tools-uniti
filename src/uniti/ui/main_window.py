@@ -198,6 +198,8 @@ def _convert_and_set_output_eol(document: Document, eol: str | None) -> None:
 
 # An environment window has at most four splits (round 3 T6).
 MAX_ENVIRONMENT_SPLITS = 4
+# A read-only file's tab (round 3 T7).
+READ_ONLY_MARK = "🔒 "
 
 
 class UNITIMainWindow(QMainWindow):
@@ -1229,6 +1231,7 @@ class UNITIMainWindow(QMainWindow):
         )
         theme_menu.addAction(self._high_contrast_action)
         view_menu.addAction("Document Groups…", self.show_document_group_editor)
+        view_menu.addAction("Read-Only Folders…", self.show_read_only_folders)
         self._grouped_tabs_action = QAction("Grouped Tabs", self)
         self._grouped_tabs_action.setCheckable(True)
         self._grouped_tabs_action.setChecked(self._settings.grouped_tabs)
@@ -1737,6 +1740,18 @@ class UNITIMainWindow(QMainWindow):
                 action.triggered.connect(
                     lambda _checked=False, slot=window.environment_window[1]: self.move_tab_to_window(view_id, slot)
                 )
+        project = self._project_tabs.project_of(view)
+        if project is not None:
+            # The project's folder read-only, or editable again (round 3 T7).
+            from uniti.app.read_only import is_read_only_path
+
+            read_only = menu.addAction("Read Only")
+            read_only.setCheckable(True)
+            read_only.setChecked(is_read_only_path(project.folder, self._settings.read_only_folders))
+            read_only.setToolTip(f"Open every file in {project.folder} read-only")
+            read_only.toggled.connect(
+                lambda checked, folder=project.folder: self.set_folder_read_only(folder, checked)
+            )
         window_menu.addSeparator()
         dock = window_menu.addAction("Dock")
         dock.setToolTip("Back to the window it came from")
@@ -2262,6 +2277,8 @@ class UNITIMainWindow(QMainWindow):
             index=selected_index,
         )
         self._connect_view(view)
+        if view.document.read_only:
+            leaf.setTabText(leaf.index_of(view.view_id), self._tab_label(view))  # the lock (T7)
         self._panes.set_dock_mode(
             view.view_id,
             "dock" if view.dock_return is not None else "undock",
@@ -2521,6 +2538,7 @@ class UNITIMainWindow(QMainWindow):
             )
 
     def _connect_view(self, view: UNITITextView) -> None:
+        self._apply_read_only(view)
         view.set_progressive_navigation(True)
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
         view.cursorPositionChanged.connect(self._status.update_cursor)
@@ -2626,6 +2644,8 @@ class UNITIMainWindow(QMainWindow):
         self._connect_view(view)
         leaf = self._panes.add_view(view, pane_id=pane_id, select=select)
         self._tabs = leaf.tabs
+        if view.document.read_only:
+            leaf.setTabText(leaf.index_of(view.view_id), self._tab_label(view))  # the lock (T7)
         if entry is not None:
             self._service.documents.bind_view(entry.document_id, view.view_id)
             self._refresh_group_indicator(view.view_id)
@@ -2826,7 +2846,65 @@ class UNITIMainWindow(QMainWindow):
 
     def _tab_label(self, view: UNITITextView) -> str:
         marker = "*" if view.document.modified else ""
-        return f"{view.document.path.name}{marker}"
+        lock = READ_ONLY_MARK if view.document.read_only else ""
+        return f"{lock}{view.document.path.name}{marker}"
+
+    # --- read-only folders (round 3 T7) -----------------------------------------
+
+    def _apply_read_only(self, view: UNITITextView) -> bool:
+        """Make `view` and its document read-only when its file is in a
+        read-only folder (and editable again when it isn't)."""
+
+        from uniti.app.read_only import is_read_only_path
+
+        read_only = is_read_only_path(view.document.path, self._settings.read_only_folders)
+        if view.document.read_only != read_only:
+            view.document.set_read_only(read_only)
+        view.set_read_only(read_only)
+        pane = self._rich_views.pane_for(view) if hasattr(self, "_rich_views") else None
+        if pane is not None:
+            pane.editor.setReadOnly(not pane.editable)
+        return read_only
+
+    def read_only_folders(self) -> tuple[str, ...]:
+        return tuple(self._settings.read_only_folders)
+
+    def set_read_only_folders(self, folders) -> None:
+        """Replace the read-only folders and apply them to every open file,
+        in every window."""
+
+        self._settings = dataclass_replace(self._settings, read_only_folders=tuple(dict.fromkeys(folders)))
+        self._save_settings()
+        windows = [self] if self._service is None else [window for _window_id, window in self._service.windows.items]
+        for window in windows:
+            window._settings = dataclass_replace(window._settings, read_only_folders=self._settings.read_only_folders)
+            for view in window.views:
+                window._apply_read_only(view)
+                window._on_view_state_changed(view)
+            window._project_tabs.refresh_all()
+            window._on_current_changed(window._tabs.currentIndex())
+
+    def set_folder_read_only(self, folder: Path, read_only: bool) -> None:
+        from uniti.app.read_only import with_folder
+
+        self.set_read_only_folders(with_folder(self._settings.read_only_folders, folder, read_only))
+
+    def show_read_only_folders(self, _checked: bool = False) -> None:
+        from uniti.ui.read_only_folders import ReadOnlyFoldersDialog
+
+        dialog = ReadOnlyFoldersDialog(self.read_only_folders(), self)
+        if dialog.exec():
+            self.set_read_only_folders(dialog.folders())
+
+    def _refuse_read_only(self, view: UNITITextView) -> bool:
+        """True (with a message) when `view`'s file can't be changed."""
+
+        if not view.document.read_only:
+            return False
+        self.statusBar().showMessage(
+            f"{view.document.path.name} is in a read-only folder: use Save As… to save a copy elsewhere", 6000
+        )
+        return True
 
     def _set_status_document(self, view: UNITITextView) -> None:
         report = self._eol_reports.get(id(view))
@@ -2994,7 +3072,8 @@ class UNITIMainWindow(QMainWindow):
         line = view.document.line_for_char(view.state.cursor)
         column = view.state.cursor - view.document.line_start(line)
         self._status.update_cursor(line, column)
-        self.setWindowTitle(f"{self._title_prefix()} — {view.document.path.name}")
+        read_only = " (read-only)" if view.document.read_only else ""
+        self.setWindowTitle(f"{self._title_prefix()} — {view.document.path.name}{read_only}")
 
     def _title_prefix(self) -> str:
         if self._environment_bar is None:
@@ -3677,6 +3756,8 @@ class UNITIMainWindow(QMainWindow):
         initial_eol_complete: bool,
     ) -> None:
         view.replace_state(EditorState(replacement))
+        # Save As may have moved it out of (or into) a read-only folder.
+        self._apply_read_only(view)
         if initial_eol_report is not None and initial_eol_complete:
             self._eol_reports[id(view)] = initial_eol_report
         view.set_match_index(None)
@@ -4315,6 +4396,8 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is None or not view.isEnabled():
             return None
+        if self._refuse_read_only(view):
+            return None
         if self._is_untitled_view(view):
             return self.start_save_current_as()
         selected = view.document.output_format
@@ -4446,6 +4529,8 @@ class UNITIMainWindow(QMainWindow):
     def save_current(self) -> Path | None:
         view = self.current_view
         if view is None or not view.isEnabled():
+            return None
+        if self._refuse_read_only(view):
             return None
         if self._is_untitled_view(view):
             return self.save_current_as()
@@ -4607,7 +4692,7 @@ class UNITIMainWindow(QMainWindow):
             pane.undo()
             return
         view = self.current_view
-        if view is None or not view.isEnabled() or not view.document.can_undo:
+        if view is None or not view.isEnabled() or not view.document.can_undo or self._refuse_read_only(view):
             return
         view.state.undo()
         view._state_changed()
@@ -4620,7 +4705,7 @@ class UNITIMainWindow(QMainWindow):
             pane.redo()
             return
         view = self.current_view
-        if view is None or not view.isEnabled() or not view.document.can_redo:
+        if view is None or not view.isEnabled() or not view.document.can_redo or self._refuse_read_only(view):
             return
         view.state.redo()
         view._state_changed()

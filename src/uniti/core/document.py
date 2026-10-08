@@ -76,6 +76,11 @@ class ReplacementPlanLimitError(MemoryError):
     """A replacement transaction exceeds its admitted apply-memory bound."""
 
 
+class DocumentReadOnlyError(PermissionError):
+    """The document is read-only (its file is in a read-only folder, field
+    test round 3 T7): edits and saving in place are refused."""
+
+
 class Document:
     """Own the lazy immutable-source services and edited piece table."""
 
@@ -120,6 +125,7 @@ class Document:
         self._cache_owner = cache_owner
         self._last_save_durability: DurabilityResult | None = None
         self._closed = False
+        self._read_only = False
 
     @classmethod
     def open(
@@ -561,6 +567,20 @@ class Document:
         self._notify_edit(operation)
         return operation
 
+    @property
+    def read_only(self) -> bool:
+        return self._read_only
+
+    def set_read_only(self, enabled: bool) -> None:
+        """Refuse (or allow again) every edit, undo/redo and saving in
+        place. Recovery replay isn't an edit and stays allowed."""
+
+        self._read_only = bool(enabled)
+
+    def _ensure_writable(self) -> None:
+        if self._read_only:
+            raise DocumentReadOnlyError(f"{self._path.name} is read-only")
+
     def insert(
         self,
         char_offset: int,
@@ -569,6 +589,7 @@ class Document:
         coalesce: str | None = None,
     ) -> None:
         self._ensure_open()
+        self._ensure_writable()
         self._replace_internal(
             char_offset,
             char_offset,
@@ -585,6 +606,7 @@ class Document:
         coalesce: str | None = None,
     ) -> None:
         self._ensure_open()
+        self._ensure_writable()
         self._replace_internal(start, end, "", record=True, coalesce=coalesce)
 
     def replace(
@@ -596,6 +618,7 @@ class Document:
         coalesce: str | None = None,
     ) -> None:
         self._ensure_open()
+        self._ensure_writable()
         self._replace_internal(start, end, text, record=True, coalesce=coalesce)
 
     def replay_transaction(
@@ -649,6 +672,7 @@ class Document:
     def replace_many(self, replacements: list[tuple[int, int, str]]) -> int:
         """Apply non-overlapping original-coordinate replacements as one history step."""
         self._ensure_open()
+        self._ensure_writable()
         prepared: list[tuple[int, int, str, str]] = []
         previous_end = 0
         for index, (start, end, text) in enumerate(replacements):
@@ -690,6 +714,7 @@ class Document:
         """Atomically apply one admitted, revision-bound replacement plan."""
 
         self._ensure_open()
+        self._ensure_writable()
         if memory_limit_bytes <= 0:
             raise ValueError("memory_limit_bytes must be positive")
         if (
@@ -719,6 +744,7 @@ class Document:
 
     def undo(self) -> None:
         self._ensure_open()
+        self._ensure_writable()
         transaction = self._history.undo()
         for operation in reversed(transaction.operations):
             self._replace_internal(
@@ -731,6 +757,7 @@ class Document:
 
     def redo(self) -> None:
         self._ensure_open()
+        self._ensure_writable()
         transaction = self._history.redo()
         for operation in transaction.operations:
             self._replace_internal(
@@ -1095,6 +1122,7 @@ class Document:
         """Save the current document in place and advance its save point."""
 
         self._ensure_open()
+        self._ensure_writable()
         selected = self._output_format if output_format is None else output_format
         if not isinstance(selected, OutputFormat):
             raise TypeError("output format must be an OutputFormat")

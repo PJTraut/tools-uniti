@@ -67,6 +67,15 @@ In a USFM window each tab is a Paratext project, showing one of its books at a t
 
 A USFM tab moves with all its books, each keeping its state. The toolbar's **Group** dropdown shows and sets the current file's group, and has **New Group…** and **Manage Groups…**. Giving a file another group (there, or by right-clicking its tab or text → **Document Group**) doesn't move it.
 
+## Read-only folders
+
+**View → Read-Only Folders…** lists folders whose files open read-only, for example the Paratext projects Paratext itself keeps in sync. In a USFM window, a project tab's right-click menu has **Read Only** for its project's folder.
+- A file in one of these folders, or below one, can be read, searched, copied and viewed in every mode, but not changed: typing, Undo/Redo, Replace and Standard's editing are refused, and so is **Save**. **Save As…** to somewhere else still works.
+- Its tab shows a 🔒 and the window title says "(read-only)".
+- **Configuration Files…** won't create files there, and undefined-marker definitions for such a project go to your own `uniti.sty` instead of its `custom.sty`.
+- Turning a folder read-only keeps any unsaved changes in its open files; save them elsewhere with Save As…, or turn it off again.
+- The list is kept in UNITI's settings; nothing is written into the folders.
+
 ## Undefined markup
 
 Where an environment knows its vocabulary, opening a file checks it. Today that's USFM: markers no loaded stylesheet defines pop up a report, which you can copy, save, or use to add the missing definitions. See [usfm.md](usfm.md#undefined-markers).

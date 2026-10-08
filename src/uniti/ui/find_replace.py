@@ -1628,6 +1628,10 @@ class FindReplaceWindow(QDockWidget):
             return "regex requires more bounded context than allowed"
         if isinstance(error, TaskAdmissionError):
             return "operation refused by current resource limits"
+        from uniti.core.document import DocumentReadOnlyError
+
+        if isinstance(error, DocumentReadOnlyError):
+            return "the file is read-only"
         return "regex operation failed"
 
     def _start_job(
@@ -2191,6 +2195,9 @@ class FindReplaceWindow(QDockWidget):
             self.status_label.setText("match changed — search again")
             self._clear_results()
             return False
+        if getattr(view.document, "read_only", False):
+            self.status_label.setText(f"{view.document.path.name} is read-only")
+            return False
         replacement = replacements[context[0]]
         view.document.replace(replacement.start, replacement.end, replacement.text)
         view.state.move_to(replacement.start + len(replacement.text))
@@ -2242,7 +2249,13 @@ class FindReplaceWindow(QDockWidget):
         replaced_total = 0
         documents_changed = 0
         documents_skipped = 0
+        documents_read_only = 0
         for document, plan in results:
+            if getattr(document, "read_only", False):
+                # A file in a read-only folder (round 3 T7) is left alone.
+                documents_read_only += 1
+                plan.close()
+                continue
             try:
                 count = document.apply_replacement_plan(
                     plan,
@@ -2258,17 +2271,18 @@ class FindReplaceWindow(QDockWidget):
             if count:
                 documents_changed += 1
         self._clear_results()
+        read_only_note = f"; {documents_read_only:,} read-only" if documents_read_only else ""
         if documents_skipped:
             self.status_label.setText(
                 f"{replaced_total:,} replaced across {documents_changed:,} "
-                f"document(s); {documents_skipped:,} skipped (changed during planning)"
+                f"document(s); {documents_skipped:,} skipped (changed during planning){read_only_note}"
             )
         else:
             self.status_label.setText(
-                f"{replaced_total:,} replaced across {documents_changed:,} document(s)"
+                f"{replaced_total:,} replaced across {documents_changed:,} document(s){read_only_note}"
             )
         self._update_actions()
-        if documents_skipped and documents_changed == 0:
+        if (documents_skipped or documents_read_only) and documents_changed == 0:
             return Outcome.FAILED
         return Outcome.SUCCESS
 

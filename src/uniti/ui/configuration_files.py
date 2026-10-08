@@ -141,10 +141,20 @@ class ConfigurationFilesDialog(QDialog):
                 self.tree.setCurrentItem(self.tree.topLevelItem(index))
                 return
 
+    def _in_read_only_folder(self, row) -> bool:
+        """A row whose file is in a read-only folder (round 3 T7)."""
+
+        from uniti.app.read_only import is_read_only_path
+
+        folders = getattr(getattr(self._window, "_settings", None), "read_only_folders", ())
+        return row is not None and row.path is not None and is_read_only_path(row.path, folders)
+
     def _sync_buttons(self) -> None:
         row = self.selected()
         self.open_button.setEnabled(row is not None and row.exists and not row.is_folder)
-        self.create_button.setEnabled(row is not None and not row.exists and row.template is not None)
+        self.create_button.setEnabled(
+            row is not None and not row.exists and row.template is not None and not self._in_read_only_folder(row)
+        )
         self.copy_button.setEnabled(row is not None and row.kind == BUILT_IN and row.exists and reference_copy_path(self.environment_label, row.path) is not None)
         self.folder_button.setEnabled(row is not None and row.path is not None and (row.exists or row.kind == "yours"))
         self.note.setText("" if row is None else row.note)
@@ -165,7 +175,7 @@ class ConfigurationFilesDialog(QDialog):
         """Write the row's template where it belongs, then open it."""
 
         row = self.selected()
-        if row is None or row.exists or row.template is None or row.path is None:
+        if row is None or row.exists or row.template is None or row.path is None or self._in_read_only_folder(row):
             return None
         try:
             row.path.parent.mkdir(parents=True, exist_ok=True)

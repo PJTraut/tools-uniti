@@ -436,6 +436,7 @@ def test_prepare_preserves_malformed_before_writing_defaults(
         "toggle_window_geometry": {},
         "toggle_window_zoom_percent": {},
         "toggle_window_splitter_sizes": {},
+        "read_only_folders": [],
         "last_directory": None,
         "performance_mode": "Automatic",
         "schema": 5,

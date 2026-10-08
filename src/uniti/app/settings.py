@@ -14,6 +14,7 @@ SETTINGS_SCHEMA = 5
 MIN_EDITOR_TAB_WIDTH = 1
 MAX_EDITOR_TAB_WIDTH = 16
 DEFAULT_EDITOR_TAB_WIDTH = 4
+MAX_READ_ONLY_FOLDERS = 256
 # Qt's nine named QFont::Weight values (Thin..Black); duplicated here rather
 # than imported from `uniti.ui.text_view` so this module stays Qt-free.
 FONT_WEIGHT_STEPS = (100, 200, 300, 400, 500, 600, 700, 800, 900)
@@ -64,6 +65,9 @@ class Settings:
     toggle_window_splitter_sizes: dict[str, tuple[int, int]] = field(
         default_factory=dict
     )
+    # Field test round 3, T7: files in (or below) these folders open
+    # read-only, e.g. Paratext projects that Paratext itself synchronizes.
+    read_only_folders: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,6 +234,16 @@ def _settings_from_payload(payload: object) -> Settings:
             for extension, profile_key in raw_syntax_extension_overrides.items()
             if isinstance(extension, str) and isinstance(profile_key, str)
         }
+    raw_read_only_folders = payload.get("read_only_folders", [])
+    read_only_folders: tuple[str, ...] = ()
+    if isinstance(raw_read_only_folders, list):
+        read_only_folders = tuple(
+            dict.fromkeys(
+                folder
+                for folder in raw_read_only_folders
+                if isinstance(folder, str) and folder and len(folder) <= 4096
+            )
+        )[:MAX_READ_ONLY_FOLDERS]
     return Settings(
         last_directory=last_directory,
         performance_mode=performance_mode,
@@ -251,6 +265,7 @@ def _settings_from_payload(payload: object) -> Settings:
         toggle_window_geometry=toggle_window_geometry,
         toggle_window_zoom_percent=toggle_window_zoom_percent,
         toggle_window_splitter_sizes=toggle_window_splitter_sizes,
+        read_only_folders=read_only_folders,
     )
 
 

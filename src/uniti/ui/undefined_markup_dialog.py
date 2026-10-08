@@ -158,11 +158,19 @@ class UndefinedMarkupDialog(QDialog):
 
     def target_path(self) -> Path | None:
         """Where the definitions belong: the project's custom.sty, or your
-        own uniti.sty for a file outside a Paratext project."""
+        own uniti.sty for a file outside a Paratext project or in a
+        read-only folder (round 3 T7)."""
 
-        if self._in_project():
+        if self._in_project() and not self._read_only_folder():
             return self.view.document.path.parent / "custom.sty"
         return usfm_user_rules_path()
+
+    def _read_only_folder(self) -> bool:
+        from uniti.app.read_only import is_read_only_path
+
+        window = self._window
+        folders = () if window is None else window._settings.read_only_folders
+        return is_read_only_path(self.view.document.path.parent / "custom.sty", folders)
 
     def _ensure_target(self) -> Path | None:
         target = self.target_path()
