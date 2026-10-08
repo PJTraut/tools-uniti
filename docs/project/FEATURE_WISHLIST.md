@@ -35,3 +35,14 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
 - Current state: per the [round 2 plan](02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R3, Preview shows each note's category in brackets and shows every note.
 - Open questions: is the filter per tab, per project or global? Are uncategorized notes shown? Should Standard follow the filter too?
 
+
+## USFM files outside a project
+
+- Noted: 2026-10-08, from the user's answers to the round 3 field-test feedback ("USFM environment assumes PROJECT, plain text only for now / add to todo later planning").
+- Current state: per the [round 3 plan](02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1, a USFM file whose folder has no Paratext `Settings.xml` opens as Plain Text. Before T1, such a file got the USFM environment with the official stylesheet and the default versification.
+- Open questions: which stylesheet, versification and book naming apply without `Settings.xml`? Is a single file its own "project tab", titled with its file name or its `\id`? Does it get a group of its own, and does it sync?
+
+## Spellcheck from Paratext word lists
+
+- Noted: 2026-10-08, from USFM field-test feedback ("toggle spellchecking using hyphenatedwords.txt data; plan this").
+- Plan: the [round 3 plan](02_plans/2026-10-08-usfm-field-test-round-3-plan.md#spellcheck-from-hyphenatedwordstxt-item-8--plan-only-not-queued) describes the files Paratext keeps (`hyphenatedWords.txt`, `SpellingStatus.xml`), a proposed per-tab **Check Spelling** toggle and its open questions. Not queued.

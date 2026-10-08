@@ -40,8 +40,15 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 | 8 | R7 — Report undefined markup when a file is opened: popup with copy/save report and edit/add definitions to configuration files (SFM/USFM, through a hook any environment can implement) | implemented 2026-10-08 | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
 | 9 | P4 — Versification (built-in English and Original; others from `.vrs` files in a user folder; project `custom.vrs`) | implemented 2026-10-08 | [Projects plan](2026-10-07-usfm-projects-and-versification-plan.md) |
 | 10 | P5 — Sync across books and versifications (opens a project's missing book) | implemented 2026-10-08 | [Projects plan](2026-10-07-usfm-projects-and-versification-plan.md) |
+| 11 | T1 — USFM needs a project: a USFM file outside a Paratext project opens as Plain Text | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
+| 12 | T2 — Each environment has its own groups (A, B, C to start; existing groups become Plain Text's) | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
+| 13 | T3 — Environment windows are named per environment (USFM A, B, C …, renameable), not per group | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
+| 14 | T4 — One tab per project, titled with its short name; changing the book changes it in the tab, asking to save | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
+| 15 | T5 — Projects belong to groups; the group colours the tab and binds projects for sync across windows | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
+| 16 | T6 — The tab's menu: Group, Split (up to four splits, Unsplit) and Window (new, other, Dock) | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
+| 17 | T7 — Read-only folders | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
 
-Wishlist, not queued: the USFM per-chapter view, and choosing which footnote categories Preview shows ([wishlist](../FEATURE_WISHLIST.md)).
+Wishlist, not queued: the USFM per-chapter view, choosing which footnote categories Preview shows, USFM files outside a project, and spellcheck from Paratext's word lists ([wishlist](../FEATURE_WISHLIST.md)).
 
 A21 Cross-Platform Alpha and earlier completed milestones remain in [Implemented](../03_implemented/README.md). A22 source infrastructure and the beta feedback code are implemented, but unfinished milestone acceptance records remain here.
 
