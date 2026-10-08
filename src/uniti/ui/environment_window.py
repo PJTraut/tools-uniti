@@ -425,8 +425,25 @@ class EnvironmentBar(QToolBar):
         self._map: ReferenceMap | None = None
 
         self.title = QLabel(self)
-        self.title.setContentsMargins(6, 0, 10, 0)
+        self.title.setContentsMargins(6, 0, 6, 0)
         self.addWidget(self.title)
+        # This window's document group: every file here belongs to it, and
+        # side-by-side sync works within it.
+        self.group = QComboBox(self)
+        self.group.setAccessibleName("Group")
+        self.group.setToolTip(
+            "This window's document group. Every file here belongs to it, and side-by-side sync works "
+            "within a group; choosing another group regroups them all."
+        )
+        self.group.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.group.activated.connect(self._group_chosen)
+        group_label = QLabel("Group", self)
+        group_label.setContentsMargins(6, 0, 3, 0)
+        self.addWidget(group_label)
+        self.addWidget(self.group)
+        self.project_label = QLabel(self)
+        self.project_label.setContentsMargins(10, 0, 6, 0)
+        self.addWidget(self.project_label)
         self.addSeparator()
         self._mode_group = QActionGroup(self)
         self._mode_group.setExclusive(True)
@@ -490,18 +507,54 @@ class EnvironmentBar(QToolBar):
         return None if view is None else project_for_file(view.document.path)
 
     def _refresh_title(self) -> None:
-        label = descriptor_for_key(self.environment_key).label
-        group = self._window._group_by_id(self.group_id) if self.group_id else None
-        text = f"<b>{label}</b> — " + (
-            "Ungrouped" if group is None else f'<span style="color:{group.color}">■</span> {group.name}'
-        )
+        self.title.setText(f"<b>{descriptor_for_key(self.environment_key).label}</b>")
+        self._refresh_group_choices()
         project = self._project()
         if project is not None:
-            text += f" — <b>{project.name}</b>"
-            self.title.setToolTip(f"{project.full_name or project.name}\n{project.folder}")
+            self.project_label.setText(f"<b>{project.name}</b>")
+            self.project_label.setToolTip(f"{project.full_name or project.name}\n{project.folder}")
         else:
-            self.title.setToolTip("")
-        self.title.setText(text)
+            self.project_label.setText("")
+            self.project_label.setToolTip("")
+
+    # --- group ---------------------------------------------------------------------
+
+    _NEW_GROUP = "\0new"
+    _MANAGE_GROUPS = "\0manage"
+
+    def _refresh_group_choices(self) -> None:
+        window = self._window
+        swatch = window._groups_and_recent_files._group_swatch_icon
+        self._updating = True
+        try:
+            self.group.clear()
+            self.group.addItem("Ungrouped", None)
+            for group in window._groups:
+                self.group.addItem(swatch(group.color), group.name, group.id)
+            self.group.insertSeparator(self.group.count())
+            self.group.addItem("New Group…", self._NEW_GROUP)
+            self.group.addItem("Manage Groups…", self._MANAGE_GROUPS)
+            self.group.setCurrentIndex(max(0, self.group.findData(self.group_id)))
+            self.group.setEnabled(window._service is not None)
+        finally:
+            self._updating = False
+
+    def _group_chosen(self, index: int) -> None:
+        if self._updating:
+            return
+        data = self.group.itemData(index)
+        window = self._window
+        if data == self._MANAGE_GROUPS:
+            self._refresh_group_choices()
+            window.show_document_group_editor()
+            return
+        if data == self._NEW_GROUP:
+            created = window._groups_and_recent_files.new_group_for(None)
+            if created is None:
+                self._refresh_group_choices()
+                return
+            data = created.id
+        window.set_environment_window_group(data)
 
     def window_title_prefix(self) -> str:
         label = descriptor_for_key(self.environment_key).label

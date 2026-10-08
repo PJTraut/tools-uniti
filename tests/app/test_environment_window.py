@@ -154,7 +154,7 @@ def test_book_selector_lists_a_projects_books_and_opens_them_into_the_group(desk
     # alone, even though BookNames.xml names it.
     assert [bar.book.itemText(index) for index in range(bar.book.count())] == ["GEN", "EXO Exodus"]
     assert window.windowTitle() == "UNITI — USFM — Ungrouped — NIV11 — 01GENNIV11.SFM"
-    assert "NIV11" in bar.title.text()
+    assert "NIV11" in bar.project_label.text()
 
     # Regrouped, the book moves to that group's USFM window; a book chosen
     # there opens into that window and group.
@@ -799,3 +799,75 @@ def test_sync_falls_back_to_the_same_reference_when_the_text_lacks_the_mapped_ve
     left._state_changed()
     assert main._reference_sync.sync_from(left) == 1
     assert right.state.cursor == malachi.format("B").index("\\v 1 Surely")
+
+
+# --- the toolbar's Group dropdown ---------------------------------------------------
+
+
+def _choose_group(bar, text: str) -> None:
+    index = bar.group.findText(text)
+    assert index >= 0, text
+    bar.group.setCurrentIndex(index)
+    bar._group_chosen(index)
+
+
+def test_the_group_dropdown_shows_the_windows_group(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+
+    items = [bar.group.itemText(i) for i in range(bar.group.count()) if bar.group.itemText(i)]
+    assert items == ["Ungrouped", "A", "B", "C", "New Group…", "Manage Groups…"]
+    assert bar.group.currentText() == "Ungrouped"
+
+
+def test_choosing_a_group_regroups_the_window_and_its_files(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    left = main.open_path(_write(tmp_path / "a", "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(left)
+    right = window.open_path(_write(tmp_path / "b", "01GEN.usfm", _GEN_B))
+
+    _choose_group(window._environment_bar, "A")
+
+    assert window.environment_window == ("usfm", "A")
+    assert {service.documents.entry_for_view(v.view_id).group_id for v in (left, right)} == {"A"}
+    assert all(service.windows.window_for_view(v.view_id) is window for v in (left, right))
+    assert window._environment_bar.group.currentText() == "A"
+    assert window.windowTitle().startswith("UNITI — USFM — A")
+
+
+def test_choosing_a_group_that_has_a_window_moves_the_files_there(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    first = main.open_path(_write(tmp_path / "a", "01GEN.usfm", _GEN_A))
+    second = main.open_path(_write(tmp_path / "b", "01GEN.usfm", _GEN_B))
+    _group(main, service, first, "B")
+    window_b = main.move_to_environment_window(first)
+    ungrouped = main.move_to_environment_window(second)
+    assert ungrouped is not window_b
+
+    _choose_group(ungrouped._environment_bar, "B")
+
+    assert service.windows.window_for_view(second.view_id) is window_b
+    assert service.documents.entry_for_view(second.view_id).group_id == "B"
+    assert ungrouped not in service.windows.windows  # emptied and closed
+
+
+def test_new_group_from_the_dropdown(desktop, tmp_path: Path, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("Translators", True))
+
+    _choose_group(window._environment_bar, "New Group…")
+
+    group_id = window.environment_window[1]
+    assert window._group_by_id(group_id).name == "Translators"
+    assert service.documents.entry_for_view(view.view_id).group_id == group_id
+    assert window._environment_bar.group.currentText() == "Translators"

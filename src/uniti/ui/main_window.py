@@ -2807,6 +2807,40 @@ class UNITIMainWindow(QMainWindow):
         )
         return answer == QMessageBox.StandardButton.Yes
 
+    def set_environment_window_group(self, group_id: str | None) -> "UNITIMainWindow":
+        """Give this environment window, and every file in it, `group_id`.
+
+        With no window of that environment and group yet, this window becomes
+        it. Otherwise its files move into that window and this one closes.
+        Returns the window the files are in.
+        """
+
+        if self.environment_window is None or self._service is None:
+            return self
+        key, current = self.environment_window
+        if group_id == current:
+            return self
+        documents = []
+        for view in self.views:
+            entry = self._service.documents.entry_for_view(view.view_id)
+            if entry is not None and entry.document_id not in documents:
+                documents.append(entry.document_id)
+        other = self._service.environment_window_for(key, group_id)
+        if other is None:
+            # Re-key first, so regrouping the files keeps them here.
+            self.set_environment_window(key, group_id)
+            for document_id in documents:
+                self._set_document_group(document_id, group_id)
+            return self
+        for document_id in documents:
+            self._set_document_group(document_id, group_id)  # each moves to `other`
+        if not self.views:
+            self.close()
+        other.show()
+        other.raise_()
+        other.activateWindow()
+        return other
+
     def move_to_environment_window(self, view: UNITITextView | None = None):
         """Move a tab to its environment's window for its document group,
         creating that window the first time (Dock returns it here)."""

@@ -56,7 +56,7 @@ When two or more splits of one window show files of the **same document group**,
   - A **single file** without the book stays put, and the status bar says so ("GEN isn't in 02EXO.usfm").
 - **Book selector:** choosing a book in the Book selector carries the group's other splits to that book the same way.
 - **Bridges and parts:** verse bridges (`\v 10-12`) and parts (`\v 11a`) are matched.
-- Ungrouped files don't sync.
+- Ungrouped files don't sync. To group everything in an environment window at once, use the toolbar's **Group** dropdown.
 - Turn sync on or off with **Sync Side-by-Side by Reference** (toolbar or menu).
 
 ## Versification

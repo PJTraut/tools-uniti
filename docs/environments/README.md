@@ -44,7 +44,12 @@ Ways a file gets there:
 
 Environment windows come back when UNITI restarts.
 
-A file in an environment window belongs to that window's group. Giving it another group (right-click its tab or its text → **Document Group**) moves it to that group's environment window, and **Dock** still takes it back where it came from.
+A file in an environment window belongs to that window's group.
+- **One file:** give it another group (right-click its tab or its text → **Document Group**) and it moves to that group's environment window. **Dock** still takes it back where it came from.
+- **The whole window:** use the **Group** dropdown on the toolbar. Choosing a group regroups every file in the window.
+  - If that group has no window of this environment yet, this window becomes it (e.g. "USFM — A").
+  - Otherwise the files join that window and this one closes.
+  - The dropdown also has **New Group…** and **Manage Groups…**. This is the quick way to put texts side by side for sync.
 
 ## Undefined markup
 
