@@ -1466,8 +1466,37 @@ def test_restored_session_rebuilds_its_environment_window(qapp, tmp_path: Path):
         pack_loader=lambda document_id: store.load_document_pack(reloaded.manifest, document_id),
     )
     window = service.windows.windows[0]
-    assert window.environment_window == ("usfm", "A")
+    # Saved before round 3 T3 (by group): restored in the first free slot.
+    assert window.environment_window == ("usfm", 0)
     assert window._environment_bar is not None
-    assert service.environment_window_for("usfm", "A") is window
+    assert service.environment_window_for("usfm", 0) is window
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
+def test_restored_session_keeps_each_environment_windows_slot(qapp, tmp_path: Path):
+    """Round 3 T3: a window's slot ("USFM B" is 1) comes back with it."""
+
+    store, loaded, _paths = _published_session(tmp_path, document_count=1)
+    ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
+    manifest = loaded.manifest
+    manifest = replace(
+        manifest,
+        documents=tuple(replace(r, extra={"environment_override": "usfm"}) for r in manifest.documents),
+        views=tuple(
+            replace(r, extra={"environment_window": {"environment": "usfm", "window": 1}})
+            for r in manifest.views
+        ),
+    )
+    store.publish(SessionSnapshot(manifest, loaded.packs, None))
+    reloaded = store.load_latest()
+    service = _restoring_service(tmp_path, store)
+    service.restore_shell(
+        reloaded.manifest,
+        pack_loader=lambda document_id: store.load_document_pack(reloaded.manifest, document_id),
+    )
+    window = service.windows.windows[0]
+    assert window.environment_window == ("usfm", 1)
+    assert window.environment_window_name() == "USFM B"
     service.request_quit(lambda _entry: None)
     qapp.processEvents()

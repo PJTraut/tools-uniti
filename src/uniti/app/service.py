@@ -1365,29 +1365,77 @@ class UNITIService:
         window.show()
         return window
 
-    def environment_window_for(self, environment_key: str, group_id: str | None):
-        """The open environment window of `environment_key` and `group_id`."""
+    def environment_window_for(self, environment_key: str, slot: int):
+        """The open environment window of `environment_key` in `slot`
+        (round 3 T3: "USFM A" is slot 0, "USFM B" slot 1 …)."""
 
         for _window_id, window in self.windows.items:
-            if getattr(window, "environment_window", None) == (environment_key, group_id):
+            if getattr(window, "environment_window", None) == (environment_key, slot):
                 return window
         return None
 
-    def move_to_environment_window(self, view_id: str, environment_key: str, group_id: str | None):
-        """Move a view into the environment window of its environment and
-        document group (ADR-0017), creating it on first use. Like undock,
-        the view remembers its home, so Dock takes it back there."""
+    def environment_windows(self, environment_key: str) -> tuple:
+        """`environment_key`'s open environment windows, most recent first."""
+
+        return tuple(
+            window
+            for window in self.windows.windows_by_recency
+            if (getattr(window, "environment_window", None) or (None,))[0] == environment_key
+        )
+
+    def free_environment_slot(self, environment_key: str) -> int:
+        """The lowest slot no open window of `environment_key` has."""
+
+        used = {window.environment_window[1] for window in self.environment_windows(environment_key)}
+        slot = 0
+        while slot in used:
+            slot += 1
+        return slot
+
+    def new_environment_window(self, environment_key: str):
+        """A new environment window of `environment_key`, in its lowest free slot."""
+
+        window = self.new_window()
+        window.set_environment_window(environment_key, self.free_environment_slot(environment_key))
+        return window
+
+    def environment_window_target(self, environment_key: str, path: Path | str | None = None):
+        """The window a file of `environment_key` goes to (round 3 T3): one
+        that already shows a book of the file's Paratext project, else the
+        environment's most recently active window. None when the
+        environment has no window yet."""
+
+        windows = self.environment_windows(environment_key)
+        if path is not None:
+            from uniti.core.environments.sfm.paratext_project import project_for_file
+
+            project = project_for_file(Path(path))
+            if project is not None:
+                folder = _resolved(project.folder)
+                for window in windows:
+                    if any(_resolved(Path(view.document.path).parent) == folder for view in getattr(window, "views", ())):
+                        return window
+        return windows[0] if windows else None
+
+    def move_to_environment_window(self, view_id: str, environment_key: str, slot: int | None = None):
+        """Move a view into an environment window of its environment
+        (ADR-0017, round 3 T3): window `slot`, else the one
+        `environment_window_target` picks, created on first use. Like
+        undock, the view remembers its home, so Dock takes it back there."""
 
         self._ensure_running()
         source = self.windows.window_for_view(view_id)
         if source is None:
             raise KeyError(view_id)
-        target = self.environment_window_for(environment_key, group_id)
-        if target is source:
-            return target
         view = getattr(source, "view_for_id")(view_id)
         if view is None:
             raise KeyError(view_id)
+        if slot is not None:
+            target = self.environment_window_for(environment_key, slot)
+        else:
+            target = self.environment_window_target(environment_key, view.document.path)
+        if target is source:
+            return target
         existing = getattr(view, "dock_return", None)
         if isinstance(existing, DockReturnRecord):
             anchor, was_undocked = existing, True
@@ -1398,7 +1446,9 @@ class UNITIService:
         created = target is None
         if created:
             target = self.new_window()
-            target.set_environment_window(environment_key, group_id)
+            target.set_environment_window(
+                environment_key, slot if slot is not None else self.free_environment_slot(environment_key)
+            )
         try:
             self._transfer_view(
                 view_id,
@@ -1674,9 +1724,17 @@ class UNITIService:
             pass
 
 
+def _resolved(path: Path) -> Path:
+    try:
+        return Path(path).resolve()
+    except OSError:
+        return Path(path)
+
+
 __all__ = [
     "QuitChoice",
     "QuitDecision",
     "QuitPlan",
     "UNITIService",
 ]
+

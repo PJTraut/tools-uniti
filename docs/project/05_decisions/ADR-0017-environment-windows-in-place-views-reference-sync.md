@@ -1,7 +1,7 @@
 # ADR-0017: Environment Windows, In-Place Rich Views, Stylesheet-Only Styling, Presentation Rules, Reference Sync
 
 Date: 2026-10-07
-Status: accepted (implemented — see the [implementation record](../02_plans/2026-10-07-usfm-field-test-plan.md))
+Status: accepted (implemented — see the [implementation record](../02_plans/2026-10-07-usfm-field-test-plan.md)); decision 2's one window per environment and group is superseded by [ADR-0019](ADR-0019-named-environment-windows-groups-and-project-tabs.md) (2026-10-08)
 
 ## Context
 

@@ -130,6 +130,24 @@ Tests:
   - opening goes to the project's tab, otherwise to the active window;
   - regrouping doesn't move a tab.
 
+**Implemented 2026-10-08.** Recorded in [ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md).
+- **Identity:** `UNITIMainWindow.environment_window` is `(environment key, slot)`. `UNITIService` gained `environment_window_for(key, slot)`, `environment_windows(key)` (most recent first), `free_environment_slot`, `new_environment_window` and `environment_window_target(key, path)`: the window showing the path's project, else the most recent. `move_to_environment_window(view_id, key, slot=None)` uses them.
+- **Names:** `app/environment_window_names.py` (`EnvironmentWindowNames`, `default_window_name`: A … Z, AA …) stores renamed slots in `windows.json` per environment, shared by the service's windows. Names are validated (1–32 printable characters) and must differ from every other slot's, defaults included.
+  - **Rename Window…** in the environment menu, and the toolbar's name (now a button) rename the window.
+  - **Manage Groups…** has a "Window names" line per environment.
+- **Titles:** "UNITI — USFM A — NIV — 01GEN.usfm". The toolbar's project label shows the short name, with the folder as its tooltip.
+- **Groups don't move files:** `set_environment_window_group` is gone; `_document_group_changed` only refreshes the toolbar; a file opened inside an environment window keeps its group; the toolbar's Group dropdown sets the current file's group; a book chosen in the Book list takes the current book's group.
+- **Opening:** `open_path` lost its `group_id`; R6's "Open in USFM Environment", Open USFM Project…, Recent Projects (which re-applies the remembered group to the book) and Move to Environment Window use `environment_window_target`.
+- **Session:** `{environment, window: slot}`. An old `{environment, group}` record restores into the lowest free slot, as does a slot another window already has.
+- **Removed:** the Book list's open-files fallback for files outside a project (unreachable since T1).
+
+Tests:
+- `tests/app/test_environment_window_names.py` (4): default letters, renaming per environment and its file, validation and uniqueness, a damaged file;
+- `tests/app/test_environment_window.py`: windows named per environment, not per group (and a project's book going to its project's window); session identity, old and new; renaming and keeping a name; a closed window's slot reused; the Group dropdown setting only the current file's group; updated window, title and group expectations;
+- `tests/app/test_session_orchestration.py` +1: a restored window keeps its slot;
+- `tests/app/test_group_menus.py`: regrouping keeps a file in its window; Manage Groups… renames windows;
+- `tests/ui/test_document_group_editor.py` +1: window names per environment.
+
 ### T4 — One tab per project (items 2–5, answers 3 and 5)
 - **In a USFM window, each split shows one tab per project.**
   - Every open book of the project is still its own `UNITITextView` in that split.

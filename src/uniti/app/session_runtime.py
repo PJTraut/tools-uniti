@@ -38,8 +38,10 @@ ENVIRONMENT_WINDOW_EXTRA = "environment_window"
 
 def environment_window_identity(
     root: PaneRecord, views: dict[str, ViewRecord]
-) -> tuple[str, str | None] | None:
-    """The (environment key, group id) a saved window's views name, if any."""
+) -> tuple[str, int | None] | None:
+    """The (environment key, window slot) a saved window's views name, if
+    any. A record saved before round 3 T3 names a group instead: its slot is
+    None, so the window takes the lowest free slot."""
 
     pending = [root]
     while pending:
@@ -51,8 +53,8 @@ def environment_window_identity(
             if isinstance(value, dict) and isinstance(value.get("environment"), str):
                 from uniti.core.syntax_profiles import canonical_key
 
-                group = value.get("group")
-                return canonical_key(value["environment"]), group if isinstance(group, str) and group else None
+                slot = value.get("window")
+                return canonical_key(value["environment"]), slot if type(slot) is int and slot >= 0 else None
     return None
 
 
@@ -207,7 +209,7 @@ def capture_service_session(
                     record,
                     extra={
                         **record.extra,
-                        ENVIRONMENT_WINDOW_EXTRA: {"environment": identity[0], "group": identity[1] or ""},
+                        ENVIRONMENT_WINDOW_EXTRA: {"environment": identity[0], "window": identity[1]},
                     },
                 )
             views.append(record)

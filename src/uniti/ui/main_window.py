@@ -245,8 +245,9 @@ class UNITIMainWindow(QMainWindow):
 
         # Side-by-side sync by scripture reference (ADR-0017), every window.
         self._reference_sync = ReferenceSync(self)
-        # (environment key, group id) once this is an environment window.
-        self.environment_window: tuple[str, str | None] | None = None
+        # (environment key, slot) once this is an environment window: slot 0
+        # is "USFM A", 1 "USFM B" … (round 3 T3).
+        self.environment_window: tuple[str, int] | None = None
         self._environment_bar = None
         self._opening_into_environment = False
         # Sync opening a book in another split: no popups (P5).
@@ -266,6 +267,7 @@ class UNITIMainWindow(QMainWindow):
         # Each environment has its own groups (round 3 T2), shared by the
         # service's windows.
         self._environment_groups = self._make_environment_groups(service)
+        self._environment_window_names = self._make_environment_window_names(service)
         self._recent_files_store = (
             self._settings_store.recent_files
             if self._settings_store is not None
@@ -1727,23 +1729,19 @@ class UNITIMainWindow(QMainWindow):
         self._groups_and_recent_files.add_group_submenu(menu, view.view_id)
 
     def _document_group_changed(self, document_id: str, group_id: str | None) -> None:
-        """A file in an environment window belongs to that window's group
-        (ADR-0017); given another group, it moves to that group's window."""
+        """A file's group changed: environment windows showing it update
+        their Group dropdown. Groups don't move files between windows any
+        more (round 3 T3)."""
 
         service = self._service
         if service is None:
             return
         entry = service.documents.get(document_id)
-        moved = None
         for view_id in tuple(entry.view_ids):
             window = service.windows.window_for_view(view_id)
-            identity = getattr(window, "environment_window", None)
-            if identity is not None and identity[1] != group_id:
-                moved = service.move_to_environment_window(view_id, identity[0], group_id)
-        if moved is not None:
-            moved.statusBar().showMessage(
-                f"{entry.canonical_path.name} moved to {moved._title_prefix().removeprefix('UNITI — ')}", 5000
-            )
+            bar = getattr(window, "_environment_bar", None)
+            if bar is not None:
+                bar.refresh()
 
     def _show_assignment_menu(self, pane_id: str, position: QPoint) -> None:
         if self._service is None:
@@ -1832,6 +1830,63 @@ class UNITIMainWindow(QMainWindow):
         if service is not None:
             service._environment_groups = groups
         return groups
+
+    def _make_environment_window_names(self, service):
+        from uniti.app.environment_window_names import EnvironmentWindowNames
+        from uniti.core.environments.user_config import ENVIRONMENTS_FOLDER
+
+        shared = getattr(service, "_environment_window_names", None) if service is not None else None
+        if shared is not None:
+            return shared
+        store = self._settings_store
+        if store is None:
+            names = EnvironmentWindowNames()
+        else:
+            root = store.path.parent / ENVIRONMENTS_FOLDER
+            names = EnvironmentWindowNames(lambda key: root / descriptor_for_key(key).label)
+        if service is not None:
+            service._environment_window_names = names
+        return names
+
+    def environment_window_name(self) -> str | None:
+        """This environment window's name, e.g. "USFM A" (round 3 T3)."""
+
+        if self.environment_window is None:
+            return None
+        key, slot = self.environment_window
+        return f"{descriptor_for_key(key).label} {self._environment_window_names.name(key, slot)}"
+
+    def rename_environment_window(self, name: str | None = None) -> bool:
+        """Rename this window's slot for its environment (D4); asks for the
+        name when `name` is None."""
+
+        if self.environment_window is None:
+            return False
+        key, slot = self.environment_window
+        names = self._environment_window_names
+        if name is None:
+            label = descriptor_for_key(key).label
+            name, accepted = QInputDialog.getText(
+                self, "Rename Window", f"Name of this {label} window:", text=names.name(key, slot)
+            )
+            if not accepted:
+                return False
+        try:
+            names.rename(key, slot, name)
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, "Rename Window", str(exc))
+            return False
+        self._environment_window_names_changed(key)
+        return True
+
+    def _environment_window_names_changed(self, environment_key: str) -> None:
+        """Retitle every window of `environment_key` after a rename."""
+
+        windows = [self] if self._service is None else self._service.environment_windows(environment_key)
+        for window in windows:
+            if window._environment_bar is not None:
+                window._environment_bar.refresh()
+            window._on_current_changed(window._tabs.currentIndex())
 
     def groups_for(self, environment_key: str) -> tuple:
         """`environment_key`'s document groups (round 3 T2)."""
@@ -2237,7 +2292,7 @@ class UNITIMainWindow(QMainWindow):
         for path in matching:
             try:
                 view = self.open_path(
-                    path, open_mode=open_mode if path in asked else OpenMode.HERE, group_id=group_id
+                    path, open_mode=open_mode if path in asked else OpenMode.HERE
                 )
             except Exception as exc:
                 failures.append(f"{path.name}: {exc}")
@@ -2444,10 +2499,9 @@ class UNITIMainWindow(QMainWindow):
         *,
         profile: EncodingProfile | None = None,
         open_mode: "OpenMode | None" = None,
-        group_id: str | None = None,
     ) -> UNITITextView | None:
         """Open `path`. A file of a defined environment first asks how to open
-        (R6) — in its environment's window (for `group_id`) or as Plain Text
+        (R6) — in an environment window of its environment or as Plain Text
         — unless `open_mode` already says, the file is already open, or this
         is an environment window (where files are pinned, ADR-0017)."""
 
@@ -2502,7 +2556,7 @@ class UNITIMainWindow(QMainWindow):
                     )
                     return None
                 if open_mode is OpenMode.ENVIRONMENT:
-                    return self._environment_window_for(environment_key, group_id).open_path(path, profile=profile)
+                    return self._environment_window_target(environment_key, Path(path)).open_path(path, profile=profile)
             else:
                 open_mode = None
         if profile is None:
@@ -2743,20 +2797,29 @@ class UNITIMainWindow(QMainWindow):
 
     # --- environment windows (ADR-0017) -------------------------------------
 
-    def set_environment_window(self, environment_key: str, group_id: str | None) -> None:
+    def set_environment_window(self, environment_key: str, slot: int | None = None) -> None:
         """Make this an environment window: the frame (mode switch, and for
-        USFM the Book/Chapter/Verse selector) of `environment_key`, for the
-        files of document group `group_id` (None: ungrouped files)."""
+        USFM the Book/Chapter/Verse selector) of `environment_key`, in window
+        `slot` of that environment ("USFM A" is 0; round 3 T3). With no slot,
+        or one another window has, it takes the lowest free one."""
 
         from uniti.ui.environment_window import EnvironmentBar
 
-        if self.environment_window == (environment_key, group_id):
+        if self.environment_window is not None and self.environment_window[0] == environment_key and (
+            slot is None or self.environment_window[1] == slot
+        ):
             return
+        if self._service is not None:
+            taken = self._service.environment_window_for(environment_key, slot) if slot is not None else None
+            if slot is None or not isinstance(slot, int) or slot < 0 or (taken is not None and taken is not self):
+                slot = self._service.free_environment_slot(environment_key)
+        elif slot is None:
+            slot = 0
         if self._environment_bar is not None:
             self.removeToolBar(self._environment_bar)
             self._environment_bar.deleteLater()
-        self.environment_window = (environment_key, group_id)
-        self._environment_bar = EnvironmentBar(self, environment_key, group_id)
+        self.environment_window = (environment_key, slot)
+        self._environment_bar = EnvironmentBar(self, environment_key, slot)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._environment_bar)
         # The toolbar holds the mode switch; tabs don't repeat it.
         self._rich_views.set_mode_selector_visible(False)
@@ -2765,10 +2828,10 @@ class UNITIMainWindow(QMainWindow):
     def _open_in_environment(self, path: Path, profile: EncodingProfile | None) -> UNITITextView | None:
         """A file opened in an environment window lives there (ADR-0017):
         pinned to the window's environment, after an "are you sure" when
-        its extension isn't assigned to that environment, and in the
-        window's group. A file already open elsewhere moves here."""
+        its extension isn't assigned to that environment. A file already
+        open elsewhere moves here. It keeps its own group (round 3 T3)."""
 
-        key, group_id = self.environment_window
+        key, slot = self.environment_window
         if not environment_available(key, path):
             # USFM assumes a Paratext project (T1): a file outside one opens
             # as plain text, in an ordinary window.
@@ -2799,11 +2862,9 @@ class UNITIMainWindow(QMainWindow):
         entry = None if view is None else self._service.documents.entry_for_view(view.view_id)
         if view is None or entry is None:
             return view
-        if group_id is not None and entry.group_id != group_id:
-            self._set_document_group(entry.document_id, group_id)
         if self.view_for_id(view.view_id) is not view:
             # Open in another window: bring it into this one.
-            self._service.move_to_environment_window(view.view_id, key, group_id)
+            self._service.move_to_environment_window(view.view_id, key, slot)
         if self._environment.environment_key_for(view.document) != key:
             self._environment.set_document_environment(key, view, move=False)
             # Pinned just now: check it against its new environment.
@@ -2853,14 +2914,14 @@ class UNITIMainWindow(QMainWindow):
         if reloaded:
             self.statusBar().showMessage(f"Saved {path.name}; reloaded the environment configuration", 4000)
 
-    def _environment_window_for(self, environment_key: str, group_id: str | None) -> "UNITIMainWindow":
-        """The environment window of `environment_key` and `group_id`,
-        created when there is none yet; raised and focused."""
+    def _environment_window_target(self, environment_key: str, path: Path | None = None) -> "UNITIMainWindow":
+        """The environment window a file of `environment_key` goes to (its
+        project's, else the most recent; round 3 T3), created when there is
+        none yet; raised and focused."""
 
-        target = self._service.environment_window_for(environment_key, group_id)
+        target = self._service.environment_window_target(environment_key, path)
         if target is None:
-            target = self._service.new_window()
-            target.set_environment_window(environment_key, group_id)
+            target = self._service.new_environment_window(environment_key)
         target.show()
         target.raise_()
         target.activateWindow()
@@ -2882,51 +2943,16 @@ class UNITIMainWindow(QMainWindow):
         )
         return answer == QMessageBox.StandardButton.Yes
 
-    def set_environment_window_group(self, group_id: str | None) -> "UNITIMainWindow":
-        """Give this environment window, and every file in it, `group_id`.
-
-        With no window of that environment and group yet, this window becomes
-        it. Otherwise its files move into that window and this one closes.
-        Returns the window the files are in.
-        """
-
-        if self.environment_window is None or self._service is None:
-            return self
-        key, current = self.environment_window
-        if group_id == current:
-            return self
-        documents = []
-        for view in self.views:
-            entry = self._service.documents.entry_for_view(view.view_id)
-            if entry is not None and entry.document_id not in documents:
-                documents.append(entry.document_id)
-        other = self._service.environment_window_for(key, group_id)
-        if other is None:
-            # Re-key first, so regrouping the files keeps them here.
-            self.set_environment_window(key, group_id)
-            for document_id in documents:
-                self._set_document_group(document_id, group_id)
-            return self
-        for document_id in documents:
-            self._set_document_group(document_id, group_id)  # each moves to `other`
-        if not self.views:
-            self.close()
-        other.show()
-        other.raise_()
-        other.activateWindow()
-        return other
-
-    def move_to_environment_window(self, view: UNITITextView | None = None):
-        """Move a tab to its environment's window for its document group,
-        creating that window the first time (Dock returns it here)."""
+    def move_to_environment_window(self, view: UNITITextView | None = None, slot: int | None = None):
+        """Move a tab to an environment window of its environment (`slot`,
+        else its project's, else the most recent; round 3 T3), creating one
+        the first time (Dock returns it here)."""
 
         view = view if view is not None else self.current_view
         if view is None or self._service is None:
             return None
-        entry = self._service.documents.entry_for_view(view.view_id)
-        group_id = None if entry is None else entry.group_id
         key = self._environment.environment_key_for(view.document)
-        return self._service.move_to_environment_window(view.view_id, key, group_id)
+        return self._service.move_to_environment_window(view.view_id, key, slot)
 
     @staticmethod
     def _analyze_path_eol(

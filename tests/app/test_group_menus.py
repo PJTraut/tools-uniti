@@ -95,19 +95,21 @@ def test_new_group_creates_assigns_and_reaches_every_window(desktop, tmp_path: P
     assert "Translators" in _texts(_group_submenu(second._editor_context_menu(other)))
 
 
-def test_regrouping_a_file_in_an_environment_window_moves_it_to_that_groups_window(desktop, tmp_path: Path):
+def test_regrouping_a_file_in_an_environment_window_keeps_it_there(desktop, tmp_path: Path):
+    """Round 3 T3: groups don't move files between windows."""
+
     app, service = desktop
     main = service.new_window()
     view = _open(main, tmp_path / "GEN.usfm")
     main._set_document_group(service.documents.entry_for_view(view.view_id).document_id, "A")
-    window_a = main.move_to_environment_window(view)
-    assert window_a.environment_window == ("usfm", "A")
+    window = main.move_to_environment_window(view)
+    assert window.environment_window == ("usfm", 0)
 
-    next(a for a in _group_submenu(window_a._editor_context_menu(view)).actions() if a.text() == "B").trigger()
+    next(a for a in _group_submenu(window._editor_context_menu(view)).actions() if a.text() == "B").trigger()
 
-    window_b = service.windows.window_for_view(view.view_id)
-    assert window_b.environment_window == ("usfm", "B")
-    assert window_b.statusBar().currentMessage() == "GEN.usfm moved to USFM — B — TST"
+    assert service.windows.window_for_view(view.view_id) is window
+    assert service.documents.entry_for_view(view.view_id).group_id == "B"
+    assert window._environment_bar.group.currentText() == "B"
     # Dock still goes back to where the file came from.
     service.dock_view(view.view_id)
     assert service.windows.window_for_view(view.view_id) is main
@@ -145,7 +147,7 @@ def test_manage_groups_starts_at_the_files_environment(desktop, tmp_path: Path, 
     seen = {}
 
     class FakeEditor:
-        def __init__(self, groups, parent=None, *, environments=None, environment=None) -> None:
+        def __init__(self, groups, parent=None, *, environments=None, environment=None, **_kwargs) -> None:
             seen["environment"] = environment
             seen["labels"] = [label for _key, label, _groups in environments]
 
@@ -165,3 +167,35 @@ def test_manage_groups_starts_at_the_files_environment(desktop, tmp_path: Path, 
     assert [group.name for group in window.groups_for("usfm")] == ["Only"]
     assert entry.group_id is None  # its group B was removed
     assert [group.id for group in window.groups_for("plain_text")] == ["A", "B", "C"]
+
+
+def test_manage_groups_renames_an_environments_windows(desktop, tmp_path: Path, monkeypatch):
+    """Round 3 T3, D4: window names are edited next to the groups."""
+
+    app, service = desktop
+    main = service.new_window()
+    book = _open(main, tmp_path / "proj" / "GEN.usfm")
+    window = main.move_to_environment_window(book)
+    seen = {}
+
+    class FakeEditor:
+        def __init__(self, groups, parent=None, *, environments=None, environment=None, window_names=None) -> None:
+            seen["names"] = window_names
+
+        def exec(self) -> bool:
+            return True
+
+        def groups_by_environment(self):
+            return {}
+
+        def window_names_by_environment(self):
+            return {"usfm": ["Draft", "Compare", "C"]}
+
+    monkeypatch.setattr("uniti.ui.document_group_editor.DocumentGroupEditor", FakeEditor)
+
+    window.show_document_group_editor()
+
+    assert seen["names"]["usfm"] == ["A", "B", "C"]
+    assert window.environment_window_name() == "USFM Draft"
+    assert window.windowTitle().startswith("UNITI — USFM Draft")
+    assert service.new_environment_window("usfm").environment_window_name() == "USFM Compare"

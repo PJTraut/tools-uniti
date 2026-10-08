@@ -356,9 +356,23 @@ class DocumentGroupsAndRecentFiles:
         environments = [
             (descriptor.key, descriptor.label, owner.groups_for(descriptor.key)) for descriptor in ENVIRONMENTS
         ]
-        editor = DocumentGroupEditor(owner.groups_for(key), owner, environments=environments, environment=key)
+        names = owner._environment_window_names
+        window_names = {descriptor.key: names.names(descriptor.key, self._named_slots(descriptor.key)) for descriptor in ENVIRONMENTS}
+        editor = DocumentGroupEditor(
+            owner.groups_for(key), owner, environments=environments, environment=key, window_names=window_names
+        )
         if not editor.exec():
             return
+        edited_names = getattr(editor, "window_names_by_environment", dict)()
+        for edited_key, edited in edited_names.items():
+            if edited == window_names.get(edited_key):
+                continue
+            try:
+                names.set_names(edited_key, edited)
+            except (OSError, ValueError) as exc:
+                QMessageBox.warning(owner, "Window Names", str(exc))
+                continue
+            owner._environment_window_names_changed(edited_key)
         for edited_key, groups in editor.groups_by_environment().items():
             before = owner.groups_for(edited_key)
             if tuple(groups) == tuple(before):
@@ -369,6 +383,16 @@ class DocumentGroupsAndRecentFiles:
                     for entry in self._entries_of(group_id, edited_key):
                         owner._service.documents.set_group(entry.document_id, None)
             self._publish_groups(edited_key, groups)
+
+    def _named_slots(self, environment_key: str) -> int:
+        """How many window names Manage Groups… shows: every open or
+        renamed slot, and at least three."""
+
+        owner = self._owner
+        slots = [slot for slot in owner._environment_window_names.renamed(environment_key)]
+        if owner._service is not None:
+            slots.extend(window.environment_window[1] for window in owner._service.environment_windows(environment_key))
+        return max([3] + [slot + 1 for slot in slots])
 
     def _next_group_color(self, environment_key: str) -> str:
         groups = self._owner.groups_for(environment_key)
@@ -459,7 +483,7 @@ class DocumentGroupsAndRecentFiles:
             group_id = match.group_id if match is not None else None
         known_group = group_id if self._group_by_id(group_id, self._key_for_path(path)) is not None else None
         try:
-            view = owner.open_path(path, group_id=known_group)
+            view = owner.open_path(path)
         except Exception as exc:
             QMessageBox.critical(owner, "Open Failed", f"{path}\n\n{exc}")
             return

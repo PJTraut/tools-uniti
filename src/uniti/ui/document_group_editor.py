@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QInputDialog,
+    QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -43,6 +45,8 @@ class DocumentGroupEditor(QDialog):
 
     With `environments` ([(key, label, groups)]) it edits each environment's
     groups, starting at `environment`; `groups` is then that environment's.
+    With `window_names` ({key: [name, …]}) it also edits each environment's
+    window names (round 3 T3, D4), as one comma-separated line.
     """
 
     def __init__(
@@ -52,6 +56,7 @@ class DocumentGroupEditor(QDialog):
         *,
         environments=None,
         environment: str | None = None,
+        window_names=None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Document Groups")
@@ -69,6 +74,16 @@ class DocumentGroupEditor(QDialog):
         if self._key is not None:
             self.environment_choice.setCurrentIndex(self.environment_choice.findData(self._key))
         self.environment_choice.currentIndexChanged.connect(self._environment_chosen)
+        self._window_names: dict[str | None, str] = {
+            key: ", ".join(names) for key, names in (window_names or {}).items()
+        }
+        self.window_names_label = QLabel("Window names:", self)
+        self.window_names_edit = QLineEdit(self)
+        self.window_names_edit.setAccessibleName("Window names")
+        self.window_names_edit.setToolTip("This environment's windows, in order, separated by commas (e.g. A, B, C)")
+        self.window_names_edit.setText(self._window_names.get(self._key, ""))
+        for widget in (self.window_names_label, self.window_names_edit):
+            widget.setVisible(bool(self._window_names))
 
         self._list = QListWidget(self)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -102,6 +117,10 @@ class DocumentGroupEditor(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(self.environment_choice)
         layout.addWidget(self._list)
+        names_row = QHBoxLayout()
+        names_row.addWidget(self.window_names_label)
+        names_row.addWidget(self.window_names_edit, 1)
+        layout.addLayout(names_row)
         layout.addLayout(buttons)
         self.resize(360, 320)
 
@@ -119,13 +138,26 @@ class DocumentGroupEditor(QDialog):
 
         return {key: tuple(groups) for key, groups in self._by_environment.items() if key is not None}
 
+    def window_names_by_environment(self) -> dict[str, list[str]]:
+        """Every environment's window names, as edited."""
+
+        self._window_names[self._key] = self.window_names_edit.text()
+        return {
+            key: [name.strip() for name in text.split(",") if name.strip()]
+            for key, text in self._window_names.items()
+            if key is not None
+        }
+
     def set_environment(self, key: str) -> None:
         self.environment_choice.setCurrentIndex(self.environment_choice.findData(key))
 
     def _environment_chosen(self, index: int) -> None:
         key = self.environment_choice.itemData(index)
         if key in self._by_environment:
+            if self._window_names:
+                self._window_names[self._key] = self.window_names_edit.text()
             self._key = key
+            self.window_names_edit.setText(self._window_names.get(key, ""))
             self._populate()
 
     def _populate(self) -> None:

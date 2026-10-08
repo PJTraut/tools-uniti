@@ -42,7 +42,7 @@ When you open a USFM file that uses markers no loaded stylesheet defines, a repo
 The environment window's toolbar has **Book**, **Chapter** and **Verse** at its right end.
 - **Book** lists the project's books.
 
-  Each book shows its `\id` code and its `\h` line, e.g. "GEN Genesis". UNITI looks for `\h` in the book's first 10 lines; a book without one shows just its code. Choosing a book opens it in this window and group, in the current mode.
+  Each book shows its `\id` code and its `\h` line, e.g. "GEN Genesis". UNITI looks for `\h` in the book's first 10 lines; a book without one shows just its code. Choosing a book opens it in this window, in the current book's mode and group.
 - **Chapter** and **Verse** jump to that place and follow the caret as it moves.
 
 Jumping, here or with **Go to Chapter:Verse…** (Ctrl+Alt+G), puts the verse a third of the way down and highlights it in every mode. The highlight clears when the caret leaves the verse.
@@ -56,7 +56,7 @@ When two or more splits of one window show files of the **same document group**,
   - A project without the book stays put, and the status bar says so ("GEN isn't in 02EXO.usfm").
 - **Book selector:** choosing a book in the Book selector carries the group's other splits to that book the same way.
 - **Bridges and parts:** verse bridges (`\v 10-12`) and parts (`\v 11a`) are matched.
-- Ungrouped files don't sync. To group everything in an environment window at once, use the toolbar's **Group** dropdown.
+- Ungrouped files don't sync. To put a file in a group, use the toolbar's **Group** dropdown.
 - Turn sync on or off with **Sync Side-by-Side by Reference** (toolbar or menu).
 
 ## Versification
@@ -74,7 +74,7 @@ When a mapping lands on a verse the text doesn't have, sync uses the same refere
 
 **File → Open USFM Project…** opens a Paratext project folder: one with a `Settings.xml`.
 - **Book:** UNITI opens one book, the one you were last in (otherwise the first), and the Book list opens the rest.
-- **Group:** the project goes to the USFM window of its group. That's the last group used, otherwise the active USFM window's group, otherwise Ungrouped.
+- **Window and group:** the book opens in the USFM window that already shows the project, otherwise the most recently used USFM window, otherwise a new "USFM A". It gets the group the project was left in.
 - **Recent Projects:** **File → Recent Projects** remembers each project's book, chapter:verse and group.
 - **From `Settings.xml`,** UNITI reads the name, the book-file naming, the encoding (books open in it), the versification, and the stylesheet to use in place of `usfm.sty`.
 - **Books opened as files:** a file opened with Open File inside a project folder counts as that project's book, whatever its extension. A file outside any project opens as plain text.

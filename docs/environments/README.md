@@ -31,14 +31,18 @@ Some opens don't ask:
 
 ## Environment windows
 
-An environment window is an ordinary UNITI window for **one environment and one document group**, for example "USFM — A". It has tabs, splits, Find/Replace and saving like any window, plus a toolbar across the top. The toolbar holds the environment and group, the view-mode buttons (for USFM: Plain Text / Standard / Preview) and the environment's own controls (for USFM: Book, Chapter, Verse and Sync).
+An environment window is an ordinary UNITI window for **one environment**, named "USFM A", "USFM B", "Plain Text A" and so on. It has tabs, splits, Find/Replace and saving like any window, plus a toolbar across the top. The toolbar holds the window's name, the current file's group, the view-mode buttons (for USFM: Plain Text / Standard / Preview) and the environment's own controls (for USFM: Book, Chapter, Verse and Sync).
+
+**Names.** An environment's first window is "A", its second "B", and so on; a new window takes the first free letter. To rename a window, click its name on the toolbar or use **Rename Window…** in the environment menu. **Manage Groups…** also edits each environment's window names, as a comma-separated list. A name belongs to its place in that order: rename the first USFM window "Draft" and it stays "Draft" after a restart. Each environment has its own names, saved in `windows.json` in its configuration folder.
+
+**Which window a file goes to:** the window that already shows a book of the same Paratext project; otherwise the environment's most recently used window; otherwise a new one.
 
 Ways a file gets there:
 - **Opening:** "Open in <Environment> Environment" in the dialog above.
 - **Moving:** **Move to Environment Window** in the environment menu. **Dock** (on the tab) takes the file back where it came from.
 - **Pinning:** choosing an environment in **Environment for This Document**. The file moves to that environment's window.
 - **Opening inside the window:** a file opened inside an environment window lives there.
-  - It's pinned to that environment and joins the window's group.
+  - It's pinned to that environment, and keeps its own group.
   - If its extension isn't assigned to that environment, UNITI asks "Open as <Environment>?" first.
   - A file that's already open somewhere else moves in.
 
@@ -53,12 +57,7 @@ Environment windows come back when UNITI restarts.
 - The groups you had before environments had their own are Plain Text's groups now.
 - Each environment's groups are saved in `groups.json` in its configuration folder (see [Configuration](#configuration)).
 
-A file in an environment window belongs to that window's group.
-- **One file:** give it another group (right-click its tab or its text → **Document Group**) and it moves to that group's environment window. **Dock** still takes it back where it came from.
-- **The whole window:** use the **Group** dropdown on the toolbar. Choosing a group regroups every file in the window.
-  - If that group has no window of this environment yet, this window becomes it (e.g. "USFM — A").
-  - Otherwise the files join that window and this one closes.
-  - The dropdown also has **New Group…** and **Manage Groups…**. This is the quick way to put texts side by side for sync.
+Files of any group can share an environment window. The toolbar's **Group** dropdown shows and sets the current file's group, and has **New Group…** and **Manage Groups…**. Giving a file another group (there, or by right-clicking its tab or text → **Document Group**) doesn't move it.
 
 ## Undefined markup
 

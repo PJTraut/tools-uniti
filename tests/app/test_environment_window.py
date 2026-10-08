@@ -46,7 +46,9 @@ def _group(window, service, view, group_id: str) -> None:
     window._set_document_group(entry.document_id, group_id)
 
 
-def test_move_to_environment_window_groups_files_by_environment_and_group(desktop, tmp_path: Path):
+def test_environment_windows_are_named_per_environment_not_per_group(desktop, tmp_path: Path):
+    """Round 3 T3: "USFM A", "USFM B" … hold files of any group."""
+
     app, service = desktop
     main = service.new_window()
     first = main.open_path(_write(tmp_path / "a", "01GEN.usfm", _GEN_A))
@@ -58,16 +60,29 @@ def test_move_to_environment_window_groups_files_by_environment_and_group(deskto
 
     usfm_a = main.move_to_environment_window(first)
     assert usfm_a is not main
-    assert usfm_a.environment_window == ("usfm", "A")
+    assert usfm_a.environment_window == ("usfm", 0)
+    assert usfm_a.environment_window_name() == "USFM A"
     assert usfm_a.current_view is first
     assert usfm_a._environment_bar is not None
-    assert usfm_a.windowTitle() == "UNITI — USFM — A — TST — 01GEN.usfm"
+    assert usfm_a.windowTitle() == "UNITI — USFM A — TST — 01GEN.usfm"
     # The tab's own mode selector moves to the window's toolbar.
     assert usfm_a._rich_views.pane_mode_selector is False
 
-    assert main.move_to_environment_window(second) is usfm_a  # same group: same window
-    usfm_b = main.move_to_environment_window(third)
-    assert usfm_b not in (main, usfm_a) and usfm_b.environment_window == ("usfm", "B")
+    # Every group goes to the most recent USFM window, and keeps its group.
+    assert main.move_to_environment_window(second) is usfm_a
+    assert main.move_to_environment_window(third) is usfm_a
+    assert service.documents.entry_for_view(third.view_id).group_id == "B"
+
+    # A second window is "USFM B"; a slot can be asked for.
+    usfm_b = service.new_environment_window("usfm")
+    assert usfm_b.environment_window == ("usfm", 1) and usfm_b.environment_window_name() == "USFM B"
+    assert usfm_a.move_to_environment_window(third, slot=1) is usfm_b
+    # A book of a project already shown somewhere goes to that window, even
+    # when another USFM window is more recent.
+    exodus = main.open_path(_write(tmp_path / "a", "02EXO.usfm", _EXO))
+    service.windows.activate(usfm_b.window_id, None)
+    assert service.environment_windows("usfm")[0] is usfm_b
+    assert main.move_to_environment_window(exodus) is usfm_a
 
     # Dock takes a file back to where it came from.
     service.dock_view(first.view_id)
@@ -94,10 +109,15 @@ def test_environment_window_survives_session_capture(desktop, tmp_path: Path):
         updated_at="2026-10-07T00:00:00Z",
     )
     record = next(item for item in snapshot.manifest.views if item.view_id == view.view_id)
-    assert record.extra[ENVIRONMENT_WINDOW_EXTRA] == {"environment": "usfm", "group": "A"}
+    assert record.extra[ENVIRONMENT_WINDOW_EXTRA] == {"environment": "usfm", "window": 0}
     window_record = next(item for item in snapshot.manifest.windows if item.window_id == window.window_id)
     views = {item.view_id: item for item in snapshot.manifest.views}
-    assert environment_window_identity(window_record.root, views) == ("usfm", "A")
+    assert environment_window_identity(window_record.root, views) == ("usfm", 0)
+    # A record saved before round 3 T3 names a group: the window takes a free slot.
+    from dataclasses import replace
+
+    old = {view.view_id: replace(record, extra={ENVIRONMENT_WINDOW_EXTRA: {"environment": "usfm", "group": "A"}})}
+    assert environment_window_identity(window_record.root, old) == ("usfm", None)
     main_record = next(item for item in snapshot.manifest.windows if item.window_id == main.window_id)
     assert environment_window_identity(main_record.root, views) is None
 
@@ -150,15 +170,14 @@ def test_book_selector_lists_a_projects_books_and_opens_them_into_the_group(desk
     # The id and the \h line; a book without \h (GEN here) shows its id
     # alone, even though BookNames.xml names it.
     assert [bar.book.itemText(index) for index in range(bar.book.count())] == ["GEN", "EXO Exodus"]
-    assert window.windowTitle() == "UNITI — USFM — Ungrouped — NIV11 — 01GENNIV11.SFM"
+    assert window.windowTitle() == "UNITI — USFM A — NIV11 — 01GENNIV11.SFM"
     assert "NIV11" in bar.project_label.text()
+    assert "New International Version" not in bar.project_label.toolTip()  # the short name only
 
-    # Regrouped, the book moves to that group's USFM window; a book chosen
-    # there opens into that window and group.
+    # Regrouped, the book stays in its window (round 3 T3); a book chosen
+    # there opens into this window, in the current book's group.
     _group(window, service, view, "A")
-    window = service.windows.window_for_view(view.view_id)
-    assert window.environment_window == ("usfm", "A")
-    window._rich_views.show("sfm.preview", view)
+    assert service.windows.window_for_view(view.view_id) is window
     opened = window._environment_bar.open_book(exodus)
 
     assert opened is window.current_view and opened.document.path == exodus
@@ -320,8 +339,8 @@ def test_plain_text_files_get_an_environment_window(desktop, tmp_path: Path):
 
     window = main.move_to_environment_window(view)
 
-    assert window.environment_window == ("plain_text", "A")
-    assert window.windowTitle() == "UNITI — Plain Text — A — notes.txt"
+    assert window.environment_window == ("plain_text", 0)
+    assert window.windowTitle() == "UNITI — Plain Text A — notes.txt"
     bar = window._environment_bar
     assert list(bar.mode_actions) == [None]  # no rich views for plain text
     assert bar.book.isHidden() and bar.chapter.isHidden()
@@ -347,7 +366,8 @@ def test_a_file_opened_in_an_environment_window_lives_there(desktop, tmp_path: P
     assert asked == []  # .usfm belongs to USFM: no question
     assert window.view_for_id(opened.view_id) is opened
     entry = service.documents.entry_for_view(opened.view_id)
-    assert entry.group_id == "A" and entry.environment_override is None
+    # It keeps its own group: windows don't stand for one (round 3 T3).
+    assert entry.group_id is None and entry.environment_override is None
 
 
 def test_an_unknown_extension_asks_before_it_is_pinned(desktop, tmp_path: Path):
@@ -410,12 +430,12 @@ def test_assigning_an_environment_moves_the_file_into_its_window(desktop, tmp_pa
     # Plain Text's group A isn't one of USFM's groups (round 3 T2): the file
     # leaves its group as it changes environment.
     assert service.documents.entry_for_view(view.view_id).group_id is None
-    window = service.environment_window_for("usfm", None)
+    window = service.environment_window_for("usfm", 0)
     assert window is not None and window.view_for_id(view.view_id) is view
 
     # Re-assigned inside an environment window: it moves to the new one.
     window._environment.set_document_environment("plain_text", view)
-    plain = service.environment_window_for("plain_text", None)
+    plain = service.environment_window_for("plain_text", 0)
     assert plain is not None and plain.view_for_id(view.view_id) is view
 
 
@@ -546,7 +566,7 @@ def test_opening_in_the_environment_puts_the_file_in_its_window(desktop, tmp_pat
 
     assert answer.asked == [("01GEN.usfm", "USFM", 1)]
     window = service.windows.window_for_view(view.view_id)
-    assert window is not main and window.environment_window == ("usfm", None)
+    assert window is not main and window.environment_window == ("usfm", 0)
 
 
 def test_opening_as_plain_text_has_no_extended_features(desktop, tmp_path: Path, answer):
@@ -594,7 +614,7 @@ def test_no_question_for_plain_text_open_files_or_environment_windows(desktop, t
     assert answer.asked == []
 
 
-def test_a_recent_file_opens_in_its_groups_environment_window(desktop, tmp_path: Path, answer):
+def test_a_recent_file_opens_in_the_environment_with_its_group(desktop, tmp_path: Path, answer):
     app, service = desktop
     main = service.new_window()
     path = _write(tmp_path, "01GEN.usfm", _GEN_A)
@@ -604,7 +624,7 @@ def test_a_recent_file_opens_in_its_groups_environment_window(desktop, tmp_path:
 
     entry = service.documents.find_path(path)
     window = service.windows.window_for_view(entry.view_ids[0])
-    assert window.environment_window == ("usfm", "A") and entry.group_id == "A"
+    assert window.environment_window == ("usfm", 0) and entry.group_id == "A"
 
 
 def test_open_folder_by_type_asks_once_for_the_batch(desktop, tmp_path: Path, answer, monkeypatch):
@@ -625,7 +645,7 @@ def test_open_folder_by_type_asks_once_for_the_batch(desktop, tmp_path: Path, an
     main.open_folder_by_type()
 
     assert answer.asked == [("01GEN.usfm", "USFM", 2)]
-    window = service.environment_window_for("usfm", None)
+    window = service.environment_window_for("usfm", 0)
     assert window is not None and len(window.views) == 2
 
 
@@ -827,7 +847,7 @@ def _choose_group(bar, text: str) -> None:
     bar._group_chosen(index)
 
 
-def test_the_group_dropdown_shows_the_windows_group(desktop, tmp_path: Path):
+def test_the_group_dropdown_shows_the_current_files_group(desktop, tmp_path: Path):
     app, service = desktop
     main = service.new_window()
     view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
@@ -839,37 +859,26 @@ def test_the_group_dropdown_shows_the_windows_group(desktop, tmp_path: Path):
     assert bar.group.currentText() == "Ungrouped"
 
 
-def test_choosing_a_group_regroups_the_window_and_its_files(desktop, tmp_path: Path):
+def test_choosing_a_group_sets_the_current_files_group_only(desktop, tmp_path: Path):
+    """Round 3 T3: the dropdown is the current file's group; nothing moves."""
+
     app, service = desktop
     main = service.new_window()
     left = main.open_path(_write(tmp_path / "a", "01GEN.usfm", _GEN_A))
     window = main.move_to_environment_window(left)
     right = window.open_path(_write(tmp_path / "b", "01GEN.usfm", _GEN_B))
+    window._select_view(left)
 
     _choose_group(window._environment_bar, "A")
 
-    assert window.environment_window == ("usfm", "A")
-    assert {service.documents.entry_for_view(v.view_id).group_id for v in (left, right)} == {"A"}
+    assert window.environment_window == ("usfm", 0)
+    assert service.documents.entry_for_view(left.view_id).group_id == "A"
+    assert service.documents.entry_for_view(right.view_id).group_id is None
     assert all(service.windows.window_for_view(v.view_id) is window for v in (left, right))
     assert window._environment_bar.group.currentText() == "A"
-    assert window.windowTitle().startswith("UNITI — USFM — A")
-
-
-def test_choosing_a_group_that_has_a_window_moves_the_files_there(desktop, tmp_path: Path):
-    app, service = desktop
-    main = service.new_window()
-    first = main.open_path(_write(tmp_path / "a", "01GEN.usfm", _GEN_A))
-    second = main.open_path(_write(tmp_path / "b", "01GEN.usfm", _GEN_B))
-    _group(main, service, first, "B")
-    window_b = main.move_to_environment_window(first)
-    ungrouped = main.move_to_environment_window(second)
-    assert ungrouped is not window_b
-
-    _choose_group(ungrouped._environment_bar, "B")
-
-    assert service.windows.window_for_view(second.view_id) is window_b
-    assert service.documents.entry_for_view(second.view_id).group_id == "B"
-    assert ungrouped not in service.windows.windows  # emptied and closed
+    window._select_view(right)
+    assert window._environment_bar.group.currentText() == "Ungrouped"
+    assert window.windowTitle().startswith("UNITI — USFM A")
 
 
 def test_new_group_from_the_dropdown(desktop, tmp_path: Path, monkeypatch):
@@ -883,10 +892,55 @@ def test_new_group_from_the_dropdown(desktop, tmp_path: Path, monkeypatch):
 
     _choose_group(window._environment_bar, "New Group…")
 
-    group_id = window.environment_window[1]
+    group_id = service.documents.entry_for_view(view.view_id).group_id
     assert window._group_by_id(group_id, "usfm").name == "Translators"
-    assert service.documents.entry_for_view(view.view_id).group_id == group_id
     assert window._environment_bar.group.currentText() == "Translators"
+
+
+# --- Round 3 T3: window names ---------------------------------------------------------
+
+
+def test_a_window_can_be_renamed_and_keeps_its_name(desktop, tmp_path: Path, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    window._environment.refresh()
+    assert window._environment.rename_window_action is not None
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("Compare", True))
+
+    window._environment.rename_window_action.trigger()
+
+    assert window.environment_window_name() == "USFM Compare"
+    assert window._environment_bar.title.text() == "USFM Compare"
+    assert window.windowTitle().startswith("UNITI — USFM Compare — TST")
+    # The name belongs to the slot: saved with the environment's settings.
+    saved = tmp_path / "Environments" / "USFM" / "windows.json"
+    assert saved.is_file() and "Compare" in saved.read_text(encoding="utf-8")
+    # A second window is still "USFM B"; Plain Text windows have their own names.
+    assert service.new_environment_window("usfm").environment_window_name() == "USFM B"
+    assert service.new_environment_window("plain_text").environment_window_name() == "Plain Text A"
+    # Names stay different.
+    from PySide6.QtWidgets import QMessageBox
+
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(args[2]))
+    assert window.rename_environment_window("B") is False
+    assert warnings == ["Window names must be different"]
+
+
+def test_a_closed_windows_slot_is_reused(desktop, tmp_path: Path):
+    app, service = desktop
+    first = service.new_environment_window("usfm")
+    second = service.new_environment_window("usfm")
+    assert (first.environment_window, second.environment_window) == (("usfm", 0), ("usfm", 1))
+
+    first.close()
+    app.processEvents()
+
+    assert service.new_environment_window("usfm").environment_window == ("usfm", 0)
 
 
 # --- Round 3 T1: USFM assumes a Paratext project -------------------------------------

@@ -107,10 +107,15 @@ class UsfmProjectController(QObject):
         remembered = self.store.find(project.folder) if self.store is not None else None
         book = next((item for item in books if remembered is not None and item.code == remembered.book), books[0])
         group_id = self._group_for(remembered)
-        target = self._target_window(group_id)
+        target = self._target_window(book.path)
         view = target.open_path(book.path)
         if view is None:
             return None
+        service = target._service
+        entry = None if service is None else service.documents.entry_for_view(view.view_id)
+        if group_id is not None and entry is not None and entry.group_id != group_id:
+            # The project comes back in the group it was left in.
+            target._set_document_group(entry.document_id, group_id)
         if remembered is not None and remembered.book == book.code and remembered.reference:
             _go_to_reference(target, view, remembered.reference)
         if self.store is not None:
@@ -118,26 +123,23 @@ class UsfmProjectController(QObject):
         return view
 
     def _group_for(self, remembered: "RecentProject | None") -> str | None:
-        """The remembered group, else the active USFM window's, else none."""
+        """The remembered group, if USFM still has it."""
 
-        if remembered is not None and (
-            remembered.group_id is None or self._window._group_by_id(remembered.group_id, USFM) is not None
-        ):
+        if remembered is not None and self._window._group_by_id(remembered.group_id, USFM) is not None:
             return remembered.group_id
-        identity = self._window.environment_window
-        if identity is not None and identity[0] == USFM:
-            return identity[1]
         return None
 
-    def _target_window(self, group_id: str | None) -> "UNITIMainWindow":
+    def _target_window(self, book_path: Path) -> "UNITIMainWindow":
+        """The USFM window showing this project, else the most recent one,
+        else a new one (round 3 T3)."""
+
         window = self._window
         service = window._service
         if service is None:
             return window
-        target = service.environment_window_for(USFM, group_id)
+        target = service.environment_window_target(USFM, book_path)
         if target is None:
-            target = service.new_window()
-            target.set_environment_window(USFM, group_id)
+            target = service.new_environment_window(USFM)
         target.show()
         target.raise_()
         target.activateWindow()

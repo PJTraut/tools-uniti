@@ -1,0 +1,42 @@
+# ADR-0019: Named Environment Windows, Groups per Environment, Project Tabs
+
+Date: 2026-10-08
+Status: accepted (implemented: [round 3 plan](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T3; T4–T7 to follow)
+
+## Context
+
+USFM field-test feedback, round 3 (2026-10-08, `@externalresources/field_test_feedback`):
+- "environmental windows shares groups; groups are per environment, and each environment has its own set of groups."
+- A USFM tab is the project: titled with its short name; changing the book changes it in the tab; projects are assigned to groups, whose colour colours the tab.
+- A tab's right-click menu splits (up to four panels) and moves it between windows: "name environmental windows: e.g. USFM A; USFM B; USFM C; etc."
+
+The user's answers, the same day:
+- Groups "bind" projects across the windows of an environment. A window no longer stands for a group.
+- Each environment has its own groups, starting from A, B, C.
+- USFM assumes a Paratext project. A file outside one is plain text for now.
+- Only the project's short name is shown, everywhere.
+- D1–D5 (the plan's decisions) as recommended. Window names can be reconfigured by the user per environment, as groups are.
+
+## Decision
+
+1. **USFM needs a project** (T1). An environment can require a project (`catalog.PROJECT_ENVIRONMENTS`, today `{"usfm"}`). A file assigned to it whose folder has no valid `Settings.xml` resolves to Plain Text wherever a window gives a file its environment, and USFM isn't offered for it.
+2. **Each environment has its own groups** (T2). They're stored as `groups.json` in the environment's user configuration folder (`EnvironmentGroups`). Plain Text keeps the groups saved before this decision; the others start from A, B, C. A file's group id is read in its environment, and choosing another environment for a file clears its group.
+3. **Environment windows are named per environment, not per group** (T3). This supersedes [ADR-0017](ADR-0017-environment-windows-in-place-views-reference-sync.md) decision 2's "one per environment and document group".
+   - A window is (environment, slot). Slot 0 is "USFM A", slot 1 "USFM B" …; a new window takes the lowest free slot.
+   - The user can rename a slot (**Rename Window…**, the toolbar's name, or **Manage Groups…**). Names are stored as `windows.json` next to the environment's groups.
+   - A file opened into an environment goes to the window that already shows its project, else the environment's most recent window, else a new one.
+   - Groups no longer move files between windows. The toolbar's Group dropdown is the current file's group (the project's from T5).
+   - The identity rides in `ViewRecord.extra["environment_window"]` as `{environment, window}`. A record saved by group restores into the lowest free slot.
+4. **To follow in this round** (T4–T7): one tab per project titled with its short name, the book changed in the tab (asking before leaving unsaved changes), groups per project binding projects for sync across windows, the tab's Split and Window menu (up to four splits), and read-only folders.
+
+## Consequences
+
+- No settings or session schema change. Groups and window names are new files in the per-environment folders; the window identity is a new value in an existing `extra` blob.
+- ADR-0017 decision 3's Book list for files outside a project is gone (decision 1).
+- ADR-0017 decision 4 (sync within one window, by document group) stands until T5 extends it across windows, by project group.
+- [ADR-0018](ADR-0018-usfm-projects-and-recent-projects.md)'s consequence "a document group is still which splits move together" stands; Open USFM Project… now opens into the project's window, else the most recent USFM window, and gives the book its remembered group.
+
+## Affected records
+
+- [ADR-0017](ADR-0017-environment-windows-in-place-views-reference-sync.md) decision 2 is superseded where noted; decision 3's single-file Book list is removed.
+- [ADR-0018](ADR-0018-usfm-projects-and-recent-projects.md) decision 2's "the USFM environment window of the project's document group" becomes decision 3's window choice.

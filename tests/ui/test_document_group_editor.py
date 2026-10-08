@@ -174,3 +174,24 @@ def test_editor_edits_each_environments_groups(qapp, monkeypatch):
         assert editor.groups_by_environment() == {"plain_text": _starting_groups()[1:], "usfm": usfm}
     finally:
         editor.close()
+
+
+def test_editor_edits_each_environments_window_names(qapp):
+    editor = DocumentGroupEditor(
+        _starting_groups(),
+        environments=[("plain_text", "Plain Text", ()), ("usfm", "USFM", _starting_groups())],
+        environment="usfm",
+        window_names={"plain_text": ["A", "B", "C"], "usfm": ["A", "B", "C"]},
+    )
+    try:
+        assert editor.window_names_edit.text() == "A, B, C"
+        editor.window_names_edit.setText("Draft, Compare , C")
+        editor.set_environment("plain_text")
+        assert editor.window_names_edit.text() == "A, B, C"
+
+        assert editor.window_names_by_environment() == {
+            "plain_text": ["A", "B", "C"],
+            "usfm": ["Draft", "Compare", "C"],
+        }
+    finally:
+        editor.close()

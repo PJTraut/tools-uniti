@@ -92,6 +92,7 @@ class EnvironmentController:
         self.plain_mode_action: QAction | None = None
         self.assignment_action: QAction | None = None
         self.move_to_window_action: QAction | None = None
+        self.rename_window_action: QAction | None = None
         self.configuration_action: QAction | None = None
         self.configuration_dialog = None
         self.undefined_dialogs: dict[str, object] = {}  # view id -> report
@@ -190,9 +191,7 @@ class EnvironmentController:
             return
         in_environment_window = window.environment_window is not None
         if environment_key is not None or (in_environment_window and window.environment_window[0] != key):
-            entry = window._service.documents.entry_for_view(view.view_id)
-            group_id = None if entry is None else entry.group_id
-            if window.environment_window != (key, group_id):
+            if not in_environment_window or window.environment_window[0] != key:
                 window.move_to_environment_window(view)
 
     def active_for(self, document: "Document") -> ActiveEnvironment:
@@ -460,17 +459,21 @@ class EnvironmentController:
         window = self._window
         menu.addSeparator()
         move = QAction("Move to Environment Window", window)
-        move.setToolTip("Move this file to the window of its environment and document group")
-        group_id = None
-        if window._service is not None:
-            entry = window._service.documents.entry_for_view(view.view_id)
-            group_id = None if entry is None else entry.group_id
-        in_place = window.environment_window == (environment_key, group_id)
+        move.setToolTip("Move this file to a window of its environment")
+        in_place = window.environment_window is not None and window.environment_window[0] == environment_key
         move.setEnabled(window._service is not None and not in_place)
         move.triggered.connect(lambda _checked=False, view=view: window.move_to_environment_window(view))
         menu.addAction(move)
         self._owned_command_actions.append(move)
         self.move_to_window_action = move
+        self.rename_window_action = None
+        if window.environment_window is not None:
+            rename = QAction("Rename Window…", window)
+            rename.setToolTip(f"Rename {window.environment_window_name()}")
+            rename.triggered.connect(lambda _checked=False: window.rename_environment_window())
+            menu.addAction(rename)
+            self._owned_command_actions.append(rename)
+            self.rename_window_action = rename
         if environment_key in REFERENCE_ENVIRONMENTS:
             menu.addAction(window._reference_sync.action)
             menu.addMenu(self._versification_menu(view))

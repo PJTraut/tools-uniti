@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyleOptionComboBox,
     QToolBar,
+    QToolButton,
     QWidget,
 )
 
@@ -41,7 +42,6 @@ from uniti.core.environments.sfm.references import (
     Verse,
     book_header,
     book_header_for_path,
-    book_rank,
 )
 from uniti.core.environments.sfm.versification import map_reference
 from uniti.ui.rich_view import PLAIN_TEXT_LABEL, reference_highlight_color
@@ -412,28 +412,31 @@ class ReferenceSync(QObject):
 class EnvironmentBar(QToolBar):
     """The environment frame of an environment window."""
 
-    def __init__(self, window: "UNITIMainWindow", environment_key: str, group_id: str | None) -> None:
+    def __init__(self, window: "UNITIMainWindow", environment_key: str, slot: int) -> None:
         super().__init__("Environment", window)
         self.setObjectName("environmentBar")
         self.setMovable(False)
         self._window = window
         self.environment_key = environment_key
-        self.group_id = group_id
+        self.slot = slot
         self._updating = False
         self._books_project: Path | None = None
         self._books: tuple[tuple[str, Path], ...] = ()
         self._map: ReferenceMap | None = None
 
-        self.title = QLabel(self)
-        self.title.setContentsMargins(6, 0, 6, 0)
+        # The window's name ("USFM A"); click to rename it (round 3 T3, D4).
+        self.title = QToolButton(self)
+        self.title.setAutoRaise(True)
+        self.title.setAccessibleName("Window name")
+        self.title.setToolTip("This window's name. Click to rename it.")
+        self.title.clicked.connect(lambda _checked=False: window.rename_environment_window())
         self.addWidget(self.title)
-        # This window's document group: every file here belongs to it, and
-        # side-by-side sync works within it.
+        # The current file's document group: side-by-side sync works within
+        # a group.
         self.group = QComboBox(self)
         self.group.setAccessibleName("Group")
         self.group.setToolTip(
-            "This window's document group. Every file here belongs to it, and side-by-side sync works "
-            "within a group; choosing another group regroups them all."
+            "The current file's document group. Side-by-side sync works within a group."
         )
         self.group.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.group.activated.connect(self._group_chosen)
@@ -507,12 +510,16 @@ class EnvironmentBar(QToolBar):
         return None if view is None else project_for_file(view.document.path)
 
     def _refresh_title(self) -> None:
-        self.title.setText(f"<b>{descriptor_for_key(self.environment_key).label}</b>")
+        self.title.setText(self._window.environment_window_name() or descriptor_for_key(self.environment_key).label)
+        font = self.title.font()
+        font.setBold(True)
+        self.title.setFont(font)
         self._refresh_group_choices()
         project = self._project()
         if project is not None:
+            # Only the project's short name, everywhere (round 3, answer 5).
             self.project_label.setText(f"<b>{project.name}</b>")
-            self.project_label.setToolTip(f"{project.full_name or project.name}\n{project.folder}")
+            self.project_label.setToolTip(str(project.folder))
         else:
             self.project_label.setText("")
             self.project_label.setToolTip("")
@@ -522,9 +529,17 @@ class EnvironmentBar(QToolBar):
     _NEW_GROUP = "\0new"
     _MANAGE_GROUPS = "\0manage"
 
+    def _entry(self):
+        """The registry entry of the current file, if any."""
+
+        view = self._view()
+        service = self._window._service
+        return None if view is None or service is None else service.documents.entry_for_view(view.view_id)
+
     def _refresh_group_choices(self) -> None:
         window = self._window
         swatch = window._groups_and_recent_files._group_swatch_icon
+        entry = self._entry()
         self._updating = True
         try:
             self.group.clear()
@@ -534,8 +549,9 @@ class EnvironmentBar(QToolBar):
             self.group.insertSeparator(self.group.count())
             self.group.addItem("New Group…", self._NEW_GROUP)
             self.group.addItem("Manage Groups…", self._MANAGE_GROUPS)
-            self.group.setCurrentIndex(max(0, self.group.findData(self.group_id)))
-            self.group.setEnabled(window._service is not None)
+            current = None if entry is None else entry.group_id
+            self.group.setCurrentIndex(max(0, self.group.findData(current)))
+            self.group.setEnabled(entry is not None)
         finally:
             self._updating = False
 
@@ -548,18 +564,19 @@ class EnvironmentBar(QToolBar):
             self._refresh_group_choices()
             window.show_document_group_editor(self.environment_key)
             return
+        entry = self._entry()
+        if entry is None:
+            self._refresh_group_choices()
+            return
         if data == self._NEW_GROUP:
-            created = window._groups_and_recent_files.new_group_for(None, self.environment_key)
-            if created is None:
+            # Created in this environment and given to the current file.
+            if window._groups_and_recent_files.new_group_for(entry.document_id) is None:
                 self._refresh_group_choices()
-                return
-            data = created.id
-        window.set_environment_window_group(data)
+            return
+        window._set_document_group(entry.document_id, data)
 
     def window_title_prefix(self) -> str:
-        label = descriptor_for_key(self.environment_key).label
-        group = self._window._group_by_id(self.group_id, self.environment_key)
-        prefix = f"{label} — {group.name if group is not None else 'Ungrouped'}"
+        prefix = self._window.environment_window_name() or descriptor_for_key(self.environment_key).label
         project = self._project()
         return prefix if project is None else f"{prefix} — {project.name}"
 
@@ -598,14 +615,13 @@ class EnvironmentBar(QToolBar):
     # --- book / chapter / verse ---------------------------------------------------
 
     def _book_entries(self, view: "UNITITextView", *, rescan: bool) -> list[tuple[str, Path]]:
-        """(label, path) per book: the project's books when the tab is a
-        project book, otherwise the open files of this group (plan P3) —
-        an unrelated folder never lists stray files."""
+        """(label, path) per book: the project's books (plan P3). USFM
+        assumes a project (round 3 T1), so a file outside one lists none."""
 
         project = project_for_file(view.document.path)
         if project is None:
             self._books_project = None
-            return self._group_files()
+            return []
         if project.folder != self._books_project or rescan or not self._books:
             self._books_project = project.folder
             books = []
@@ -628,27 +644,6 @@ class EnvironmentBar(QToolBar):
         if document is not None:
             return book_header(document.read(0, min(document.total_chars(), ID_PROBE_BYTES)))
         return book_header_for_path(path)
-
-    def _group_files(self) -> list[tuple[str, Path]]:
-        window = self._window
-        service = window._service
-        if service is not None:
-            documents = [(entry.document, entry.group_id) for entry in service.documents.entries if entry.view_ids]
-        else:
-            documents = [(view.document, None) for view in window.views]
-        found = []
-        seen: set[int] = set()
-        for document, group_id in documents:
-            if group_id != self.group_id or id(document) in seen:
-                continue
-            if window._environment.environment_key_for(document) != self.environment_key:
-                continue
-            seen.add(id(document))
-            header = self._header_of(document.path, document)
-            label = header.label or document.path.name
-            found.append((book_rank(header.code), header.code or "", document.path.name.lower(), label, document.path))
-        found.sort(key=lambda item: item[:3])
-        return [(label, path) for _rank, _code, _name, label, path in found]
 
     def _refresh_books(self, *, rescan: bool = False) -> None:
         view = self._view()
@@ -752,11 +747,14 @@ class EnvironmentBar(QToolBar):
 
     def open_book(self, path: Path) -> "UNITITextView | None":
         """Show the book at `path` here: its open tab, or open it into this
-        window and this window's group, in the current tab's mode."""
+        window, in the current tab's mode and group."""
 
         window = self._window
         previous = window.current_view
         mode = window._rich_views.key_for(previous)
+        service = window._service
+        previous_entry = None if previous is None or service is None else service.documents.entry_for_view(previous.view_id)
+        group_id = None if previous_entry is None else previous_entry.group_id
         for view in window.views:
             if _same_path(view.document.path, path):
                 window._select_view(view)
@@ -765,11 +763,10 @@ class EnvironmentBar(QToolBar):
         opened = window.open_path(path)
         if opened is None or window.view_for_id(opened.view_id) is not opened:
             return opened  # open elsewhere: the service focused that window
-        service = window._service
-        if service is not None and self.group_id is not None:
+        if service is not None and group_id is not None:
             entry = service.documents.entry_for_view(opened.view_id)
-            if entry is not None and entry.group_id != self.group_id:
-                window._set_document_group(entry.document_id, self.group_id)
+            if entry is not None and entry.group_id != group_id:
+                window._set_document_group(entry.document_id, group_id)
         if mode is not None:
             window._rich_views.show(mode, opened)
         self.refresh()

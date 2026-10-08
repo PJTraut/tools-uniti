@@ -91,7 +91,7 @@ def test_open_project_opens_its_first_book_in_the_usfm_window(desktop, tmp_path:
     view = main._usfm_projects.open_project(folder)
 
     window = service.windows.window_for_view(view.view_id)
-    assert window.environment_window == ("usfm", None)
+    assert window.environment_window == ("usfm", 0)
     assert view.document.path.name == "01GENNIV11.SFM"
     # .SFM isn't assigned to USFM, but a project's books are USFM: pinned, no prompt.
     assert window._environment.environment_key_for(view.document) == "usfm"
@@ -130,7 +130,7 @@ def test_a_project_opens_in_its_remembered_group(desktop, tmp_path: Path):
 
     view = main._usfm_projects.open_project(folder)
 
-    assert service.windows.window_for_view(view.view_id).environment_window == ("usfm", "B")
+    assert service.windows.window_for_view(view.view_id).environment_window == ("usfm", 0)
     assert service.documents.entry_for_view(view.view_id).group_id == "B"
 
 
