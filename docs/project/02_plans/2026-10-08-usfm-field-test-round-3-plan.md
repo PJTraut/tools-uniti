@@ -255,6 +255,18 @@ Also:
   - Dock back;
   - merging into an existing project tab.
 
+**Implemented 2026-10-08.**
+- **`UNITIMainWindow.tab_menu(view_id)`** builds the tab's menu (`_show_tab_menu` pops it): in an environment window **Group ▸** (the existing group choices), **Split ▸** and **Window ▸**; in an ordinary window the group choices as before.
+- **Moves act on the whole tab** (`_tab_books`: a USFM tab's books, the shown one last so it's the one selected where they land):
+  - `move_tab_to_new_split(view_id, orientation)`, `move_tab_to_split(view_id, pane_id)` move the books with `EditorPaneTree.move_view`, and close the split they leave if it's now empty;
+  - `unsplit_tab(view_id)` moves every tab of the split into the previous split in reading order (the next one for the first) and closes it;
+  - `move_tab_to_window(view_id, slot)` (None: a new window) moves each book with `move_to_environment_window`, then gives all of them one dock home, the tab's place before the move, so the tab docks back as one;
+  - `dock_tab(view_id)` docks each book that has a home.
+- **At most four splits** (`MAX_ENVIRONMENT_SPLITS`) in an environment window: `_split_pane` (the split buttons, View menu) refuses with "An environment window has at most 4 splits", and the menu's new-split entries are disabled.
+- **Merging:** moving a tab into a split or window that has a tab of the same project joins it, since `ProjectTabs` groups a split's books by project.
+
+Tests: `tests/app/test_tab_menu.py` (7): the menu's entries; an ordinary window's group menu; a tab moving with its books to a new split and back (the emptied split closes); Unsplit; the four-split limit; moving between windows and docking back as one; merging into a window's tab of the same project.
+
 ### T7 — Read-only folders (answer 3: "consider"; D5)
 - **A list of read-only folders:** View > Read-Only Folders… adds and removes them. The project tab's menu gets **Read Only** for its project's folder.
 - **A file in a read-only folder, or below one, opens read-only:**

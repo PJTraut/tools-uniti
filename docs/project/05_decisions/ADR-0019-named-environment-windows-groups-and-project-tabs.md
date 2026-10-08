@@ -1,7 +1,7 @@
 # ADR-0019: Named Environment Windows, Groups per Environment, Project Tabs
 
 Date: 2026-10-08
-Status: accepted (implemented: [round 3 plan](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T5; T6–T7 to follow)
+Status: accepted (implemented: [round 3 plan](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T6; T7 to follow)
 
 ## Context
 
@@ -29,7 +29,8 @@ The user's answers, the same day:
    - The identity rides in `ViewRecord.extra["environment_window"]` as `{environment, window}`. A record saved by group restores into the lowest free slot.
 4. **One tab per project** (T4). In a USFM window each split shows one tab per Paratext project, titled with its short name only. Every open book stays its own view and tab, so its state is kept; the others are hidden. Changing the book shows it in the same tab, asking before leaving unsaved changes: Yes saves, No keeps them in memory (D1). Closing the tab closes its books.
 5. **A group belongs to a project, and binds projects across windows** (T5). In a project environment a book's group is its project's, stored as `projects.json` per environment (never in the project). The project tab is tinted with the group's colour. Reference sync covers the shown texts of a group in every window, changing a project tab's book when needed, without asking about unsaved changes (D2). This supersedes ADR-0017 decision 4's "within one window".
-6. **To follow in this round** (T6–T7): the tab's Split and Window menu (up to four splits), and read-only folders.
+6. **The tab's menu splits and moves whole tabs** (T6). In an environment window a tab's right-click menu has Group, Split (new split right/down, another split, Unsplit) and Window (new window, another window of the environment, Dock). A USFM tab moves with all its books; moved between windows, they share one dock home. An environment window has at most four splits.
+7. **To follow in this round** (T7): read-only folders.
 
 ## Consequences
 

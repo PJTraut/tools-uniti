@@ -58,7 +58,14 @@ Environment windows come back when UNITI restarts.
 - The groups you had before environments had their own are Plain Text's groups now.
 - Each environment's groups are saved in `groups.json` in its configuration folder (see [Configuration](#configuration)).
 
-In a USFM window each tab is a Paratext project, showing one of its books at a time (see [usfm.md](usfm.md#project-tabs)). Files of any group can share an environment window. The toolbar's **Group** dropdown shows and sets the current file's group, and has **New Group…** and **Manage Groups…**. Giving a file another group (there, or by right-clicking its tab or text → **Document Group**) doesn't move it.
+In a USFM window each tab is a Paratext project, showing one of its books at a time (see [usfm.md](usfm.md#project-tabs)). Files of any group can share an environment window.
+
+**Right-click a tab** in an environment window for:
+- **Group:** the tab's group, as anywhere (for USFM, the project's).
+- **Split:** **Move to New Split Right / Down** moves the tab into a new split beside its own; **Move to Split 1 … 4** moves it into another split (numbered left to right, top to bottom); **Unsplit** closes the tab's split, and its tabs join the neighbouring one. An environment window has at most **four splits**, also for the split buttons above each split. Each split has its own tabs, and texts in different splits can be in different groups.
+- **Window:** **Move to New Window** opens the next window of the environment ("USFM B") with the tab; **Move to USFM A** (each other window of the environment) moves it there, joining that window's tab of the same project if it has one; **Dock** takes it back where it came from.
+
+A USFM tab moves with all its books, each keeping its state. The toolbar's **Group** dropdown shows and sets the current file's group, and has **New Group…** and **Manage Groups…**. Giving a file another group (there, or by right-clicking its tab or text → **Document Group**) doesn't move it.
 
 ## Undefined markup
 

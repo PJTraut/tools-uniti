@@ -49,7 +49,7 @@ from uniti.app.editor_state import EditorState
 from uniti.app.file_environment_manager import FileEnvironmentManager
 from uniti.app.platform_policy import native_paths_equal, normalize_native_path
 from uniti.app.recovery_manager import RecoveryHealth, RecoveryManager
-from uniti.app.session import MAX_VIEWS
+from uniti.app.session import MAX_VIEWS, DockReturnRecord
 from uniti.app.settings import (
     MAX_EDITOR_TAB_WIDTH,
     MIN_EDITOR_TAB_WIDTH,
@@ -196,6 +196,10 @@ def _convert_and_set_output_eol(document: Document, eol: str | None) -> None:
     document.set_output_eol(eol)
 
 
+# An environment window has at most four splits (round 3 T6).
+MAX_ENVIRONMENT_SPLITS = 4
+
+
 class UNITIMainWindow(QMainWindow):
     def __init__(
         self,
@@ -340,7 +344,7 @@ class UNITIMainWindow(QMainWindow):
         self._panes.splitRequested.connect(self._split_pane)
         self._panes.assignmentRequested.connect(self._show_assignment_menu)
         self._panes.dockToggleRequested.connect(self._toggle_view_dock)
-        self._panes.groupMenuRequested.connect(self._show_group_menu)
+        self._panes.groupMenuRequested.connect(self._show_tab_menu)
         if service is not None:
             self._panes.viewDetachRequested.connect(
                 lambda view_id, _position: service.undock_view(view_id)
@@ -1636,6 +1640,9 @@ class UNITIMainWindow(QMainWindow):
     ) -> UNITITextView | None:
         if self._service is None:
             return None
+        if self._split_limit_reached():
+            self.statusBar().showMessage(f"An environment window has at most {MAX_ENVIRONMENT_SPLITS} splits", 5000)
+            return None
         source_leaf = self._panes.leaf(pane_id)
         view_id = source_leaf.selected_view_id
         view = None if view_id is None else self.view_for_id(view_id)
@@ -1658,6 +1665,178 @@ class UNITIMainWindow(QMainWindow):
         clone.state.restore_state(editor_snapshot)
         clone._state_changed()
         return clone
+
+    def _split_limit_reached(self) -> bool:
+        """An environment window has at most four splits (round 3 T6)."""
+
+        return self.environment_window is not None and self._panes.leaf_count >= MAX_ENVIRONMENT_SPLITS
+
+    # --- the tab's menu: group, splits and windows (round 3 T6) -------------------
+
+    def _show_tab_menu(self, view_id: str, position: QPoint) -> None:
+        menu = self.tab_menu(view_id)
+        if menu is None:
+            return
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        menu.popup(position)
+
+    def tab_menu(self, view_id: str) -> QMenu | None:
+        """A tab's right-click menu. In an environment window: Group, Split
+        and Window, acting on the whole tab (a USFM tab is its project's
+        books); elsewhere the group choices."""
+
+        menu = QMenu(self)
+        helpers = self._groups_and_recent_files
+        if self.environment_window is None:
+            if not helpers.populate_group_menu(menu, view_id):
+                menu.deleteLater()
+                return None
+            return menu
+        view = self.view_for_id(view_id)
+        if view is None:
+            menu.deleteLater()
+            return None
+        group_menu = menu.addMenu("Group")
+        helpers.populate_group_menu(group_menu, view_id)
+        split = menu.addMenu("Split")
+        full = self._split_limit_reached()
+        for label, orientation in (("Move to New Split Right", Qt.Orientation.Horizontal), ("Move to New Split Down", Qt.Orientation.Vertical)):
+            action = split.addAction(label)
+            action.setEnabled(not full)
+            if full:
+                action.setToolTip(f"An environment window has at most {MAX_ENVIRONMENT_SPLITS} splits")
+            action.triggered.connect(
+                lambda _checked=False, orientation=orientation: self.move_tab_to_new_split(view_id, orientation)
+            )
+        leaf = self._panes.leaf_for_view(view_id)
+        pane_ids = self._panes.pane_ids
+        others = [(number, pane_id) for number, pane_id in enumerate(pane_ids, start=1) if leaf is None or pane_id != leaf.pane_id]
+        if others:
+            split.addSeparator()
+            for number, pane_id in others:
+                action = split.addAction(f"Move to Split {number}")
+                action.triggered.connect(lambda _checked=False, pane_id=pane_id: self.move_tab_to_split(view_id, pane_id))
+        split.addSeparator()
+        unsplit = split.addAction("Unsplit")
+        unsplit.setToolTip("Close this split; its tabs join the neighbouring one")
+        unsplit.setEnabled(len(pane_ids) > 1)
+        unsplit.triggered.connect(lambda _checked=False: self.unsplit_tab(view_id))
+        window_menu = menu.addMenu("Window")
+        key = self.environment_window[0]
+        new_window = window_menu.addAction("Move to New Window")
+        new_window.triggered.connect(lambda _checked=False: self.move_tab_to_window(view_id, None))
+        if self._service is not None:
+            windows = sorted(
+                (window for window in self._service.environment_windows(key) if window is not self),
+                key=lambda window: window.environment_window[1],
+            )
+            if windows:
+                window_menu.addSeparator()
+            for window in windows:
+                action = window_menu.addAction(f"Move to {window.environment_window_name()}")
+                action.triggered.connect(
+                    lambda _checked=False, slot=window.environment_window[1]: self.move_tab_to_window(view_id, slot)
+                )
+        window_menu.addSeparator()
+        dock = window_menu.addAction("Dock")
+        dock.setToolTip("Back to the window it came from")
+        dock.setEnabled(any(book.dock_return is not None for book in self._project_tabs.books_of(view)))
+        dock.triggered.connect(lambda _checked=False: self.dock_tab(view_id))
+        return menu
+
+    def _tab_books(self, view_id: str) -> list[UNITITextView]:
+        """The books of `view_id`'s tab, the shown one last (so it's the
+        one selected where they land)."""
+
+        view = self.view_for_id(view_id)
+        if view is None:
+            return []
+        shown = self._panes.leaf_for_view(view_id)
+        shown_id = None if shown is None else shown.selected_view_id
+        books = self._project_tabs.books_of(view)
+        return sorted(books, key=lambda book: book.view_id == (shown_id if shown_id in {b.view_id for b in books} else view_id))
+
+    def move_tab_to_new_split(self, view_id: str, orientation: Qt.Orientation):
+        """Move a tab, with all its books, into a new split beside its own."""
+
+        books = self._tab_books(view_id)
+        if not books:
+            return None
+        if self._split_limit_reached():
+            self.statusBar().showMessage(f"An environment window has at most {MAX_ENVIRONMENT_SPLITS} splits", 5000)
+            return None
+        source = self._panes.leaf_for_view(view_id)
+        new_leaf = self._panes.split_view(view_id, orientation)
+        return self._move_books_to_leaf(books, new_leaf, source)
+
+    def move_tab_to_split(self, view_id: str, pane_id: str):
+        books = self._tab_books(view_id)
+        if not books:
+            return None
+        source = self._panes.leaf_for_view(view_id)
+        return self._move_books_to_leaf(books, self._panes.leaf(pane_id), source)
+
+    def unsplit_tab(self, view_id: str):
+        """Close `view_id`'s split: its tabs join the neighbouring split."""
+
+        leaf = self._panes.leaf_for_view(view_id)
+        pane_ids = self._panes.pane_ids
+        if leaf is None or len(pane_ids) < 2:
+            return None
+        position = pane_ids.index(leaf.pane_id)
+        neighbour = self._panes.leaf(pane_ids[position - 1] if position > 0 else pane_ids[1])
+        selected = leaf.selected_view_id
+        views = [view_id for view_id in leaf.view_ids if view_id != selected] + ([selected] if selected else [])
+        for moved in views:
+            self._panes.move_view(moved, neighbour.pane_id)
+        self._panes.close_leaf(leaf.pane_id)
+        self._project_tabs.forget(leaf.pane_id)
+        self._project_tabs.refresh_all()
+        return neighbour
+
+    def _move_books_to_leaf(self, books, target, source):
+        for book in books:
+            self._panes.move_view(book.view_id, target.pane_id)
+        if source is not None and source is not target and source.count() == 0 and self._panes.leaf_count > 1:
+            self._panes.close_leaf(source.pane_id)
+            self._project_tabs.forget(source.pane_id)
+        self._project_tabs.refresh_all()
+        shown = books[-1]
+        self._select_view(shown)
+        return target
+
+    def move_tab_to_window(self, view_id: str, slot: int | None):
+        """Move a tab, with all its books, to window `slot` of this
+        environment, or to a new window when `slot` is None."""
+
+        books = self._tab_books(view_id)
+        if not books or self._service is None or self.environment_window is None:
+            return None
+        key = self.environment_window[0]
+        if slot is None:
+            slot = self._service.new_environment_window(key).environment_window[1]
+        # The tab docks back as one, to where it is now.
+        location = self.view_location(books[-1].view_id)
+        home = DockReturnRecord(location.window_id, location.pane_id, location.tab_index)
+        target = None
+        for book in books:
+            target = self._service.move_to_environment_window(book.view_id, key, slot)
+            book.set_dock_return(home)
+        if target is not None:
+            target._project_tabs.refresh_all()
+            target._select_view(books[-1])
+        return target
+
+    def dock_tab(self, view_id: str):
+        """Dock a tab's books back to where they came from."""
+
+        if self._service is None:
+            return None
+        home = None
+        for book in self._tab_books(view_id):
+            if book.dock_return is not None:
+                home = self._service.dock_view(book.view_id)
+        return home
 
     def split_current(self, orientation: Qt.Orientation) -> UNITITextView | None:
         return self._split_pane(self._panes.active_leaf.pane_id, orientation)

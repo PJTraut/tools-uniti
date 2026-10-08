@@ -45,6 +45,7 @@ In a USFM window, **a tab is a project**, titled with the project's short name (
 - **Opening a book** of a project that already has a tab in the split (File → Open, Recent Files, Open USFM Project…) shows it in that tab; a book of another project gets a tab of its own.
 - **Closing the tab** closes all its books, asking about each one with unsaved changes.
 - The same project can have a tab in two splits or windows, each showing its own book.
+- **Right-click the tab** to put it in a group, move it to another split (up to four) or window, or dock it back; it moves with all its books (see [Environment windows](README.md#environment-windows)).
 - The tab's tooltip names the current book and its file. Only the project's short name is shown, anywhere in UNITI.
 
 ## Book, chapter and verse
