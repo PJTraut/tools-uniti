@@ -78,6 +78,12 @@ _METADATA_MARKERS = re.compile(r"(?:id|ide|sts|rem|usfm|h\d?|toca?\d)")
 _ALIGN = {"left": "left", "center": "center", "right": "right", "both": "justify", "justify": "justify"}
 
 
+# Markers whose content Preview shows between generated brackets: a
+# note's category (`\cat People\cat*` -> "[People]"). Choosing which
+# categories to show is a wishlist item.
+_BRACKETED = frozenset({"cat"})
+
+
 def _bare(marker: str) -> str:
     return marker_name(marker)
 
@@ -550,6 +556,8 @@ def layout_projection(source: str, styles: LayeredStyleRegistry, key: str, *, sh
             if opener is None:
                 visible_token(token.end, token.text, marker)
                 continue
+            if not show_markers and marker in _BRACKETED:
+                builder.generated("]", marker)
             note_openers.discard(opener)
             for span_index in range(len(open_spans) - 1, -1, -1):
                 if open_spans[span_index][0] == opener:
@@ -626,6 +634,8 @@ def layout_projection(source: str, styles: LayeredStyleRegistry, key: str, *, sh
         elif style_type == "note":
             unclosed_note = True
         tag(token.end, token.text, marker)
+        if not show_markers and marker in _BRACKETED and token.start in pairs:
+            builder.generated("[", marker)
         if in_note and style_type == "character" and token.start not in pairs:
             # Note-internal markers (\fr, \ft, \xo …) style the text up to
             # the next marker; USFM leaves them unclosed.
@@ -719,6 +729,8 @@ def _note_body(builder: ProjectionBuilder, source: str, tokens, styles, pairs, c
             close_implicit()
         if is_closing(token.text):
             opener = closers.get(token.start)
+            if opener is not None and marker in _BRACKETED:
+                builder.generated("]", marker)
             for index in range(len(open_spans) - 1, -1, -1):
                 if open_spans[index][0] == opener:
                     _start, view_start, span_marker = open_spans.pop(index)
@@ -742,6 +754,8 @@ def _note_body(builder: ProjectionBuilder, source: str, tokens, styles, pairs, c
         builder.hidden(min(_separator_end(source, token.end), note.closer_start), marker)
         if token.start in pairs:
             open_spans.append((token.start, builder.view_position, marker))
+            if marker in _BRACKETED:
+                builder.generated("[", marker)
         elif (style.style_type or "").lower() == "character":
             implicit = (builder.view_position, marker)
     close_implicit()

@@ -63,6 +63,8 @@ A record with an ordinary marker name changes that marker's style, like any styl
 
 Nested markers such as `\+it` inside `\nd` take the style of `\it`, applied on top of `\nd`'s, so the text is italic small capitals.
 
+The built-in rules also define `\cat` (a note's or sidebar's category) as an italic character style. Preview shows its content in brackets, for example "a [People] 1:1 …" in the notes frame.
+
 ## Turning something off
 
 A flag field is turned off with `-`. For example, cross-reference callers that aren't italic:

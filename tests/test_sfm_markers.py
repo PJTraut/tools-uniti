@@ -142,3 +142,43 @@ def test_checks_understand_nesting_and_milestones():
     assert unmatched_end_marker_findings(source) == ()
     assert [finding.message for finding in placement_findings(source, registry)] == []
     assert marker_at(source, source.index("yy")) == "it"
+
+
+# --- R3: \cat ---------------------------------------------------------------------
+
+_CATEGORY = "\\id GEN\n\\c 1\n\\p\n\\v 1 Text.\\f + \\cat People\\cat* \\fr 1:1 \\ft A note.\\f*\n"
+
+
+def test_preview_shows_a_notes_category_in_brackets():
+    preview = layout_projection(_CATEGORY, _styles(), "sfm.preview", show_markers=False)
+    (footnotes,) = preview.notes
+    projection = footnotes.projection
+    projection.source_map.check()
+
+    assert projection.text == "a [People] 1:1 A note."
+    # The brackets are generated: nothing in the source to edit or select.
+    start = projection.text.index("[")
+    assert projection.source_map.segment_at_view(start).role.value == "generated"
+    # Styled by the built-in \cat (italic), brackets included.
+    (cat,) = [span for span in projection.spans if span.marker == "cat"]
+    assert projection.text[cat.view_start : cat.view_end] == "[People]"
+    assert dict(cat.attrs) == {"italic": "yes"}
+
+
+def test_a_category_outside_a_note_is_bracketed_too():
+    source = "\\id GEN\n\\c 1\n\\p\n\\v 1 Text \\cat Kings\\cat* more.\n"
+    preview = layout_projection(source, _styles(), "sfm.preview", show_markers=False)
+    preview.source_map.check()
+    assert preview.text == "1\n1Text [Kings] more.\n"
+
+
+def test_standard_keeps_category_markers_as_tags():
+    standard = layout_projection(_CATEGORY, _styles(), "sfm.standard", show_markers=True)
+    tags = [standard.text[span.view_start : span.view_end] for span in standard.spans if span.attrs.get("marker_token")]
+    assert "\\cat" in tags and "\\cat*" in tags
+    assert "[" not in standard.text
+
+
+def test_cat_is_defined_by_the_built_in_stylesheet():
+    style = _styles().style_for("cat")
+    assert style is not None and style.style_type == "Character" and style.end_marker == "cat*"

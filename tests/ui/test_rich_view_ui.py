@@ -605,3 +605,11 @@ def test_switching_a_whole_book_takes_seconds_not_minutes(window, tmp_path: Path
     app.processEvents()
     assert time.perf_counter() - started < 10.0
     assert window._rich_views.pane.note_sections[0].editor.document().blockCount() == 50 * 31
+
+
+def test_preview_notes_frame_shows_categories_in_brackets(window, tmp_path: Path):
+    source = "\\id GEN\n\\c 1\n\\p\n\\v 1 Text.\\f + \\cat People\\cat* \\fr 1:1 \\ft A note.\\f*\n"
+    _open(window, tmp_path, "book.usfm", source)
+    window._rich_views.show("sfm.preview")
+    (footnotes,) = window._rich_views.pane.note_sections
+    assert footnotes.editor.toPlainText() == "a [People] 1:1 A note."

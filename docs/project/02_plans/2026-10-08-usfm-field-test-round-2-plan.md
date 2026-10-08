@@ -1,7 +1,7 @@
 # USFM Field Test, Round 2 — Plan
 
 Date: 2026-10-08
-Status: **In progress**. R1, R4b and R2 are implemented (2026-10-08); R3–R8 are ready (D1–D4 decided 2026-10-08).
+Status: **In progress**. R1, R4b, R2 and R3 are implemented (2026-10-08); R4–R8 are ready (D1–D4 decided 2026-10-08).
 Origin: `@externalresources/field_test_feedback` (2026-10-08).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
 
@@ -100,6 +100,13 @@ Tests: `tests/test_sfm_markers.py` (10). It covers marker names, lossless tokeni
 - The brackets are styled by a new built-in rule, `\Marker cat` in `uniti.sty`, so they can be restyled like everything else.
 - Standard keeps `\cat` visible as a tag, as it does every marker.
 - Choosing which categories Preview shows is in the [wishlist](../FEATURE_WISHLIST.md#footnote-category-filter-in-preview).
+
+**Implemented 2026-10-08.**
+- **In Preview,** a paired `\cat …\cat*` shows its content between generated, protected brackets: "a [People] 1:1 A note." in the notes frame, and the same in body text (e.g. a sidebar's category). Its markers are hidden.
+- **The built-in `uniti.sty`** defines `\Marker cat` (Character, `\Endmarker cat*`, Italic). It styles the brackets and content, and it makes `\cat` a defined marker for R7. The asset manifest's size and hash are updated.
+- **Standard** keeps the `\cat` tags.
+
+Tests: `tests/test_sfm_markers.py` +4 and `tests/ui/test_rich_view_ui.py` +1.
 
 ### R4 — Highlight the verse when navigating (item 5)
 - Choosing a book, chapter or verse in the environment toolbar, and **Go to Chapter:Verse…**, highlight the verse after jumping, in Plain Text, Standard and Preview. They use the same tint as reference sync. A chapter-only jump highlights the `\c` line.
