@@ -1,7 +1,7 @@
 # USFM Projects, Single Files, and Versification — Plan
 
 Date: 2026-10-07
-Status: **In progress**. P1 and P2 are implemented (2026-10-07); P3–P5 are next.
+Status: **In progress**. P1–P3 are implemented (2026-10-07). P4–P5 are queued after [field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) R1–R6 (see the [roadmap](ROADMAP.md#environment-track-queue)).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md): environment windows, the Book/Chapter/Verse selector, and reference sync within a group.
 Origin: user, 2026-10-07: "single file vs 'working folder' for USFM; plan this... should we need to 'open folder' for 'project' view and 'open file' for single files outside of projects? how would we compare BK:CH:VS for 'files' only".
 
@@ -86,11 +86,19 @@ Tests: `tests/app/test_usfm_projects.py` (8).
   - For single files: the open files of the window's group. This replaces today's folder scan, so an unrelated folder never lists stray USFM.
 - **Window title and toolbar** show the project's short name, e.g. "USFM — A — NIV".
 
+**Implemented 2026-10-07**:
+- `style_layers.project_stylesheet_candidates`. A named stylesheet containing a path separator is ignored.
+- `paratext_project.project_encoding_profile`. The project's declared encoding, with the file's own BOM, is used only when the start of the file decodes cleanly in it. Otherwise ordinary detection, with its prompt, decides.
+- The Book selector (`EnvironmentBar._book_entries`) lists the project's books, labelled "GEN — Genesis", or else the group's open files. It re-reads the list each time it opens.
+- The project name appears in the toolbar and the window title. Both follow environment changes.
+
+Tests: +3 in `tests/test_paratext_project.py`, +1 in `tests/app/test_usfm_projects.py`; `tests/app/test_environment_window.py` now covers the single-file and project Book lists.
+
 ### P4: Versification (core + UI)
 
 - **New `sfm/versification.py`**, wrapping `usfmtc.versification.Versification`:
   - It always has the built-in English and Original (shipped with `usfmtc`).
-  - Septuagint, Vulgate and the Russian versifications come from `<UNITI user data>/Versification/` (`lxx.vrs`, `vul.vrs`, `rso.vrs`, `rsc.vrs`, copied from a Paratext installation by the user). UNITI doesn't bundle them.
+  - Septuagint, Vulgate and the Russian versifications come from the USFM user configuration folder, `<UNITI user data>/Environments/USFM/Versification/` (`lxx.vrs`, `vul.vrs`, `rso.vrs`, `rsc.vrs`, copied from a Paratext installation by the user). The folder is set up by round-2 R8 and listed in Configuration Files…. UNITI doesn't bundle them.
   - A project's `custom.vrs` is read on top of its base.
   - When a needed file is missing, UNITI falls back to English and says so in the status bar.
 - **`map_reference(ref, source_versification, target_versification)`** works through Original. It's tested against known pairs (Ps 51:1 ↔ 51:3, Mal 4:1 ↔ 3:19, Joel 2:28 ↔ 3:1) and the identity case. If `usfmtc`'s `remap` misbehaves on those, UNITI maps through its `toorg`/`fromorg` tables directly.

@@ -100,31 +100,69 @@ def test_environment_window_survives_session_capture(desktop, tmp_path: Path):
     assert environment_window_identity(main_record.root, views) is None
 
 
-def test_book_selector_lists_the_project_folder_and_opens_into_the_group(desktop, tmp_path: Path):
+def test_book_selector_lists_the_groups_open_single_files(desktop, tmp_path: Path):
+    """Outside a Paratext project the Book list is the group's open files,
+    never a scan of the folder (plan P3)."""
+
     app, service = desktop
-    project = tmp_path / "project"
-    _write(project, "41MAT.usfm", "\\id MAT\n\\c 1\n\\p\n\\v 1 Matthew.\n")
-    exodus = _write(project, "02EXO.usfm", _EXO)
-    genesis = _write(project, "01GEN.usfm", _GEN_A)
-    _write(project, "notes.txt", "\\id REV\n")
+    folder = tmp_path / "loose"
+    _write(folder, "41MAT.usfm", "\\id MAT\n\\c 1\n\\p\n\\v 1 Matthew.\n")  # on disk, not open
+    exodus = _write(folder, "02EXO.usfm", _EXO)
+    genesis = _write(folder, "01GEN.usfm", _GEN_A)
+    other = _write(tmp_path / "elsewhere", "02EXO.usfm", _EXO)
     main = service.new_window()
     view = main.open_path(genesis)
+    for path, group in ((exodus, "A"), (other, "B")):
+        _group(main, service, main.open_path(path), group)
     _group(main, service, view, "A")
     window = main.move_to_environment_window(view)
     bar = window._environment_bar
-    window._rich_views.show("sfm.preview", view)
 
     labels = [bar.book.itemText(index) for index in range(bar.book.count())]
-    assert labels == ["GEN  (01GEN.usfm)", "EXO  (02EXO.usfm)", "MAT  (41MAT.usfm)"]
+    assert labels == ["GEN  (01GEN.usfm)", "EXO  (02EXO.usfm)"]
     assert bar.book.currentIndex() == 0
 
     opened = bar.open_book(exodus)
+    assert opened is window.current_view and opened.document.path == exodus
 
-    assert opened is window.current_view and opened.document.path.name == "02EXO.usfm"
+
+def test_book_selector_lists_a_projects_books_and_opens_them_into_the_group(desktop, tmp_path: Path):
+    from uniti.core.environments.sfm.paratext_project import PARATEXT_BOOKS
+
+    app, service = desktop
+    project = tmp_path / "NIV11"
+    present = "".join("1" if code in ("GEN", "EXO") else "0" for code in PARATEXT_BOOKS)
+    _write(
+        project,
+        "Settings.xml",
+        "<ScriptureText><Name>NIV11</Name><FullName>New International Version</FullName>"
+        '<Naming PrePart="" PostPart="NIV11.SFM" BookNameForm="41MAT" />'
+        f"<BooksPresent>{present}</BooksPresent></ScriptureText>",
+    )
+    _write(project, "BookNames.xml", '<BookNames><book code="GEN" short="Genesis" /></BookNames>')
+    genesis = _write(project, "01GENNIV11.SFM", _GEN_A)
+    exodus = _write(project, "02EXONIV11.SFM", _EXO)
+    _write(project, "notes.usfm", "\\id REV\n")  # in the folder but not a project book
+    main = service.new_window()
+    view = main._usfm_projects.open_project(project)
+    window = service.windows.window_for_view(view.view_id)
+    bar = window._environment_bar
+    window._rich_views.show("sfm.preview", view)
+
+    assert [bar.book.itemText(index) for index in range(bar.book.count())] == ["GEN — Genesis", "EXO"]
+    assert window.windowTitle() == "UNITI — USFM — Ungrouped — NIV11 — 01GENNIV11.SFM"
+    assert "NIV11" in bar.title.text()
+
+    _group(window, service, view, "A")
+    window.set_environment_window("usfm", "A")
+    opened = bar.open_book(exodus) if window._environment_bar is bar else window._environment_bar.open_book(exodus)
+
+    assert opened is window.current_view and opened.document.path == exodus
     assert service.documents.entry_for_view(opened.view_id).group_id == "A"
-    # The new book opens in the mode the previous tab was in.
+    # The new book opens in the mode the previous tab was in, as USFM.
     assert window._rich_views.key_for(opened) == "sfm.preview"
-    assert bar.book.currentText() == "EXO  (02EXO.usfm)"
+    assert window._environment.environment_key_for(opened.document) == "usfm"
+    assert genesis.exists()
 
 
 def test_chapter_and_verse_selectors_navigate_and_follow_the_caret(desktop, tmp_path: Path):

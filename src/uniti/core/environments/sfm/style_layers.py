@@ -102,6 +102,26 @@ def load_stylesheet_file(path: Path, origin: StyleOrigin) -> StyleLayer | None:
         return None
 
 
+def project_stylesheet_candidates(document_path: Path) -> tuple[tuple[str, StyleOrigin], ...]:
+    """The stylesheet files to look for next to `document_path`.
+
+    In a Paratext project the stylesheet `Settings.xml` names (e.g.
+    `usfm_sb.sty`) takes the place of `usfm.sty` (plan P3).
+    """
+
+    from .paratext_project import project_for_file
+
+    project = project_for_file(document_path)
+    named = project.stylesheet if project is not None else None
+    if not named or "/" in named or "\\" in named:
+        return PROJECT_STYLESHEET_CANDIDATES
+    return ((named, StyleOrigin.PROJECT),) + tuple(
+        (relative, origin)
+        for relative, origin in PROJECT_STYLESHEET_CANDIDATES
+        if relative not in ("usfm.sty", named)
+    )
+
+
 def discover_project_stylesheets(document_path: Path | None) -> tuple[StyleLayer, ...]:
     """Project stylesheet layers for a document, in precedence order.
 
@@ -113,7 +133,7 @@ def discover_project_stylesheets(document_path: Path | None) -> tuple[StyleLayer
         return ()
     folder = document_path.parent
     layers: list[StyleLayer] = []
-    for relative, origin in PROJECT_STYLESHEET_CANDIDATES:
+    for relative, origin in project_stylesheet_candidates(document_path):
         candidate = folder / relative
         try:
             same_file = candidate.resolve() == document_path.resolve()
@@ -354,6 +374,7 @@ __all__ = [
     "clean_value",
     "discover_project_stylesheets",
     "is_selector",
+    "project_stylesheet_candidates",
     "load_stylesheet_file",
     "rule_marker_key",
 ]

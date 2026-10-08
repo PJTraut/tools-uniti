@@ -27,3 +27,11 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
 - Idea: an option to show a USFM document one chapter at a time instead of the whole book. The chapter would come from the environment window's Book/Chapter/Verse selector.
 - Current state: Standard and Preview project the whole document (up to 1 MiB) through `layout_projection` (`src/uniti/core/environments/sfm/views.py`). Plain Text shows the whole file.
 - Open questions: does narrowing apply to Plain Text too? That would need a narrowed or folded `UNITITextView`, which doesn't exist. For Standard and Preview, the projection could cover only the chapter's source range, with the rest of the source hidden. How do Find/Replace and the caret behave outside the visible chapter?
+
+## Footnote category filter in Preview
+
+- Noted: 2026-10-08, from USFM field-test feedback ("`\cat` in footnotes needs to be displayed in [] for now; later feature select category/ies of footnotes to display in preview").
+- Idea: choose which footnote categories (`\cat …\cat*`) Preview's notes frame shows, so a reader can, for example, hide textual notes and keep study notes.
+- Current state: per the [round 2 plan](02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R3, Preview shows each note's category in brackets and shows every note.
+- Open questions: is the filter per tab, per project or global? Are uncategorized notes shown? Should Standard follow the filter too?
+

@@ -1852,6 +1852,12 @@ class UNITIMainWindow(QMainWindow):
         self._rich_views.on_environment_changed(view)
         self._environment.refresh()
         self._refresh_markdown_preview_action()
+        if self._environment_bar is not None:
+            # The toolbar (and title) follow the active tab's environment.
+            self._environment_bar.refresh()
+            current = self.current_view
+            if current is not None:
+                self.setWindowTitle(f"{self._title_prefix()} — {current.document.path.name}")
 
     def _disconnect_view(self, view: UNITITextView) -> None:
         for signal in (
@@ -2355,6 +2361,11 @@ class UNITIMainWindow(QMainWindow):
                     elapsed_ms=(time.monotonic() - started_at) * 1000.0,
                 )
                 return reopened
+        if profile is None:
+            from uniti.core.environments.sfm.paratext_project import project_encoding_profile
+
+            # A Paratext project's books open in its declared encoding.
+            profile = project_encoding_profile(Path(path))
         decision = self._inspect_open_path(path, profile=profile)
         if decision is None:
             if self._service is not None:

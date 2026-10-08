@@ -264,6 +264,49 @@ def project_for_file(path: Path) -> ParatextProject | None:
     return _cached_project(folder, _mtime(folder / SETTINGS_FILE))
 
 
+_BOMS = {
+    "utf-8": b"\xef\xbb\xbf",
+    "utf-16-le": b"\xff\xfe",
+    "utf-16-be": b"\xfe\xff",
+    "utf-32-le": b"\xff\xfe\x00\x00",
+    "utf-32-be": b"\x00\x00\xfe\xff",
+}
+ENCODING_PROBE_BYTES = 65_536
+
+
+def project_encoding_profile(path: Path):
+    """The `EncodingProfile` to open a project book with (plan P3).
+
+    The project's declared `<Encoding>`, with the file's own BOM, when the
+    start of the file decodes cleanly in it; otherwise None, so ordinary
+    detection — and its prompt when unsure — decides.
+    """
+
+    project = project_for_file(Path(path))
+    if project is None or project.encoding is None:
+        return None
+    try:
+        with Path(path).open("rb") as handle:
+            head = handle.read(ENCODING_PROBE_BYTES)
+    except OSError:
+        return None
+    bom = _BOMS.get(project.encoding)
+    has_bom = bom is not None and head.startswith(bom)
+    body = head[len(bom) :] if has_bom else head
+    try:
+        body.decode(project.encoding)
+    except UnicodeDecodeError as error:
+        # Only a character cut off at the probe's end is acceptable.
+        if len(head) < ENCODING_PROBE_BYTES or error.start < len(body) - 4:
+            return None
+    from uniti.core.text_format import profile_from_codec
+
+    try:
+        return profile_from_codec(project.encoding, bom if has_bom else None)
+    except ValueError:
+        return None
+
+
 @lru_cache(maxsize=64)
 def _cached_project(folder: Path, _settings_mtime: float | None) -> ParatextProject | None:
     # Keyed by Settings.xml's mtime, so an edited project is re-read.
@@ -338,5 +381,6 @@ __all__ = [
     "SETTINGS_FILE",
     "VERSIFICATIONS",
     "book_file_number",
+    "project_encoding_profile",
     "project_for_file",
 ]

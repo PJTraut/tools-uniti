@@ -20,12 +20,13 @@ import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, QTimer
+from PySide6.QtCore import QObject, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QColor
 from PySide6.QtWidgets import QComboBox, QLabel, QToolBar
 
-from uniti.core.environments.catalog import descriptor_for_key, extension_assignments
-from uniti.core.environments.sfm.references import ReferenceMap, Verse, scan_books
+from uniti.core.environments.catalog import descriptor_for_key
+from uniti.core.environments.sfm.paratext_project import ParatextProject, project_for_file
+from uniti.core.environments.sfm.references import ReferenceMap, Verse, book_rank
 from uniti.ui.rich_view import PLAIN_TEXT_LABEL, reference_highlight_color
 
 if TYPE_CHECKING:
@@ -249,8 +250,8 @@ class EnvironmentBar(QToolBar):
         self.environment_key = environment_key
         self.group_id = group_id
         self._updating = False
-        self._books_folder: Path | None = None
-        self._books: tuple = ()
+        self._books_project: Path | None = None
+        self._books: tuple[tuple[str, Path], ...] = ()
         self._map: ReferenceMap | None = None
 
         self.title = QLabel(self)
@@ -263,9 +264,9 @@ class EnvironmentBar(QToolBar):
         self._mode_separator = self.addSeparator()
 
         references = environment_key in REFERENCE_ENVIRONMENTS
-        self.book = QComboBox(self)
+        self.book = _BookCombo(self)
         self.book.setAccessibleName("Book")
-        self.book.setToolTip("Book: every file of this environment in the document's project folder")
+        self.book.setToolTip("Book: the project's books, or the open files of this group")
         self.book.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.book.activated.connect(self._book_chosen)
         self.chapter = QComboBox(self)
@@ -308,20 +309,32 @@ class EnvironmentBar(QToolBar):
             self._refresh_books()
             self._refresh_chapters()
 
+    def _project(self) -> ParatextProject | None:
+        """The Paratext project of the active tab, if it is a project book."""
+
+        view = self._view()
+        return None if view is None else project_for_file(view.document.path)
+
     def _refresh_title(self) -> None:
         label = descriptor_for_key(self.environment_key).label
         group = self._window._group_by_id(self.group_id) if self.group_id else None
-        if group is None:
-            self.title.setText(f"<b>{label}</b> — Ungrouped")
+        text = f"<b>{label}</b> — " + (
+            "Ungrouped" if group is None else f'<span style="color:{group.color}">■</span> {group.name}'
+        )
+        project = self._project()
+        if project is not None:
+            text += f" — <b>{project.name}</b>"
+            self.title.setToolTip(f"{project.full_name or project.name}\n{project.folder}")
         else:
-            self.title.setText(
-                f'<b>{label}</b> — <span style="color:{group.color}">■</span> {group.name}'
-            )
+            self.title.setToolTip("")
+        self.title.setText(text)
 
     def window_title_prefix(self) -> str:
         label = descriptor_for_key(self.environment_key).label
         group = self._window._group_by_id(self.group_id) if self.group_id else None
-        return f"{label} — {group.name if group is not None else 'Ungrouped'}"
+        prefix = f"{label} — {group.name if group is not None else 'Ungrouped'}"
+        project = self._project()
+        return prefix if project is None else f"{prefix} — {project.name}"
 
     def _refresh_modes(self) -> None:
         rich_views = self._window._rich_views
@@ -357,28 +370,58 @@ class EnvironmentBar(QToolBar):
 
     # --- book / chapter / verse ---------------------------------------------------
 
-    def _extensions(self) -> tuple[str, ...]:
-        return extension_assignments(self._window._settings.syntax_extension_overrides).get(
-            self.environment_key, ()
-        )
+    def _book_entries(self, view: "UNITITextView", *, rescan: bool) -> list[tuple[str, Path]]:
+        """(label, path) per book: the project's books when the tab is a
+        project book, otherwise the open files of this group (plan P3) —
+        an unrelated folder never lists stray files."""
+
+        project = project_for_file(view.document.path)
+        if project is None:
+            self._books_project = None
+            return self._group_files()
+        if project.folder != self._books_project or rescan or not self._books:
+            self._books_project = project.folder
+            self._books = tuple(
+                (f"{book.code} — {book.name}" if book.name else book.code, book.path) for book in project.books()
+            )
+        return list(self._books)
+
+    def _group_files(self) -> list[tuple[str, Path]]:
+        window = self._window
+        service = window._service
+        if service is not None:
+            documents = [(entry.document, entry.group_id) for entry in service.documents.entries if entry.view_ids]
+        else:
+            documents = [(view.document, None) for view in window.views]
+        found = []
+        seen: set[int] = set()
+        for document, group_id in documents:
+            if group_id != self.group_id or id(document) in seen:
+                continue
+            if window._environment.environment_key_for(document) != self.environment_key:
+                continue
+            seen.add(id(document))
+            reference_map = window._reference_sync.maps.for_document(document)
+            code = reference_map.book if reference_map is not None else None
+            found.append((book_rank(code), code or "", document.path.name.lower(), document.path))
+        found.sort()
+        return [(f"{code or '—'}  ({path.name})", path) for _rank, code, _name, path in found]
 
     def _refresh_books(self, *, rescan: bool = False) -> None:
         view = self._view()
-        folder = None if view is None else view.document.path.parent
-        if folder != self._books_folder or rescan:
-            self._books_folder = folder
-            self._books = () if folder is None else scan_books(folder, self._extensions())
+        entries = [] if view is None else self._book_entries(view, rescan=rescan)
         current_path = None if view is None else view.document.path
         self._updating = True
         try:
             self.book.clear()
             selected = -1
-            for index, book in enumerate(self._books):
-                self.book.addItem(f"{book.code}  ({book.path.name})", str(book.path))
-                if current_path is not None and _same_path(book.path, current_path):
+            for index, (label, path) in enumerate(entries):
+                self.book.addItem(label, str(path))
+                self.book.setItemData(index, str(path), Qt.ItemDataRole.ToolTipRole)
+                if current_path is not None and _same_path(path, current_path):
                     selected = index
             if selected < 0 and view is not None:
-                # Not in the folder scan (unsaved, or no \\id yet): still list it.
+                # Not listed (unsaved, no \id yet, or outside the project): still show it.
                 reference_map = self._window._reference_sync.maps.for_document(view.document)
                 code = reference_map.book if reference_map is not None else None
                 self.book.addItem(f"{code or '—'}  ({view.document.path.name})", str(view.document.path))
@@ -486,6 +529,18 @@ class EnvironmentBar(QToolBar):
             window._rich_views.show(mode, opened)
         self.refresh()
         return opened
+
+
+class _BookCombo(QComboBox):
+    """Re-reads the book list each time it opens (files come and go)."""
+
+    def __init__(self, bar: "EnvironmentBar") -> None:
+        super().__init__(bar)
+        self._bar = bar
+
+    def showPopup(self) -> None:  # noqa: N802 - Qt override
+        self._bar._refresh_books(rescan=True)
+        super().showPopup()
 
 
 def _same_path(first: Path, second: Path) -> bool:

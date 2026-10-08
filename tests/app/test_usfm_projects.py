@@ -178,3 +178,22 @@ def test_recent_projects_menu_lists_and_clears(desktop, tmp_path: Path):
     assert service.documents.find_path(folder / "01GENNIV11.SFM") is not None
     actions[-1].trigger()
     assert store.load() == ()
+
+
+def test_a_legacy_project_book_opens_in_its_declared_encoding(desktop, tmp_path: Path, monkeypatch):
+    from uniti.ui import main_window
+
+    app, service = desktop
+    folder = _project(tmp_path / "OLD", name="OLD", books=("GEN",))
+    settings = folder / "Settings.xml"
+    settings.write_text(settings.read_text().replace("65001", "1252"), encoding="utf-8")
+    (folder / "01GENOLD.SFM").write_bytes("\\id GEN\n\\c 1\n\\p\n\\v 1 Café.\n".encode("windows-1252"))
+
+    def no_dialog(*_args, **_kwargs):  # pragma: no cover - failing is the assertion
+        raise AssertionError("the encoding should not need confirming")
+
+    monkeypatch.setattr(main_window.OpenFormatDialog, "exec", no_dialog)
+    main = service.new_window()
+    view = main._usfm_projects.open_project(folder)
+
+    assert "Café" in view.document.read(0, view.document.total_chars())

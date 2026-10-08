@@ -184,3 +184,65 @@ def test_project_for_file_finds_the_folder_project_and_rereads_changes(tmp_path:
     stat = settings.stat()
     os.utime(settings, (stat.st_atime, stat.st_mtime + 5))
     assert project_for_file(book).name == "NIV84"
+
+
+def test_the_named_stylesheet_replaces_usfm_sty(tmp_path: Path):
+    from uniti.core.environments.sfm.style_layers import (
+        PROJECT_STYLESHEET_CANDIDATES,
+        discover_project_stylesheets,
+        project_stylesheet_candidates,
+    )
+
+    _settings(tmp_path, naming='<Naming PrePart="" PostPart=".SFM" BookNameForm="MAT" />', extra="")
+    settings = tmp_path / "Settings.xml"
+    settings.write_text(settings.read_text().replace("usfm.sty", "usfm_sb.sty"), encoding="utf-8")
+    book = _book(tmp_path, "GEN.SFM", "GEN")
+    (tmp_path / "usfm.sty").write_text("\\Marker p\n\\FontSize 10\n", encoding="utf-8")
+    (tmp_path / "usfm_sb.sty").write_text("\\Marker p\n\\FontSize 11\n", encoding="utf-8")
+
+    candidates = [relative for relative, _origin in project_stylesheet_candidates(book)]
+    assert candidates[0] == "usfm_sb.sty" and "usfm.sty" not in candidates
+    assert [layer.name for layer in discover_project_stylesheets(book)] == ["usfm_sb.sty"]
+
+    loose = tmp_path / "loose"
+    loose.mkdir()
+    assert project_stylesheet_candidates(_book(loose, "GEN.usfm", "GEN")) == PROJECT_STYLESHEET_CANDIDATES
+
+
+def test_a_stylesheet_name_with_a_path_is_ignored(tmp_path: Path):
+    from uniti.core.environments.sfm.style_layers import PROJECT_STYLESHEET_CANDIDATES, project_stylesheet_candidates
+
+    _settings(tmp_path, naming='<Naming PrePart="" PostPart=".SFM" BookNameForm="MAT" />')
+    settings = tmp_path / "Settings.xml"
+    settings.write_text(settings.read_text().replace("usfm.sty", "../outside.sty"), encoding="utf-8")
+    assert project_stylesheet_candidates(_book(tmp_path, "GEN.SFM", "GEN")) == PROJECT_STYLESHEET_CANDIDATES
+
+
+def test_project_books_open_in_the_declared_encoding(tmp_path: Path):
+    from uniti.core.environments.sfm.paratext_project import project_encoding_profile
+
+    legacy = tmp_path / "legacy"
+    _settings(legacy, naming='<Naming PrePart="" PostPart=".SFM" BookNameForm="MAT" />')
+    settings = legacy / "Settings.xml"
+    settings.write_text(settings.read_text().replace("65001", "1252"), encoding="utf-8")
+    book = legacy / "GEN.SFM"
+    book.write_bytes("\\id GEN\n\\v 1 Café\n".encode("windows-1252"))
+    assert project_encoding_profile(book).key == "windows-1252"
+
+    modern = tmp_path / "modern"
+    _settings(modern, naming='<Naming PrePart="" PostPart=".SFM" BookNameForm="MAT" />')
+    with_bom = modern / "GEN.SFM"
+    with_bom.write_bytes(b"\xef\xbb\xbf" + "\\id GEN\n\\v 1 Café\n".encode("utf-8"))
+    assert project_encoding_profile(with_bom).bom == b"\xef\xbb\xbf"
+    plain = modern / "EXO.SFM"
+    plain.write_bytes("\\id EXO\n".encode("utf-8"))
+    assert project_encoding_profile(plain).key == "utf-8"
+    # Content that disagrees with the declaration: leave it to detection.
+    broken = modern / "LEV.SFM"
+    broken.write_bytes(b"\\id LEV\n\\v 1 Caf\xe9\n")
+    assert project_encoding_profile(broken) is None
+
+    loose = tmp_path / "loose"
+    loose.mkdir()
+    (loose / "GEN.usfm").write_text("\\id GEN\n", encoding="utf-8")
+    assert project_encoding_profile(loose / "GEN.usfm") is None
