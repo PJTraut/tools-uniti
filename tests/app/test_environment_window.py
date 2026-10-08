@@ -156,9 +156,13 @@ def test_book_selector_lists_a_projects_books_and_opens_them_into_the_group(desk
     assert window.windowTitle() == "UNITI — USFM — Ungrouped — NIV11 — 01GENNIV11.SFM"
     assert "NIV11" in bar.title.text()
 
+    # Regrouped, the book moves to that group's USFM window; a book chosen
+    # there opens into that window and group.
     _group(window, service, view, "A")
-    window.set_environment_window("usfm", "A")
-    opened = bar.open_book(exodus) if window._environment_bar is bar else window._environment_bar.open_book(exodus)
+    window = service.windows.window_for_view(view.view_id)
+    assert window.environment_window == ("usfm", "A")
+    window._rich_views.show("sfm.preview", view)
+    opened = window._environment_bar.open_book(exodus)
 
     assert opened is window.current_view and opened.document.path == exodus
     assert service.documents.entry_for_view(opened.view_id).group_id == "A"
