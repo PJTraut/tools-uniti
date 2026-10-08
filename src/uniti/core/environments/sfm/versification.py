@@ -10,8 +10,9 @@ Where versification files come from:
 - English (`eng`) and Original (`org`) are built in (shipped with `usfmtc`);
 - Septuagint (`lxx`), Vulgate (`vul`), Russian Protestant (`rsc`) and
   Russian Orthodox (`rso`) come from your USFM folder,
-  `<user data>/Environments/USFM/Versification/<stem>.vrs` — copy them
-  from a Paratext installation;
+  `<user data>/Environments/USFM/Versification/<stem>.vrs`, or — for a
+  project book — from the Paratext projects folder the project lives in,
+  where Paratext keeps them;
 - a project's `custom.vrs` is read on top of its base versification.
 
 A text's versification: its own choice (a per-file override), else its
@@ -29,7 +30,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from .paratext_project import VERSIFICATIONS, project_for_file
+from .paratext_project import VERSIFICATIONS, find_file, project_for_file
 
 logger = logging.getLogger("uniti.environment.usfm.versification")
 
@@ -58,29 +59,45 @@ def _user_folder() -> Path | None:
     return usfm_versification_folder()
 
 
-def versification_path(stem: str) -> Path | None:
+def versification_path(stem: str, paratext_root: Path | None = None) -> Path | None:
     """Where versification `stem` comes from: your folder first (so a
-    newer copy wins), then the built-in files."""
+    copy you keep wins), then the Paratext projects folder a project
+    lives in (where Paratext itself keeps `rsc.vrs`, `lxx.vrs` …), then the
+    built-in files."""
 
-    folder = _user_folder()
-    if folder is not None:
-        candidate = folder / f"{stem}.vrs"
-        if candidate.is_file():
-            return candidate
+    for folder in (_user_folder(), paratext_root):
+        if folder is not None:
+            candidate = find_file(folder, f"{stem}.vrs")
+            if candidate is not None:
+                return candidate
     return _built_in_path(stem)
 
 
-def available_versifications() -> tuple[str, ...]:
-    """Stems that can be used: the built-in ones plus your `.vrs` files."""
+def _stems_in(folder: Path | None) -> list[str]:
+    try:
+        if folder is None or not folder.is_dir():
+            return []
+        return sorted(path.stem.lower() for path in folder.iterdir() if path.suffix.lower() == ".vrs")
+    except OSError:
+        return []
+
+
+def available_versifications(paratext_root: Path | None = None) -> tuple[str, ...]:
+    """Stems that can be used: the built-in ones, your `.vrs` files, and
+    the standard ones in a Paratext projects folder."""
 
     stems = list(BUILT_IN_STEMS)
-    folder = _user_folder()
-    try:
-        extra = sorted(path.stem for path in folder.glob("*.vrs")) if folder is not None and folder.is_dir() else []
-    except OSError:
-        extra = []
-    stems.extend(stem for stem in extra if stem not in stems and stem != "custom")
+    standard = {stem for _name, stem in VERSIFICATIONS.values()}
+    extra = _stems_in(_user_folder()) + [stem for stem in _stems_in(paratext_root) if stem in standard]
+    stems.extend(stem for stem in dict.fromkeys(extra) if stem not in stems and stem != "custom")
     return tuple(stems)
+
+
+def paratext_root_for(document_path: Path | None) -> Path | None:
+    """The Paratext projects folder a project book's project lives in."""
+
+    project = None if document_path is None else project_for_file(document_path)
+    return None if project is None else project.folder.parent
 
 
 def _stamp(path: Path | None) -> float | None:
@@ -145,15 +162,15 @@ class TextVersification:
         return label
 
 
-def load_versification(stem: str, custom: Path | None = None) -> TextVersification:
+def load_versification(stem: str, custom: Path | None = None, paratext_root: Path | None = None) -> TextVersification:
     """`stem`'s versification, with `custom` on top; English when `stem`'s
     file is missing."""
 
     requested = stem
-    path = versification_path(stem)
+    path = versification_path(stem, paratext_root)
     if path is None:
         stem = DEFAULT_STEM
-        path = versification_path(DEFAULT_STEM)
+        path = versification_path(DEFAULT_STEM, paratext_root)
     if custom is not None and not custom.is_file():
         custom = None
     table = _load(path, _stamp(path), custom, _stamp(custom))
@@ -165,14 +182,14 @@ def versification_for(document_path: Path | None, override: str | None = None) -
     project's, else English."""
 
     project = None if document_path is None else project_for_file(document_path)
-    custom = None
+    custom = root = None
     if project is not None:
-        candidate = project.folder / "custom.vrs"
-        custom = candidate if candidate.is_file() else None
+        custom = find_file(project.folder, "custom.vrs")
+        root = project.folder.parent
     if override:
-        return load_versification(override, custom)
+        return load_versification(override, custom, root)
     if project is not None:
-        return load_versification(project.versification_file, custom)
+        return load_versification(project.versification_file, custom, root)
     return load_versification(DEFAULT_STEM)
 
 
@@ -203,7 +220,26 @@ def map_reference(
     mapped_chapter, mapped_verse = getattr(mapped, "chapter", None), getattr(mapped, "verse", None)
     if mapped_chapter is None or mapped_verse is None:
         return chapter, verse
+    if not _exists(target, book, mapped_chapter, mapped_verse) and _exists(
+        target, book, int(chapter_match.group()), int(verse_match.group())
+    ):
+        # A mapping onto a verse the target's own versification says doesn't
+        # exist (ruCARS's custom.vrs keeps Russian "ROM 14:24-26 = ROM
+        # 16:25-27" while giving ROM 14 only 23 verses): keep the reference.
+        return chapter, verse
     return str(mapped_chapter), str(mapped_verse)
+
+
+def _exists(versification: TextVersification, book: str, chapter: int, verse: int) -> bool:
+    """Whether `book` `chapter`:`verse` is within the versification's own
+    chapter/verse counts (unknown counts: assume it is)."""
+
+    sums = versification.table.vnums.get(book) if hasattr(versification.table, "vnums") else None
+    if not sums:
+        return True
+    if chapter < 1 or chapter >= len(sums):
+        return False
+    return 1 <= verse <= sums[chapter] - sums[chapter - 1]
 
 
 __all__ = [

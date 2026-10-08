@@ -506,6 +506,7 @@ class EnvironmentController:
         from uniti.core.environments.sfm.versification import (
             DEFAULT_STEM,
             available_versifications,
+            paratext_root_for,
             versification_for,
             versification_name,
             versification_path,
@@ -524,11 +525,12 @@ class EnvironmentController:
         source = "Project" if project_for_file(view.document.path) is not None else "Default"
         self.versification_actions = {}
         entries = [(None, f"{source} ({default.label})")]
-        stems = list(available_versifications())
+        root = paratext_root_for(view.document.path)
+        stems = list(available_versifications(root))
         if override is not None and override not in stems:
             stems.append(override)
         entries += [
-            (stem, versification_name(stem) + ("" if versification_path(stem) is not None else " (file missing)"))
+            (stem, versification_name(stem) + ("" if versification_path(stem, root) is not None else " (file missing)"))
             for stem in stems
         ]
         for stem, label in entries:

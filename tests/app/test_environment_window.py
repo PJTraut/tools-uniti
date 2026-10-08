@@ -776,3 +776,22 @@ def test_choosing_a_book_carries_the_groups_splits_along(desktop, tmp_path: Path
     assert window.current_view.document.path == mine / "02EXO.usfm"
     # The project text follows to its own EXO, in its split.
     assert right_leaf.active_view.document.path == niv_exodus
+
+
+def test_sync_falls_back_to_the_same_reference_when_the_text_lacks_the_mapped_verse(desktop, tmp_path: Path):
+    """The target says it is numbered like the original text, but its text
+    is numbered like English: Mal 4:1 (Original 3:19) isn't there, 4:1 is."""
+
+    malachi = "\\id MAL {}\n\\c 3\n\\p\n" + "".join(f"\\v {v} V{v}.\n" for v in range(1, 19)) + "\\c 4\n\\p\n\\v 1 Surely the day.\n"
+    main, left, right, _leaf = _two_splits(
+        service=desktop[1],
+        left_path=_write(tmp_path / "a", "39MAL.usfm", malachi.format("A")),
+        right_path=_write(tmp_path / "b", "39MAL.usfm", malachi.format("B")),
+    )
+    main._environment.set_versification("org", right)
+    text = malachi.format("A")
+
+    left.state.move_to(text.index("Surely"))
+    left._state_changed()
+    assert main._reference_sync.sync_from(left) == 1
+    assert right.state.cursor == malachi.format("B").index("\\v 1 Surely")

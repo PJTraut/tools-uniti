@@ -55,7 +55,8 @@ The environment track (file-type environments, USFM) is on branch `usfm-field-te
 Next safe actions, in order:
 1. With the user, finish the live-app check against real Paratext projects.
    - **Already reported 2026-10-08:** Standard/Preview speed is acceptable; no undefined markers so far; a book without `\h` now shows its id alone in the Book list.
-   - **Still to try:** versification and side-by-side sync across two projects in one group, and book-file naming and numbering across projects. The Paratext file numbering and `Settings.xml` field names were written from memory (`sfm/paratext_project.py`).
+   - **Done 2026-10-08 against the real `usNIVv3` and `ruCARSv3` (see Status):** versification and sync. Three fixes came out of it.
+   - **Still to try:** the user's own live-app pass of sync and versification, and other projects' `Settings.xml` and book naming.
 2. Merge `usfm-field-test` into `main` once the user asks (it fast-forwards).
 3. Watch for the unreproduced full-suite crash; run with `-X faulthandler` and keep the output.
 4. Wishlist items stay paused: the USFM per-chapter view, and the footnote category filter.

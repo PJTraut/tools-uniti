@@ -246,3 +246,13 @@ def test_project_books_open_in_the_declared_encoding(tmp_path: Path):
     loose.mkdir()
     (loose / "GEN.usfm").write_text("\\id GEN\n", encoding="utf-8")
     assert project_encoding_profile(loose / "GEN.usfm") is None
+
+
+def test_find_file_matches_without_regard_to_case(tmp_path: Path):
+    from uniti.core.environments.sfm.paratext_project import find_file
+
+    (tmp_path / "Custom.vrs").write_text("", encoding="utf-8")
+    found = find_file(tmp_path, "custom.vrs")
+    assert found is not None and found.name.lower() == "custom.vrs"
+    assert find_file(tmp_path, "missing.vrs") is None
+    assert find_file(tmp_path / "nowhere", "custom.vrs") is None

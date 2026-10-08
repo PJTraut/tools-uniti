@@ -257,6 +257,23 @@ class ParatextProject:
             return False
 
 
+def find_file(folder: Path, name: str) -> Path | None:
+    """`folder/name`, matched without regard to case (a Paratext project
+    copied from Windows may say `Custom.vrs` on a case-sensitive volume)."""
+
+    exact = folder / name
+    try:
+        if exact.is_file():
+            return exact
+        lowered = name.lower()
+        for entry in folder.iterdir():
+            if entry.name.lower() == lowered and entry.is_file():
+                return entry
+    except OSError:
+        return None
+    return None
+
+
 def project_for_file(path: Path) -> ParatextProject | None:
     """The project whose folder holds `path`, if that folder is a project."""
 
@@ -381,6 +398,7 @@ __all__ = [
     "SETTINGS_FILE",
     "VERSIFICATIONS",
     "book_file_number",
+    "find_file",
     "project_encoding_profile",
     "project_for_file",
 ]

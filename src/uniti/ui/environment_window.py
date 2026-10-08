@@ -189,6 +189,10 @@ class ReferenceSync(QObject):
                 book, reference.chapter, reference.verse, source_versification, environment.versification_for(target.document)
             )
             found = target_map.find(chapter, verse)
+            if found is None and (chapter, verse) != (reference.chapter, reference.verse):
+                # The text doesn't have the mapped verse (its versification
+                # and its text disagree): the same reference, if it has it.
+                found = target_map.find(reference.chapter, reference.verse)
             if found is not None:
                 moves.append((target, found.start, target_map.verse_range(found)))
             elif reference.verse is None:

@@ -49,11 +49,14 @@ User field check in the live app, 2026-10-08:
 - **Standard/Preview switching speed:** acceptable.
 - **Book list:** a book without `\h` must show its `\id` code alone. Changed the same day.
 - **Undefined-markers report:** none found in the files tried so far.
-- **Not tested yet:** versification and side-by-side sync.
+- **Versification and sync, NIV (`usNIVv3`) against ruCARS (`ruCARSv3`):** run at the user's request on the real projects in `/Volumes/Win11Arm64/Paratext Projects`, read-only.
+  - Psalms (3:1→3:2, 51:1→50:3, 23:1→22:1, 90:1→89:2, 119:176→118:176), Joel, Malachi, Numbers and Romans all land on the matching verse.
+  - Three fixes came out of it: Paratext's own `.vrs` folder, `Custom.vrs` in any case, and a mapping onto a verse that doesn't exist (ruCARS Rom 16:25).
+  - Book-file naming resolved every present book in both projects.
 
 Not yet verified:
-- versification and sync with real projects;
-- Paratext book-file numbering and the `Settings.xml` fields across real projects (implemented from memory);
+- the user trying versification and sync in the live app;
+- Paratext book-file numbering and `Settings.xml` fields beyond `usNIVv3` and `ruCARSv3`;
 - hosted CI;
 - any affected-host check.
 

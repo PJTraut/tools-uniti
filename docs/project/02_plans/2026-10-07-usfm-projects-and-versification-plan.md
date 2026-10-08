@@ -115,6 +115,30 @@ Tests: +3 in `tests/test_paratext_project.py`, +1 in `tests/app/test_usfm_projec
 
 Tests: `tests/test_sfm_versification.py` (9) and `tests/app/test_environment_window.py` +1 (the picker, and saving and restoring the choice).
 
+**Checked against real projects, 2026-10-08:** `usNIVv3` (English + `Custom.vrs`) against `ruCARSv3` (Russian Protestant + `custom.vrs`), in `/Volumes/Win11Arm64/Paratext Projects`, at the user's request. It found and fixed three problems:
+- **`.vrs` lookup:** Paratext keeps `rsc.vrs` and the others in its projects folder, so `versification_path` now looks there for a project book, after your folder.
+- **Case:** NIV's `Custom.vrs` wasn't found on the case-sensitive volume. `paratext_project.find_file` now matches without regard to case.
+- **Romans:** ruCARS's `custom.vrs` keeps the Russian "ROM 14:24-26 = ROM 16:25-27" while giving ROM 14 only 23 verses. `map_reference` now ignores a mapping onto a verse the target's own counts say doesn't exist, and sync falls back to the same reference when the text lacks the mapped verse.
+
+Results (NIV → ruCARS, the verse text compared):
+
+| NIV | ruCARS |
+|---|---|
+| Ps 3:1 | 3:2 |
+| Ps 23:1 | 22:1 |
+| Ps 51:1 | 50:3 |
+| Ps 51:19 | 50:21 |
+| Ps 90:1 | 89:2 |
+| Ps 119:176 | 118:176 |
+| Ps 150:6 | 150:6 |
+| Joel 2:28 | 2:28 |
+| Mal 4:1 | 4:1 |
+| Rom 14:23 | 14:23 |
+| Rom 16:25 | 16:25 |
+| Num 16:36 | 16:36 |
+
+Side-by-side sync in an offscreen window moved and highlighted ruCARS correctly for each Psalm reference. Book-file naming resolved every present book in both projects (68 and 74 books).
+
 ### P5: Sync across books and versifications
 
 `ReferenceSync` (ADR-0017 decision 4) gains three things:

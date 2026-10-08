@@ -95,3 +95,50 @@ def test_a_projects_custom_vrs_is_layered_on_top(user_root: Path, tmp_path: Path
     assert text.custom == book.parent / "custom.vrs"
     assert text.label == "English + custom.vrs"
     assert map_reference("PSA", "51", "1", text, load_versification("org")) == ("51", "9")
+
+
+def test_paratexts_own_vrs_files_in_the_projects_folder_are_used(user_root: Path, tmp_path: Path):
+    """Paratext keeps rsc.vrs, lxx.vrs … in its projects folder (found on a
+    real ruCARS project, 2026-10-08)."""
+
+    from uniti.core.environments.sfm.versification import available_versifications, paratext_root_for
+
+    root = tmp_path / "Paratext Projects"
+    book = _project(root / "ruTEST", versification=5)
+    shutil.copyfile(versification_path("org"), root / "rsc.vrs")  # a stand-in file
+    (root / "ethiopian_custom.vrs").write_text("", encoding="utf-8")
+
+    text = versification_for(book)
+
+    assert (text.stem, text.fell_back) == ("rsc", False)
+    assert paratext_root_for(book) == root
+    assert available_versifications(root) == ("eng", "org", "rsc")  # standard ones only
+    assert available_versifications() == ("eng", "org")
+
+
+def test_custom_vrs_is_found_in_any_case(user_root: Path, tmp_path: Path):
+    book = _project(tmp_path / "usTEST", versification=4)
+    (book.parent / "Custom.vrs").write_text("PSA 51:1 = PSA 51:9\n", encoding="utf-8")
+    custom = versification_for(book).custom
+    # Found whatever the volume's case rules (on a case-insensitive disk
+    # under the name asked for).
+    assert custom is not None and custom.is_file() and custom.name.lower() == "custom.vrs"
+
+
+def test_a_mapping_onto_a_verse_the_text_does_not_have_is_ignored(user_root: Path, tmp_path: Path):
+    """ruCARS's custom.vrs keeps Russian "ROM 14:24-26 = ROM 16:25-27"
+    while giving ROM 14 only 23 verses: Rom 16:25 stays 16:25."""
+
+    root = tmp_path / "Paratext Projects"
+    book = _project(root / "ruTEST", versification=5)
+    shutil.copyfile(versification_path("eng"), root / "rsc.vrs")  # stand-in base
+    (book.parent / "custom.vrs").write_text(
+        "ROM 1:32 2:29 3:31 4:25 5:21 6:23 7:25 8:39 9:33 10:21 11:36 12:21 13:14 14:23 15:33 16:27\n"
+        "ROM 14:24-26 = ROM 16:25-27\n",
+        encoding="utf-8",
+    )
+    russian = versification_for(book)
+    english = load_versification("eng")
+
+    assert map_reference("ROM", "16", "25", english, russian) == ("16", "25")
+    assert map_reference("ROM", "14", "23", english, russian) == ("14", "23")
