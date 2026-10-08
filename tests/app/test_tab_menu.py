@@ -177,3 +177,23 @@ def test_moving_a_tab_into_a_window_with_its_project_merges_the_books(desktop, t
     assert leaf is window._panes.leaf_for_view(genesis.view_id)
     assert visible_tab_texts(leaf) == ["NIV", "CARS"]  # one NIV tab, now with LEV
     assert window.current_view is leviticus
+
+
+def test_moving_a_splits_only_tab_to_another_window_closes_the_split(desktop, tmp_path: Path):
+    """Found driving the app: the emptied split stayed, became the active one
+    and left the toolbar with nothing to show."""
+
+    app, service = desktop
+    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window.move_tab_to_new_split(other.view_id, Qt.Orientation.Horizontal)
+    assert window._panes.leaf_count == 2
+
+    usfm_b = window.move_tab_to_window(other.view_id, None)
+
+    assert service.windows.window_for_view(other.view_id) is usfm_b
+    assert window._panes.leaf_count == 1
+    assert window.current_view in (genesis, exodus)
+    assert window._environment_bar.group.isEnabled()
+    # Dock still brings it back (to the window's remaining split).
+    usfm_b.dock_tab(other.view_id)
+    assert service.windows.window_for_view(other.view_id) is window

@@ -265,7 +265,9 @@ Also:
 - **At most four splits** (`MAX_ENVIRONMENT_SPLITS`) in an environment window: `_split_pane` (the split buttons, View menu) refuses with "An environment window has at most 4 splits", and the menu's new-split entries are disabled.
 - **Merging:** moving a tab into a split or window that has a tab of the same project joins it, since `ProjectTabs` groups a split's books by project.
 
-Tests: `tests/app/test_tab_menu.py` (7): the menu's entries; an ordinary window's group menu; a tab moving with its books to a new split and back (the emptied split closes); Unsplit; the four-split limit; moving between windows and docking back as one; merging into a window's tab of the same project.
+- **Found driving the app** (2026-10-08, offscreen, two throwaway projects): moving a split's only tab to another window left the empty split behind, active, so the toolbar and title went blank. `move_tab_to_window` now closes it (Dock falls back to the window's active split).
+
+Tests: `tests/app/test_tab_menu.py` (8): the menu's entries; an ordinary window's group menu; a tab moving with its books to a new split and back (the emptied split closes); Unsplit; the four-split limit; moving between windows and docking back as one; merging into a window's tab of the same project; the emptied split closing when its only tab moves to another window.
 
 ### T7 — Read-only folders (answer 3: "consider"; D5)
 - **A list of read-only folders:** View > Read-Only Folders… adds and removes them. The project tab's menu gets **Read Only** for its project's folder.

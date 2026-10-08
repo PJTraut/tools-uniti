@@ -1833,10 +1833,22 @@ class UNITIMainWindow(QMainWindow):
         # The tab docks back as one, to where it is now.
         location = self.view_location(books[-1].view_id)
         home = DockReturnRecord(location.window_id, location.pane_id, location.tab_index)
+        source = self._panes.leaf_for_view(books[-1].view_id)
         target = None
         for book in books:
             target = self._service.move_to_environment_window(book.view_id, key, slot)
             book.set_dock_return(home)
+        if (
+            source is not None
+            and source.pane_id in self._panes.pane_ids
+            and source.count() == 0
+            and self._panes.leaf_count > 1
+        ):
+            # Don't leave an empty split behind (Dock falls back to the
+            # window's active split).
+            self._panes.close_leaf(source.pane_id)
+            self._project_tabs.forget(source.pane_id)
+            self._on_current_changed(self._tabs.currentIndex())
         if target is not None:
             target._project_tabs.refresh_all()
             target._select_view(books[-1])
