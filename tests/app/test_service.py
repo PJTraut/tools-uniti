@@ -734,6 +734,7 @@ def test_group_menu_lists_groups_and_marks_the_assigned_one(
             "No Group",
             "A",
             "B",
+            "New Group…",
             'Save Group "B"',
             'Close Group "B"',
             "Manage Groups…",
@@ -783,7 +784,7 @@ def test_group_menu_offers_open_saved_for_groups_with_a_saved_set(
         labels = [
             action.text() for action in menu.actions() if not action.isSeparator()
         ]
-        assert labels == ["No Group", "A", "B", 'Open Saved "B"', "Manage Groups…"]
+        assert labels == ["No Group", "A", "B", "New Group…", 'Open Saved "B"', "Manage Groups…"]
     finally:
         for _window_id, open_window in service.windows.items:
             open_window.close_all_documents(force=True)

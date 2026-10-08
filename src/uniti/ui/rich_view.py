@@ -483,15 +483,23 @@ class _RichEditor(QTextEdit):
         return source.hasText()
 
     def contextMenuEvent(self, event) -> None:  # noqa: N802
+        self.context_menu().exec(event.globalPos())
+
+    def context_menu(self) -> QMenu:
         menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         editable = self._owner.editable
         menu.addAction("Cut", self._owner.cut).setEnabled(editable and self.textCursor().hasSelection())
         menu.addAction("Copy", self.copy).setEnabled(self.textCursor().hasSelection())
         menu.addAction("Paste", self._owner.paste).setEnabled(editable)
-        menu.addSeparator()
+        if self._owner.commands:
+            menu.addSeparator()
         for command in self._owner.commands:
             menu.addAction(command.label, lambda command_id=command.command_id: self._owner.run_view_command(command_id))
-        menu.exec(event.globalPos())
+        hook = self._owner.context_menu_hook
+        if hook is not None:
+            hook(menu)  # the host's entries (Document Group)
+        return menu
 
 
 class _NoteSectionView(QWidget):
@@ -595,6 +603,8 @@ class RichViewPane(QWidget):
         # Whether the document may be edited right now; the host returns
         # False while the Source editor is disabled (e.g. during a save).
         self.can_edit: Callable[[], bool] = lambda: True
+        # Adds the host's entries to the right-click menu.
+        self.context_menu_hook: Callable[[QMenu], None] | None = None
         self._providers: tuple[EditorViewProvider, ...] = ()
         self._remove_listener: Callable[[], None] | None = None
         self._applying = False

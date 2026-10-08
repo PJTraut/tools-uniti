@@ -180,6 +180,7 @@ class RichViewController:
         pane.focused.connect(lambda: view.viewFocused.emit(view.view_id))
         pane.document_applied = lambda: self._after_rich_edit(view)
         pane.can_edit = view.isEnabled
+        pane.context_menu_hook = lambda menu: self._window.add_view_context_entries(menu, view)
         slot = lambda: self._sync_appearance(view)  # noqa: E731
         view.appearanceChanged.connect(slot)
         self._appearance_slots[view.view_id] = slot

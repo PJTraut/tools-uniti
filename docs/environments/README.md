@@ -44,6 +44,8 @@ Ways a file gets there:
 
 Environment windows come back when UNITI restarts.
 
+A file in an environment window belongs to that window's group. Giving it another group (right-click its tab or its text → **Document Group**) moves it to that group's environment window, and **Dock** still takes it back where it came from.
+
 ## Undefined markup
 
 Where an environment knows its vocabulary, opening a file checks it. Today that's USFM: markers no loaded stylesheet defines pop up a report, which you can copy, save, or use to add the missing definitions. See [usfm.md](usfm.md#undefined-markers).

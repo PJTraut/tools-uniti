@@ -1705,6 +1705,9 @@ class UNITIMainWindow(QMainWindow):
     ) -> None:
         if not view.isEnabled():
             return
+        self._editor_context_menu(view).popup(global_position)
+
+    def _editor_context_menu(self, view: UNITITextView) -> QMenu:
         menu = QMenu(self)
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         for group in self._EDITOR_CONTEXT_MENU_GROUPS:
@@ -1712,7 +1715,36 @@ class UNITIMainWindow(QMainWindow):
                 menu.addSeparator()
             for command_id in group:
                 menu.addAction(self._command_actions[command_id])
-        menu.popup(global_position)
+        self.add_view_context_entries(menu, view)
+        return menu
+
+    def add_view_context_entries(self, menu: QMenu, view: UNITITextView) -> None:
+        """Entries every right-click menu of a document has, Plain Text or
+        Standard/Preview: its Document Group."""
+
+        if self._service is None:
+            return
+        menu.addSeparator()
+        self._groups_and_recent_files.add_group_submenu(menu, view.view_id)
+
+    def _document_group_changed(self, document_id: str, group_id: str | None) -> None:
+        """A file in an environment window belongs to that window's group
+        (ADR-0017); given another group, it moves to that group's window."""
+
+        service = self._service
+        if service is None:
+            return
+        entry = service.documents.get(document_id)
+        moved = None
+        for view_id in tuple(entry.view_ids):
+            window = service.windows.window_for_view(view_id)
+            identity = getattr(window, "environment_window", None)
+            if identity is not None and identity[1] != group_id:
+                moved = service.move_to_environment_window(view_id, identity[0], group_id)
+        if moved is not None:
+            moved.statusBar().showMessage(
+                f"{entry.canonical_path.name} moved to {moved._title_prefix().removeprefix('UNITI — ')}", 5000
+            )
 
     def _show_assignment_menu(self, pane_id: str, position: QPoint) -> None:
         if self._service is None:

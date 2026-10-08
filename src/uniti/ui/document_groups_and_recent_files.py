@@ -106,8 +106,126 @@ class DocumentGroupsAndRecentFiles:
         entry = owner._service.documents.get(document_id)
         if owner._recent_files_store is not None:
             owner._recent_files_store.record_group(str(entry.canonical_path), group_id)
-        for view_id in entry.view_ids:
-            self._refresh_group_indicator(view_id)
+        # The tab's swatch, in whichever window shows it.
+        for window in self._windows():
+            for view_id in entry.view_ids:
+                if window.view_for_id(view_id) is not None:
+                    window._groups_and_recent_files._refresh_group_indicator(view_id)
+        follow = getattr(owner, "_document_group_changed", None)
+        if callable(follow):
+            follow(document_id, group_id)
+
+    def _windows(self) -> list:
+        owner = self._owner
+        if owner._service is None:
+            return [owner]
+        return [window for _window_id, window in owner._service.windows.items]
+
+    def _publish_groups(self, groups) -> None:
+        """Save the group list and give it to every window (a group made in
+        one window is at once in every other's menus and titles)."""
+
+        owner = self._owner
+        if owner._group_store is not None:
+            owner._group_store.save(groups)
+        for window in self._windows():
+            window._groups = groups
+            window._groups_and_recent_files._refresh_all_group_indicators()
+            bar = getattr(window, "_environment_bar", None)
+            if bar is not None:
+                bar.refresh()
+
+    def new_group_for(self, document_id: str | None = None):
+        """Ask for a name, create the group (next free colour) and, with
+        `document_id`, put that document in it."""
+
+        from PySide6.QtWidgets import QInputDialog
+
+        from uniti.app.document_groups import DocumentGroup
+
+        owner = self._owner
+        name, accepted = QInputDialog.getText(owner, "New Group", "Group name:")
+        name = name.strip() if accepted else ""
+        if not name:
+            return None
+        group = DocumentGroup(self._unique_group_id(name), name, self._next_group_color())
+        self._publish_groups(owner._groups + (group,))
+        if document_id is not None:
+            self._set_document_group(document_id, group.id)
+        return group
+
+    def populate_group_menu(self, menu: QMenu, view_id: str, *, extras: bool = True) -> bool:
+        """The group choices for `view_id`'s document: No Group, each group
+        (its swatch, checked when current), New Group…, and with `extras`
+        the saved-group and manage entries. False when there's no document."""
+
+        from PySide6.QtGui import QActionGroup
+
+        owner = self._owner
+        entry = None if owner._service is None else owner._service.documents.entry_for_view(view_id)
+        if entry is None:
+            return False
+        choices = QActionGroup(menu)
+        choices.setExclusive(True)
+        none_action = menu.addAction("No Group")
+        none_action.setCheckable(True)
+        none_action.setChecked(entry.group_id is None)
+        choices.addAction(none_action)
+        none_action.triggered.connect(
+            lambda _checked=False, document_id=entry.document_id: self._set_document_group(document_id, None)
+        )
+        if owner._groups:
+            menu.addSeparator()
+        for group in owner._groups:
+            action = menu.addAction(self._group_swatch_icon(group.color), group.name)
+            action.setCheckable(True)
+            action.setChecked(entry.group_id == group.id)
+            choices.addAction(action)
+            action.triggered.connect(
+                lambda _checked=False, document_id=entry.document_id, group_id=group.id: self._set_document_group(
+                    document_id, group_id
+                )
+            )
+        menu.addSeparator()
+        new_action = menu.addAction("New Group…")
+        new_action.triggered.connect(lambda _checked=False, document_id=entry.document_id: self.new_group_for(document_id))
+        if not extras:
+            manage_action = menu.addAction("Manage Groups…")
+            manage_action.triggered.connect(self.show_document_group_editor)
+            return True
+        openable = [group for group in owner._groups if group.saved_paths]
+        if openable:
+            menu.addSeparator()
+            for group in openable:
+                action = menu.addAction(f'Open Saved "{group.name}"')
+                action.triggered.connect(lambda _checked=False, group_id=group.id: self._open_group(group_id))
+        current_group = self._group_by_id(entry.group_id) if entry.group_id is not None else None
+        if current_group is not None:
+            menu.addSeparator()
+            save_action = menu.addAction(f'Save Group "{current_group.name}"')
+            save_action.triggered.connect(lambda _checked=False, group_id=current_group.id: self._save_group(group_id))
+            close_action = menu.addAction(f'Close Group "{current_group.name}"')
+            close_action.triggered.connect(lambda _checked=False, group_id=current_group.id: self._close_group(group_id))
+        menu.addSeparator()
+        manage_action = menu.addAction("Manage Groups…")
+        manage_action.triggered.connect(self.show_document_group_editor)
+        return True
+
+    def add_group_submenu(self, menu: QMenu, view_id: str) -> QMenu | None:
+        """A "Document Group" submenu for a right-click menu, showing the
+        current group's swatch."""
+
+        owner = self._owner
+        entry = None if owner._service is None else owner._service.documents.entry_for_view(view_id)
+        if entry is None:
+            return None
+        current = self._group_by_id(entry.group_id) if entry.group_id is not None else None
+        submenu = menu.addMenu("Document Group")
+        if current is not None:
+            submenu.setIcon(self._group_swatch_icon(current.color))
+            submenu.setTitle(f"Document Group ({current.name})")
+        self.populate_group_menu(submenu, view_id, extras=False)
+        return submenu
 
     def _group_by_id(self, group_id: str) -> object | None:
         return next(
@@ -186,57 +304,14 @@ class DocumentGroupsAndRecentFiles:
             )
 
     def _show_group_menu(self, view_id: str, position: QPoint) -> None:
+        """The tab's right-click menu: assign the document's group."""
+
         owner = self._owner
-        if owner._service is None:
-            return
-        entry = owner._service.documents.entry_for_view(view_id)
-        if entry is None:
-            return
         menu = QMenu(owner)
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
-        none_action = menu.addAction("No Group")
-        none_action.setCheckable(True)
-        none_action.setChecked(entry.group_id is None)
-        none_action.triggered.connect(
-            lambda _checked=False, document_id=entry.document_id: (
-                self._set_document_group(document_id, None)
-            )
-        )
-        if owner._groups:
-            menu.addSeparator()
-        for group in owner._groups:
-            action = menu.addAction(self._group_swatch_icon(group.color), group.name)
-            action.setCheckable(True)
-            action.setChecked(entry.group_id == group.id)
-            action.triggered.connect(
-                lambda _checked=False,
-                document_id=entry.document_id,
-                group_id=group.id: self._set_document_group(document_id, group_id)
-            )
-        openable = [group for group in owner._groups if group.saved_paths]
-        if openable:
-            menu.addSeparator()
-            for group in openable:
-                action = menu.addAction(f'Open Saved "{group.name}"')
-                action.triggered.connect(
-                    lambda _checked=False, group_id=group.id: self._open_group(group_id)
-                )
-        current_group = (
-            self._group_by_id(entry.group_id) if entry.group_id is not None else None
-        )
-        if current_group is not None:
-            menu.addSeparator()
-            save_action = menu.addAction(f'Save Group "{current_group.name}"')
-            save_action.triggered.connect(
-                lambda _checked=False, group_id=current_group.id: self._save_group(group_id)
-            )
-            close_action = menu.addAction(f'Close Group "{current_group.name}"')
-            close_action.triggered.connect(
-                lambda _checked=False, group_id=current_group.id: self._close_group(group_id)
-            )
-        menu.addSeparator()
-        manage_action = menu.addAction("Manage Groups…")
-        manage_action.triggered.connect(self.show_document_group_editor)
+        if not self.populate_group_menu(menu, view_id):
+            menu.deleteLater()
+            return
         menu.popup(position)
 
     def show_document_group_editor(self) -> None:
@@ -246,14 +321,12 @@ class DocumentGroupsAndRecentFiles:
         editor = DocumentGroupEditor(owner._groups, owner)
         if editor.exec() and owner._group_store is not None:
             groups = editor.groups()
-            owner._group_store.save(groups)
             removed_ids = {g.id for g in owner._groups} - {g.id for g in groups}
-            owner._groups = groups
             if owner._service is not None and removed_ids:
                 for entry in owner._service.documents.entries:
                     if entry.group_id in removed_ids:
                         owner._service.documents.set_group(entry.document_id, None)
-            self._refresh_all_group_indicators()
+            self._publish_groups(groups)
 
     def _next_group_color(self) -> str:
         owner = self._owner

@@ -1,0 +1,110 @@
+"""Document Group on every right-click menu (2026-10-08)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("PySide6")
+
+from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
+
+from uniti.app.document_groups import DocumentGroup  # noqa: E402
+
+_USFM = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning.\n"
+
+
+@pytest.fixture
+def desktop(tmp_path: Path):
+    app, service, _recovery = _desktop_service(tmp_path)
+    yield app, service
+    for _window_id, window in service.windows.items:
+        window.close_all_documents(force=True)
+        window.close()
+    app.processEvents()
+    _stop_desktop_service(app, service)
+
+
+def _open(window, path: Path, text: str = _USFM):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return window.open_path(path)
+
+
+def _texts(menu) -> list[str]:
+    return [action.text() for action in menu.actions() if not action.isSeparator()]
+
+
+def _group_submenu(menu):
+    return next(action.menu() for action in menu.actions() if action.menu() and action.text().startswith("Document Group"))
+
+
+def test_the_editor_right_click_menu_assigns_the_group(desktop, tmp_path: Path):
+    app, service = desktop
+    window = service.new_window()
+    view = _open(window, tmp_path / "GEN.usfm")
+
+    submenu = _group_submenu(window._editor_context_menu(view))
+
+    assert _texts(submenu) == ["No Group", "A", "B", "C", "New Group…", "Manage Groups…"]
+    assert next(a for a in submenu.actions() if a.text() == "No Group").isChecked()
+    next(a for a in submenu.actions() if a.text() == "B").trigger()
+
+    assert service.documents.entry_for_view(view.view_id).group_id == "B"
+    assert _group_submenu(window._editor_context_menu(view)).title() == "Document Group (B)"
+    leaf = window.panes.leaf_for_view(view.view_id)
+    assert not leaf.tabs.tabIcon(leaf.index_of(view.view_id)).isNull()  # the tab's swatch
+
+
+def test_standard_and_preview_right_click_menus_assign_the_group_too(desktop, tmp_path: Path):
+    app, service = desktop
+    window = service.new_window()
+    view = _open(window, tmp_path / "GEN.usfm")
+    window._rich_views.show("sfm.preview", view)
+
+    menu = window._rich_views.pane_for(view).editor.context_menu()
+
+    assert _texts(menu)[:3] == ["Cut", "Copy", "Paste"]
+    submenu = _group_submenu(menu)
+    next(a for a in submenu.actions() if a.text() == "A").trigger()
+    assert service.documents.entry_for_view(view.view_id).group_id == "A"
+
+
+def test_new_group_creates_assigns_and_reaches_every_window(desktop, tmp_path: Path, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+
+    app, service = desktop
+    first = service.new_window()
+    second = service.new_window()
+    view = _open(first, tmp_path / "GEN.usfm")
+    other = _open(second, tmp_path / "EXO.usfm", _USFM.replace("GEN", "EXO"))
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("Translators", True))
+
+    next(a for a in _group_submenu(first._editor_context_menu(view)).actions() if a.text() == "New Group…").trigger()
+
+    entry = service.documents.entry_for_view(view.view_id)
+    group = first._group_by_id(entry.group_id)
+    assert group is not None and group.name == "Translators"
+    assert [g.name for g in first._group_store.load()][-1] == "Translators"
+    # The other window knows the new group straight away.
+    assert second._group_by_id(group.id) is not None
+    assert "Translators" in _texts(_group_submenu(second._editor_context_menu(other)))
+
+
+def test_regrouping_a_file_in_an_environment_window_moves_it_to_that_groups_window(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = _open(main, tmp_path / "GEN.usfm")
+    main._set_document_group(service.documents.entry_for_view(view.view_id).document_id, "A")
+    window_a = main.move_to_environment_window(view)
+    assert window_a.environment_window == ("usfm", "A")
+
+    next(a for a in _group_submenu(window_a._editor_context_menu(view)).actions() if a.text() == "B").trigger()
+
+    window_b = service.windows.window_for_view(view.view_id)
+    assert window_b.environment_window == ("usfm", "B")
+    assert window_b.statusBar().currentMessage() == "GEN.usfm moved to USFM — B"
+    # Dock still goes back to where the file came from.
+    service.dock_view(view.view_id)
+    assert service.windows.window_for_view(view.view_id) is main
