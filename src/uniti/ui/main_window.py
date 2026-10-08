@@ -268,6 +268,7 @@ class UNITIMainWindow(QMainWindow):
         # service's windows.
         self._environment_groups = self._make_environment_groups(service)
         self._environment_window_names = self._make_environment_window_names(service)
+        self._project_groups = self._make_project_groups(service)
         self._recent_files_store = (
             self._settings_store.recent_files
             if self._settings_store is not None
@@ -1851,6 +1852,23 @@ class UNITIMainWindow(QMainWindow):
         if service is not None:
             service._environment_window_names = names
         return names
+
+    def _make_project_groups(self, service):
+        from uniti.app.document_groups import ProjectGroups
+        from uniti.core.environments.user_config import ENVIRONMENTS_FOLDER
+
+        shared = getattr(service, "_project_groups", None) if service is not None else None
+        if shared is not None:
+            return shared
+        store = self._settings_store
+        if store is None:
+            groups = ProjectGroups()
+        else:
+            root = store.path.parent / ENVIRONMENTS_FOLDER
+            groups = ProjectGroups(lambda key: root / descriptor_for_key(key).label)
+        if service is not None:
+            service._project_groups = groups
+        return groups
 
     def environment_window_name(self) -> str | None:
         """This environment window's name, e.g. "USFM A" (round 3 T3)."""

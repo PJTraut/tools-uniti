@@ -197,7 +197,7 @@ Tests: `tests/app/test_project_tabs.py` (7):
 
 ### T5 — Projects belong to groups, and groups bind projects across windows (items 1 and 6, answer 1)
 - **A project has a group** in the USFM environment.
-  - It's stored in `Environments/USFM/groups.json` next to the groups, by project folder. UNITI still writes nothing into a project folder.
+  - It's stored in `Environments/USFM/projects.json` next to the groups, by project folder. UNITI still writes nothing into a project folder.
   - Every book of the project takes that group. There's no per-book group in USFM.
 - **Setting it:** the project tab's right-click menu (T6), the toolbar's Group dropdown and the text's right-click Group submenu all set the project's group.
 - **The group's colour colours the project's tab**, in every window and split.
@@ -213,6 +213,23 @@ Tests: `tests/app/test_project_tabs.py` (7):
   - sync across two windows;
   - a target tab changes book without asking, and keeps its edits;
   - an ungrouped project doesn't sync.
+
+**Implemented 2026-10-08.**
+- **`document_groups.ProjectGroups`**: per environment, `projects.json` maps a project folder (resolved) to a group id. It's shared by the service's windows; removing a group in Manage Groups… ungroups its projects.
+- **`_set_document_group`** on a book of a project environment sets the project's group and applies it to every open book of the project; `apply_project_group` gives a book its project's group when it opens (`UsfmProjectController.note_opened`). Open USFM Project… prefers the stored project group over the recent-projects entry.
+- **The menus** call it **Project Group** on a project book.
+- **Tab colour:** `_DetachableTabBar.set_tab_tint` paints a light wash (alpha 40, so the text keeps its contrast) and a 3 px band in the group's colour on the visible project tab; `ProjectTabs` sets it.
+- **Sync across windows:** `ReferenceSync` looks at the shown tab of every split of every window. Its guard (`_busy`, a nesting counter) and its highlights are shared by every window's sync, so a move one makes never schedules another's, and each sync clears the last one's highlights wherever they are, except each window's pinned jump. Opening a book to follow happens in the target's window; activation goes back to the source only in its own window.
+- **D2:** sync shows or opens the book directly, never through the Book list's question.
+
+Tests: `tests/app/test_project_groups.py` (5):
+- a project's group is every one of its books, saved in `projects.json`, colours the tab, and reaches a book opened later;
+- a project opens in its stored group;
+- sync across two windows, without a sync back;
+- a tab's book changed by sync without asking, keeping the other book's edits;
+- ungrouped projects don't sync.
+
+Updated: the group submenu is "Project Group" on USFM books; a second book of a project takes the project's group.
 
 ### T6 — The project tab's menu: splits and windows (item 7)
 Right-clicking a tab in an environment window gives:

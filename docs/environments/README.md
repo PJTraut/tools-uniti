@@ -54,6 +54,7 @@ Environment windows come back when UNITI restarts.
 - A file's group menu (right-click its tab or its text → **Document Group**) lists the groups of the file's environment.
 - **Manage Groups…** edits one environment's groups at a time. Choose the environment at the top; it starts at the current window's or file's.
 - Choosing another environment for a file (**Environment for This Document**) takes it out of its group.
+- In USFM a group belongs to a project, not a single book, and binds its projects for sync across windows (see [usfm.md](usfm.md#groups-and-side-by-side-sync)).
 - The groups you had before environments had their own are Plain Text's groups now.
 - Each environment's groups are saved in `groups.json` in its configuration folder (see [Configuration](#configuration)).
 

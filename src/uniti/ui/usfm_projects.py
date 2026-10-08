@@ -106,7 +106,7 @@ class UsfmProjectController(QObject):
             return None
         remembered = self.store.find(project.folder) if self.store is not None else None
         book = next((item for item in books if remembered is not None and item.code == remembered.book), books[0])
-        group_id = self._group_for(remembered)
+        group_id = self._window._project_groups.group(USFM, project.folder) or self._group_for(remembered)
         target = self._target_window(book.path)
         view = target.open_path(book.path)
         if view is None:
@@ -148,12 +148,17 @@ class UsfmProjectController(QObject):
     # --- remembering where a project was left ------------------------------------
 
     def note_opened(self, view: "UNITITextView") -> None:
-        """A file was opened: if it is a project book, the project is recent."""
+        """A file was opened: if it is a project book, it takes its
+        project's group (round 3 T5) and the project is recent."""
 
-        if self.store is None:
-            return
         project = project_for_file(view.document.path)
         if project is None:
+            return
+        service = self._window._service
+        entry = None if service is None else service.documents.entry_for_view(view.view_id)
+        if entry is not None:
+            self._window._groups_and_recent_files.apply_project_group(entry.document_id)
+        if self.store is None:
             return
         book = _book_of(project, view.document.path)
         try:

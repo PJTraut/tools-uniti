@@ -38,7 +38,11 @@ def _texts(menu) -> list[str]:
 
 
 def _group_submenu(menu):
-    return next(action.menu() for action in menu.actions() if action.menu() and action.text().startswith("Document Group"))
+    return next(
+        action.menu()
+        for action in menu.actions()
+        if action.menu() and action.text().startswith(("Document Group", "Project Group"))
+    )
 
 
 def test_the_editor_right_click_menu_assigns_the_group(desktop, tmp_path: Path):
@@ -53,7 +57,8 @@ def test_the_editor_right_click_menu_assigns_the_group(desktop, tmp_path: Path):
     next(a for a in submenu.actions() if a.text() == "B").trigger()
 
     assert service.documents.entry_for_view(view.view_id).group_id == "B"
-    assert _group_submenu(window._editor_context_menu(view)).title() == "Document Group (B)"
+    # A USFM book's group is its project's (round 3 T5).
+    assert _group_submenu(window._editor_context_menu(view)).title() == "Project Group (B)"
     leaf = window.panes.leaf_for_view(view.view_id)
     assert not leaf.tabs.tabIcon(leaf.index_of(view.view_id)).isNull()  # the tab's swatch
 
@@ -135,7 +140,7 @@ def test_each_file_offers_its_own_environments_groups(desktop, tmp_path: Path, m
     window._groups_and_recent_files._publish_groups("usfm", (DocumentGroup("A", "Bibles", usfm[0].color),) + usfm[1:])
     for view, group_id in ((book, "A"), (notes, "A")):
         window._set_document_group(service.documents.entry_for_view(view.view_id).document_id, group_id)
-    assert _group_submenu(window._editor_context_menu(book)).title() == "Document Group (Bibles)"
+    assert _group_submenu(window._editor_context_menu(book)).title() == "Project Group (Bibles)"
     assert _group_submenu(window._editor_context_menu(notes)).title() == "Document Group (A)"
 
 

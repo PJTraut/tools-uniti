@@ -6,8 +6,8 @@ from dataclasses import dataclass
 import math
 import uuid
 
-from PySide6.QtCore import QPoint, QSignalBlocker, Qt, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import QPoint, QRect, QSignalBlocker, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
@@ -50,6 +50,40 @@ class _DetachableTabBar(QTabBar):
         self._pressed_view_id: str | None = None
         self._pressed_position = QPoint()
         self._dragging = False
+        # A tab's group colour, by view id (round 3 T5: a USFM project tab).
+        self._tints: dict[str, str] = {}
+
+    def set_tab_tint(self, view_id: str, color: str | None) -> None:
+        """Tint `view_id`'s tab with `color` (None: no tint)."""
+
+        if color is None:
+            if self._tints.pop(view_id, None) is not None:
+                self.update()
+        elif self._tints.get(view_id) != color:
+            self._tints[view_id] = color
+            self.update()
+
+    def tab_tint(self, view_id: str) -> str | None:
+        return self._tints.get(view_id)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().paintEvent(event)
+        if not self._tints:
+            return
+        painter = QPainter(self)
+        try:
+            for index in range(self.count()):
+                color = self._tints.get(self.tabData(index))
+                if color is None or not self.isTabVisible(index):
+                    continue
+                rect = self.tabRect(index).adjusted(1, 1, -1, -1)
+                # A light wash keeps the text's contrast; the band carries the colour.
+                wash = QColor(color)
+                wash.setAlpha(40)
+                painter.fillRect(rect, wash)
+                painter.fillRect(QRect(rect.left(), rect.bottom() - 2, rect.width(), 3), QColor(color))
+        finally:
+            painter.end()
 
     def contextMenuEvent(self, event) -> None:
         index = self.tabAt(event.pos())

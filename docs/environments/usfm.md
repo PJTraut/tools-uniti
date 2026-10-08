@@ -57,16 +57,18 @@ The environment window's toolbar has **Book**, **Chapter** and **Verse** at its 
 
 Jumping, here or with **Go to Chapter:Verse…** (Ctrl+Alt+G), puts the verse a third of the way down and highlights it in every mode. The highlight clears when the caret leaves the verse.
 
-## Side-by-side sync
+## Groups and side-by-side sync
 
-When two or more splits of one window show files of the **same document group**, moving the caret in one moves the others to the same chapter and verse, and highlights the verse in all of them.
+**A project belongs to a group**, not each book: give any of its books a group (the toolbar's **Group**, or right-click the tab or the text → **Project Group**) and every book of the project is in it, including books you open later. The project's tab is tinted with the group's colour. UNITI keeps the assignment in `projects.json` in your USFM configuration folder; it writes nothing into the project.
+
+**A group binds its projects across windows.** When splits, in any USFM window, show texts of the same group, moving the caret in one moves the others to the same chapter and verse, and highlights the verse in all of them.
 - **Versification:** the reference is mapped into each text's own versification, so English Ps 51:1 lands on 51:3 in a text numbered like the original.
-- **Different book:** if another split shows a different book, it switches to a tab of that book in the same split.
-  - Failing that, it opens the project's file of that book, in that split and view mode. You stay where you were.
+- **Different book:** a project tab showing another book changes its book: to that book if it's open in the tab, otherwise it opens the project's file of that book, in the same view mode. You stay where you were.
+  - Sync never asks about unsaved changes: the book it leaves stays open in the tab, with its changes.
   - A project without the book stays put, and the status bar says so ("GEN isn't in 02EXO.usfm").
-- **Book selector:** choosing a book in the Book selector carries the group's other splits to that book the same way.
+- **Book selector:** choosing a book in the Book selector carries the group's other texts to that book the same way.
 - **Bridges and parts:** verse bridges (`\v 10-12`) and parts (`\v 11a`) are matched.
-- Ungrouped files don't sync. To put a file in a group, use the toolbar's **Group** dropdown.
+- Ungrouped projects don't sync.
 - Turn sync on or off with **Sync Side-by-Side by Reference** (toolbar or menu).
 
 ## Versification

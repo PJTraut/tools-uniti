@@ -204,3 +204,94 @@ class EnvironmentGroups:
         if group_id is None:
             return None
         return next((group for group in self.groups(environment_key) if group.id == group_id), None)
+
+
+PROJECTS_FILE = 'projects.json'
+MAX_PROJECTS = 4096
+
+
+class ProjectGroups:
+    """Which group each project is in (field test round 3, T5).
+
+    In a project environment (USFM) a group belongs to a project, not to a
+    book: every book of the project is in it. Stored per environment as
+    `projects.json` next to its `groups.json`, keyed by project folder;
+    nothing is written into a project folder. With no folder the
+    assignments live in memory only.
+    """
+
+    def __init__(self, folder_for: Callable[[str], Path | None] | None = None) -> None:
+        self._folder_for = folder_for
+        self._cache: dict[str, dict[str, str]] = {}
+
+    @staticmethod
+    def _key(folder: Path | str) -> str:
+        try:
+            return str(Path(folder).resolve())
+        except OSError:
+            return str(Path(folder))
+
+    def path(self, environment_key: str) -> Path | None:
+        folder = None if self._folder_for is None else self._folder_for(environment_key)
+        return None if folder is None else Path(folder) / PROJECTS_FILE
+
+    def _assignments(self, environment_key: str) -> dict[str, str]:
+        cached = self._cache.get(environment_key)
+        if cached is None:
+            cached = self._cache[environment_key] = self._load(environment_key)
+        return cached
+
+    def group(self, environment_key: str, folder: Path | str) -> str | None:
+        return self._assignments(environment_key).get(self._key(folder))
+
+    def set(self, environment_key: str, folder: Path | str, group_id: str | None) -> None:
+        assignments = dict(self._assignments(environment_key))
+        key = self._key(folder)
+        if group_id is None:
+            assignments.pop(key, None)
+        else:
+            if not _ID_RE.fullmatch(group_id):
+                raise ValueError('Group id must be 1-64 letters, digits, underscores or hyphens')
+            assignments[key] = group_id
+        if len(assignments) > MAX_PROJECTS:
+            raise ValueError(f'At most {MAX_PROJECTS} project groups are supported')
+        self._save(environment_key, assignments)
+
+    def forget_groups(self, environment_key: str, group_ids) -> None:
+        """Groups were removed: their projects are ungrouped."""
+
+        removed = set(group_ids)
+        assignments = self._assignments(environment_key)
+        kept = {folder: group for folder, group in assignments.items() if group not in removed}
+        if kept != assignments:
+            self._save(environment_key, kept)
+
+    def _save(self, environment_key: str, assignments: dict[str, str]) -> None:
+        path = self.path(environment_key)
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            atomic_write_json(path, dict(schema=1, projects=dict(sorted(assignments.items()))))
+        self._cache[environment_key] = assignments
+
+    def _load(self, environment_key: str) -> dict[str, str]:
+        path = self.path(environment_key)
+        if path is None:
+            return {}
+        try:
+            with path.open('rb') as handle:
+                raw = handle.read(MAX_BYTES * 4 + 1)
+            if len(raw) > MAX_BYTES * 4:
+                return {}
+            payload = json.loads(raw, object_pairs_hook=_unique_object)
+            if not isinstance(payload, dict) or payload.get('schema') != 1 or not isinstance(payload.get('projects'), dict):
+                return {}
+            return {
+                str(folder): group
+                for folder, group in payload['projects'].items()
+                if isinstance(group, str) and _ID_RE.fullmatch(group)
+            }
+        except FileNotFoundError:
+            return {}
+        except (OSError, UnicodeError, ValueError, TypeError, RecursionError):
+            # A damaged file leaves projects ungrouped; it isn't rewritten.
+            return {}

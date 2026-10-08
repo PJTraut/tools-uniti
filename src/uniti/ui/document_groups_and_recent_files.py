@@ -98,10 +98,66 @@ class DocumentGroupsAndRecentFiles:
         for view_id in owner._panes.view_ids:
             self._refresh_group_indicator(view_id)
 
+    def _project_of_document(self, document_id: str):
+        """The Paratext project a document of a project environment (USFM)
+        belongs to: its group is the project's (round 3 T5)."""
+
+        from uniti.core.environments.catalog import PROJECT_ENVIRONMENTS
+        from uniti.core.environments.sfm.paratext_project import project_for_file
+
+        entry = self._owner._service.documents.get(document_id)
+        if self._key_for_document(document_id) not in PROJECT_ENVIRONMENTS:
+            return None
+        return project_for_file(entry.canonical_path)
+
     def _set_document_group(self, document_id: str, group_id: str | None) -> None:
+        """Give a document a group. A book of a project environment (USFM)
+        gives its project the group instead, and with it every open book
+        of the project (round 3 T5)."""
+
         owner = self._owner
         if owner._service is None:
             return
+        project = self._project_of_document(document_id)
+        if project is None:
+            self._apply_document_group(document_id, group_id)
+            return
+        key = self._key_for_document(document_id)
+        try:
+            owner._project_groups.set(key, project.folder, group_id)
+        except (OSError, ValueError) as exc:
+            owner.statusBar().showMessage(str(exc)[:256], 5000)
+        for entry in self._project_entries(project.folder):
+            self._apply_document_group(entry.document_id, group_id)
+
+    def _project_entries(self, folder: Path):
+        from uniti.core.environments.sfm.paratext_project import project_for_file
+
+        folder = _resolved(folder)
+        found = []
+        for entry in self._owner._service.documents.entries:
+            project = project_for_file(entry.canonical_path)
+            if project is not None and _resolved(project.folder) == folder:
+                found.append(entry)
+        return found
+
+    def apply_project_group(self, document_id: str) -> None:
+        """A project book was opened: it takes its project's group."""
+
+        owner = self._owner
+        if owner._service is None:
+            return
+        project = self._project_of_document(document_id)
+        if project is None:
+            return
+        group_id = owner._project_groups.group(self._key_for_document(document_id), project.folder)
+        if group_id is None or self._group_by_id(group_id, self._key_for_document(document_id)) is None:
+            return
+        if owner._service.documents.get(document_id).group_id != group_id:
+            self._apply_document_group(document_id, group_id)
+
+    def _apply_document_group(self, document_id: str, group_id: str | None) -> None:
+        owner = self._owner
         owner._service.documents.set_group(document_id, group_id)
         entry = owner._service.documents.get(document_id)
         if owner._recent_files_store is not None:
@@ -235,17 +291,19 @@ class DocumentGroupsAndRecentFiles:
 
     def add_group_submenu(self, menu: QMenu, view_id: str) -> QMenu | None:
         """A "Document Group" submenu for a right-click menu, showing the
-        current group's swatch."""
+        current group's swatch. For a project book it's the project's group
+        (round 3 T5): "Project Group"."""
 
         owner = self._owner
         entry = None if owner._service is None else owner._service.documents.entry_for_view(view_id)
         if entry is None:
             return None
         current = self._group_by_id(entry.group_id, self._key_for_document(entry.document_id))
-        submenu = menu.addMenu("Document Group")
+        title = "Project Group" if self._project_of_document(entry.document_id) is not None else "Document Group"
+        submenu = menu.addMenu(title)
         if current is not None:
             submenu.setIcon(self._group_swatch_icon(current.color))
-            submenu.setTitle(f"Document Group ({current.name})")
+            submenu.setTitle(f"{title} ({current.name})")
         self.populate_group_menu(submenu, view_id, extras=False)
         return submenu
 
@@ -381,6 +439,8 @@ class DocumentGroupsAndRecentFiles:
             if tuple(groups) == tuple(before):
                 continue
             removed_ids = {g.id for g in before} - {g.id for g in groups}
+            if removed_ids:
+                owner._project_groups.forget_groups(edited_key, removed_ids)
             if owner._service is not None and removed_ids:
                 for group_id in removed_ids:
                     for entry in self._entries_of(group_id, edited_key):
@@ -503,6 +563,13 @@ class DocumentGroupsAndRecentFiles:
         owner = self._owner
         if owner._recent_files_store is not None:
             owner._recent_files_store.clear()
+
+
+def _resolved(path: Path) -> Path:
+    try:
+        return Path(path).resolve()
+    except OSError:
+        return Path(path)
 
 
 __all__ = ["DocumentGroupsAndRecentFiles"]

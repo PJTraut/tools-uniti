@@ -154,6 +154,11 @@ class ProjectTabs:
                 shown_view = next(book for book in books if book.view_id == shown)
                 leaf.setTabText(index, self.label(shown_view, books))
                 leaf.setTabToolTip(index, self.tooltip(shown_view))
+                set_tint = getattr(tab_bar, "set_tab_tint", None)
+                if callable(set_tint):
+                    # The project's group colours its tab (T5).
+                    for view_id in ids:
+                        set_tint(view_id, self.group_color(shown_view) if view_id == shown else None)
         finally:
             self._refreshing = False
 
@@ -165,6 +170,15 @@ class ProjectTabs:
         name = project.name if project is not None else view.document.path.name
         books = books if books is not None else self.books_of(view)
         return name + ("*" if any(book.document.modified for book in books) else "")
+
+    def group_color(self, view: "UNITITextView") -> str | None:
+        window = self._window
+        service = window._service
+        entry = None if service is None else service.documents.entry_for_view(view.view_id)
+        if entry is None or entry.group_id is None:
+            return None
+        group = window._group_by_id(entry.group_id, window._environment.environment_key_for(view.document))
+        return None if group is None else group.color
 
     def tooltip(self, view: "UNITITextView") -> str:
         code = book_code(view)

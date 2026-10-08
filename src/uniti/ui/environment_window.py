@@ -1,17 +1,18 @@
-"""Environment windows and side-by-side reference sync (ADR-0017).
+"""Environment windows and side-by-side reference sync (ADR-0017, ADR-0019).
 
 2026-10-07 field test: "undock from MAIN panel, create 'environment panel',
 move text file to the 'environment panel'". An environment window is an
 ordinary UNITI window (tabs, splits, Find/Replace, save, session — all
-unchanged) that belongs to one environment and one document group, e.g.
-"USFM — NIV", and carries that environment's frame: an `EnvironmentBar`
-toolbar with the Plain Text / Standard / Preview mode switch and, for
-USFM, a Book / Chapter / Verse selector.
+unchanged) that belongs to one environment, e.g. "USFM A", and carries that
+environment's frame: an `EnvironmentBar` toolbar with the window's name,
+the Plain Text / Standard / Preview mode switch and, for USFM, a Book /
+Chapter / Verse selector.
 
 `ReferenceSync` runs in every window: when the caret moves in a USFM tab,
-every other split showing a file of the same document group and the same
-book scrolls to the same chapter:verse, and the matched verse is
-highlighted in all of them.
+every other split, in any window, showing a text of the same group scrolls
+to the same chapter:verse (changing its book when needed), and the matched
+verse is highlighted in all of them. A group binds projects across windows
+(round 3 T5).
 """
 
 from __future__ import annotations
@@ -76,7 +77,17 @@ class ReferenceMaps:
 
 
 class ReferenceSync(QObject):
-    """Side-by-side sync by scripture reference within one window."""
+    """Side-by-side sync by scripture reference, across every window.
+
+    Each window has one; the one in the source's window does the work. The
+    guard and the highlights are shared (round 3 T5): a move made by one
+    window's sync never starts another's, and any sync clears the last
+    one's highlights wherever they are.
+    """
+
+    _busy = 0
+    _shared_highlights: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+    _instances: "weakref.WeakSet[ReferenceSync]" = weakref.WeakSet()
 
     def __init__(self, window: "UNITIMainWindow") -> None:
         super().__init__(window)
@@ -87,23 +98,41 @@ class ReferenceSync(QObject):
         self._timer.setInterval(_SYNC_DELAY_MS)
         self._timer.timeout.connect(self._sync_now)
         self._source: weakref.ReferenceType | None = None
-        self._syncing = False
-        # Highlighted verse per view (sync, or a jump).
-        self._highlighted: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+        # Highlighted verse per view (sync, or a jump), in every window.
+        self._highlighted = ReferenceSync._shared_highlights
+        ReferenceSync._instances.add(self)
         # A jump's highlight: (view, start, end), kept until its caret leaves.
         self._pinned: tuple[weakref.ReferenceType, int, int] | None = None
         self.action = QAction("Sync Side-by-Side by Reference", window)
         self.action.setCheckable(True)
         self.action.setChecked(True)
         self.action.setToolTip(
-            "Moving the caret in one file scrolls the other splits showing the same book "
-            "of the same document group to the same chapter:verse"
+            "Moving the caret in one text scrolls the other splits, in any window, showing a text "
+            "of the same group to the same chapter:verse"
         )
         self.action.toggled.connect(self._toggled)
 
     @property
     def enabled(self) -> bool:
         return self.action.isChecked()
+
+    @property
+    def _syncing(self) -> bool:
+        return ReferenceSync._busy > 0
+
+    @_syncing.setter
+    def _syncing(self, value: bool) -> None:
+        # Paired True/False, so nested syncing (a tab shown mid-sync) nests.
+        ReferenceSync._busy = max(0, ReferenceSync._busy + (1 if value else -1))
+
+    def _windows(self) -> list:
+        service = self._window._service
+        return [self._window] if service is None else [window for _window_id, window in service.windows.items]
+
+    def _window_of(self, view: "UNITITextView"):
+        service = self._window._service
+        window = None if service is None else service.windows.window_for_view(view.view_id)
+        return window if window is not None else self._window
 
     def _toggled(self, enabled: bool) -> None:
         if not enabled:
@@ -126,19 +155,23 @@ class ReferenceSync(QObject):
         return None if entry is None else entry.group_id
 
     def _visible_views(self) -> list["UNITITextView"]:
-        """The tab shown in each split of this window."""
+        """The tab shown in each split of every window."""
 
         from uniti.ui.text_view import UNITITextView
 
         found = []
-        for pane_id in self._window._panes.pane_ids:
-            try:
-                leaf = self._window._panes.leaf(pane_id)
-            except (KeyError, ValueError):
+        for window in self._windows():
+            panes = getattr(window, "_panes", None)
+            if panes is None:
                 continue
-            widget = leaf.active_view
-            if isinstance(widget, UNITITextView):
-                found.append(widget)
+            for pane_id in panes.pane_ids:
+                try:
+                    leaf = panes.leaf(pane_id)
+                except (KeyError, ValueError):
+                    continue
+                widget = leaf.active_view
+                if isinstance(widget, UNITITextView):
+                    found.append(widget)
         return found
 
     # --- sync ------------------------------------------------------------------
@@ -231,7 +264,8 @@ class ReferenceSync(QObject):
         for shown in self._visible_views():
             if shown is source:
                 continue
-            leaf = self._window._panes.leaf_for_view(shown.view_id)
+            window = self._window_of(shown)
+            leaf = window._panes.leaf_for_view(shown.view_id)
             if leaf is None or leaf is source_leaf or not self._in_group(shown, group):
                 continue
             if self._matches(shown, group, book):
@@ -240,7 +274,7 @@ class ReferenceSync(QObject):
             candidate = next(
                 (
                     view
-                    for view in (self._window.view_for_id(view_id) for view_id in leaf.view_ids)
+                    for view in (window.view_for_id(view_id) for view_id in leaf.view_ids)
                     if view is not None and view is not shown and self._matches(view, group, book)
                 ),
                 None,
@@ -267,7 +301,7 @@ class ReferenceSync(QObject):
 
         from uniti.ui.open_mode import OpenMode
 
-        window = self._window
+        window = self._window_of(shown)
         mode = window._rich_views.key_for(shown)
         leaf = window._panes.leaf_for_view(shown.view_id)
         opened = None
@@ -289,7 +323,8 @@ class ReferenceSync(QObject):
             opened = None
         finally:
             window._quiet_open = False
-            window._panes.activate_view(source.view_id)
+            if window is self._window:
+                window._panes.activate_view(source.view_id)
             self._syncing = False
         if opened is not None and window._panes.leaf_for_view(opened.view_id) is not leaf:
             return None
@@ -318,7 +353,7 @@ class ReferenceSync(QObject):
         line = document.line_for_char(view.state.cursor)
         row = view.visual_row_for_line(line)
         view.verticalScrollBar().setValue(max(0, row - max(1, view._visible_line_capacity()) // 3))
-        pane = self._window._rich_views.pane_for(view)
+        pane = self._window_of(view)._rich_views.pane_for(view)
         if pane is not None:
             pane.scroll_to_source(offset)
 
@@ -329,7 +364,7 @@ class ReferenceSync(QObject):
         last = document.line_for_char(max(start, end - 1))
         color = QColor(reference_highlight_color(view.theme_tokens))
         view.set_line_highlights({line: color for line in range(first, last + 1)})
-        pane = self._window._rich_views.pane_for(view)
+        pane = self._window_of(view)._rich_views.pane_for(view)
         if pane is not None:
             pane.set_highlight(source_range)
         self._highlighted[view] = source_range
@@ -337,23 +372,23 @@ class ReferenceSync(QObject):
     def _unhighlight(self, view: "UNITITextView") -> None:
         self._highlighted.pop(view, None)
         view.set_line_highlights()
-        pane = self._window._rich_views.pane_for(view)
+        pane = self._window_of(view)._rich_views.pane_for(view)
         if pane is not None:
             pane.set_highlight(None)
 
     def clear(self) -> None:
         """Clear every highlight but a jump's, while its caret is still inside."""
 
-        pinned = self._pinned_view()
+        pinned = {instance._pinned_view() for instance in list(ReferenceSync._instances)}
         for view in list(self._highlighted.keys()):
-            if view is not pinned:
+            if view not in pinned:
                 self._unhighlight(view)
 
     def restore_highlight(self, view: "UNITITextView") -> None:
         """A rich pane was just built for `view`: give it the view's highlight."""
 
         source_range = self._highlighted.get(view)
-        pane = self._window._rich_views.pane_for(view)
+        pane = self._window_of(view)._rich_views.pane_for(view)
         if source_range is not None and pane is not None:
             pane.set_highlight(source_range)
 

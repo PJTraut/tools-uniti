@@ -366,8 +366,9 @@ def test_a_file_opened_in_an_environment_window_lives_there(desktop, tmp_path: P
     assert asked == []  # .usfm belongs to USFM: no question
     assert window.view_for_id(opened.view_id) is opened
     entry = service.documents.entry_for_view(opened.view_id)
-    # It keeps its own group: windows don't stand for one (round 3 T3).
-    assert entry.group_id is None and entry.environment_override is None
+    # Windows don't stand for a group (round 3 T3); a book takes its
+    # project's group (T5), and GEN put the project in A.
+    assert entry.group_id == "A" and entry.environment_override is None
 
 
 def test_an_unknown_extension_asks_before_it_is_pinned(desktop, tmp_path: Path):
