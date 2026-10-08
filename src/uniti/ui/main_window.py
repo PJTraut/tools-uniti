@@ -62,6 +62,7 @@ from uniti.core.document import Document
 from uniti.core.durability import DurabilityLevel
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
+from uniti.core.environments.catalog import PLAIN_ENVIRONMENT_KEY, descriptor_for_key
 from uniti.core.environments.markdown_environment import MARKDOWN_PREVIEW_FEATURE
 from uniti.core.environments.sfm.stylesheet_support import IMPORT_STYLESHEET_FEATURE
 from uniti.core.syntax_profiles import (
@@ -113,6 +114,8 @@ from uniti.ui.file_format_dialogs import (
 )
 from uniti.ui.file_operations import FileOperationController, FileOperationHandle
 from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID, FindReplaceWindow
+from uniti.ui import open_mode as open_mode_dialog
+from uniti.ui.open_mode import OpenMode
 from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.panes import EditorPaneTree
 from uniti.ui.shortcut_policy import build_shortcut_policy
@@ -2130,11 +2133,24 @@ class UNITIMainWindow(QMainWindow):
                 if existing_group is not None:
                     group_id = existing_group.id
 
+        # One question for the whole batch (R6), not one per file.
+        open_mode: OpenMode | None = OpenMode.HERE
+        if self._service is not None and self.environment_window is None:
+            environment_key = self._file_environment_manager.resolve_key(
+                matching[0].suffix, self._settings.syntax_extension_overrides
+            )
+            if environment_key != PLAIN_ENVIRONMENT_KEY:
+                open_mode = open_mode_dialog.prompt_open_mode(
+                    self, matching[0], descriptor_for_key(environment_key).label, len(matching)
+                )
+                if open_mode is None:
+                    return
+
         opened = 0
         failures: list[str] = []
         for path in matching:
             try:
-                view = self.open_path(path)
+                view = self.open_path(path, open_mode=open_mode, group_id=group_id)
             except Exception as exc:
                 failures.append(f"{path.name}: {exc}")
                 continue
@@ -2333,7 +2349,14 @@ class UNITIMainWindow(QMainWindow):
         path: str | Path,
         *,
         profile: EncodingProfile | None = None,
+        open_mode: "OpenMode | None" = None,
+        group_id: str | None = None,
     ) -> UNITITextView | None:
+        """Open `path`. A file of a defined environment first asks how to open
+        (R6) — in its environment's window (for `group_id`) or as Plain Text
+        — unless `open_mode` already says, the file is already open, or this
+        is an environment window (where files are pinned, ADR-0017)."""
+
         if (
             self.environment_window is not None
             and self._service is not None
@@ -2361,6 +2384,26 @@ class UNITIMainWindow(QMainWindow):
                     elapsed_ms=(time.monotonic() - started_at) * 1000.0,
                 )
                 return reopened
+        if self._service is not None and self.environment_window is None and open_mode is not OpenMode.HERE:
+            environment_key = self._file_environment_manager.resolve_key(
+                Path(path).suffix, self._settings.syntax_extension_overrides
+            )
+            if environment_key != PLAIN_ENVIRONMENT_KEY:
+                if open_mode is None:
+                    open_mode = open_mode_dialog.prompt_open_mode(
+                        self, Path(path), descriptor_for_key(environment_key).label
+                    )
+                if open_mode is None:
+                    self._service.record_dogfood(
+                        Operation.DOCUMENT_OPEN,
+                        Outcome.CANCELLED,
+                        elapsed_ms=(time.monotonic() - started_at) * 1000.0,
+                    )
+                    return None
+                if open_mode is OpenMode.ENVIRONMENT:
+                    return self._environment_window_for(environment_key, group_id).open_path(path, profile=profile)
+            else:
+                open_mode = None
         if profile is None:
             from uniti.core.environments.sfm.paratext_project import project_encoding_profile
 
@@ -2408,6 +2451,9 @@ class UNITIMainWindow(QMainWindow):
             raise
         self._remember_directory(path)
         self._record_recent_file(path)
+        if open_mode is OpenMode.PLAIN_TEXT:
+            # The default editor environment: no extended features (D2).
+            self._environment.set_document_environment(PLAIN_ENVIRONMENT_KEY, view, move=False)
         self._usfm_projects.note_opened(view)
         if self._service is not None:
             self._service.record_dogfood(
@@ -2644,6 +2690,19 @@ class UNITIMainWindow(QMainWindow):
         if self._environment.environment_key_for(view.document) != key:
             self._environment.set_document_environment(key, view, move=False)
         return view
+
+    def _environment_window_for(self, environment_key: str, group_id: str | None) -> "UNITIMainWindow":
+        """The environment window of `environment_key` and `group_id`,
+        created when there is none yet; raised and focused."""
+
+        target = self._service.environment_window_for(environment_key, group_id)
+        if target is None:
+            target = self._service.new_window()
+            target.set_environment_window(environment_key, group_id)
+        target.show()
+        target.raise_()
+        target.activateWindow()
+        return target
 
     def _confirm_environment_pin(self, path: Path, environment_key: str) -> bool:
         from uniti.core.environments.catalog import descriptor_for_key

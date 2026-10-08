@@ -493,3 +493,116 @@ def test_a_jump_highlight_survives_side_by_side_sync(desktop, tmp_path: Path):
     assert left._line_highlights  # still highlighted after the sync cleared others
     assert right.state.cursor == _GEN_B.index("\\v 2")
     assert right._line_highlights
+
+
+# --- R6: "Open in <Environment> / Open as Plain Text" -------------------------------
+
+
+@pytest.fixture
+def answer(monkeypatch):
+    """Answer the open dialog with `answer.mode`; records each question."""
+
+    from uniti.ui import open_mode
+
+    class Answer:
+        mode = open_mode.OpenMode.ENVIRONMENT
+        asked: list[tuple[str, str, int]] = []
+
+    def prompt(parent, path, label, count=1):
+        Answer.asked.append((path.name, label, count))
+        return Answer.mode
+
+    Answer.asked = []
+    monkeypatch.setattr(open_mode, "prompt_open_mode", prompt)
+    return Answer
+
+
+def test_opening_in_the_environment_puts_the_file_in_its_window(desktop, tmp_path: Path, answer):
+    app, service = desktop
+    main = service.new_window()
+
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+
+    assert answer.asked == [("01GEN.usfm", "USFM", 1)]
+    window = service.windows.window_for_view(view.view_id)
+    assert window is not main and window.environment_window == ("usfm", None)
+
+
+def test_opening_as_plain_text_has_no_extended_features(desktop, tmp_path: Path, answer):
+    from uniti.ui.open_mode import OpenMode
+
+    app, service = desktop
+    main = service.new_window()
+    answer.mode = OpenMode.PLAIN_TEXT
+
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+
+    assert service.windows.window_for_view(view.view_id) is main
+    assert service.documents.entry_for_view(view.view_id).environment_override == "plain_text"
+    assert view.syntax_profile.key == "plain_text"
+    assert main._environment.menu.title() == "Plain Text"
+    assert main._rich_views.providers_for(view) == ()
+    assert main._environment.command_available("go_to", view) is False
+
+
+def test_cancel_opens_nothing(desktop, tmp_path: Path, answer):
+    app, service = desktop
+    main = service.new_window()
+    answer.mode = None
+    path = _write(tmp_path, "01GEN.usfm", _GEN_A)
+
+    assert main.open_path(path) is None
+    assert service.documents.find_path(path) is None
+
+
+def test_no_question_for_plain_text_open_files_or_environment_windows(desktop, tmp_path: Path, answer):
+    from uniti.ui.open_mode import OpenMode
+
+    app, service = desktop
+    main = service.new_window()
+    main.open_path(_write(tmp_path, "notes.txt", "hello"))
+    assert answer.asked == []  # plain text: nothing to choose
+
+    answer.mode = OpenMode.HERE
+    genesis = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(genesis)
+    answer.asked.clear()
+
+    assert main.open_path(genesis.document.path) is genesis  # already open: focused
+    window.open_path(_write(tmp_path, "02EXO.usfm", _EXO))  # inside an environment window
+    assert answer.asked == []
+
+
+def test_a_recent_file_opens_in_its_groups_environment_window(desktop, tmp_path: Path, answer):
+    app, service = desktop
+    main = service.new_window()
+    path = _write(tmp_path, "01GEN.usfm", _GEN_A)
+    main._recent_files_store.record_opened(path, group_id="A")
+
+    main._open_recent_file(str(path))
+
+    entry = service.documents.find_path(path)
+    window = service.windows.window_for_view(entry.view_ids[0])
+    assert window.environment_window == ("usfm", "A") and entry.group_id == "A"
+
+
+def test_open_folder_by_type_asks_once_for_the_batch(desktop, tmp_path: Path, answer, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog, QInputDialog
+
+    app, service = desktop
+    main = service.new_window()
+    folder = tmp_path / "books"
+    _write(folder, "01GEN.usfm", _GEN_A)
+    _write(folder, "02EXO.usfm", _EXO)
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args, **kwargs: str(folder))
+    def pick(_parent, _title, _label, items, *args, **kwargs):
+        # The only file type, then "No Group".
+        return (items[0] if "No Group" not in items else "No Group"), True
+
+    monkeypatch.setattr(QInputDialog, "getItem", pick)
+
+    main.open_folder_by_type()
+
+    assert answer.asked == [("01GEN.usfm", "USFM", 2)]
+    window = service.environment_window_for("usfm", None)
+    assert window is not None and len(window.views) == 2

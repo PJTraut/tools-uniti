@@ -38,7 +38,7 @@ The user's answers to the open questions, the same day:
      - A file opened inside an environment window (File > Open, Recent Files, Book) is pinned to the window's environment and joins its group. If it's already open elsewhere, it moves in.
      - When the file's extension isn't assigned to that environment, an "Open as <environment>?" confirmation comes first; Cancel doesn't open it.
      - Choosing an environment in **Environment for This Document** moves the file into that environment's window, and a file whose environment no longer matches its environment window moves out to the right one.
-     - Opening a file in an ordinary window doesn't move it.
+     - Opening a file in an ordinary window asks first (round 2 R6): open it in its environment's window, or as Plain Text (pinned to the Plain Text environment, no extended features).
    - An environment window is an ordinary UNITI window plus an environment frame: an `EnvironmentBar` toolbar with the environment and group, the Plain Text / Standard / Preview switch, and for USFM/SFM a Book / Chapter / Verse selector and the sync toggle.
    - This narrows ADR-0004 decision 7 ("no toolbar is added"): ordinary windows still have no toolbar, and only environment windows carry this frame.
    - Its identity is saved in each of its views' `ViewRecord.extra["environment_window"]`, so there is no window-schema change. `restore_shell` rebuilds the frame before any document loads.

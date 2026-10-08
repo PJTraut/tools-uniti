@@ -336,8 +336,9 @@ class DocumentGroupsAndRecentFiles:
                 None,
             )
             group_id = match.group_id if match is not None else None
+        known_group = group_id if any(group.id == group_id for group in owner._groups) else None
         try:
-            view = owner.open_path(path)
+            view = owner.open_path(path, group_id=known_group)
         except Exception as exc:
             QMessageBox.critical(owner, "Open Failed", f"{path}\n\n{exc}")
             return

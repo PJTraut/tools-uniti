@@ -1,7 +1,7 @@
 # USFM Field Test, Round 2 — Plan
 
 Date: 2026-10-08
-Status: **In progress**. R1–R5 and R4b are implemented (2026-10-08); R6–R8 are ready (D1–D4 decided 2026-10-08).
+Status: **In progress**. R1–R6 and R4b are implemented (2026-10-08); R7–R8 are ready (D1–D4 decided 2026-10-08).
 Origin: `@externalresources/field_test_feedback` (2026-10-08).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
 
@@ -171,6 +171,23 @@ Tests: `tests/test_sfm_environment.py` is rewritten for R5 (5 tests: extensions,
   - opening inside an environment window (already pinned, ADR-0017);
   - files that are already open.
 - This settles the question left open on 2026-10-07: files no longer land in the main window by default without asking.
+
+**Implemented 2026-10-08.**
+- **`ui/open_mode.py`:** `OpenMode` (`ENVIRONMENT`, `PLAIN_TEXT`, plus the internal `HERE`) and `prompt_open_mode`, a dialog with **Open in <Environment> Environment** (the default button), **Open as Plain Text** and **Cancel**.
+- **`UNITIMainWindow.open_path(…, open_mode=None, group_id=None)`** asks in an ordinary window, for a file that isn't open yet and whose environment isn't Plain Text.
+  - **Environment** opens it in that environment's window for `group_id`, creating the window if needed.
+  - **Plain Text** opens it here, pinned to the Plain Text environment.
+  - **Cancel** opens nothing.
+- **No question for:** environment windows (Book selector, Open USFM Project…, Recent Projects), files that are already open, and session restore (which doesn't use `open_path`).
+- **Recent Files** passes the file's remembered group, so it lands in that group's environment window.
+- **Open Folder by Type** asks once for the batch: "These 2 files are USFM files.". Cancel opens none.
+- **`tests/conftest.py`** answers the dialog with `HERE` for every test that isn't about it, so existing tests keep their behaviour and never meet a modal dialog.
+
+Tests: `tests/app/test_environment_window.py` +6:
+- each answer (environment, plain text, cancel);
+- no question for plain text, already-open files and environment windows;
+- a recent file going to its group's window;
+- one question for a batch.
 
 ### R7 — Report undefined markup when a file is opened (item 7, D4: popup)
 - **Environment hook:** a new optional `undefined_markup(context) -> tuple[EnvironmentFinding, ...]`. An environment implements it where "defined" means something; others don't, so nothing is reported for them.
