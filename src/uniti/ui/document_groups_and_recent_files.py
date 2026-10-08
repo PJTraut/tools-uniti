@@ -89,6 +89,9 @@ class DocumentGroupsAndRecentFiles:
         grouped_tabs = getattr(owner, "_grouped_tabs", None)
         if grouped_tabs is not None and grouped_tabs.enabled:
             grouped_tabs.refresh_leaf(leaf)  # BF-082: membership changed
+        project_tabs = getattr(owner, "_project_tabs", None)
+        if project_tabs is not None and project_tabs.active:
+            project_tabs.refresh_leaf(leaf)  # round 3 T4: a book joined a tab
 
     def _refresh_all_group_indicators(self) -> None:
         owner = self._owner

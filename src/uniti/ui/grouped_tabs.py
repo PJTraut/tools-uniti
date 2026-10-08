@@ -177,6 +177,9 @@ class GroupedTabsController:
             self.refresh_leaf(panes.leaf(pane_id))
 
     def refresh_leaf(self, leaf: "PaneLeaf") -> None:
+        project_tabs = getattr(self._window, "_project_tabs", None)
+        if project_tabs is not None and project_tabs.active:
+            return  # a USFM window's tabs are its projects' (round 3 T4)
         tab_bar = leaf.tabBar()
         if not self.enabled:
             for index in range(leaf.count()):

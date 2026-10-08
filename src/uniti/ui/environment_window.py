@@ -653,7 +653,10 @@ class EnvironmentBar(QToolBar):
         try:
             self.book.clear()
             selected = -1
+            modified = self._modified_paths()
             for index, (label, path) in enumerate(entries):
+                if _resolved(path) in modified:
+                    label = f"{label} •"  # open with unsaved changes (D1)
                 self.book.addItem(label, str(path))
                 self.book.setItemData(index, f"{label}\n{path}", Qt.ItemDataRole.ToolTipRole)
                 if current_path is not None and _same_path(path, current_path):
@@ -672,6 +675,11 @@ class EnvironmentBar(QToolBar):
             popup.setMinimumWidth(popup.sizeHintForColumn(0) + 2 * popup.frameWidth() + 24)
         finally:
             self._updating = False
+
+    def _modified_paths(self) -> set[Path]:
+        """The open files of this window with unsaved changes."""
+
+        return {_resolved(view.document.path) for view in self._window.views if view.document.modified}
 
     def _refresh_chapters(self) -> None:
         view = self._view()
@@ -746,8 +754,13 @@ class EnvironmentBar(QToolBar):
             self.open_book(Path(path))
 
     def open_book(self, path: Path) -> "UNITITextView | None":
-        """Show the book at `path` here: its open tab, or open it into this
-        window, in the current tab's mode and group."""
+        """Show the book at `path` here, in the current tab's mode and group.
+
+        In a USFM window the tab is the project's (round 3 T4): the book is
+        shown in the same tab, its own hidden tab or a newly opened one.
+        When the current book has unsaved changes it asks first (D1): Yes
+        saves; No keeps them, with the book open but hidden in the tab.
+        """
 
         window = self._window
         previous = window.current_view
@@ -755,14 +768,41 @@ class EnvironmentBar(QToolBar):
         service = window._service
         previous_entry = None if previous is None or service is None else service.documents.entry_for_view(previous.view_id)
         group_id = None if previous_entry is None else previous_entry.group_id
-        for view in window.views:
-            if _same_path(view.document.path, path):
-                window._select_view(view)
-                view.setFocus()
-                return view
+        tabs = window._project_tabs
+        if previous is not None and _same_path(previous.document.path, path):
+            return previous
+        if previous is not None and tabs.active:
+            if previous.document.modified and not self._leave_book(previous):
+                self._refresh_books()
+                return None
+            existing = tabs.book_in_tab(previous, path)
+            if existing is not None:
+                window._select_view(existing)
+                existing.setFocus()
+                self.refresh()
+                if window._reference_sync.enabled:
+                    window._reference_sync.sync_from(existing)
+                return existing
+            elsewhere = next((view for view in window.views if _same_path(view.document.path, path)), None)
+            if elsewhere is not None:
+                # Open in another split: a second view of it, in this tab.
+                window._panes.activate_view(previous.view_id)
+                opened = window.open_existing_document(elsewhere.document)
+                return self._finish_open(opened, mode, group_id)
+        else:
+            for view in window.views:
+                if _same_path(view.document.path, path):
+                    window._select_view(view)
+                    view.setFocus()
+                    return view
         opened = window.open_path(path)
         if opened is None or window.view_for_id(opened.view_id) is not opened:
             return opened  # open elsewhere: the service focused that window
+        return self._finish_open(opened, mode, group_id)
+
+    def _finish_open(self, opened: "UNITITextView", mode: str | None, group_id: str | None) -> "UNITITextView":
+        window = self._window
+        service = window._service
         if service is not None and group_id is not None:
             entry = service.documents.entry_for_view(opened.view_id)
             if entry is not None and entry.group_id != group_id:
@@ -774,6 +814,19 @@ class EnvironmentBar(QToolBar):
             # Every split of the group follows to this book (P5).
             window._reference_sync.sync_from(opened)
         return opened
+
+    def _leave_book(self, view: "UNITITextView") -> bool:
+        """Before another book replaces `view` in its tab: Yes saves (False
+        when saving fails); No keeps the unsaved changes (D1)."""
+
+        from uniti.ui import project_tabs
+
+        project = project_for_file(view.document.path)
+        name = project.name if project is not None else view.document.path.name
+        if not project_tabs.ask_save_before_switch(self._window, view, name):
+            return True
+        self._window._select_view(view)
+        return self._window.save_current() is not None
 
 
 BOOK_EMS = 10
@@ -809,6 +862,13 @@ def _same_path(first: Path, second: Path) -> bool:
         return first.resolve() == second.resolve()
     except OSError:
         return first == second
+
+
+def _resolved(path: Path) -> Path:
+    try:
+        return Path(path).resolve()
+    except OSError:
+        return Path(path)
 
 
 __all__ = ["EnvironmentBar", "REFERENCE_ENVIRONMENTS", "ReferenceMaps", "ReferenceSync"]

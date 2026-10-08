@@ -178,6 +178,23 @@ Tests:
   - a session round trip;
   - the short name only, everywhere.
 
+**Implemented 2026-10-08.**
+- **`ui/project_tabs.py` (`ProjectTabs`)**, active in windows of a project environment (USFM). Per split it groups the open books by project folder, keeps the project's current book visible and its other books' tabs hidden, moves the visible tab to the project's first tab position (so the tab doesn't jump, and a restored session shows the right book), titles it with the short name ("NIV*" while any of its books is unsaved) and gives it the book and path as its tooltip.
+  - It refreshes on every tab change, when a book is added (via the group-indicator refresh) and when a book's unsaved state changes (`note_state`, not on every caret move).
+  - Grouped Tabs leaves USFM windows alone.
+- **Changing the book** (`EnvironmentBar.open_book`): the book's hidden tab in this tab, else a second view of it when it's open in another split, else it opens here. The new book takes the previous one's mode and group.
+- **Unsaved changes (D1):** `project_tabs.ask_save_before_switch` asks "Save changes to GEN (NIV)?". Yes saves (a failed save keeps the current book); No keeps the changes. The Book list marks open books with unsaved changes "•".
+- **Closing:** the tab's close button and Close (`_close_tab_request`) close every book of the project tab, hidden ones first; Cancel on one stops there.
+- **Tests' default:** `tests/conftest.py` answers the book-change question No.
+
+Tests: `tests/app/test_project_tabs.py` (7):
+- a project's books share one tab, titled with the short name; another project is another tab;
+- changing the book reuses the tab, keeps each book's caret, and keeps the tab in place;
+- the question: No keeps the changes (marked "•", tab "NIV*"), Yes saves;
+- closing a project tab closes all its books, asking once per modified book; a cancelled close keeps the rest;
+- session capture keeps the current book first;
+- ordinary windows keep a tab per file.
+
 ### T5 — Projects belong to groups, and groups bind projects across windows (items 1 and 6, answer 1)
 - **A project has a group** in the USFM environment.
   - It's stored in `Environments/USFM/groups.json` next to the groups, by project folder. UNITI still writes nothing into a project folder.

@@ -1,7 +1,7 @@
 # ADR-0019: Named Environment Windows, Groups per Environment, Project Tabs
 
 Date: 2026-10-08
-Status: accepted (implemented: [round 3 plan](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T3; T4–T7 to follow)
+Status: accepted (implemented: [round 3 plan](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T4; T5–T7 to follow)
 
 ## Context
 
@@ -27,7 +27,8 @@ The user's answers, the same day:
    - A file opened into an environment goes to the window that already shows its project, else the environment's most recent window, else a new one.
    - Groups no longer move files between windows. The toolbar's Group dropdown is the current file's group (the project's from T5).
    - The identity rides in `ViewRecord.extra["environment_window"]` as `{environment, window}`. A record saved by group restores into the lowest free slot.
-4. **To follow in this round** (T4–T7): one tab per project titled with its short name, the book changed in the tab (asking before leaving unsaved changes), groups per project binding projects for sync across windows, the tab's Split and Window menu (up to four splits), and read-only folders.
+4. **One tab per project** (T4). In a USFM window each split shows one tab per Paratext project, titled with its short name only. Every open book stays its own view and tab, so its state is kept; the others are hidden. Changing the book shows it in the same tab, asking before leaving unsaved changes: Yes saves, No keeps them in memory (D1). Closing the tab closes its books.
+5. **To follow in this round** (T5–T7): groups per project binding projects for sync across windows, the tab's Split and Window menu (up to four splits), and read-only folders.
 
 ## Consequences
 

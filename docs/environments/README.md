@@ -57,7 +57,7 @@ Environment windows come back when UNITI restarts.
 - The groups you had before environments had their own are Plain Text's groups now.
 - Each environment's groups are saved in `groups.json` in its configuration folder (see [Configuration](#configuration)).
 
-Files of any group can share an environment window. The toolbar's **Group** dropdown shows and sets the current file's group, and has **New Group…** and **Manage Groups…**. Giving a file another group (there, or by right-clicking its tab or text → **Document Group**) doesn't move it.
+In a USFM window each tab is a Paratext project, showing one of its books at a time (see [usfm.md](usfm.md#project-tabs)). Files of any group can share an environment window. The toolbar's **Group** dropdown shows and sets the current file's group, and has **New Group…** and **Manage Groups…**. Giving a file another group (there, or by right-clicking its tab or text → **Document Group**) doesn't move it.
 
 ## Undefined markup
 

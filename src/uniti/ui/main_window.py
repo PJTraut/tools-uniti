@@ -335,7 +335,7 @@ class UNITIMainWindow(QMainWindow):
         self._panes.activeViewChanged.connect(self._on_pane_active)
         if service is not None:
             self._panes.viewSelected.connect(self._on_pane_view_selected)
-        self._panes.viewCloseRequested.connect(self._close_view_id)
+        self._panes.viewCloseRequested.connect(self._close_tab_request)
         self._panes.splitRequested.connect(self._split_pane)
         self._panes.assignmentRequested.connect(self._show_assignment_menu)
         self._panes.dockToggleRequested.connect(self._toggle_view_dock)
@@ -368,6 +368,10 @@ class UNITIMainWindow(QMainWindow):
         from uniti.ui.grouped_tabs import GroupedTabsController
 
         self._grouped_tabs = GroupedTabsController(self)
+        from uniti.ui.project_tabs import ProjectTabs
+
+        # One tab per project in a USFM window (round 3 T4).
+        self._project_tabs = ProjectTabs(self)
         self._markdown_preview_timer = QTimer(self)
         self._markdown_preview_timer.setSingleShot(True)
         self._markdown_preview_timer.setInterval(300)
@@ -2731,7 +2735,11 @@ class UNITIMainWindow(QMainWindow):
             self._cancel_navigation(view)
         leaf = self._panes.leaf_for_view(view.view_id)
         if leaf is not None:
-            leaf.setTabText(leaf.index_of(view.view_id), self._tab_label(view))
+            if self._project_tabs.active:
+                # The tab is the project's: titled with its short name (T4).
+                self._project_tabs.note_state(view, leaf)
+            else:
+                leaf.setTabText(leaf.index_of(view.view_id), self._tab_label(view))
         if view is self.current_view:
             self._set_status_document(view)
         if view is self._markdown_preview_target_view:
@@ -2752,6 +2760,7 @@ class UNITIMainWindow(QMainWindow):
         # Recorded even while grouped tabs are off, so turning them on shows
         # a meaningful Recent strip straight away.
         self._grouped_tabs.note_active(None if view is None else view.view_id)
+        self._project_tabs.refresh_all()
         self._environment.refresh()
         if self._environment_bar is not None:
             self._environment_bar.refresh()
@@ -2820,6 +2829,7 @@ class UNITIMainWindow(QMainWindow):
             self._environment_bar.deleteLater()
         self.environment_window = (environment_key, slot)
         self._environment_bar = EnvironmentBar(self, environment_key, slot)
+        self._project_tabs.refresh_all()
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._environment_bar)
         # The toolbar holds the mode switch; tabs don't repeat it.
         self._rich_views.set_mode_selector_visible(False)
@@ -4608,7 +4618,25 @@ class UNITIMainWindow(QMainWindow):
         index = self._tabs.currentIndex()
         if index < 0:
             return True
+        view = self.current_view
+        if view is not None and self._project_tabs.active:
+            return self._close_tab_request(view.view_id)
         return self._close_tab(index)
+
+    def _close_tab_request(self, view_id: str) -> bool:
+        """A tab's close button: in a USFM window the tab is the project's,
+        so every book open in it closes, each asking about unsaved changes
+        (round 3 T4)."""
+
+        view = self.view_for_id(view_id)
+        if view is None or not self._project_tabs.active:
+            return self._close_view_id(view_id)
+        books = self._project_tabs.books_of(view)
+        # The hidden books first, the shown one last.
+        for book in sorted(books, key=lambda book: book is view):
+            if not self._close_view_id(book.view_id):
+                return False
+        return True
 
     def close_all_documents(self, *, force: bool = False) -> bool:
         if self._service is not None:

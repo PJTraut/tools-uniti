@@ -19,3 +19,16 @@ def _open_files_here_without_asking(monkeypatch):
     from uniti.ui import open_mode
 
     monkeypatch.setattr(open_mode, "prompt_open_mode", lambda *args, **kwargs: open_mode.OpenMode.HERE)
+
+
+@pytest.fixture(autouse=True)
+def _keep_unsaved_books_without_asking(monkeypatch):
+    """Changing the book in a USFM project tab with unsaved changes asks
+    whether to save (field test round 3, T4) in a modal dialog. Tests that
+    aren't about that question answer No: the changes stay in the book."""
+
+    if importlib.util.find_spec("PySide6") is None:
+        return
+    from uniti.ui import project_tabs
+
+    monkeypatch.setattr(project_tabs, "ask_save_before_switch", lambda *args, **kwargs: False)

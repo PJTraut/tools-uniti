@@ -37,12 +37,22 @@ When you open a USFM file that uses markers no loaded stylesheet defines, a repo
 
 **Check Undefined Markers** in the USFM menu runs the same check at any time. Milestones (`\qt-s … \*`) are never reported; they mark positions, not text. Files restored at startup aren't checked automatically.
 
+## Project tabs
+
+In a USFM window, **a tab is a project**, titled with the project's short name (`<Name>` in `Settings.xml`), e.g. "NIV". Each split has one tab per project.
+- **Changing the book** (the toolbar's **Book**) shows that book in the same tab. Every book you've opened stays open in the tab with its own caret, undo history and view mode, so going back to it picks up where you were.
+- **Unsaved changes:** when the book you're leaving has unsaved changes, UNITI asks "Save changes to GEN (NIV)?". **Yes** saves it; **No** keeps the changes in the book, open but not shown. Nothing is ever saved without asking. The Book list marks a book with unsaved changes "•", and the tab's name gets a "*" while any of its books has them.
+- **Opening a book** of a project that already has a tab in the split (File → Open, Recent Files, Open USFM Project…) shows it in that tab; a book of another project gets a tab of its own.
+- **Closing the tab** closes all its books, asking about each one with unsaved changes.
+- The same project can have a tab in two splits or windows, each showing its own book.
+- The tab's tooltip names the current book and its file. Only the project's short name is shown, anywhere in UNITI.
+
 ## Book, chapter and verse
 
 The environment window's toolbar has **Book**, **Chapter** and **Verse** at its right end.
 - **Book** lists the project's books.
 
-  Each book shows its `\id` code and its `\h` line, e.g. "GEN Genesis". UNITI looks for `\h` in the book's first 10 lines; a book without one shows just its code. Choosing a book opens it in this window, in the current book's mode and group.
+  Each book shows its `\id` code and its `\h` line, e.g. "GEN Genesis". UNITI looks for `\h` in the book's first 10 lines; a book without one shows just its code. Choosing a book shows it in the current tab (see [Project tabs](#project-tabs)), in the current book's mode and group.
 - **Chapter** and **Verse** jump to that place and follow the caret as it moves.
 
 Jumping, here or with **Go to Chapter:Verse…** (Ctrl+Alt+G), puts the verse a third of the way down and highlights it in every mode. The highlight clears when the caret leaves the verse.
