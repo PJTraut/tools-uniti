@@ -1,7 +1,7 @@
 # USFM Field Test, Round 2 — Plan
 
 Date: 2026-10-08
-Status: **In progress**. R1, R4b, R2 and R3 are implemented (2026-10-08); R4–R8 are ready (D1–D4 decided 2026-10-08).
+Status: **In progress**. R1–R4 and R4b are implemented (2026-10-08); R5–R8 are ready (D1–D4 decided 2026-10-08).
 Origin: `@externalresources/field_test_feedback` (2026-10-08).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
 
@@ -112,6 +112,13 @@ Tests: `tests/test_sfm_markers.py` +4 and `tests/ui/test_rich_view_ui.py` +1.
 - Choosing a book, chapter or verse in the environment toolbar, and **Go to Chapter:Verse…**, highlight the verse after jumping, in Plain Text, Standard and Preview. They use the same tint as reference sync. A chapter-only jump highlights the `\c` line.
 - The highlight clears when the caret leaves that verse or at the next jump.
 - The verse lands about a third of the way down the view, as sync does.
+
+**Implemented 2026-10-08.**
+- **`ReferenceSync.navigate_to`** places the target a third of the way down, as sync does. When the target starts a verse, it highlights the verse up to the next verse or chapter; when it starts a chapter, it highlights the `\c` line. Both the toolbar's Chapter/Verse choices and **Go to Chapter:Verse…** (the `NavigateTo` result, in USFM/SFM) use it.
+- **The highlight is pinned to its view.** Side-by-side sync clears every other highlight but leaves it while the caret is still inside. It clears when the caret leaves or at the next jump.
+- **Panes built later get it too.** Highlights remember their range per view, so a rich pane built afterwards (switching to Preview after the jump) shows it.
+
+Tests: `tests/app/test_environment_window.py` +4: verse in every mode and clearing; chapter line; Go to Chapter:Verse; surviving sync.
 
 ### R4b — Book/Chapter/Verse selector display (user, 2026-10-08) — implemented
 "BK:CH:VS selector: right align on banner with fixed width: CH/VS 3em display window; BK 10 em, display the paratext book ID regex: `\\id\s\w{3}` and the `\h` full line content (`\h` must be in the book header block, let's define within top 10 lines)".

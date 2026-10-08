@@ -87,7 +87,10 @@ class ReferenceSync(QObject):
         self._timer.timeout.connect(self._sync_now)
         self._source: weakref.ReferenceType | None = None
         self._syncing = False
-        self._highlighted: weakref.WeakSet = weakref.WeakSet()
+        # Highlighted verse per view (sync, or a jump).
+        self._highlighted: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+        # A jump's highlight: (view, start, end), kept until its caret leaves.
+        self._pinned: tuple[weakref.ReferenceType, int, int] | None = None
         self.action = QAction("Sync Side-by-Side by Reference", window)
         self.action.setCheckable(True)
         self.action.setChecked(True)
@@ -142,6 +145,7 @@ class ReferenceSync(QObject):
     def schedule(self, view: "UNITITextView") -> None:
         """The caret moved in `view`; sync shortly if it is the active tab."""
 
+        self._release_pin_if_left(view)
         if self._syncing or not self.enabled or view is not self._window.current_view:
             return
         self._source = weakref.ref(view)
@@ -244,15 +248,81 @@ class ReferenceSync(QObject):
         pane = self._window._rich_views.pane_for(view)
         if pane is not None:
             pane.set_highlight(source_range)
-        self._highlighted.add(view)
+        self._highlighted[view] = source_range
+
+    def _unhighlight(self, view: "UNITITextView") -> None:
+        self._highlighted.pop(view, None)
+        view.set_line_highlights()
+        pane = self._window._rich_views.pane_for(view)
+        if pane is not None:
+            pane.set_highlight(None)
 
     def clear(self) -> None:
-        for view in list(self._highlighted):
-            view.set_line_highlights()
-            pane = self._window._rich_views.pane_for(view)
-            if pane is not None:
-                pane.set_highlight(None)
-        self._highlighted = weakref.WeakSet()
+        """Clear every highlight but a jump's, while its caret is still inside."""
+
+        pinned = self._pinned_view()
+        for view in list(self._highlighted.keys()):
+            if view is not pinned:
+                self._unhighlight(view)
+
+    def restore_highlight(self, view: "UNITITextView") -> None:
+        """A rich pane was just built for `view`: give it the view's highlight."""
+
+        source_range = self._highlighted.get(view)
+        pane = self._window._rich_views.pane_for(view)
+        if source_range is not None and pane is not None:
+            pane.set_highlight(source_range)
+
+    # --- jumps (R4) -----------------------------------------------------------------
+
+    def navigate_to(self, view: "UNITITextView", offset: int) -> None:
+        """Jump to `offset` (Book/Chapter/Verse, Go to Chapter:Verse) and, when
+        it starts a verse or chapter, highlight that verse — or the chapter
+        line — in every view mode until the caret leaves it."""
+
+        self._unpin()
+        self._move(view, offset)
+        target = self._range_at(view, offset)
+        if target is not None:
+            self._highlight(view, target)
+            self._pinned = (weakref.ref(view), *target)
+        view.setFocus()
+
+    def _range_at(self, view: "UNITITextView", offset: int) -> tuple[int, int] | None:
+        if self._environment_key(view) not in REFERENCE_ENVIRONMENTS:
+            return None
+        reference_map = self.maps.for_document(view.document)
+        if reference_map is None:
+            return None
+        verse = next((item for item in reference_map.verses if item.start == offset), None)
+        if verse is not None:
+            return reference_map.verse_range(verse)
+        if any(chapter.start == offset for chapter in reference_map.chapters):
+            document = view.document
+            line = document.line_for_char(offset)
+            end = document.line_start(line + 1) if line + 1 < document.line_count() else document.total_chars()
+            return offset, max(offset + 1, end)
+        return None
+
+    def _pinned_view(self) -> "UNITITextView | None":
+        if self._pinned is None:
+            return None
+        view = self._pinned[0]()
+        if view is None or not self._pinned[1] <= view.state.cursor <= self._pinned[2]:
+            return None
+        return view
+
+    def _release_pin_if_left(self, view: "UNITITextView") -> None:
+        if self._pinned is not None and self._pinned[0]() is view and self._pinned_view() is None:
+            self._unpin()
+
+    def _unpin(self) -> None:
+        if self._pinned is None:
+            return
+        view = self._pinned[0]()
+        self._pinned = None
+        if view is not None:
+            self._unhighlight(view)
 
 
 class EnvironmentBar(QToolBar):
@@ -519,9 +589,7 @@ class EnvironmentBar(QToolBar):
         view = self._view()
         if view is None or offset is None:
             return
-        view.state.move_to(max(0, min(offset, view.document.total_chars())))
-        view._state_changed()
-        view.setFocus()
+        self._window._reference_sync.navigate_to(view, offset)
 
     def _chapter_chosen(self, index: int) -> None:
         if self._updating or self._map is None:

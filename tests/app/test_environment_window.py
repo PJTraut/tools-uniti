@@ -416,3 +416,80 @@ def test_the_reference_selector_sits_right_with_fixed_widths(desktop, tmp_path: 
     assert bar.width() - bar.verse.geometry().right() < 4 * em
     mode_button = bar.widgetForAction(bar.mode_actions[None])
     assert bar.book.geometry().left() > mode_button.geometry().right() + 10 * em
+
+
+# --- R4: highlight the verse on a jump ----------------------------------------------
+
+
+def _lines_of(view, start: int, end: int) -> set[int]:
+    document = view.document
+    return set(range(document.line_for_char(start), document.line_for_char(end - 1) + 1))
+
+
+def test_choosing_a_verse_highlights_it_in_every_mode(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+    bar.chapter.setCurrentIndex(0)
+    bar._chapter_chosen(0)
+
+    bar.verse.setCurrentIndex(1)
+    bar._verse_chosen(1)
+
+    verse_start = _GEN_A.index("\\v 2")
+    verse_end = _GEN_A.index("\\c 2")
+    assert view.state.cursor == verse_start
+    assert set(view._line_highlights) == _lines_of(view, verse_start, verse_end)
+    # A rich view opened afterwards shows the same verse highlighted.
+    window._rich_views.show("sfm.preview", view)
+    assert window._rich_views.pane_for(view)._highlight == (verse_start, verse_end)
+
+    # Leaving the verse clears it.
+    view.state.move_to(_GEN_A.index("Alpha again"))
+    view._state_changed()
+    assert not view._line_highlights
+    assert window._rich_views.pane_for(view)._highlight is None
+
+
+def test_choosing_a_chapter_highlights_its_line(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+
+    bar.chapter.setCurrentIndex(1)
+    bar._chapter_chosen(1)
+
+    chapter = _GEN_A.index("\\c 2")
+    assert view.state.cursor == chapter
+    assert set(view._line_highlights) == {view.document.line_for_char(chapter)}
+
+
+def test_go_to_chapter_verse_highlights_the_verse(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+
+    assert main._environment.run_command("go_to", "1:2") is True
+
+    verse_start = _GEN_A.index("\\v 2")
+    assert view.state.cursor == verse_start
+    assert set(view._line_highlights) == _lines_of(view, verse_start, _GEN_A.index("\\c 2"))
+
+    main._environment.run_command("go_to", "2:1")
+    assert set(view._line_highlights) == {view.document.line_for_char(_GEN_A.index("\\v 1 Alpha again"))}
+
+
+def test_a_jump_highlight_survives_side_by_side_sync(desktop, tmp_path: Path):
+    app, service = desktop
+    main, left, right = _side_by_side(service, tmp_path)
+
+    main._environment.run_command("go_to", "1:2")
+    main._reference_sync.sync_from(left)
+
+    assert left._line_highlights  # still highlighted after the sync cleared others
+    assert right.state.cursor == _GEN_B.index("\\v 2")
+    assert right._line_highlights

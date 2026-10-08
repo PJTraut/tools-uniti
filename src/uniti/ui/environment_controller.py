@@ -486,9 +486,17 @@ class EnvironmentController:
                 return
             document.replace(0, document.total_chars(), result.text)
         elif isinstance(result, NavigateTo):
-            view.state.move_to(max(0, min(result.offset, document.total_chars())))
-            view._state_changed()
-            view.setFocus()
+            offset = max(0, min(result.offset, document.total_chars()))
+            from uniti.ui.environment_window import REFERENCE_ENVIRONMENTS
+
+            if self.environment_key_for(document) in REFERENCE_ENVIRONMENTS:
+                # Go to Chapter:Verse: land the verse a third of the way
+                # down and highlight it in every view mode (R4).
+                self._window._reference_sync.navigate_to(view, offset)
+            else:
+                view.state.move_to(offset)
+                view._state_changed()
+                view.setFocus()
         elif isinstance(result, ShowFindings):
             self.show_findings(view, result)
         elif isinstance(result, ShowStyleInspector):
