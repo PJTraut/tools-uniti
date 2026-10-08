@@ -1,7 +1,7 @@
 # USFM Field Test, Round 2 — Plan
 
 Date: 2026-10-08
-Status: **In progress**. R1–R6, R4b and R8 are implemented (2026-10-08); R7 is next (D4 decided).
+Status: **Implemented** (2026-10-08): R1–R8 and R4b. Next on the roadmap: projects plan P4 (versification) and P5 (sync across books).
 Origin: `@externalresources/field_test_feedback` (2026-10-08).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
 
@@ -211,6 +211,27 @@ Tests: `tests/app/test_environment_window.py` +6:
   - **Close.** The dialog is non-modal and belongs to its document.
 - **XML** could join later through the same hook, once a declared DTD or schema is read. It's not in this round.
 - **Dependencies:** R2 (so `\+it` resolves to `\it`), and R3, which defines `\cat` (StyleType Character, EndMarker `cat*`) in the built-in `uniti.sty` so it isn't reported.
+
+**Implemented 2026-10-08.**
+- **`sfm/undefined.py`:**
+  - `undefined_markers()` lists markers no layer of the views' stylesheets defines, in order of first use. Nested `\+name` and end markers count as `name`, a column range as its first column, and milestones are skipped. Each use is counted at its opener; a stray end marker still counts once.
+  - Also `report_text()`, `definition_stubs()` (Character with `\Endmarker` when the document closes the marker, otherwise Paragraph) and `location_label()` ("GEN 1:1, line 4").
+- **`ShowUndefinedMarkup` and `UNDEFINED_MARKUP_COMMAND`** (`check_undefined`) in `environment_commands`. The USFM environment's **Check Undefined Markers** sits in the validate group. Any environment can offer a `check_undefined` command; the host runs it when a file opens.
+- **`ui/undefined_markup_dialog.py`:** the popup (D4):
+  - markers, counts and advice, each expandable to its uses; activating one jumps to it;
+  - **Copy Report**, **Save Report…**;
+  - **Edit Stylesheet…** (the project's `custom.sty`, or your `uniti.sty` outside a project, created from its template if missing);
+  - **Add Definitions** (appends starter records for the selected markers, or all of them, to that file and opens it; appended to the open copy when the file is already open in UNITI).
+- **`EnvironmentController`:**
+  - `report_undefined_on_open` is called from `open_path`, and again after a pin in an environment window. Restored files aren't checked.
+  - `configuration_changed` re-renders rich views and re-runs open reports after a configuration save, Load Stylesheet… or Reload Project Stylesheets. Load and Reload now also refresh Standard/Preview, which they didn't before.
+
+Tests: `tests/test_sfm_undefined.py` (5) and `tests/ui/test_undefined_markup_ui.py` (6):
+- the popup on open, and none for a fully defined file;
+- copy and save;
+- jumping to a use;
+- Add Definitions plus save leaves nothing undefined;
+- a project file targets `custom.sty`.
 
 ### R8 — Environment documentation and editable configuration (D3)
 - **A user configuration folder per environment:** `<UNITI user data>/Environments/<Environment>/`. For USFM it holds:

@@ -80,6 +80,23 @@ class SaveTextFile:
     file_filter: str = "All Files (*)"
 
 
+@dataclass(frozen=True, slots=True)
+class ShowUndefinedMarkup:
+    """Report the markup no loaded definition covers (round 2, R7): for
+    SFM/USFM, markers no stylesheet layer defines. `markers` are
+    `sfm.undefined.UndefinedMarker`s; `layer_names` the layers checked."""
+
+    title: str
+    layer_names: tuple[str, ...]
+    markers: tuple
+
+
+# The command id an environment uses for its undefined-markup check; the
+# host runs it when a file is opened and pops the report up if anything
+# is undefined.
+UNDEFINED_MARKUP_COMMAND = "check_undefined"
+
+
 CommandResult = (
     ReplaceDocumentText
     | ShowFindings
@@ -87,6 +104,7 @@ CommandResult = (
     | ShowMessage
     | ShowStyleInspector
     | SaveTextFile
+    | ShowUndefinedMarkup
     | None
 )
 
@@ -224,7 +242,9 @@ __all__ = [
     "ShowFindings",
     "ShowMessage",
     "ShowStyleInspector",
+    "ShowUndefinedMarkup",
     "SaveTextFile",
+    "UNDEFINED_MARKUP_COMMAND",
     "document_text",
     "environment_commands",
     "reformat_commands",

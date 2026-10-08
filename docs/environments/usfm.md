@@ -26,6 +26,15 @@ What Standard and Preview show:
 
 **Find and Replace always search the source text**, in every mode. A pattern like `\\v (\d+)` finds verse markers even in Preview. The current match is shown as the selection.
 
+## Undefined markers
+
+When you open a USFM file that uses markers no loaded stylesheet defines, a report pops up. Those are markers Standard and Preview can only show as tags, such as `\esb`, or a project's own `\zfoo`. It lists each marker with how often it's used; expand a marker to see each use, and double-click one to jump there.
+- **Copy Report** and **Save Report…** give you the whole report as text.
+- **Edit Stylesheet…** opens the file where the definitions belong: the project's `custom.sty`, or your own `uniti.sty` for a file outside a Paratext project. It creates the file from its template if needed.
+- **Add Definitions** adds a starter definition for the selected markers (or all of them) to that file and opens it. Complete each `\Name` and style, then save: the stylesheets reload and the report updates.
+
+**Check Undefined Markers** in the USFM menu runs the same check at any time. Milestones (`\qt-s … \*`) are never reported; they mark positions, not text. Files restored at startup aren't checked automatically.
+
 ## Book, chapter and verse
 
 The environment window's toolbar has **Book**, **Chapter** and **Verse** at its right end.
@@ -62,6 +71,7 @@ When two or more splits of one window show files of the **same document group**,
 | Go to Chapter:Verse… | Ctrl+Alt+G | jump to e.g. `3:16` or `3` |
 | Validate USFM | Ctrl+Alt+V | unmatched end markers, plus the `usfmtc` reference grammar check |
 | Check Marker Placement | — | each marker's `OccursUnder` against the loaded stylesheets |
+| Check Undefined Markers | — | markers no loaded stylesheet defines (see [Undefined markers](#undefined-markers)) |
 | Inspect Marker at Cursor | Ctrl+Alt+S | the Style Inspector at the marker under the caret |
 | Style Inspector… | — | every marker's effective style, with the layer each value comes from |
 | Load Stylesheet… | — | layer another `.sty` on top, for this session |

@@ -2460,6 +2460,8 @@ class UNITIMainWindow(QMainWindow):
             # The default editor environment: no extended features (D2).
             self._environment.set_document_environment(PLAIN_ENVIRONMENT_KEY, view, move=False)
         self._usfm_projects.note_opened(view)
+        # Markup no loaded definition covers pops up a report (R7, D4).
+        self._environment.report_undefined_on_open(view)
         if self._service is not None:
             self._service.record_dogfood(
                 Operation.DOCUMENT_OPEN,
@@ -2694,6 +2696,8 @@ class UNITIMainWindow(QMainWindow):
             self._service.move_to_environment_window(view.view_id, key, group_id)
         if self._environment.environment_key_for(view.document) != key:
             self._environment.set_document_environment(key, view, move=False)
+            # Pinned just now: check it against its new environment.
+            self._environment.report_undefined_on_open(view)
         return view
 
     # --- configuration files (round 2 R8) -----------------------------------
@@ -2732,10 +2736,8 @@ class UNITIMainWindow(QMainWindow):
                 if callable(reload) and id(environment) not in reloaded:
                     reloaded.add(id(environment))
                     reload()
-            for view in window.views:
-                pane = window._rich_views.pane_for(view)
-                if pane is not None:
-                    pane.refresh()
+            # Re-render rich views and re-run open undefined-markup reports.
+            window._environment.configuration_changed()
             if window._environment_bar is not None:
                 window._environment_bar._refresh_books(rescan=True)
         if reloaded:

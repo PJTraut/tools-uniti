@@ -20,6 +20,8 @@ from uniti.core.environment_commands import (
     TOO_LARGE_TO_VALIDATE,
     ShowMessage,
     ShowStyleInspector,
+    ShowUndefinedMarkup,
+    UNDEFINED_MARKUP_COMMAND,
     document_text,
 )
 
@@ -114,6 +116,12 @@ class StylesheetSupport:
                 group="validate",
                 run=self._check_placement,
             ),
+            EnvironmentCommand(
+                UNDEFINED_MARKUP_COMMAND,
+                "Check Undefined Markers",
+                group="validate",
+                run=self._check_undefined,
+            ),
             EnvironmentCommand("inspect", "Inspect Marker at Cursor", group="styles", run=self._inspect_at_cursor),
             EnvironmentCommand("styles", "Style Inspector…", group="styles", run=self._open_inspector),
             EnvironmentCommand(
@@ -169,6 +177,22 @@ class StylesheetSupport:
         if not self._layered.layers:
             return ShowMessage(title, "No stylesheet is loaded, so there are no placement rules to check against.")
         return ShowFindings(title, placement_findings(document_text(context), self._layered.registry))
+
+    def _check_undefined(self, context: EnvironmentContext, argument: str | None) -> CommandResult:
+        """Markers no stylesheet the views render with defines (round 2 R7)."""
+
+        from .undefined import undefined_markers
+
+        del argument
+        title = "Undefined Markers"
+        if not context.resource_profile.allow_full_parse:
+            return ShowMessage(title, TOO_LARGE_TO_VALIDATE)
+        styles = self._view_styles
+        return ShowUndefinedMarkup(
+            title,
+            tuple(layer.name for layer in styles.layers),
+            undefined_markers(document_text(context), styles),
+        )
 
     def _layer_summary(self) -> str:
         names = [layer.name for layer in self._layered.layers]

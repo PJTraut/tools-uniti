@@ -47,7 +47,9 @@ from uniti.core.environment_commands import (
     ShowFindings,
     ShowMessage,
     ShowStyleInspector,
+    ShowUndefinedMarkup,
     SaveTextFile,
+    UNDEFINED_MARKUP_COMMAND,
     environment_commands,
 )
 from uniti.core.environments.catalog import (
@@ -90,6 +92,7 @@ class EnvironmentController:
         self.move_to_window_action: QAction | None = None
         self.configuration_action: QAction | None = None
         self.configuration_dialog = None
+        self.undefined_dialogs: dict[str, object] = {}  # view id -> report
 
     # --- resolution -------------------------------------------------------
 
@@ -500,7 +503,66 @@ class EnvironmentController:
             )
             return False
         self._apply(view, result, revision)
+        if command_id == "reload_stylesheets":
+            self.configuration_changed()
         return True
+
+    # --- undefined markup (round 2 R7) ---------------------------------------
+
+    def undefined_markup_for(self, view: "UNITITextView") -> "ShowUndefinedMarkup | None":
+        """Run `view`'s environment's undefined-markup check, if it has one."""
+
+        if not self.command_available(UNDEFINED_MARKUP_COMMAND, view):
+            return None
+        command = next(c for c in self.commands_for(view) if c.command_id == UNDEFINED_MARKUP_COMMAND)
+        try:
+            result = command.run(
+                EnvironmentContext.for_document(view.document, caret=view.state.cursor, anchor=view.state.anchor),
+                None,
+            )
+        except Exception:
+            logger.exception("undefined-markup check failed")
+            return None
+        return result if isinstance(result, ShowUndefinedMarkup) else None
+
+    def report_undefined_on_open(self, view: "UNITITextView") -> object | None:
+        """A file was just opened: pop the report up if anything is undefined."""
+
+        result = self.undefined_markup_for(view)
+        if result is None or not result.markers:
+            return None
+        return self.show_undefined_markup(view, result)
+
+    def show_undefined_markup(self, view: "UNITITextView", result: "ShowUndefinedMarkup"):
+        from uniti.ui.undefined_markup_dialog import UndefinedMarkupDialog
+
+        dialog = self.undefined_dialogs.get(view.view_id)
+        if dialog is not None and dialog.view is view:
+            dialog._show_result(result)
+        else:
+            dialog = UndefinedMarkupDialog(self._window, view, result)
+            self.undefined_dialogs[view.view_id] = dialog
+        dialog.show()
+        dialog.raise_()
+        return dialog
+
+    def configuration_changed(self) -> None:
+        """Stylesheets changed (saved, loaded or reloaded): re-render this
+        window's rich views and re-run its open undefined-markup reports."""
+
+        window = self._window
+        for view in window.views:
+            pane = window._rich_views.pane_for(view)
+            if pane is not None:
+                pane.refresh()
+        for view_id, dialog in list(self.undefined_dialogs.items()):
+            if window.view_for_id(view_id) is dialog.view:
+                dialog.refresh()
+            else:
+                self.undefined_dialogs.pop(view_id, None)
+
+    def navigate_view(self, view: "UNITITextView", offset: int) -> None:
+        self._navigate(view.view_id, offset)
 
     def _apply(self, view: "UNITITextView", result: CommandResult, revision: int) -> None:
         document = view.document
@@ -526,6 +588,8 @@ class EnvironmentController:
             self.show_style_inspector(result)
         elif isinstance(result, SaveTextFile):
             self.save_text_file(view, result)
+        elif isinstance(result, ShowUndefinedMarkup):
+            self.show_undefined_markup(view, result)
         elif isinstance(result, ShowMessage):
             show = {
                 "error": QMessageBox.critical,
@@ -602,6 +666,7 @@ class EnvironmentController:
             QMessageBox.warning(self._window, "Load Stylesheet", f"Could not read {path}.")
             return False
         self._window.statusBar().showMessage(f"Loaded stylesheet {Path(path).name}", 5000)
+        self.configuration_changed()
         return True
 
     def show_findings(self, view: "UNITITextView", result: ShowFindings) -> "EnvironmentFindingsDialog":

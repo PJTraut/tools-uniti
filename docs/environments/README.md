@@ -44,6 +44,10 @@ Ways a file gets there:
 
 Environment windows come back when UNITI restarts.
 
+## Undefined markup
+
+Where an environment knows its vocabulary, opening a file checks it. Today that's USFM: markers no loaded stylesheet defines pop up a report, which you can copy, save, or use to add the missing definitions. See [usfm.md](usfm.md#undefined-markers).
+
 ## The environment menu
 
 The menu between **View** and **Tools** is named after the active tab's environment (e.g. **USFM**, or **JSON (Plain Text)**). It holds:

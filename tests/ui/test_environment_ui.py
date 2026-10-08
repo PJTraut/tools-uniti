@@ -59,6 +59,7 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "Go to Chapter:Verse…",
         "Validate USFM",
         "Check Marker Placement",
+        "Check Undefined Markers",
         "Inspect Marker at Cursor",
         "Style Inspector…",
         "Load Stylesheet…",
