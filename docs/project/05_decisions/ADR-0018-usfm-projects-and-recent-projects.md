@@ -43,3 +43,5 @@ Un-park a second narrow slice: **Paratext USFM projects, read-only, remembered b
 
 - [Parked Capability Catalog](../04_parked/CATALOG.md): the "Project and workspace concepts" entry gains this second narrow exception.
 - [ADR-0009](ADR-0009-bounded-open-folder-by-type.md): unchanged; Open Folder by Type still retains nothing.
+
+Update 2026-10-08 ([field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R8): **Configuration Files…** can create a project's `custom.sty` or `uniti.sty` from a template, and open project files to edit. Those are writes you ask for, like saving any file you opened. UNITI still never writes into a project folder by itself.

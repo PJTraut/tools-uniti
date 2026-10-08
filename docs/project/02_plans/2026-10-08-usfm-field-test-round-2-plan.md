@@ -1,7 +1,7 @@
 # USFM Field Test, Round 2 — Plan
 
 Date: 2026-10-08
-Status: **In progress**. R1–R6 and R4b are implemented (2026-10-08); R7–R8 are ready (D1–D4 decided 2026-10-08).
+Status: **In progress**. R1–R6, R4b and R8 are implemented (2026-10-08); R7 is next (D4 decided).
 Origin: `@externalresources/field_test_feedback` (2026-10-08).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
 
@@ -233,6 +233,19 @@ Tests: `tests/app/test_environment_window.py` +6:
 
   The pages are linked from the README and the user manual, and each menu's **Configuration Files…** links to its page.
 - **Tests:** the layer order with a user `uniti.sty`; creating a file from the template; reload after saving a configuration file; the Configuration Files list for a single file and for a project file.
+
+**Implemented 2026-10-08.**
+- **`core/environments/user_config.py`:** the per-environment folder `<settings folder>/Environments/<Environment>/`. Its root is set by `UNITIMainWindow` from its settings store.
+- **`style_layers.build_layers`:** adds **your** `uniti.sty` (`StyleOrigin.UNITI_USER`, layer "uniti.sty (yours)") between the built-in rules and the project's stylesheets.
+- **`core/environments/configuration.py`:** `configuration_files()` lists, in the order they apply, the built-in files, your files, the project's files (stylesheets, `Settings.xml`, `BookNames.xml`, `custom.vrs`), loaded stylesheets and your versification folder. Templates are provided for your rules, the project `custom.sty` and the project `uniti.sty`; the `uniti.sty` template holds the built-in rules commented out.
+- **`ui/configuration_files.py`:** **Configuration Files…** in every environment's menu, with Open, Create, Copy to My Configuration and Open (built-in files, copied into `Reference/`), Show in Folder, and the environment's documentation. Configuration files always open in an ordinary window, never pinned into an environment window.
+- **Saving** a `.sty`, `.vrs`, `Settings.xml` or `BookNames.xml` (`UNITIMainWindow._configuration_saved`) reloads every open USFM document's stylesheets, re-projects rich panes and re-reads the Book list, in every window.
+- **Documentation:** `docs/environments/`: an overview plus Plain Text, Markdown, XML, JSON, YAML, USFM, CSV and TSV pages, linked from the README and the user manual.
+
+Tests:
+- `tests/test_environment_configuration.py` (7): the folder, layer order and precedence, the lists for a single file and a project, the template, reference copies.
+- `tests/ui/test_configuration_files_ui.py` (5): creating your rules and saving them updates Preview; a built-in copy; creating `custom.sty`; folder and documentation for every environment.
+- `tests/app/test_environment_window.py` +1: opened in an ordinary window.
 
 ## Decisions needed
 

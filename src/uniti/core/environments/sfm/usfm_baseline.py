@@ -59,6 +59,25 @@ def load_uniti_builtin() -> RawStyleSheet:
     return _load_asset(_UNITI_BUILTIN_ID, "failed to load built-in uniti.sty; default presentation rules disabled")
 
 
+def asset_path(stylesheet_id: str) -> Path | None:
+    """Where a built-in stylesheet asset lives (read-only)."""
+
+    try:
+        manifest = json.loads((_ASSETS_ROOT / "manifest.json").read_text(encoding="utf-8"))
+        entry = next(e for e in manifest["stylesheets"] if e["id"] == stylesheet_id)
+    except (OSError, ValueError, KeyError, StopIteration):
+        return None
+    return _ASSETS_ROOT / entry["path"] if Path(entry["path"]).name == entry["path"] else None
+
+
+def usfm_baseline_path() -> Path | None:
+    return asset_path(_STYLESHEET_ID)
+
+
+def uniti_builtin_path() -> Path | None:
+    return asset_path(_UNITI_BUILTIN_ID)
+
+
 def _load_asset(stylesheet_id: str, failure: str) -> RawStyleSheet:
     try:
         manifest = json.loads((_ASSETS_ROOT / "manifest.json").read_text(encoding="utf-8"))

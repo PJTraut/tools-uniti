@@ -40,6 +40,8 @@ For updates, save your work and use **Quit**. Update the source checkout through
 4. Choose **File → Save** to write changes to the current file.
 5. Choose **Quit** when finished. On macOS, Quit can appear in the native UNITI application menu.
 
+Each kind of file opens in its own **environment** (USFM, JSON, Markdown, …), with its own tools, views and configuration. When you open such a file, UNITI asks whether to open it in its environment or as plain text. See [Environments](environments/README.md) for each environment and its configuration files.
+
 Use **File → Open Folder by Type…** to open every file of one chosen extension from a folder at once (top-level files only, not subfolders) — for example, every `.sfm` file in a translation project. A follow-up prompt lets you assign all of them to no group, an existing group, or a newly named group, in the same step. UNITI does not remember the folder afterward; it is a one-time batch convenience, not a project or workspace.
 
 ### Saving choices

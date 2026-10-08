@@ -67,6 +67,12 @@ class StylesheetSupport:
         return self._layered
 
     @property
+    def imported_stylesheets(self) -> tuple[StyleLayer, ...]:
+        """Stylesheets loaded by hand (Load Stylesheet…), lowest first."""
+
+        return tuple(self._imported)
+
+    @property
     def style_registry(self) -> StyleRegistry:
         """The effective (all layers merged) structural registry."""
 

@@ -9,6 +9,7 @@ UNITI is a private source beta, currently `v0.001b3` (`0.1b3` in Python packagin
 - [User Manual](docs/user-manual.md) — getting started, everyday workflows, text formats, recovery, and troubleshooting.
 - [User Cheat Sheet](docs/user-cheat-sheet.md) — common actions, regex flags, and quick reminders.
 - [Regex Flags Guide](docs/regex-flags.md) — line anchors, examples, scoped flags, and Unicode options.
+- [Environments](docs/environments/README.md) — what each file-type environment does, the open dialog and environment windows, and every configuration file with where it lives and how to edit it.
 - [USFM Stylesheet Rules](docs/usfm-stylesheet-rules.md) — how Standard and Preview are styled, and `uniti.sty` rules such as a blank line between prose and poetry.
 
 ## Project documentation

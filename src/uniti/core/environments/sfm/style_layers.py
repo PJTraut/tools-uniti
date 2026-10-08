@@ -7,7 +7,8 @@ so an inspector can say "FontSize 11, from ptxprint-mods.sty, base 12".
 Layer order, lowest to highest precedence:
 
 1. the official baseline `usfm.sty` (USFM only; generic SFM has none),
-   followed by UNITI's built-in `uniti.sty` presentation rules,
+   followed by UNITI's built-in `uniti.sty` presentation rules and the
+   user's own `uniti.sty` (`<user data>/Environments/USFM/uniti.sty`),
 2. project stylesheets discovered next to the document (`usfm.sty`, then
    `custom.sty`, then PTXprint's `shared/ptxprint/ptxprint-mods.sty`, then
    the project's own `uniti.sty`) — filenames vary by project, so
@@ -61,6 +62,7 @@ _COMMENT_RE = re.compile(r"\s+#.*$")
 class StyleOrigin(StrEnum):
     USFM_BASE = "usfm-base"
     UNITI_BUILTIN = "uniti-builtin"
+    UNITI_USER = "uniti-user"
     PROJECT = "project"
     PTXPRINT = "ptxprint"
     UNITI_PROJECT = "uniti-project"
@@ -362,6 +364,13 @@ def build_layers(
         builtin = load_uniti_builtin()
         if builtin.records:
             layers.append(StyleLayer("uniti.sty (built-in)", StyleOrigin.UNITI_BUILTIN, builtin))
+        # The user's own rules, for every USFM file (round 2 R8).
+        from uniti.core.environments.user_config import usfm_user_rules_path
+
+        user_rules = usfm_user_rules_path()
+        user_layer = None if user_rules is None else load_stylesheet_file(user_rules, StyleOrigin.UNITI_USER)
+        if user_layer is not None:
+            layers.append(StyleLayer("uniti.sty (yours)", StyleOrigin.UNITI_USER, user_layer.sheet, user_layer.path))
     layers.extend(discover_project_stylesheets(document_path))
     layers.extend(imported)
     return tuple(layers)

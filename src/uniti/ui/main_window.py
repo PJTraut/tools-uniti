@@ -270,6 +270,11 @@ class UNITIMainWindow(QMainWindow):
             if self._settings_store is not None
             else None
         )
+        if self._settings_store is not None:
+            from uniti.core.environments.user_config import set_user_config_root
+
+            # Per-environment user configuration lives next to the settings.
+            set_user_config_root(self._settings_store.path.parent)
         from uniti.ui.usfm_projects import UsfmProjectController
 
         # Open USFM Project… and Recent Projects (ADR-0018).
@@ -2691,6 +2696,51 @@ class UNITIMainWindow(QMainWindow):
             self._environment.set_document_environment(key, view, move=False)
         return view
 
+    # --- configuration files (round 2 R8) -----------------------------------
+
+    _CONFIGURATION_SUFFIXES = frozenset({".sty", ".vrs"})
+    _CONFIGURATION_NAMES = frozenset({"settings.xml", "booknames.xml"})
+
+    def open_configuration_file(self, path: Path) -> UNITITextView | None:
+        """Open a configuration file to edit, in an ordinary window (an
+        environment window would pin it to its environment)."""
+
+        target = self
+        if self.environment_window is not None and self._service is not None:
+            target = next(
+                (window for window in self._service.windows.windows_by_recency if window.environment_window is None),
+                None,
+            ) or self._service.new_window()
+            target.show()
+            target.raise_()
+            target.activateWindow()
+        return target.open_path(path, open_mode=OpenMode.HERE)
+
+    def _configuration_saved(self, path: Path) -> None:
+        """A stylesheet, versification file or project settings file was
+        saved: reload the environments that read it, everywhere, so
+        Standard and Preview update straight away."""
+
+        if path.suffix.lower() not in self._CONFIGURATION_SUFFIXES and path.name.lower() not in self._CONFIGURATION_NAMES:
+            return
+        windows = [window for _id, window in self._service.windows.items] if self._service is not None else [self]
+        reloaded: set[int] = set()
+        for window in windows:
+            for view in window.views:
+                environment = window._environment.active_for(view.document).environment
+                reload = getattr(environment, "reload_stylesheets", None)
+                if callable(reload) and id(environment) not in reloaded:
+                    reloaded.add(id(environment))
+                    reload()
+            for view in window.views:
+                pane = window._rich_views.pane_for(view)
+                if pane is not None:
+                    pane.refresh()
+            if window._environment_bar is not None:
+                window._environment_bar._refresh_books(rescan=True)
+        if reloaded:
+            self.statusBar().showMessage(f"Saved {path.name}; reloaded the environment configuration", 4000)
+
     def _environment_window_for(self, environment_key: str, group_id: str | None) -> "UNITIMainWindow":
         """The environment window of `environment_key` and `group_id`,
         created when there is none yet; raised and focused."""
@@ -3990,6 +4040,7 @@ class UNITIMainWindow(QMainWindow):
                 durability_result=prepared.staged.commit_durability,
             )
             self.statusBar().showMessage(f"Saved {result}", 3000)
+            self._configuration_saved(Path(result))
         except Exception as exc:
             self._file_operations.record_completion(
                 operation,
@@ -4032,6 +4083,7 @@ class UNITIMainWindow(QMainWindow):
             self._show_save_error(exc)
             return None
         self._refresh_saved_format(view, selected.encoding)
+        self._configuration_saved(Path(result))
         return result
 
     def save_current_as(

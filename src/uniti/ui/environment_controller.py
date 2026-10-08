@@ -88,6 +88,8 @@ class EnvironmentController:
         self.plain_mode_action: QAction | None = None
         self.assignment_action: QAction | None = None
         self.move_to_window_action: QAction | None = None
+        self.configuration_action: QAction | None = None
+        self.configuration_dialog = None
 
     # --- resolution -------------------------------------------------------
 
@@ -432,6 +434,27 @@ class EnvironmentController:
         self.move_to_window_action = move
         if environment_key in REFERENCE_ENVIRONMENTS:
             menu.addAction(window._reference_sync.action)
+        configuration = QAction("Configuration Files…", window)
+        configuration.setToolTip("The configuration files of this environment: open, edit or create them")
+        configuration.triggered.connect(lambda _checked=False, view=view: self.show_configuration_files(view))
+        menu.addAction(configuration)
+        self._owned_command_actions.append(configuration)
+        self.configuration_action = configuration
+
+    def show_configuration_files(self, view: "UNITITextView | None" = None):
+        """Configuration Files… for `view`'s environment (round 2 R8)."""
+
+        from uniti.ui.configuration_files import ConfigurationFilesDialog
+
+        view = view if view is not None else self._window.current_view
+        if view is None:
+            return None
+        if self.configuration_dialog is not None:
+            self.configuration_dialog.close()
+        self.configuration_dialog = ConfigurationFilesDialog(self._window, view)
+        self.configuration_dialog.show()
+        self.configuration_dialog.raise_()
+        return self.configuration_dialog
 
     # --- running commands ---------------------------------------------------
 

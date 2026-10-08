@@ -606,3 +606,22 @@ def test_open_folder_by_type_asks_once_for_the_batch(desktop, tmp_path: Path, an
     assert answer.asked == [("01GEN.usfm", "USFM", 2)]
     window = service.environment_window_for("usfm", None)
     assert window is not None and len(window.views) == 2
+
+
+# --- R8: configuration files from an environment window -----------------------------
+
+
+def test_configuration_files_open_in_an_ordinary_window(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path / "project", "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+
+    dialog = window._environment.show_configuration_files(view)
+    dialog.select_role("Project custom stylesheet")
+    opened = dialog.create_selected()
+
+    # Not pinned into the USFM window: a stylesheet is edited as plain text.
+    assert service.windows.window_for_view(opened.view_id) is main
+    assert opened.document.path == tmp_path / "project" / "custom.sty"
+    assert main._environment.environment_key_for(opened.document) == "plain_text"

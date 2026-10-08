@@ -70,6 +70,7 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "Preview",
         "Move to Environment Window",
         "Sync Side-by-Side by Reference",
+        "Configuration Files…",
         "Plain Text Mode",
         "Environment for This Document",
         "File Type Environments…",
@@ -82,6 +83,7 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
     assert _menu_texts(window) == [
         "No environment tools for plain text",
         "Move to Environment Window",
+        "Configuration Files…",
         "Environment for This Document",
         "File Type Environments…",
     ]
