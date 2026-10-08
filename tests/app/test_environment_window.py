@@ -625,3 +625,38 @@ def test_configuration_files_open_in_an_ordinary_window(desktop, tmp_path: Path)
     assert service.windows.window_for_view(opened.view_id) is main
     assert opened.document.path == tmp_path / "project" / "custom.sty"
     assert main._environment.environment_key_for(opened.document) == "plain_text"
+
+
+# --- P4: versification --------------------------------------------------------------
+
+
+def test_a_texts_versification_can_be_chosen_and_is_saved(desktop, tmp_path: Path):
+    from types import SimpleNamespace
+
+    from uniti.app.session_controller import SessionController
+    from uniti.app.session_runtime import capture_service_session
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "19PSA.usfm", "\\id PSA\n\\c 51\n\\p\n\\v 1 Have mercy.\n"))
+    environment = main._environment
+    actions = environment.versification_actions
+    assert actions[None].text() == "Default (English)" and actions[None].isChecked()
+    assert {"eng", "org"} <= set(actions)
+
+    actions["org"].trigger()
+
+    entry = service.documents.entry_for_view(view.view_id)
+    assert entry.versification == "org"
+    assert environment.versification_for(view.document).stem == "org"
+    assert environment.versification_actions["org"].isChecked()
+
+    snapshot = capture_service_session(
+        service, clean_shutdown=True, generation="g", service_id="s", build_identity="t",
+        created_at="2026-10-08T00:00:00Z", updated_at="2026-10-08T00:00:00Z",
+    )
+    record = next(item for item in snapshot.manifest.documents if item.document_id == entry.document_id)
+    assert record.extra["versification"] == "org"
+    restored = SimpleNamespace(versification=None, environment_override=None, environment_key="usfm")
+    SessionController._restore_entry_environment(restored, record)
+    assert restored.versification == "org"

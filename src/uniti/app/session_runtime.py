@@ -257,11 +257,18 @@ def capture_service_session(
                 _timestamp(entry.last_active_at),
                 None if entry.closed_at is None else _timestamp(entry.closed_at),
                 entry.group_id,
-                extra=(
-                    {"environment_override": entry.environment_override}
-                    if entry.environment_override is not None
-                    else {}
-                ),
+                extra={
+                    **(
+                        {"environment_override": entry.environment_override}
+                        if entry.environment_override is not None
+                        else {}
+                    ),
+                    **(
+                        {"versification": entry.versification}
+                        if getattr(entry, "versification", None) is not None
+                        else {}
+                    ),
+                },
             )
         )
         if entry.saved_stamp is None:

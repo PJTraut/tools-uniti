@@ -40,6 +40,10 @@ class DocumentEntry:
     # file as…"), overriding the extension mapping; persisted in the
     # session's document `extra` blob.
     environment_override: str | None = None
+    # Plan P4: this text's own versification choice (a `.vrs` stem such
+    # as "org"), overriding its project's or the English default;
+    # persisted in the session's document `extra` blob.
+    versification: str | None = None
 
 
 def _utc_now() -> datetime:

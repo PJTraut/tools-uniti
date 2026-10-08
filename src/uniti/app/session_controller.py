@@ -661,6 +661,9 @@ class SessionController:
         from uniti.core.environments.catalog import ENVIRONMENTS_BY_KEY
         from uniti.core.syntax_profiles import canonical_key
 
+        versification = None if record is None else record.extra.get("versification")
+        if isinstance(versification, str) and versification.isidentifier():
+            entry.versification = versification
         override = None if record is None else record.extra.get("environment_override")
         override = canonical_key(override) if isinstance(override, str) else None
         if isinstance(override, str) and override in ENVIRONMENTS_BY_KEY:

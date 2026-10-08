@@ -93,6 +93,9 @@ class EnvironmentController:
         self.configuration_action: QAction | None = None
         self.configuration_dialog = None
         self.undefined_dialogs: dict[str, object] = {}  # view id -> report
+        self.versification_menu: QMenu | None = None
+        self.versification_actions: dict[str | None, QAction] = {}
+        self._standalone_versifications: weakref.WeakKeyDictionary[Document, str] = weakref.WeakKeyDictionary()
 
     # --- resolution -------------------------------------------------------
 
@@ -437,6 +440,7 @@ class EnvironmentController:
         self.move_to_window_action = move
         if environment_key in REFERENCE_ENVIRONMENTS:
             menu.addAction(window._reference_sync.action)
+            menu.addMenu(self._versification_menu(view))
         configuration = QAction("Configuration Files…", window)
         configuration.setToolTip("The configuration files of this environment: open, edit or create them")
         configuration.triggered.connect(lambda _checked=False, view=view: self.show_configuration_files(view))
@@ -458,6 +462,100 @@ class EnvironmentController:
         self.configuration_dialog.show()
         self.configuration_dialog.raise_()
         return self.configuration_dialog
+
+    # --- versification (plan P4) ---------------------------------------------
+
+    def versification_override_for(self, document: "Document") -> str | None:
+        entry = self._entry_for(document)
+        if entry is not None:
+            return entry.versification
+        return self._standalone_versifications.get(document)
+
+    def versification_for(self, document: "Document"):
+        """The `TextVersification` `document` uses: its own choice, else its
+        project's, else English."""
+
+        from uniti.core.environments.sfm.versification import versification_for
+
+        return versification_for(document.path, self.versification_override_for(document))
+
+    def set_versification(self, stem: str | None, view: "UNITITextView | None" = None) -> None:
+        """Give `view`'s text its own versification (`None`: its project's,
+        or English)."""
+
+        view = view if view is not None else self._window.current_view
+        if view is None:
+            return
+        document = view.document
+        entry = self._entry_for(document)
+        if entry is not None:
+            entry.versification = stem
+        elif stem is None:
+            self._standalone_versifications.pop(document, None)
+        else:
+            self._standalone_versifications[document] = stem
+        chosen = self.versification_for(document)
+        message = f"{document.path.name} now uses {chosen.label} versification"
+        self._window.statusBar().showMessage(message, 5000)
+        self.refresh()
+
+    def _versification_menu(self, view: "UNITITextView") -> QMenu:
+        """An exclusive "Versification" picker, like Environment for This Document."""
+
+        from uniti.core.environments.sfm.paratext_project import project_for_file
+        from uniti.core.environments.sfm.versification import (
+            DEFAULT_STEM,
+            available_versifications,
+            versification_for,
+            versification_name,
+            versification_path,
+        )
+
+        window = self._window
+        if self.versification_menu is not None:
+            # Rebuilt with the menu; deferred, as a rebuild can come from
+            # one of its own actions.
+            self.versification_menu.deleteLater()
+        menu = QMenu("Versification", window)
+        group = QActionGroup(menu)
+        group.setExclusive(True)
+        override = self.versification_override_for(view.document)
+        default = versification_for(view.document.path, None)
+        source = "Project" if project_for_file(view.document.path) is not None else "Default"
+        self.versification_actions = {}
+        entries = [(None, f"{source} ({default.label})")]
+        stems = list(available_versifications())
+        if override is not None and override not in stems:
+            stems.append(override)
+        entries += [
+            (stem, versification_name(stem) + ("" if versification_path(stem) is not None else " (file missing)"))
+            for stem in stems
+        ]
+        for stem, label in entries:
+            action = QAction(label, menu)
+            action.setCheckable(True)
+            action.setChecked(stem == override)
+            action.triggered.connect(lambda _checked=False, stem=stem, view=view: self.set_versification(stem, view))
+            group.addAction(action)
+            menu.addAction(action)
+            self.versification_actions[stem] = action
+            if stem is None:
+                menu.addSeparator()
+        menu.addSeparator()
+        folder = QAction("Your Versification Files…", menu)
+        folder.setToolTip(
+            "Copy Septuagint, Vulgate or Russian .vrs files here from a Paratext installation; "
+            f"{versification_name(DEFAULT_STEM)} and Original are built in"
+        )
+        folder.triggered.connect(lambda _checked=False, view=view: self._show_versification_folder(view))
+        menu.addAction(folder)
+        self.versification_menu = menu
+        return menu
+
+    def _show_versification_folder(self, view: "UNITITextView") -> None:
+        dialog = self.show_configuration_files(view)
+        if dialog is not None:
+            dialog.select_role("Your versification files")
 
     # --- running commands ---------------------------------------------------
 

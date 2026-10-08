@@ -1,7 +1,7 @@
 # USFM Projects, Single Files, and Versification — Plan
 
 Date: 2026-10-07
-Status: **In progress**. P1–P3 are implemented (2026-10-07). P4–P5 are queued after [field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) R1–R6 (see the [roadmap](ROADMAP.md#environment-track-queue)).
+Status: **In progress**. P1–P4 are implemented (P1–P3 on 2026-10-07, P4 on 2026-10-08). P5 is next (see the [roadmap](ROADMAP.md#environment-track-queue)).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md): environment windows, the Book/Chapter/Verse selector, and reference sync within a group.
 Origin: user, 2026-10-07: "single file vs 'working folder' for USFM; plan this... should we need to 'open folder' for 'project' view and 'open file' for single files outside of projects? how would we compare BK:CH:VS for 'files' only".
 
@@ -103,6 +103,17 @@ Tests: +3 in `tests/test_paratext_project.py`, +1 in `tests/app/test_usfm_projec
   - When a needed file is missing, UNITI falls back to English and says so in the status bar.
 - **`map_reference(ref, source_versification, target_versification)`** works through Original. It's tested against known pairs (Ps 51:1 ↔ 51:3, Mal 4:1 ↔ 3:19, Joel 2:28 ↔ 3:1) and the identity case. If `usfmtc`'s `remap` misbehaves on those, UNITI maps through its `toorg`/`fromorg` tables directly.
 - **Single-file override:** an Environment menu **Versification** picker (an exclusive submenu), saved in `DocumentRecord.extra["versification"]` with no schema change.
+
+**Implemented 2026-10-08.**
+- **`sfm/versification.py`:**
+  - `load_versification(stem, custom)` uses your folder first, then the built-in `eng`/`org` files, and falls back to English when a file is missing.
+  - `versification_for(path, override)`: the text's own choice, else its project's, else English.
+  - `map_reference(book, chapter, verse, source, target)` goes through Original using `usfmtc`'s tables. It's checked against Ps 51:1 ↔ 51:3, Mal 4:1 ↔ 3:19, Joel 2:28 ↔ 3:1 and the identity case, with bridges and parts mapped by their first verse.
+  - A project's `custom.vrs` is overlaid the way Paratext does: its mappings replace the base's for the verses it names. `usfmtc`'s `readFile` would merge them into ranges.
+- **Per-file choice:** `DocumentEntry.versification`, saved in `DocumentRecord.extra["versification"]` and restored with the pin.
+- **The USFM menu's Versification picker:** "Project (…)" or "Default (English)", each available versification (a missing file says so), and Your Versification Files…, which opens Configuration Files at the versification folder.
+
+Tests: `tests/test_sfm_versification.py` (9) and `tests/app/test_environment_window.py` +1 (the picker, and saving and restoring the choice).
 
 ### P5: Sync across books and versifications
 

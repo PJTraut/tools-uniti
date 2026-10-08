@@ -38,8 +38,8 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 | 6 | R6 — "Open in <Environment> / Open as Plain Text" on open; Plain Text means no extended features | implemented 2026-10-08 | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
 | 7 | R8 — Environment documentation and editable configuration: user configuration folder per environment, Configuration Files…, reload on save, `docs/environments/` | implemented 2026-10-08 | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
 | 8 | R7 — Report undefined markup when a file is opened: popup with copy/save report and edit/add definitions to configuration files (SFM/USFM, through a hook any environment can implement) | implemented 2026-10-08 | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
-| 9 | P4 — Versification (built-in English and Original; others from `.vrs` files in a user folder; project `custom.vrs`) | next | [Projects plan](2026-10-07-usfm-projects-and-versification-plan.md) |
-| 10 | P5 — Sync across books and versifications (opens a project's missing book) | queued | [Projects plan](2026-10-07-usfm-projects-and-versification-plan.md) |
+| 9 | P4 — Versification (built-in English and Original; others from `.vrs` files in a user folder; project `custom.vrs`) | implemented 2026-10-08 | [Projects plan](2026-10-07-usfm-projects-and-versification-plan.md) |
+| 10 | P5 — Sync across books and versifications (opens a project's missing book) | next | [Projects plan](2026-10-07-usfm-projects-and-versification-plan.md) |
 
 Wishlist, not queued: the USFM per-chapter view, and choosing which footnote categories Preview shows ([wishlist](../FEATURE_WISHLIST.md)).
 

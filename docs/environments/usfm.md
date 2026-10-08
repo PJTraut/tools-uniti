@@ -55,6 +55,15 @@ When two or more splits of one window show files of the **same document group**,
 - Ungrouped files don't sync.
 - Turn sync on or off with **Sync Side-by-Side by Reference** (toolbar or menu).
 
+## Versification
+
+Translations number some verses differently: English Ps 51:1 is the original-text 51:3, Mal 4:1 is 3:19, Joel 2:28 is 3:1. Each text has a versification:
+- the one you choose in **USFM → Versification**;
+- otherwise its Paratext project's (`Settings.xml`, plus the project's `custom.vrs` if there is one);
+- otherwise English.
+
+English and Original are built in. For Septuagint, Vulgate, Russian Protestant or Russian Orthodox, copy `lxx.vrs`, `vul.vrs`, `rsc.vrs` or `rso.vrs` from a Paratext installation into your versification folder. **Versification → Your Versification Files…** shows it. When a text asks for one that isn't there, UNITI uses English and the menu says the file is missing. Your choice for a file is saved with the session.
+
 ## Projects
 
 **File → Open USFM Project…** opens a Paratext project folder: one with a `Settings.xml`.
