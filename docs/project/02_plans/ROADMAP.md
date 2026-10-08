@@ -30,8 +30,8 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 
 | Order | Item | Status | Plan |
 |---|---|---|---|
-| 1 | R1 — Standard/Preview mode switch speed: render once, render off-screen, cache the projection (measured 41 s → target under 1 s for a 220 KB book) | next | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
-| 2 | R2 — Nested `\+` markers (and milestones, column ranges) in the tokenizer, parser and style lookup | queued | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
+| 1 | R1 — Standard/Preview mode switch speed: render once, render off-screen, cache the projection (41 s → 0.86 s for a 220 KB book) | implemented 2026-10-08 | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
+| 2 | R2 — Nested `\+` markers (and milestones, column ranges) in the tokenizer, parser and style lookup | next | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
 | 3 | R3 — `\cat` shown as `[category]` in Preview notes | queued | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
 | 4 | R4 — Highlight the verse on Book/Chapter/Verse and Go to Chapter:Verse, in every mode | queued | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |
 | 5 | R5 — One USFM environment: `.sfm`/`.usfm` both belong to USFM; generic SFM environment removed, saved `sfm` keys read as `usfm` | queued (D1 decided) | [Field test round 2](2026-10-08-usfm-field-test-round-2-plan.md) |

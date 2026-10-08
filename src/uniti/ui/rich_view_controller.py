@@ -53,6 +53,7 @@ class RichViewController:
         self._appearance_slots: dict[str, object] = {}
         self._fitter = _Fitter(self)
         self._pushing_caret = False
+        self._showing: set[str] = set()  # views mid-`show()`
         # Environment windows show the mode selector in their toolbar.
         self.pane_mode_selector = True
 
@@ -101,9 +102,21 @@ class RichViewController:
         if view is None or not any(provider.key == provider_key for provider in providers):
             return False
         view.rich_view_key = provider_key
-        pane = self._ensure_pane(view)
-        pane.bind(view.document, providers, provider_key, *self._appearance(view, provider_key, providers))
-        pane.show_source_caret(view.state.cursor, view.state.anchor)
+        self._showing.add(view.view_id)
+        try:
+            pane = self._ensure_pane(view)
+            pane.bind(view.document, providers, provider_key, *self._appearance(view, provider_key, providers))
+            pane.show_source_caret(view.state.cursor, view.state.anchor)
+            # Only now hand focus over: the focus change re-activates the
+            # tab, and a pane that isn't bound yet would be shown again
+            # (rendering the whole book twice).
+            if view.focusProxy() is not pane.editor:
+                had_focus = view.hasFocus()
+                view.setFocusProxy(pane.editor)
+                if had_focus:
+                    pane.editor.setFocus()
+        finally:
+            self._showing.discard(view.view_id)
         self._refresh_window_actions()
         return True
 
@@ -129,7 +142,7 @@ class RichViewController:
     def sync(self, view: "UNITITextView | None") -> None:
         """Make `view`'s pane match its saved choice and environment."""
 
-        if view is None:
+        if view is None or view.view_id in self._showing:
             return
         key = view.rich_view_key
         if key is not None and any(provider.key == key for provider in self.providers_for(view)):
@@ -171,8 +184,8 @@ class RichViewController:
         self._panes[view.view_id] = pane
         pane.show()
         pane.raise_()
-        # Focus given to the tab (activation, Go To, transfer) lands in the pane.
-        view.setFocusProxy(pane.editor)
+        # `show()` makes the pane the tab's focus proxy once it is bound, so
+        # focus given to the tab (activation, Go To, transfer) lands in it.
         return pane
 
     def _remove(self, view: "UNITITextView") -> None:

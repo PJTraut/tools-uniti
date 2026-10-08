@@ -176,6 +176,13 @@ class _SfmViewBase:
     def __init__(self, styles: Callable[[], LayeredStyleRegistry]) -> None:
         self._styles = styles
 
+    def cache_token(self) -> LayeredStyleRegistry:
+        """The stylesheets this view renders with: a new object whenever
+        they reload, so a cached projection is reused only while they
+        haven't changed."""
+
+        return self._styles()
+
     def enter_text(self, source: str, source_offset: int) -> str:
         return paragraph_enter_text(source, source_offset, self._styles().registry)
 

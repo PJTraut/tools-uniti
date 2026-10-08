@@ -499,3 +499,109 @@ def test_regex_search_always_matches_the_underlying_plain_text(window, tmp_path:
     finally:
         panel.shutdown()
         panel.close()
+
+
+def _book_text(chapters: int = 50, verses: int = 31) -> str:
+    verse = (
+        "\\v {v} In the beginning God created the heavens and the earth \\nd Lord\\nd* and"
+        " \\w word|lemma\\w*.\\f + \\fr {c}:{v} \\ft Or \\fq when\\fq* note.\\f*\n"
+    )
+    parts = ["\\id GEN\n"]
+    for c in range(1, chapters + 1):
+        parts.append(f"\\c {c}\n\\s1 Heading {c}\n\\p\n")
+        parts.extend(verse.format(c=c, v=v) for v in range(1, verses + 1))
+    return "".join(parts)
+
+
+def test_the_first_switch_renders_once_even_with_the_tab_focused(window, tmp_path: Path, app, monkeypatch):
+    """R1: handing focus to the new pane re-activated the tab and showed it
+    a second time, rendering the whole book twice."""
+
+    from uniti.ui import rich_view
+
+    view = _open(window, tmp_path, "book.usfm", _NOTES)
+    view.setFocus()
+    app.processEvents()
+    rendered = []
+    original = rich_view.render_projection
+    monkeypatch.setattr(rich_view, "render_projection", lambda *args: rendered.append(args[1].provider_key) or original(*args))
+
+    window._rich_views.show("sfm.standard")
+    app.processEvents()
+
+    assert rendered == ["sfm.standard"]
+    assert view.focusProxy() is window._rich_views.pane.editor
+
+
+def test_switching_back_reuses_the_projection_until_the_text_changes(window, tmp_path: Path, monkeypatch):
+    from uniti.core.environments.sfm import views
+
+    view = _open(window, tmp_path, "book.usfm", _USFM)
+    calls = []
+    original = views.layout_projection
+    monkeypatch.setattr(views, "layout_projection", lambda *args, **kwargs: calls.append(args[2]) or original(*args, **kwargs))
+
+    window._rich_views.show("sfm.standard")
+    window._rich_views.show("sfm.preview")
+    window._rich_views.close()
+    window._rich_views.show("sfm.standard")
+    window._rich_views.show("sfm.preview")
+    assert calls == ["sfm.standard", "sfm.preview"]
+
+    view.document.replace(0, 0, "\\rem note\n")
+    window._rich_views.show("sfm.standard")
+    assert calls == ["sfm.standard", "sfm.preview", "sfm.standard"]
+
+
+def test_rendering_in_runs_keeps_nested_formats(app):
+    from PySide6.QtGui import QFont, QTextCursor, QTextDocument
+
+    from uniti.core.rich_views.projection import ProjectionBuilder
+    from uniti.ui.rich_view import RichPalette, render_projection
+
+    builder = ProjectionBuilder("test")
+    builder.text(9, "bold ital")
+    builder.marker(11, "\\x", "x")
+    builder.text(14, "end")
+    builder.span(0, 9, {"bold": "yes"})
+    builder.span(5, 9, {"italic": "yes"})
+    builder.span(0, 11, {"font_scale": "2.000"})
+    builder.span(9, 11, {"marker_token": "yes"})
+    projection = builder.build(14)
+    document = QTextDocument()
+    base = QFont()
+    base.setPointSizeF(10)
+    from PySide6.QtGui import QPalette
+
+    render_projection(document, projection, base, RichPalette.from_widget_palette(QPalette()))
+
+    def fmt(position: int):
+        cursor = QTextCursor(document)
+        cursor.setPosition(position + 1)
+        return cursor.charFormat()
+
+    assert document.toPlainText() == "bold ital\\xend"
+    assert fmt(0).fontWeight() == QFont.Weight.Bold and not fmt(0).fontItalic()
+    assert fmt(6).fontWeight() == QFont.Weight.Bold and fmt(6).fontItalic()
+    assert fmt(6).fontPointSize() == 20.0
+    # The tag ignores the bold/size around it and keeps its own look.
+    assert fmt(9).fontWeight() == QFont.Weight.Normal and fmt(9).fontPointSize() == 7.5
+    assert fmt(11).fontWeight() != QFont.Weight.Bold
+
+
+def test_switching_a_whole_book_takes_seconds_not_minutes(window, tmp_path: Path, app):
+    """R1 guard: a Genesis-size book (about 220 KB) took 41 s to switch to
+    Standard before rendering went off screen; it now takes under 1 s. The
+    bound is loose so slow test hosts don't flake."""
+
+    import time
+
+    view = _open(window, tmp_path, "GEN.usfm", _book_text())
+    view.setFocus()
+    started = time.perf_counter()
+    window._rich_views.show("sfm.standard")
+    app.processEvents()
+    window._rich_views.show("sfm.preview")
+    app.processEvents()
+    assert time.perf_counter() - started < 10.0
+    assert window._rich_views.pane.note_sections[0].editor.document().blockCount() == 50 * 31

@@ -1,7 +1,7 @@
 # USFM Field Test, Round 2 — Plan
 
 Date: 2026-10-08
-Status: **Proposed**. All items are ready to implement (D1–D4 decided 2026-10-08).
+Status: **In progress**. R1 is implemented (2026-10-08); R2–R8 are ready (D1–D4 decided 2026-10-08).
 Origin: `@externalresources/field_test_feedback` (2026-10-08).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
 
@@ -46,6 +46,32 @@ General, added the same day:
 - **Cache the projection** per (document revision, provider, stylesheet generation). Switching Standard ↔ Preview ↔ Plain Text and back without editing doesn't re-project.
 - **Target:** under 1 s for the 220 KB book, from Plain Text to Standard or Preview, measured in a window. A benchmark scenario (`benchmarks/`) and a UI test keep it there. Re-projecting only the edited paragraph after an edit is a separate, later step.
 
+**Implemented 2026-10-08.** Measured in a window on the 220 KB book:
+
+| Switch | Before | After |
+|---|---|---|
+| Plain Text → Standard | 41 s | 0.86 s |
+| → Preview | — | 0.71 s |
+| Back to Plain Text | — | 0.13 s |
+| Standard again (cached) | — | 0.66 s |
+| Preview again (cached) | — | 0.22 s |
+
+What changed:
+- **`rich_view_controller.show`** binds the pane before making it the focus proxy, and `sync()` ignores a tab that is mid-`show()`.
+- **`rich_view.render_projection`** inserts runs with their final, shared character formats; `render_into` renders off screen and calls `setDocument` once.
+- **`rich_view.ProjectionCache`** is keyed by document revision, provider and the provider's `cache_token()`: the SFM views' stylesheet object.
+- **`LayeredStyleRegistry.formatting`** is computed once per marker, since a reload builds a new registry.
+
+What's left of the time is Qt itself inserting about 43,000 runs (0.5 s) and building the projection (0.5 s). Re-projecting only the edited paragraph remains a later step.
+
+Tests: `tests/ui/test_rich_view_ui.py` +4:
+- the first switch renders once even with the tab focused;
+- the projection is reused until the text changes;
+- run rendering keeps nested formats and tags;
+- a whole-book switch stays in seconds (loose 10 s bound).
+
+The `benchmarks/` scenario isn't added: the benchmark corpora are plain-text kinds, and a USFM corpus generator is left for later.
+
 ### R2 — Nested `\+` markers (item 3)
 - **Tokenizer:** accept `\+name` and `\+name*`. The token keeps its source text, and the marker name is `name` without the `+`. While here, also accept milestones `\name-s`, `\name-e` and the self-closing `\*`, and column ranges (`\th1-2`), so they stop leaking into text.
 - **Parser:** pair `\+name` with `\+name*`.
@@ -64,6 +90,15 @@ General, added the same day:
 - Choosing a book, chapter or verse in the environment toolbar, and **Go to Chapter:Verse…**, highlight the verse after jumping, in Plain Text, Standard and Preview. They use the same tint as reference sync. A chapter-only jump highlights the `\c` line.
 - The highlight clears when the caret leaves that verse or at the next jump.
 - The verse lands about a third of the way down the view, as sync does.
+
+### R4b — Book/Chapter/Verse selector display (user, 2026-10-08) — implemented
+"BK:CH:VS selector: right align on banner with fixed width: CH/VS 3em display window; BK 10 em, display the paratext book ID regex: `\\id\s\w{3}` and the `\h` full line content (`\h` must be in the book header block, let's define within top 10 lines)".
+- **Position:** the selector sits at the right end of the environment toolbar, after an expanding spacer, with the sync toggle just before it.
+- **Widths:** fixed display areas of 10 em for Book and 3 em each for Chapter and Verse (`_fix_display_width`, through the style's `CT_ComboBox` size). The Book list still opens wide enough for whole headers, and the current book's full label and path are in its tooltip.
+- **Book label:** the id from `\id\s\w{3}` plus the whole content of the `\h` line. `sfm/references.book_header` reads both, and `\h` only counts within the first 10 lines (`HEADER_BLOCK_LINES`); `\h1` isn't `\h`.
+  - Open books are read from the document, so unsaved edits count. Other books are read from the file's start, cached until the file changes (`book_header_for_path`).
+  - A project book without `\h` falls back to its `BookNames.xml` name, then to the id alone. A file without `\id` shows its file name.
+- **Tests:** `tests/test_sfm_references.py` +1 (header block, 10-line limit, `\h1`, cache); `tests/app/test_environment_window.py` +1 (right edge, widths, label); updated Book-list expectations.
 
 ### R5 — One USFM environment for `.sfm` and `.usfm` (item 1, D1: group them)
 - **The generic SFM environment is removed.** `.sfm` and `.usfm`, in any case, both belong to **USFM**: the official baseline, `usfmtc` validation, projects, views, sync.

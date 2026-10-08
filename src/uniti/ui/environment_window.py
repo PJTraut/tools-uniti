@@ -20,13 +20,29 @@ import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Qt, QTimer
+from PySide6.QtCore import QObject, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QColor
-from PySide6.QtWidgets import QComboBox, QLabel, QToolBar
+from PySide6.QtWidgets import (
+    QComboBox,
+    QLabel,
+    QSizePolicy,
+    QStyle,
+    QStyleOptionComboBox,
+    QToolBar,
+    QWidget,
+)
 
 from uniti.core.environments.catalog import descriptor_for_key
 from uniti.core.environments.sfm.paratext_project import ParatextProject, project_for_file
-from uniti.core.environments.sfm.references import ReferenceMap, Verse, book_rank
+from uniti.core.environments.sfm.references import (
+    ID_PROBE_BYTES,
+    BookHeader,
+    ReferenceMap,
+    Verse,
+    book_header,
+    book_header_for_path,
+    book_rank,
+)
 from uniti.ui.rich_view import PLAIN_TEXT_LABEL, reference_highlight_color
 
 if TYPE_CHECKING:
@@ -266,25 +282,29 @@ class EnvironmentBar(QToolBar):
         references = environment_key in REFERENCE_ENVIRONMENTS
         self.book = _BookCombo(self)
         self.book.setAccessibleName("Book")
-        self.book.setToolTip("Book: the project's books, or the open files of this group")
-        self.book.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.book.activated.connect(self._book_chosen)
         self.chapter = QComboBox(self)
         self.chapter.setAccessibleName("Chapter")
-        self.chapter.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.chapter.activated.connect(self._chapter_chosen)
         self.verse = QComboBox(self)
         self.verse.setAccessibleName("Verse")
-        self.verse.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.verse.activated.connect(self._verse_chosen)
+        # Fixed display widths: the book's id and header, and up to three
+        # digits of chapter and verse.
+        for combo, ems in ((self.book, BOOK_EMS), (self.chapter, NUMBER_EMS), (self.verse, NUMBER_EMS)):
+            _fix_display_width(combo, ems)
         if references:
+            # Book : Chapter : Verse sits at the right end of the toolbar.
+            spacer = QWidget(self)
+            spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+            self.addWidget(spacer)
+            self.addAction(window._reference_sync.action)
+            self.addSeparator()
             for text, combo in (("Book", self.book), ("Chapter", self.chapter), ("Verse", self.verse)):
                 label = QLabel(text, self)
                 label.setContentsMargins(6, 0, 3, 0)
                 self.addWidget(label)
                 self.addWidget(combo)
-            self.addSeparator()
-            self.addAction(window._reference_sync.action)
         else:
             for combo in (self.book, self.chapter, self.verse):
                 combo.hide()
@@ -381,10 +401,26 @@ class EnvironmentBar(QToolBar):
             return self._group_files()
         if project.folder != self._books_project or rescan or not self._books:
             self._books_project = project.folder
-            self._books = tuple(
-                (f"{book.code} — {book.name}" if book.name else book.code, book.path) for book in project.books()
-            )
+            books = []
+            for book in project.books():
+                # The book's id and its \h line; BookNames.xml's name when
+                # the book has no \h in its header block.
+                name = self._header_of(book.path).header or book.name
+                books.append((f"{book.code} {name}" if name else book.code, book.path))
+            self._books = tuple(books)
         return list(self._books)
+
+    def _header_of(self, path: Path, document=None) -> BookHeader:
+        """`\\id` and `\\h` of a book: from its open document when it is open
+        (unsaved edits count), else from the file's first lines."""
+
+        if document is None:
+            service = self._window._service
+            entry = None if service is None else service.documents.find_path(path)
+            document = None if entry is None else entry.document
+        if document is not None:
+            return book_header(document.read(0, min(document.total_chars(), ID_PROBE_BYTES)))
+        return book_header_for_path(path)
 
     def _group_files(self) -> list[tuple[str, Path]]:
         window = self._window
@@ -401,11 +437,11 @@ class EnvironmentBar(QToolBar):
             if window._environment.environment_key_for(document) != self.environment_key:
                 continue
             seen.add(id(document))
-            reference_map = window._reference_sync.maps.for_document(document)
-            code = reference_map.book if reference_map is not None else None
-            found.append((book_rank(code), code or "", document.path.name.lower(), document.path))
-        found.sort()
-        return [(f"{code or '—'}  ({path.name})", path) for _rank, code, _name, path in found]
+            header = self._header_of(document.path, document)
+            label = header.label or document.path.name
+            found.append((book_rank(header.code), header.code or "", document.path.name.lower(), label, document.path))
+        found.sort(key=lambda item: item[:3])
+        return [(label, path) for _rank, _code, _name, label, path in found]
 
     def _refresh_books(self, *, rescan: bool = False) -> None:
         view = self._view()
@@ -417,17 +453,21 @@ class EnvironmentBar(QToolBar):
             selected = -1
             for index, (label, path) in enumerate(entries):
                 self.book.addItem(label, str(path))
-                self.book.setItemData(index, str(path), Qt.ItemDataRole.ToolTipRole)
+                self.book.setItemData(index, f"{label}\n{path}", Qt.ItemDataRole.ToolTipRole)
                 if current_path is not None and _same_path(path, current_path):
                     selected = index
             if selected < 0 and view is not None:
                 # Not listed (unsaved, no \id yet, or outside the project): still show it.
-                reference_map = self._window._reference_sync.maps.for_document(view.document)
-                code = reference_map.book if reference_map is not None else None
-                self.book.addItem(f"{code or '—'}  ({view.document.path.name})", str(view.document.path))
+                label = self._header_of(view.document.path, view.document).label or view.document.path.name
+                self.book.addItem(label, str(view.document.path))
                 selected = self.book.count() - 1
+                self.book.setItemData(selected, f"{label}\n{view.document.path}", Qt.ItemDataRole.ToolTipRole)
             self.book.setCurrentIndex(selected)
             self.book.setEnabled(view is not None)
+            self.book.setToolTip(self.book.itemData(selected, Qt.ItemDataRole.ToolTipRole) if selected >= 0 else "Book")
+            # The field stays 10 em; the list opens wide enough for whole headers.
+            popup = self.book.view()
+            popup.setMinimumWidth(popup.sizeHintForColumn(0) + 2 * popup.frameWidth() + 24)
         finally:
             self._updating = False
 
@@ -529,6 +569,22 @@ class EnvironmentBar(QToolBar):
             window._rich_views.show(mode, opened)
         self.refresh()
         return opened
+
+
+BOOK_EMS = 10
+NUMBER_EMS = 3
+
+
+def _fix_display_width(combo: QComboBox, ems: float) -> None:
+    """Fix `combo`'s width so its display area is `ems` em wide (plus the
+    style's frame and drop-down arrow)."""
+
+    metrics = combo.fontMetrics()
+    option = QStyleOptionComboBox()
+    combo.initStyleOption(option)
+    contents = QSize(round(ems * metrics.horizontalAdvance("M")), metrics.height())
+    size = combo.style().sizeFromContents(QStyle.ContentsType.CT_ComboBox, option, contents, combo)
+    combo.setFixedWidth(size.width())
 
 
 class _BookCombo(QComboBox):

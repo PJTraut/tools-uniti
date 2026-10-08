@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import bisect
 import logging
+import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -254,37 +255,125 @@ class Utf16Offsets:
         return position - bisect.bisect_right(self._qt_ends, position) if self._astral else position
 
 
+# Block attributes that also format the block's characters (headings' size
+# and weight reach their text through the block).
+_BLOCK_CHAR_KEYS = ("bold", "italic", "font_scale", "color", "muted", "smallcaps", "underline", "monospace")
+
+
 def render_projection(document: QTextDocument, projection: Projection, base: QFont, palette: RichPalette) -> None:
-    """Fill `document` with `projection`'s text and formats."""
+    """Fill `document` with `projection`'s text and formats.
+
+    The text goes in as runs, each inserted once with its final character
+    format (field test R1, 2026-10-08). Inserting everything plain and then
+    merging tens of thousands of span formats took ~20 s for a 220 KB book
+    when the document was on screen, since every merge re-lays-out the
+    text; callers render into a detached document and hand it over.
+
+    Formats layer in this order: block character attributes, then spans
+    (outer before inner), then marker tags, so a character style or note
+    around a tag never recolours or resizes it.
+    """
 
     document.clear()
     document.setDefaultFont(base)
-    offsets = Utf16Offsets(projection.text)
-    cursor = QTextCursor(document)
-    cursor.insertText(projection.text)
-    length = len(projection.text)
-
-    def select(start: int, end: int) -> None:
-        cursor.setPosition(offsets.to_qt(start))
-        cursor.setPosition(offsets.to_qt(end), QTextCursor.MoveMode.KeepAnchor)
-
+    text = projection.text
+    length = len(text)
+    layers: list[tuple[int, int, object]] = []
     for block in projection.blocks:
+        char_attrs = {key: value for key, value in block.attrs.items() if key in _BLOCK_CHAR_KEYS}
         start, end = max(0, block.view_start), min(length, block.view_end)
-        select(start, max(start, end - 1 if end > start else end))
-        cursor.mergeBlockFormat(block_format(block.attrs))
-        char_attrs = {key: value for key, value in block.attrs.items() if key in ("bold", "italic", "font_scale", "color", "muted", "smallcaps", "underline", "monospace")}
         if char_attrs and end > start:
-            select(start, end)
-            cursor.mergeCharFormat(char_format(char_attrs, base, palette))
-    # Tags last, so a character style or note span around them never
-    # recolours or resizes them.
-    spans = sorted(projection.spans, key=lambda span: span.attrs.get("marker_token") == "yes")
-    for span in spans:
+            layers.append((start, end, char_attrs))
+    for span in sorted(projection.spans, key=lambda span: span.attrs.get("marker_token") == "yes"):
         start, end = max(0, span.view_start), min(length, span.view_end)
-        if end <= start:
+        if end > start:
+            layers.append((start, end, span.attrs))
+
+    # Identical attribute maps share one id, so runs with the same stack of
+    # formats share one QTextCharFormat.
+    attr_ids: dict[tuple, int] = {}
+    layer_attr: list[int] = []
+    starts_at: dict[int, list[int]] = {}
+    ends_at: dict[int, list[int]] = {}
+    attr_maps: list[object] = []
+    for index, (start, end, attrs) in enumerate(layers):
+        key = tuple(sorted(attrs.items()))
+        attr_id = attr_ids.get(key)
+        if attr_id is None:
+            attr_id = attr_ids[key] = len(attr_maps)
+            attr_maps.append(attrs)
+        layer_attr.append(attr_id)
+        starts_at.setdefault(start, []).append(index)
+        ends_at.setdefault(end, []).append(index)
+    boundaries = sorted({0, length, *starts_at, *ends_at})
+    active: set[int] = set()
+    formats: dict[tuple[int, ...], QTextCharFormat] = {}
+    cursor = QTextCursor(document)
+    for position, following in zip(boundaries, boundaries[1:]):
+        for index in ends_at.get(position, ()):
+            active.discard(index)
+        active.update(starts_at.get(position, ()))
+        if following <= position:
             continue
-        select(start, end)
-        cursor.mergeCharFormat(char_format(span.attrs, base, palette))
+        stack = tuple(layer_attr[index] for index in sorted(active))
+        fmt = formats.get(stack)
+        if fmt is None:
+            fmt = QTextCharFormat()
+            for attr_id in stack:
+                fmt.merge(char_format(attr_maps[attr_id], base, palette))
+            formats[stack] = fmt
+        cursor.insertText(text[position:following], fmt)
+
+    if projection.blocks:
+        offsets = Utf16Offsets(text)
+        for block in projection.blocks:
+            start, end = max(0, block.view_start), min(length, block.view_end)
+            cursor.setPosition(offsets.to_qt(start))
+            cursor.setPosition(offsets.to_qt(max(start, end - 1 if end > start else end)), QTextCursor.MoveMode.KeepAnchor)
+            cursor.mergeBlockFormat(block_format(block.attrs))
+
+
+def render_into(editor: QTextEdit, projection: Projection, base: QFont, palette: RichPalette) -> None:
+    """Render off screen, then give `editor` the finished document in one step."""
+
+    previous = editor.document()
+    document = QTextDocument(editor)
+    document.setUndoRedoEnabled(False)
+    document.setDocumentMargin(previous.documentMargin())
+    document.setDefaultTextOption(previous.defaultTextOption())
+    render_projection(document, projection, base, palette)
+    # The editor deletes its previous document itself when it owned it.
+    editor.setDocument(document)
+
+
+class ProjectionCache:
+    """The last projection per document and view, reused while the
+    document's revision and the provider's stylesheets are unchanged — so
+    switching Standard ↔ Preview ↔ Plain Text and back doesn't re-project
+    (R1). Held weakly by document; a closed document drops out."""
+
+    def __init__(self) -> None:
+        self._entries: weakref.WeakKeyDictionary[Document, dict[str, tuple[int, tuple, Projection]]] = (
+            weakref.WeakKeyDictionary()
+        )
+
+    @staticmethod
+    def _token(provider: EditorViewProvider) -> tuple:
+        cache_token = getattr(provider, "cache_token", None)
+        return (provider, cache_token() if callable(cache_token) else None)
+
+    def project(self, document: Document, provider: EditorViewProvider, source: Callable[[], str]) -> Projection:
+        token = self._token(provider)
+        per_document = self._entries.setdefault(document, {})
+        cached = per_document.get(provider.key)
+        if cached is not None and cached[0] == document.revision and cached[1][0] is token[0] and cached[1][1] is token[1]:
+            return cached[2]
+        projection = provider.project(source())
+        per_document[provider.key] = (document.revision, token, projection)
+        return projection
+
+
+PROJECTIONS = ProjectionCache()
 
 
 class _RichEditor(QTextEdit):
@@ -433,7 +522,7 @@ class _NoteSectionView(QWidget):
         self.editor.setPalette(self._owner.editor.palette())
         blocked = self.editor.blockSignals(True)
         try:
-            render_projection(self.editor.document(), section.projection, font, palette)
+            render_into(self.editor, section.projection, font, palette)
         finally:
             self.editor.blockSignals(blocked)
 
@@ -677,7 +766,7 @@ class RichViewPane(QWidget):
             caret_source = self.projection.source_map.view_to_source(self._offsets.from_qt(cursor.position()))
             anchor_source = self.projection.source_map.view_to_source(self._offsets.from_qt(cursor.anchor()))
         try:
-            projection = self.provider.project(self.source_text())
+            projection = PROJECTIONS.project(self.document, self.provider, self.source_text)
         except Exception:
             logger.exception("rich view %r failed to project", self.provider.key)
             self.projection = None
@@ -690,7 +779,7 @@ class RichViewPane(QWidget):
             self.projection = projection
             self._offsets = Utf16Offsets(projection.text)
             assert self._palette is not None
-            render_projection(self.editor.document(), projection, self.editor.font(), self._palette)
+            render_into(self.editor, projection, self.editor.font(), self._palette)
             self._render_notes(projection)
             self._apply_highlights()
             self._place_caret(caret_source or 0, anchor_source)

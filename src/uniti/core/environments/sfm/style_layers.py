@@ -257,6 +257,9 @@ class LayeredStyleRegistry:
             if is_selector(record.marker)
             for rule in _parse_rules(record, layer.name)
         )
+        # The layers never change after construction (a reload builds a new
+        # registry), so effective formatting is computed once per marker.
+        self._formatting: dict[tuple[str, str | None], dict[str, str]] = {}
 
     def markers(self) -> tuple[str, ...]:
         return tuple(sorted(self.registry.markers()))
@@ -320,13 +323,16 @@ class LayeredStyleRegistry:
         matching `previous+marker` rules apply on top, in layer order.
         """
 
-        result = {key.lower(): value.value for key, value in self.presentation(marker)}
-        if previous is not None and self.rules:
-            target, prior = rule_marker_key(marker), rule_marker_key(previous)
-            for rule in self.rules:
-                if rule.pseudo is None and rule.target == target and rule.previous == prior:
-                    result.update(rule.fields)
-        return result
+        cached = self._formatting.get((marker, previous))
+        if cached is None:
+            cached = {key.lower(): value.value for key, value in self.presentation(marker)}
+            if previous is not None and self.rules:
+                target, prior = rule_marker_key(marker), rule_marker_key(previous)
+                for rule in self.rules:
+                    if rule.pseudo is None and rule.target == target and rule.previous == prior:
+                        cached.update(rule.fields)
+            self._formatting[(marker, previous)] = cached
+        return dict(cached)
 
     def pseudo_formatting(self, marker: str, pseudo: str) -> dict[str, str]:
         """Formatting of `marker::pseudo` (e.g. a note's caller); empty

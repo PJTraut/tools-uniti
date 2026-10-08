@@ -57,3 +57,25 @@ def test_scan_books_lists_matching_files_in_canonical_order(tmp_path: Path):
     assert scan_books(tmp_path, ("usfm",))[-1].code == "EXO"
     assert scan_books(tmp_path / "missing", ("usfm",)) == ()
     assert book_rank("GEN") < book_rank("MAT") < book_rank("ZZZ")
+
+
+def test_book_header_reads_id_and_h_from_the_header_block(tmp_path: Path):
+    from uniti.core.environments.sfm.references import BookHeader, book_header, book_header_for_path
+
+    assert book_header("\\id GEN Genesis NIV\n\\ide UTF-8\n\\h Genesis\n\\mt1 Genesis\n") == BookHeader("GEN", "Genesis")
+    assert book_header("\\id GEN\n\\h   The First Book of Moses  \n").label == "GEN The First Book of Moses"
+    # \h counts only within the first ten lines, and \h1 is not \h.
+    assert book_header("\\id EXO\n" + "\\rem x\n" * 9 + "\\h Exodus\n").header is None
+    assert book_header("\\id EXO\n" + "\\rem x\n" * 8 + "\\h Exodus\n").header == "Exodus"
+    assert book_header("\\id LEV\n\\h1 Leviticus\n").label == "LEV"
+    assert book_header("no id here\n\\h Something\n").label is None
+
+    path = tmp_path / "GEN.usfm"
+    path.write_text("\\id GEN\n\\h Genesis\n", encoding="utf-8")
+    assert book_header_for_path(path).label == "GEN Genesis"
+    path.write_text("\\id GEN\n\\h Bereshit\n", encoding="utf-8")
+    import os
+
+    stat = path.stat()
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    assert book_header_for_path(path).label == "GEN Bereshit"

@@ -11,6 +11,7 @@ import bisect
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from .tokenizer import tokenize_sfm
@@ -45,6 +46,67 @@ def book_code(text: str) -> str | None:
 
     match = _ID_RE.match(text)
     return match.group(1).upper() if match else None
+
+
+# The book header block: `\\h` counts only within a file's first lines.
+HEADER_BLOCK_LINES = 10
+_ID_LINE_RE = re.compile(r"\\id\s(\w{3})")
+_HEADER_LINE_RE = re.compile(r"\\h(?:\s+(.*?))?\s*$")
+
+
+@dataclass(frozen=True, slots=True)
+class BookHeader:
+    """A book's identity from its header block: the `\\id` code and the
+    full content of its `\\h` (running header) line."""
+
+    code: str | None
+    header: str | None
+
+    @property
+    def label(self) -> str | None:
+        """``"GEN Genesis"``; the code alone without `\\h`; None without `\\id`."""
+
+        if self.code is None:
+            return None
+        return f"{self.code} {self.header}" if self.header else self.code
+
+
+def book_header(text: str) -> BookHeader:
+    """`\\id` and `\\h` from the first `HEADER_BLOCK_LINES` lines of `text`."""
+
+    code = header = None
+    for line in text.lstrip("\ufeff").splitlines()[:HEADER_BLOCK_LINES]:
+        stripped = line.strip()
+        if code is None:
+            match = _ID_LINE_RE.match(stripped)
+            if match is not None:
+                code = match.group(1).upper()
+                continue
+        if header is None:
+            match = _HEADER_LINE_RE.match(stripped)
+            if match is not None and match.group(1):
+                header = match.group(1)
+    return BookHeader(code, header)
+
+
+def book_header_for_path(path: Path) -> BookHeader:
+    """`book_header` of a file on disk, cached until the file changes."""
+
+    try:
+        stamp = path.stat().st_mtime_ns
+    except OSError:
+        return BookHeader(None, None)
+    return _cached_book_header(path, stamp)
+
+
+@lru_cache(maxsize=512)
+def _cached_book_header(path: Path, _stamp: int) -> BookHeader:
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(ID_PROBE_BYTES)
+    except OSError:
+        return BookHeader(None, None)
+    return book_header(head.decode("utf-8-sig", errors="replace"))
 
 
 def book_rank(code: str | None) -> int:
@@ -198,11 +260,15 @@ def scan_books(folder: Path, extensions: Iterable[str]) -> tuple[BookFile, ...]:
 __all__ = [
     "BOOK_ORDER",
     "BookFile",
+    "BookHeader",
+    "HEADER_BLOCK_LINES",
     "Chapter",
     "Reference",
     "ReferenceMap",
     "Verse",
     "book_code",
+    "book_header",
+    "book_header_for_path",
     "book_rank",
     "scan_books",
 ]

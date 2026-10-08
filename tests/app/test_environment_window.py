@@ -16,7 +16,7 @@ from uniti.app.session_runtime import ENVIRONMENT_WINDOW_EXTRA, environment_wind
 
 _GEN_A = "\\id GEN A\n\\c 1\n\\p\n\\v 1 Alpha one.\n\\v 2 Alpha two.\n\\c 2\n\\p\n\\v 1 Alpha again.\n"
 _GEN_B = "\\id GEN B\n\\c 1\n\\p\n\\v 1 Beta one.\n\n\n\\v 2 Beta two.\n\\c 2\n\\p\n\\v 1 Beta again.\n"
-_EXO = "\\id EXO\n\\c 1\n\\p\n\\v 1 Exodus.\n"
+_EXO = "\\id EXO\n\\h Exodus\n\\c 1\n\\p\n\\v 1 Exodus.\n"
 
 
 @pytest.fixture
@@ -119,7 +119,8 @@ def test_book_selector_lists_the_groups_open_single_files(desktop, tmp_path: Pat
     bar = window._environment_bar
 
     labels = [bar.book.itemText(index) for index in range(bar.book.count())]
-    assert labels == ["GEN  (01GEN.usfm)", "EXO  (02EXO.usfm)"]
+    # The book id and its \h line (_GEN_A has no \h: the id alone).
+    assert labels == ["GEN", "EXO Exodus"]
     assert bar.book.currentIndex() == 0
 
     opened = bar.open_book(exodus)
@@ -149,7 +150,8 @@ def test_book_selector_lists_a_projects_books_and_opens_them_into_the_group(desk
     bar = window._environment_bar
     window._rich_views.show("sfm.preview", view)
 
-    assert [bar.book.itemText(index) for index in range(bar.book.count())] == ["GEN — Genesis", "EXO"]
+    # \h wins; BookNames.xml names a book without one (GEN here).
+    assert [bar.book.itemText(index) for index in range(bar.book.count())] == ["GEN Genesis", "EXO Exodus"]
     assert window.windowTitle() == "UNITI — USFM — Ungrouped — NIV11 — 01GENNIV11.SFM"
     assert "NIV11" in bar.title.text()
 
@@ -394,3 +396,23 @@ def test_assigning_an_environment_moves_the_file_into_its_window(desktop, tmp_pa
     window._environment.set_document_environment("plain_text", view)
     plain = service.environment_window_for("plain_text", "A")
     assert plain is not None and plain.view_for_id(view.view_id) is view
+
+
+def test_the_reference_selector_sits_right_with_fixed_widths(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "02EXO.usfm", _EXO))
+    window = main.move_to_environment_window(view)
+    window.resize(1400, 700)
+    app.processEvents()
+    bar = window._environment_bar
+    em = bar.chapter.fontMetrics().horizontalAdvance("M")
+
+    # Display areas of 10 em (Book) and 3 em (Chapter, Verse).
+    assert bar.chapter.width() == bar.verse.width()
+    assert abs((bar.book.width() - bar.chapter.width()) - (round(10 * em) - round(3 * em))) <= 2
+    assert bar.book.currentText() == "EXO Exodus"
+    # Right-aligned: the selector ends at the toolbar's right edge, after the mode switch.
+    assert bar.width() - bar.verse.geometry().right() < 4 * em
+    mode_button = bar.widgetForAction(bar.mode_actions[None])
+    assert bar.book.geometry().left() > mode_button.geometry().right() + 10 * em
