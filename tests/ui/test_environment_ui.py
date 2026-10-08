@@ -202,34 +202,43 @@ def test_command_exceptions_are_reported_not_raised(window, tmp_path: Path, monk
     assert "bad" in shown["text"]
 
 
-def test_reassigning_sfm_to_usfm_switches_open_documents(window, tmp_path: Path):
+def test_sfm_files_open_as_usfm_and_follow_reassignment(window, tmp_path: Path):
+    """Round 2 R5: .sfm belongs to USFM; reassigning it switches open files."""
+
     view = _open(window, tmp_path, "book.sfm", _USFM)
-    assert window._environment.menu.title() == "SFM"
-
-    window.set_extension_assignments({"sfm": "usfm"})
-
     assert view.syntax_profile is USFM
     assert window._environment.menu.title() == "USFM"
     assert "Go to Chapter:Verse…" in _menu_texts(window)
-    assert window._settings_store.load().syntax_extension_overrides == {"sfm": "usfm"}
+
+    window.set_extension_assignments({"sfm": "plain_text"})
+
+    assert window._environment.menu.title() == "Plain Text"
+    assert window._settings_store.load().syntax_extension_overrides == {"sfm": "plain_text"}
+
+
+def test_a_saved_sfm_assignment_is_read_as_usfm(window, tmp_path: Path):
+    window.set_extension_assignments({"lex": "sfm"})
+    view = _open(window, tmp_path, "words.lex", _USFM)
+    assert view.syntax_profile is USFM
+    assert window._environment.menu.title() == "USFM"
 
 
 def test_assignment_editor_round_trips_and_rejects_conflicts(app, monkeypatch):
     editor = EnvironmentAssignmentEditor({})
-    editor.set_extensions("usfm", ".USFM + .sfm")
-    editor.set_extensions("sfm", "")
+    assert editor.assignments()["usfm"] == [".sfm", ".usfm"]  # one USFM row owns both
+    editor.set_extensions("usfm", ".USFM + .sfm + .ptx")
     editor._save()
-    assert editor.overrides() == {"sfm": "usfm"}
+    assert editor.overrides() == {"ptx": "usfm"}
 
     warnings = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warnings.append(a))
     conflicted = EnvironmentAssignmentEditor({})
-    conflicted.set_extensions("usfm", "usfm, sfm")
+    conflicted.set_extensions("xml", "xml, sfm")
     conflicted._save()
     assert warnings and conflicted.overrides() == {}
 
-    reopened = EnvironmentAssignmentEditor({"sfm": "usfm"})
-    assert reopened.assignments()["usfm"] == [".sfm", ".usfm"]
+    reopened = EnvironmentAssignmentEditor({"ptx": "usfm"})
+    assert reopened.assignments()["usfm"] == [".ptx", ".sfm", ".usfm"]
 
 
 def test_parse_extensions_accepts_common_separators():

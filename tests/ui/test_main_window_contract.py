@@ -1165,10 +1165,10 @@ def test_whitespace_tab_width_and_syntax_menus_are_per_view_not_a_global_setting
 
         window._whitespace_actions[WhitespaceMode.ALL].trigger()
         window._tab_width_actions[8].trigger()
-        window._syntax_choice_actions["sfm"].trigger()
+        window._syntax_choice_actions["usfm"].trigger()
         assert second_view.whitespace_mode is WhitespaceMode.ALL
         assert second_view.tab_width == 8
-        assert second_view.syntax_choice_key == "sfm"
+        assert second_view.syntax_choice_key == "usfm"
         assert first_view.whitespace_mode is WhitespaceMode.OFF
         assert first_view.tab_width == 4
         assert first_view.syntax_choice_key is None
@@ -1181,13 +1181,13 @@ def test_whitespace_tab_width_and_syntax_menus_are_per_view_not_a_global_setting
         window.panes.activate_view(second_view.view_id)
         assert window._whitespace_actions[WhitespaceMode.ALL].isChecked() is True
         assert window._tab_width_actions[8].isChecked() is True
-        assert window._syntax_choice_actions["sfm"].isChecked() is True
+        assert window._syntax_choice_actions["usfm"].isChecked() is True
 
         # Changing the global extension->profile mapping re-resolves a
         # view that never took an explicit override, but leaves the
-        # overridden view (second_view, forced to "sfm" above) alone.
+        # overridden view (second_view, forced to "usfm" above) alone.
         window._refresh_all_syntax_profiles()
-        assert second_view.syntax_profile.key == "sfm"
+        assert second_view.syntax_profile.key == "usfm"
     finally:
         window.close_all_documents(force=True)
         window.close()

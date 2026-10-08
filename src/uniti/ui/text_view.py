@@ -820,7 +820,9 @@ class UNITITextView(QAbstractScrollArea):
             self.set_tab_width(tab_width)
         syntax_choice_key = record.extra.get("syntax_choice_key")
         if isinstance(syntax_choice_key, str) and syntax_choice_key in PROFILES_BY_KEY:
-            self.set_syntax_choice(syntax_choice_key, PROFILES_BY_KEY[syntax_choice_key])
+            # A retired key (e.g. "sfm") is read as its successor.
+            profile = PROFILES_BY_KEY[syntax_choice_key]
+            self.set_syntax_choice(profile.key, profile)
         # Only remembered here; `UNITIMainWindow` re-renders from it right
         # after this call (the profile depends on the document's environment).
         self.environment_plain_mode = record.extra.get("environment_plain_mode") is True

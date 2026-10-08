@@ -2509,13 +2509,13 @@ def test_reassigning_an_extension_re_resolves_open_documents_environment_key(
     try:
         view = window.open_path(path)
         entry = service.documents.find_path(path)
-        assert entry is not None and entry.environment_key == "sfm"
+        assert entry is not None and entry.environment_key == "usfm"  # R5: .sfm is USFM
 
-        window.set_extension_assignments({"sfm": "usfm"})
+        window.set_extension_assignments({"sfm": "plain_text"})
 
-        assert entry.environment_key == "usfm"
-        assert view.syntax_profile.key == "usfm"
-        assert window._environment.menu.title() == "USFM"
+        assert entry.environment_key == "plain_text"
+        assert view.syntax_profile.key == "plain_text"
+        assert window._environment.menu.title() == "Plain Text"
     finally:
         for _window_id, open_window in service.windows.items:
             open_window.close_all_documents(force=True)

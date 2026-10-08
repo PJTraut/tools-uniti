@@ -51,7 +51,7 @@ if TYPE_CHECKING:
     from uniti.ui.text_view import UNITITextView
 
 # Environments whose documents carry \\id / \\c / \\v references.
-REFERENCE_ENVIRONMENTS = frozenset({"usfm", "sfm"})
+REFERENCE_ENVIRONMENTS = frozenset({"usfm"})
 _SYNC_DELAY_MS = 120
 
 

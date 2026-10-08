@@ -13,7 +13,6 @@ from __future__ import annotations
 from .delimited_environment import CsvEnvironment, TsvEnvironment
 from .json_environment import JsonEnvironment
 from .markdown_environment import MarkdownEnvironment
-from .sfm_environment import SfmEnvironment
 from .usfm_environment import UsfmEnvironment
 from .xml_environment import XmlEnvironment
 from .yaml_environment import YamlEnvironment
@@ -22,7 +21,6 @@ __all__ = [
     "CsvEnvironment",
     "JsonEnvironment",
     "MarkdownEnvironment",
-    "SfmEnvironment",
     "TsvEnvironment",
     "UsfmEnvironment",
     "XmlEnvironment",

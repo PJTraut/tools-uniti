@@ -1,7 +1,7 @@
 # USFM Field Test, Round 2 — Plan
 
 Date: 2026-10-08
-Status: **In progress**. R1–R4 and R4b are implemented (2026-10-08); R5–R8 are ready (D1–D4 decided 2026-10-08).
+Status: **In progress**. R1–R5 and R4b are implemented (2026-10-08); R6–R8 are ready (D1–D4 decided 2026-10-08).
 Origin: `@externalresources/field_test_feedback` (2026-10-08).
 Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
 
@@ -141,6 +141,21 @@ Tests: `tests/app/test_environment_window.py` +4: verse in every mode and cleari
   The rich-view keys (`sfm.standard`, `sfm.preview`) stay as they are, since they name the shared SFM views.
 - **What changes for non-Scripture SFM** (e.g. Toolbox dictionaries): it now gets USFM validation and the official stylesheet. Undefined-marker reports (R7) and Plain Text (R6) are the way to work with those files.
 - **Docs:** ADR-0013/ADR-0014's catalogs and the [SFM syntax-highlighting entry](../../syntax-highlighting.md) are updated.
+
+**Implemented 2026-10-08.**
+- **Gone:** `SfmEnvironment` (and `sfm_environment.py`) and the `SFM` syntax profile.
+- **Defaults:** `DEFAULT_EXTENSION_PROFILES["sfm"]` is now `"usfm"`.
+- **`syntax_profiles.RETIRED_KEYS = {"sfm": "usfm"}`** and `canonical_key()` read saved keys through to the new one:
+  - extension overrides (`environment_key_for_extension`, `extension_assignments`);
+  - `descriptor_for_key`;
+  - restored pins (`SessionController._restore_entry_environment`, `DocumentRegistry.set_environment_override`);
+  - per-view syntax choices (`PROFILES_BY_KEY` aliases, `UNITITextView.restore_state`);
+  - environment windows (`environment_window_identity`).
+- **Reference sync** now covers `REFERENCE_ENVIRONMENTS = {"usfm"}`.
+- **Highlighting:** the USFM profile colors every marker form from R2.
+- **Docs:** ADR-0013/0014 notes and the syntax-highlighting guide.
+
+Tests: `tests/test_sfm_environment.py` is rewritten for R5 (5 tests: extensions, retired keys, a restored pin, highlighting, stylesheets and checks). Catalog, style-layer, service, environment UI and main-window contract tests are updated.
 
 ### R6 — "Open as Plain Text or in <Environment>" (item 2) — decision D2
 - Opening a file whose extension belongs to an environment other than Plain Text asks:

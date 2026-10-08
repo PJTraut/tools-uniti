@@ -2,7 +2,7 @@
 
 [User Manual](user-manual.md) · [User Cheat Sheet](user-cheat-sheet.md) · [Regex Flags Guide](regex-flags.md)
 
-This specifies exactly what UNITI's built-in syntax-highlighting profiles tokenize and color for **XML**, **JSON**, **YAML** (`.yml`), **SFM**, and **Plain Text** — the five profiles most relevant to markup/data-interchange and translation-format documents. Two more profiles exist (Markdown, CSV, TSV) but aren't covered here; see `src/uniti/core/syntax_profiles.py` for their rules if needed.
+This specifies exactly what UNITI's built-in syntax-highlighting profiles tokenize and color for **XML**, **JSON**, **YAML** (`.yml`), **USFM** (`.usfm` and `.sfm`), and **Plain Text** — the five profiles most relevant to markup/data-interchange and translation-format documents. Two more profiles exist (Markdown, CSV, TSV) but aren't covered here; see `src/uniti/core/syntax_profiles.py` for their rules if needed.
 
 Every profile is implemented in `uniti.core.syntax_profiles` (`src/uniti/core/syntax_profiles.py`) and selected per document by file extension — see [Assigning a profile](#assigning-a-profile) below. All eight color categories used across every profile (`keyword`, `string`, `number`, `tag`, `attribute`, `heading`, `comment`, `punctuation`) are user-recolorable per theme profile in **View → Theme → Edit Themes** (the `syntax.*` roles), not fixed colors.
 
@@ -63,19 +63,19 @@ Every profile is presentation-only: a heuristic pattern match over the visible l
 
 **Known limitation, called out directly in the source rather than hidden:** block-scalar-open detection is a heuristic regex match on the line's end, not full YAML grammar — a literal `|` or `>` that happens to sit right after a colon or dash inside a quoted string or a comment can falsely open block-scalar mode.
 
-## SFM
+## USFM (`.usfm` and `.sfm`)
 
-- **Extensions:** `.sfm`
+- **Extensions:** `.usfm` and `.sfm`, in any case. Since 2026-10-08 (field test round 2, R5) SFM and USFM are one profile and one environment. A setting saved under the old `sfm` profile key is read as `usfm`.
 - **Stateless** — SFM markers are inherently line-oriented (per the source's own note).
 
 | Category | Matches |
 |---|---|
-| `keyword` | A backslash marker: a backslash, a letter, then any run of letters/digits, with an optional trailing `*` for an end marker — e.g. `\id`, `\v`, `\wj*` |
+| `keyword` | A backslash marker in any USFM 3 form: `\id`, `\v`, the end marker `\wj*`, the nested `\+it` / `\+it*`, the milestones `\qt-s` / `\qt-e` and their `\*`, and column-range cells such as `\th1-2` |
 | *(none)* | Everything else — marker content, verse text, footnote text, and all other prose is deliberately uncolored |
 
 This is the narrowest profile by design: only the marker tokens themselves are colored. Nothing about a marker's *meaning* (paragraph vs. character vs. milestone marker, nesting, footnote/cross-reference structure) is distinguished — every marker gets the same single `keyword` category regardless of kind.
 
-**Noted 2026-09-18, for future reference:** Paratext ships `.sty` stylesheet files (a hybrid DTD-and-stylesheet format, per the user directly) that define the actual set of valid SFM markers and their per-marker properties (style type — paragraph/character/note/milestone — plus formatting). UNITI's current SFM profile knows none of this; it recognizes the generic `\marker`/`\marker*` shape only, with no notion of which markers are valid, what kind each one is, or how a `.sty` file would inform richer per-marker-kind coloring. Recorded here as a possible future input, not yet scoped or committed to any plan — see also the [Feature Wishlist](FEATURE_WISHLIST.md#sfm-highlighting-informed-by-paratext-sty-stylesheets).
+**Noted 2026-09-18** (since then the USFM environment's Standard and Preview views, the Style Inspector and the stylesheet layers do use `.sty` data; the highlighting profile itself still colors every marker alike): Paratext ships `.sty` stylesheet files (a hybrid DTD-and-stylesheet format, per the user directly) that define the actual set of valid SFM markers and their per-marker properties (style type — paragraph/character/note/milestone — plus formatting). UNITI's current SFM profile knows none of this; it recognizes the generic `\marker`/`\marker*` shape only, with no notion of which markers are valid, what kind each one is, or how a `.sty` file would inform richer per-marker-kind coloring. Recorded here as a possible future input, not yet scoped or committed to any plan — see also the [Feature Wishlist](FEATURE_WISHLIST.md#sfm-highlighting-informed-by-paratext-sty-stylesheets).
 
 ## Plain Text
 
@@ -87,7 +87,7 @@ This is the narrowest profile by design: only the marker tokens themselves are c
 An extension resolves to a profile by (in priority order):
 
 1. A per-document override the user has assigned via **View → Text-Type Profiles…** (`ExtensionProfileEditor`, persisted in `Settings.syntax_extension_overrides`) — e.g. mapping a custom `.usj` extension to the JSON profile.
-2. Otherwise, the built-in default mapping: `md`/`markdown` → Markdown, `xml` → XML, `json` → JSON, `yaml`/`yml` → YAML, `sfm` → SFM, `csv` → CSV, `tsv` → TSV.
+2. Otherwise, the built-in default mapping: `md`/`markdown` → Markdown, `xml` → XML, `json` → JSON, `yaml`/`yml` → YAML, `usfm`/`sfm` → USFM, `csv` → CSV, `tsv` → TSV.
 3. Any extension matched by neither — including `.txt`, and including an override/default that names an unknown profile key — falls back to Plain Text. Highlighting must never fail to display a document.
 
 Matching is case-insensitive and tolerates a leading dot on the extension.

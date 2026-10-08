@@ -10,7 +10,7 @@ from pathlib import Path
 
 from uniti.core.document import Document
 from uniti.core.file_identity import SavedFileStamp
-from uniti.core.syntax_profiles import profile_for_extension
+from uniti.core.syntax_profiles import canonical_key, profile_for_extension
 
 from .platform_policy import native_paths_equal, normalize_native_path
 
@@ -201,7 +201,7 @@ class DocumentRegistry:
         entry.environment_override = (
             None
             if environment_key is None
-            else _identifier(environment_key, "environment key")
+            else _identifier(canonical_key(environment_key), "environment key")
         )
 
     def entry_for_view(self, view_id: str) -> DocumentEntry | None:

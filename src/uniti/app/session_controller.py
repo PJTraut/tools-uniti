@@ -659,8 +659,10 @@ class SessionController:
         (a newer build's environment) is ignored, not trusted."""
 
         from uniti.core.environments.catalog import ENVIRONMENTS_BY_KEY
+        from uniti.core.syntax_profiles import canonical_key
 
         override = None if record is None else record.extra.get("environment_override")
+        override = canonical_key(override) if isinstance(override, str) else None
         if isinstance(override, str) and override in ENVIRONMENTS_BY_KEY:
             entry.environment_override = override
             entry.environment_key = override

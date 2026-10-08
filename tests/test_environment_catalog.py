@@ -38,22 +38,20 @@ def test_normalize_extension(raw, expected):
 
 def test_resolution_is_case_insensitive_and_honors_overrides():
     assert environment_key_for_extension(".USFM") == "usfm"
-    assert environment_key_for_extension(".sfm") == "sfm"
-    assert environment_key_for_extension(".SFM", {"sfm": "usfm"}) == "usfm"
+    # Round 2 R5: SFM and USFM are one environment.
+    assert environment_key_for_extension(".sfm") == "usfm"
+    assert environment_key_for_extension(".SFM", {"sfm": "plain_text"}) == "plain_text"
     assert environment_key_for_extension(".txt") == "plain_text"
     assert environment_key_for_extension(".json", {"json": "no-such-env"}) == "plain_text"
 
 
-def test_assigning_usfm_and_sfm_to_usfm_is_one_override():
+def test_usfm_owns_sfm_and_usfm_by_default():
+    assert extension_assignments()["usfm"] == ("sfm", "usfm")
+    assert "sfm" not in extension_assignments()
+    # Listing them again (any case, with dots) changes nothing.
     assignments = dict(extension_assignments())
     assignments["usfm"] = (".USFM", ".sfm")
-    assignments["sfm"] = ()
-
-    overrides = overrides_for_assignments(assignments)
-
-    assert overrides == {"sfm": "usfm"}
-    assert extension_assignments(overrides)["usfm"] == ("sfm", "usfm")
-    assert extension_assignments(overrides)["sfm"] == ()
+    assert overrides_for_assignments(assignments) == {}
 
 
 def test_unchanged_assignments_produce_no_overrides():
@@ -77,7 +75,7 @@ def test_new_extension_can_be_added_to_an_environment():
 
 def test_extension_claimed_twice_is_rejected():
     assignments = dict(extension_assignments())
-    assignments["usfm"] = ("usfm", "sfm")
+    assignments["xml"] = ("xml", "sfm")
 
     with pytest.raises(ExtensionAssignmentError, match="both"):
         overrides_for_assignments(assignments)
@@ -94,4 +92,4 @@ def test_builtin_manager_registers_every_catalog_environment():
     manager = FileEnvironmentManager.with_builtin_environments()
 
     assert all(manager.is_registered(key) for key in ENVIRONMENTS_BY_KEY)
-    assert manager.resolve_key(".sfm", {"sfm": "usfm"}) == "usfm"
+    assert manager.resolve_key(".sfm") == "usfm"

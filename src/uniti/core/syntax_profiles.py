@@ -156,7 +156,10 @@ _MARKDOWN_RULES = (
 _MARKDOWN_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
 _SFM_RULES = (
-    ("keyword", re.compile(r"\\[A-Za-z][A-Za-z0-9]*\*?")),
+    # Every USFM marker form (see environments/sfm/markers.py): `\name`,
+    # `\name*`, nested `\+name`, milestones `\name-s`/`\name-e` and `\*`,
+    # column ranges `\th1-2`.
+    ("keyword", re.compile(r"\\(?:\*|\+?[A-Za-z][A-Za-z0-9]*(?:-(?:[se](?![A-Za-z0-9])|\d+))?\*?)")),
 )
 
 _CSV_RULES = (
@@ -266,13 +269,9 @@ MARKDOWN = SyntaxProfile("markdown", "Markdown", _markdown_tokenize)
 XML = SyntaxProfile("xml", "XML", _xml_tokenize)
 JSON = SyntaxProfile("json", "JSON", _regex_tokenizer(_JSON_RULES))
 YAML = SyntaxProfile("yaml", "YAML", _yaml_tokenize)
-SFM = SyntaxProfile("sfm", "SFM", _regex_tokenizer(_SFM_RULES))
-# USFM's lexical marker syntax is identical to generic SFM's (backslash marker,
-# optional numeric suffix, optional trailing `*`), so it reuses the same rule
-# set — a distinct profile key exists only so the `.usfm` extension gets its
-# own `Environment` (Phase E6's `UsfmEnvironment`, ADR-0013) independently of
-# `.sfm`'s generic one, via the shared `profile_for_extension` resolver both
-# environment-key and decoration-key resolution already go through.
+# One profile for every SFM/USFM file: `.sfm` and `.usfm` belong to the same
+# USFM environment (field test round 2, R5; the generic SFM profile and
+# environment were retired 2026-10-08).
 USFM = SyntaxProfile("usfm", "USFM", _regex_tokenizer(_SFM_RULES))
 CSV = SyntaxProfile("csv", "CSV", _regex_tokenizer(_CSV_RULES))
 TSV = SyntaxProfile("tsv", "TSV", _regex_tokenizer(_TSV_RULES))
@@ -283,13 +282,26 @@ PROFILES: tuple[SyntaxProfile, ...] = (
     XML,
     JSON,
     YAML,
-    SFM,
     USFM,
     CSV,
     TSV,
 )
 
+# Keys of retired profiles/environments -> their successor. Anything saved
+# under an old key (extension overrides, pins, per-view choices, environment
+# windows) is read as the new one, so nothing a user saved is lost.
+RETIRED_KEYS: dict[str, str] = {"sfm": "usfm"}
+
+
+def canonical_key(key: str | None) -> str | None:
+    """`key`, or its successor when it names a retired profile/environment."""
+
+    return RETIRED_KEYS.get(key, key) if key is not None else None
+
+
 PROFILES_BY_KEY: dict[str, SyntaxProfile] = {profile.key: profile for profile in PROFILES}
+# Lookups by a retired key find its successor.
+PROFILES_BY_KEY.update({old: PROFILES_BY_KEY[new] for old, new in RETIRED_KEYS.items()})
 
 # Extension (lowercase, no leading dot) -> profile key. An extension with no
 # entry here (including an unrecognized one) falls back to Plain Text.
@@ -300,7 +312,7 @@ DEFAULT_EXTENSION_PROFILES: dict[str, str] = {
     "json": "json",
     "yaml": "yaml",
     "yml": "yaml",
-    "sfm": "sfm",
+    "sfm": "usfm",
     "usfm": "usfm",
     "csv": "csv",
     "tsv": "tsv",

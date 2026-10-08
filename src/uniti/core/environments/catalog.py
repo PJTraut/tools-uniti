@@ -21,12 +21,11 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
 from uniti.core.environment import Environment, PlainEnvironment
-from uniti.core.syntax_profiles import DEFAULT_EXTENSION_PROFILES, PROFILES_BY_KEY, SyntaxProfile
+from uniti.core.syntax_profiles import DEFAULT_EXTENSION_PROFILES, PROFILES_BY_KEY, SyntaxProfile, canonical_key
 
 from .delimited_environment import CsvEnvironment, TsvEnvironment
 from .json_environment import JsonEnvironment
 from .markdown_environment import MarkdownEnvironment
-from .sfm_environment import SfmEnvironment
 from .usfm_environment import UsfmEnvironment
 from .xml_environment import XmlEnvironment
 from .yaml_environment import YamlEnvironment
@@ -60,7 +59,6 @@ ENVIRONMENTS: tuple[EnvironmentDescriptor, ...] = tuple(
         XmlEnvironment,
         JsonEnvironment,
         YamlEnvironment,
-        SfmEnvironment,
         UsfmEnvironment,
         CsvEnvironment,
         TsvEnvironment,
@@ -74,7 +72,7 @@ ENVIRONMENTS_BY_KEY: dict[str, EnvironmentDescriptor] = {
 def descriptor_for_key(key: str | None) -> EnvironmentDescriptor:
     """The descriptor for `key`; Plain Text for an unknown or missing key."""
 
-    return ENVIRONMENTS_BY_KEY.get(key or "", ENVIRONMENTS_BY_KEY[PLAIN_ENVIRONMENT_KEY])
+    return ENVIRONMENTS_BY_KEY.get(canonical_key(key) or "", ENVIRONMENTS_BY_KEY[PLAIN_ENVIRONMENT_KEY])
 
 
 def normalize_extension(text: str) -> str | None:
@@ -94,7 +92,7 @@ def environment_key_for_extension(
     """
 
     normalized = extension.strip().lower().lstrip(".")
-    key = (overrides or {}).get(normalized) or DEFAULT_EXTENSION_PROFILES.get(normalized)
+    key = canonical_key((overrides or {}).get(normalized) or DEFAULT_EXTENSION_PROFILES.get(normalized))
     return key if key in ENVIRONMENTS_BY_KEY else PLAIN_ENVIRONMENT_KEY
 
 
@@ -109,7 +107,7 @@ def extension_assignments(
 
     effective: dict[str, str] = dict(DEFAULT_EXTENSION_PROFILES)
     for extension, key in (overrides or {}).items():
-        effective[extension] = key
+        effective[extension] = canonical_key(key)
     assignments: dict[str, list[str]] = {descriptor.key: [] for descriptor in ENVIRONMENTS}
     for extension, key in effective.items():
         assignments.setdefault(key if key in ENVIRONMENTS_BY_KEY else PLAIN_ENVIRONMENT_KEY, []).append(

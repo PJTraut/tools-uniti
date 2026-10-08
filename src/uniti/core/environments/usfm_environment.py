@@ -1,23 +1,19 @@
-"""USFM environment (ADR-0013, Phase E6).
+"""USFM environment (ADR-0013, Phase E6; ADR-0017; round 2 R5).
 
-Generic SFM plus official USFM knowledge: the vendored baseline `usfm.sty`
-(`sfm/usfm_baseline.py`) loaded into a `StyleRegistry` for structural
-queries (`occurs_under`/`rank`/`end_marker`/`is_repeatable`/`style_type` —
-exposed for a future marker/style inspector, not consumed by anything in
-this phase, matching Phase E5's decision 6), plus `usfmtc`-backed
-reference-conformance validation. A separate `Environment` (not a mode
-switch on `SfmEnvironment`) because `.usfm` and `.sfm` resolve to distinct
-environment keys via `profile_for_extension` (`syntax_profiles.USFM` vs.
-`SFM`) — ADR-0013 decision 3's per-document environment-key resolution.
+Every SFM/USFM file — `.sfm` and `.usfm`, in any case — belongs here: the
+generic SFM environment was retired on 2026-10-08 (field test round 2, R5),
+and a saved `sfm` key is read as `usfm`. It brings:
 
-Deliberately not in this phase: loading a project's *own* `.sty` on top of
-the baseline (no discovery/precedence mechanism is wired into activation
-yet — `StyleRegistry.from_layers` already supports it mechanically), and
-OccursUnder-driven structural validation (misplaced-marker checking is left
-to `usfmtc`'s grammar-based parser, which already reports this class of
-error; hand-rolling a second, likely-redundant OccursUnder walker before a
-real gap is observed would be exactly the speculative generalization this
-project avoids).
+- the vendored baseline `usfm.sty`, the built-in `uniti.sty` and the
+  project's stylesheets (layered, ADR-0015/0018);
+- `usfmtc`-backed reference-conformance validation and the end-marker
+  check;
+- chapter/verse navigation, the Standard and Preview views, and the Style
+  Inspector.
+
+Non-Scripture SFM (e.g. Toolbox dictionaries) gets the same treatment;
+**Open as Plain Text** (R6) and the undefined-markup report (R7) are the way
+to work with such files.
 """
 
 from __future__ import annotations

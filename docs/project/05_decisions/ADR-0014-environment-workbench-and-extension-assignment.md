@@ -33,3 +33,5 @@ Request (2026-10-02): a full file-type environment that owns its functions, tool
 - [ADR-0013](ADR-0013-environment-framework-ownership-boundary.md) — extended, not superseded; decision 3's per-view override and decision 6's isolation invariant are preserved.
 - [Environment workbench implementation record](../02_plans/2026-10-02-environment-workbench-plan.md)
 - BF-061 (Format/Minify), BF-062 (Markdown Preview), BF-063 (extension mapping editor) — moved under environments.
+
+Update 2026-10-08: the catalog no longer has an SFM row ([field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R5). USFM owns `.sfm` and `.usfm` by default. Anything saved under the retired `sfm` key is read as `usfm`: extension overrides, pins, per-view syntax choices and environment windows.

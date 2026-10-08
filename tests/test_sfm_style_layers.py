@@ -5,7 +5,7 @@ from pathlib import Path
 from uniti.core.document import Document
 from uniti.core.environment import EnvironmentContext
 from uniti.core.environment_commands import ShowMessage, ShowStyleInspector, environment_commands
-from uniti.core.environments import SfmEnvironment, UsfmEnvironment
+from uniti.core.environments import UsfmEnvironment
 from uniti.core.environments.sfm.inspection import inspect_marker, marker_at
 from uniti.core.environments.sfm.style_layers import (
     MAX_STYLESHEET_BYTES,
@@ -116,19 +116,24 @@ def test_usfm_environment_layers_project_stylesheets_on_activation(tmp_path: Pat
         document.close()
 
 
-def test_generic_sfm_uses_project_layers_without_a_baseline(tmp_path: Path):
+def test_an_sfm_book_gets_the_usfm_baseline_under_its_project_layers(tmp_path: Path):
+    """Round 2 R5: `.sfm` belongs to USFM, so it gets the official baseline
+    and built-in rules under the project's own stylesheets."""
+
     book = _project(tmp_path)
     sfm_path = book.with_suffix(".sfm")
     book.rename(sfm_path)
-    environment = SfmEnvironment()
+    environment = UsfmEnvironment()
     document, context = _context(sfm_path, 0)
     try:
         environment.activate(context)
         assert [layer.origin for layer in environment.layered_styles.layers] == [
+            StyleOrigin.USFM_BASE,
+            StyleOrigin.UNITI_BUILTIN,
             StyleOrigin.PROJECT,
             StyleOrigin.PTXPRINT,
         ]
-        assert environment.layered_styles.style_for("bd") is None
+        assert environment.layered_styles.style_for("bd") is not None
     finally:
         document.close()
 
@@ -224,8 +229,8 @@ def test_placement_check_accepts_well_formed_usfm_and_flags_misplacement():
     assert "\\f \\fe" in findings[2].message
 
 
-def test_placement_uses_project_rules_for_generic_sfm(tmp_path: Path):
-    from uniti.core.environment_commands import ShowFindings, ShowMessage
+def test_placement_uses_project_rules_for_an_sfm_file(tmp_path: Path):
+    from uniti.core.environment_commands import ShowFindings
 
     (tmp_path / "custom.sty").write_text(
         "\\Marker sec\n\\StyleType Paragraph\n\\OccursUnder id\n"
@@ -234,7 +239,7 @@ def test_placement_uses_project_rules_for_generic_sfm(tmp_path: Path):
     )
     source = tmp_path / "doc.sfm"
     source.write_text("\\id X\n\\note orphan\n\\sec Part\n\\note fine\n", encoding="utf-8")
-    environment = SfmEnvironment()
+    environment = UsfmEnvironment()
     document, context = _context(source, None)
     try:
         environment.activate(context)
@@ -247,11 +252,13 @@ def test_placement_uses_project_rules_for_generic_sfm(tmp_path: Path):
     bare = tmp_path / "bare" / "doc.sfm"
     bare.parent.mkdir()
     bare.write_text("\\p x", encoding="utf-8")
-    environment = SfmEnvironment()
+    # Without project stylesheets an .sfm file is still checked: against the
+    # official USFM baseline every USFM file has.
+    environment = UsfmEnvironment()
     document, context = _context(bare, None)
     try:
         environment.activate(context)
         command = next(c for c in environment_commands(environment) if c.command_id == "check_placement")
-        assert isinstance(command.run(context, None), ShowMessage)
+        assert isinstance(command.run(context, None), ShowFindings)
     finally:
         document.close()

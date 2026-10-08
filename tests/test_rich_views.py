@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from uniti.core.environments import MarkdownEnvironment, SfmEnvironment, UsfmEnvironment
+from uniti.core.environments import MarkdownEnvironment, UsfmEnvironment
 from uniti.core.environments.markdown_views import MarkdownRenderedView
 from uniti.core.environments.sfm.semantic import (
     apply_character_style,
@@ -270,7 +270,6 @@ def test_view_commands_run_in_source_offsets():
 
 def test_environments_offer_their_view_providers():
     assert [p.key for p in environment_view_providers(UsfmEnvironment())] == ["sfm.standard", "sfm.preview"]
-    assert [p.key for p in environment_view_providers(SfmEnvironment())] == ["sfm.standard", "sfm.preview"]
     assert [p.key for p in environment_view_providers(MarkdownEnvironment())] == ["markdown.rendered"]
     assert environment_view_providers(object()) == ()
 

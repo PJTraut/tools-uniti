@@ -1,11 +1,10 @@
 """Shared stylesheet layering and inspector commands for SFM/USFM (ADR-0015).
 
-Both environments get the same capabilities; they differ only in whether an
-official baseline sits under the project layers (USFM yes, generic SFM no).
-The Standard/Preview views are the one exception: rendering a generic SFM
-document with no stylesheet would show every marker as unknown, so they
-render over the USFM baseline (project and loaded layers still win).
-Validation, placement and the Style Inspector never see that fallback.
+The USFM environment is the one user (`.sfm` and `.usfm` both belong to it
+since field test round 2, R5). Without an official baseline (`baseline=None`)
+the Standard/Preview views still render over the USFM baseline, so every
+marker isn't shown as unknown; validation, placement and the Style
+Inspector never see that fallback.
 """
 
 from __future__ import annotations

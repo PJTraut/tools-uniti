@@ -49,8 +49,10 @@ def environment_window_identity(
             record = views.get(view_id)
             value = None if record is None else record.extra.get(ENVIRONMENT_WINDOW_EXTRA)
             if isinstance(value, dict) and isinstance(value.get("environment"), str):
+                from uniti.core.syntax_profiles import canonical_key
+
                 group = value.get("group")
-                return value["environment"], group if isinstance(group, str) and group else None
+                return canonical_key(value["environment"]), group if isinstance(group, str) and group else None
     return None
 
 
