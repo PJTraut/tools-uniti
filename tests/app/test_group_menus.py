@@ -8,6 +8,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from usfm_project_fixture import in_project  # noqa: E402
 from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
 
 from uniti.app.document_groups import DocumentGroup  # noqa: E402
@@ -28,7 +29,7 @@ def desktop(tmp_path: Path):
 
 def _open(window, path: Path, text: str = _USFM):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    in_project(path).write_text(text, encoding="utf-8")
     return window.open_path(path)
 
 
@@ -104,7 +105,7 @@ def test_regrouping_a_file_in_an_environment_window_moves_it_to_that_groups_wind
 
     window_b = service.windows.window_for_view(view.view_id)
     assert window_b.environment_window == ("usfm", "B")
-    assert window_b.statusBar().currentMessage() == "GEN.usfm moved to USFM — B"
+    assert window_b.statusBar().currentMessage() == "GEN.usfm moved to USFM — B — TST"
     # Dock still goes back to where the file came from.
     service.dock_view(view.view_id)
     assert service.windows.window_for_view(view.view_id) is main

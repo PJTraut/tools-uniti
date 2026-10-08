@@ -62,7 +62,12 @@ from uniti.core.document import Document
 from uniti.core.durability import DurabilityLevel
 from uniti.core.eol import EOLReport, analyze_eol
 from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
-from uniti.core.environments.catalog import PLAIN_ENVIRONMENT_KEY, descriptor_for_key
+from uniti.core.environments.catalog import (
+    PLAIN_ENVIRONMENT_KEY,
+    PROJECT_ENVIRONMENTS,
+    descriptor_for_key,
+    environment_available,
+)
 from uniti.core.environments.markdown_environment import MARKDOWN_PREVIEW_FEATURE
 from uniti.core.environments.sfm.stylesheet_support import IMPORT_STYLESHEET_FEATURE
 from uniti.core.syntax_profiles import (
@@ -2172,24 +2177,36 @@ class UNITIMainWindow(QMainWindow):
                 if existing_group is not None:
                     group_id = existing_group.id
 
-        # One question for the whole batch (R6), not one per file.
+        # One question for the whole batch (R6), not one per file. Files
+        # outside a project open as plain text without it (T1).
         open_mode: OpenMode | None = OpenMode.HERE
-        if self._service is not None and self.environment_window is None:
-            environment_key = self._file_environment_manager.resolve_key(
-                matching[0].suffix, self._settings.syntax_extension_overrides
+        overrides = self._settings.syntax_extension_overrides
+        asked = [
+            path
+            for path in matching
+            if self._file_environment_manager.resolve_path_key(path, overrides) != PLAIN_ENVIRONMENT_KEY
+        ]
+        outside = [
+            path
+            for path in matching
+            if path not in asked
+            and self._file_environment_manager.resolve_key(path.suffix, overrides) != PLAIN_ENVIRONMENT_KEY
+        ]
+        if self._service is not None and self.environment_window is None and asked:
+            environment_key = self._file_environment_manager.resolve_path_key(asked[0], overrides)
+            open_mode = open_mode_dialog.prompt_open_mode(
+                self, asked[0], descriptor_for_key(environment_key).label, len(asked)
             )
-            if environment_key != PLAIN_ENVIRONMENT_KEY:
-                open_mode = open_mode_dialog.prompt_open_mode(
-                    self, matching[0], descriptor_for_key(environment_key).label, len(matching)
-                )
-                if open_mode is None:
-                    return
+            if open_mode is None:
+                return
 
         opened = 0
         failures: list[str] = []
         for path in matching:
             try:
-                view = self.open_path(path, open_mode=open_mode, group_id=group_id)
+                view = self.open_path(
+                    path, open_mode=open_mode if path in asked else OpenMode.HERE, group_id=group_id
+                )
             except Exception as exc:
                 failures.append(f"{path.name}: {exc}")
                 continue
@@ -2201,6 +2218,12 @@ class UNITIMainWindow(QMainWindow):
                 if entry is not None:
                     self._set_document_group(entry.document_id, group_id)
 
+        if outside:
+            self.statusBar().showMessage(
+                f"{len(outside)} {'file isn' if len(outside) == 1 else 'files aren'}'t in a Paratext project: "
+                "opened as plain text",
+                8000,
+            )
         if failures:
             QMessageBox.warning(
                 self,
@@ -2281,8 +2304,8 @@ class UNITIMainWindow(QMainWindow):
         if self._service is not None:
             entry = self._service.documents.find_path(document.path)
             if entry is None:
-                environment_key = self._file_environment_manager.resolve_key(
-                    document.path.suffix, self._settings.syntax_extension_overrides
+                environment_key = self._file_environment_manager.resolve_path_key(
+                    document.path, self._settings.syntax_extension_overrides
                 )
                 entry = self._service.documents.adopt(
                     document,
@@ -2423,9 +2446,16 @@ class UNITIMainWindow(QMainWindow):
                     elapsed_ms=(time.monotonic() - started_at) * 1000.0,
                 )
                 return reopened
+        # USFM assumes a Paratext project: a file outside one opens as plain
+        # text, without R6's question (T1).
+        outside_project = self._file_environment_manager.resolve_key(
+            Path(path).suffix, self._settings.syntax_extension_overrides
+        ) in PROJECT_ENVIRONMENTS and self._file_environment_manager.resolve_path_key(
+            Path(path), self._settings.syntax_extension_overrides
+        ) == PLAIN_ENVIRONMENT_KEY
         if self._service is not None and self.environment_window is None and open_mode is not OpenMode.HERE:
-            environment_key = self._file_environment_manager.resolve_key(
-                Path(path).suffix, self._settings.syntax_extension_overrides
+            environment_key = self._file_environment_manager.resolve_path_key(
+                Path(path), self._settings.syntax_extension_overrides
             )
             if environment_key != PLAIN_ENVIRONMENT_KEY:
                 if open_mode is None:
@@ -2494,6 +2524,8 @@ class UNITIMainWindow(QMainWindow):
             # The default editor environment: no extended features (D2).
             self._environment.set_document_environment(PLAIN_ENVIRONMENT_KEY, view, move=False)
         self._usfm_projects.note_opened(view)
+        if outside_project and not self._quiet_open:
+            self.statusBar().showMessage(f"{Path(path).name} isn't in a Paratext project: opened as plain text", 8000)
         # Markup no loaded definition covers pops up a report (R7, D4).
         if not self._quiet_open:
             self._environment.report_undefined_on_open(view)
@@ -2705,8 +2737,19 @@ class UNITIMainWindow(QMainWindow):
         window's group. A file already open elsewhere moves here."""
 
         key, group_id = self.environment_window
+        if not environment_available(key, path):
+            # USFM assumes a Paratext project (T1): a file outside one opens
+            # as plain text, in an ordinary window.
+            target = next(
+                (window for window in self._service.windows.windows_by_recency if window.environment_window is None),
+                None,
+            ) or self._service.new_window()
+            target.show()
+            target.raise_()
+            target.activateWindow()
+            return target.open_path(path, profile=profile, open_mode=OpenMode.HERE)
         known = (
-            self._file_environment_manager.resolve_key(path.suffix, self._settings.syntax_extension_overrides)
+            self._file_environment_manager.resolve_path_key(path, self._settings.syntax_extension_overrides)
             == key
         )
         if not known and key == "usfm":
@@ -3322,8 +3365,8 @@ class UNITIMainWindow(QMainWindow):
                 entry.document_id,
                 replacement,
                 allow_path_change=allow_path_change,
-                environment_key=self._file_environment_manager.resolve_key(
-                    replacement.path.suffix, self._settings.syntax_extension_overrides
+                environment_key=self._file_environment_manager.resolve_path_key(
+                    replacement.path, self._settings.syntax_extension_overrides
                 ),
             )
             self._service.track_document(entry)

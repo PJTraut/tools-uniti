@@ -56,8 +56,10 @@ from uniti.core.environments.catalog import (
     ENVIRONMENTS,
     ENVIRONMENTS_BY_KEY,
     PLAIN_ENVIRONMENT_KEY,
+    PROJECT_ENVIRONMENTS,
     EnvironmentDescriptor,
     descriptor_for_key,
+    environment_available,
 )
 from uniti.core.syntax_profiles import PLAIN_TEXT, PROFILES_BY_KEY, SyntaxProfile
 from uniti.ui.rich_view import PLAIN_TEXT_LABEL
@@ -107,8 +109,11 @@ class EnvironmentController:
         return entry if entry is not None and entry.document is document else None
 
     def extension_environment_key(self, document: "Document") -> str:
-        return self._window._file_environment_manager.resolve_key(
-            document.path.suffix, self._window._settings.syntax_extension_overrides
+        """The environment the document's extension gives it, or Plain Text
+        when that environment needs a project the file isn't in (T1)."""
+
+        return self._window._file_environment_manager.resolve_path_key(
+            document.path, self._window._settings.syntax_extension_overrides
         )
 
     def environment_override_for(self, document: "Document") -> str | None:
@@ -126,7 +131,12 @@ class EnvironmentController:
         """
 
         override = self.environment_override_for(document)
-        key = override if override in ENVIRONMENTS_BY_KEY else self.extension_environment_key(document)
+        if override in ENVIRONMENTS_BY_KEY and environment_available(override, document.path):
+            key = override
+        else:
+            # No pin, or one to an environment the file can't live in (a
+            # restored USFM pin on a file outside a project, T1).
+            key = self.extension_environment_key(document)
         entry = self._entry_for(document)
         if entry is not None and entry.environment_key != key:
             self._window._service.documents.set_environment_key(entry.document_id, key)
@@ -149,6 +159,13 @@ class EnvironmentController:
         if environment_key is not None and environment_key not in ENVIRONMENTS_BY_KEY:
             raise ValueError(f"unknown environment: {environment_key!r}")
         document = view.document
+        if environment_key is not None and not environment_available(environment_key, document.path):
+            label = descriptor_for_key(environment_key).label
+            self._window.statusBar().showMessage(
+                f"{document.path.name} isn't in a Paratext project, so it can't be {label}", 6000
+            )
+            self._sync_document_environment_menu(view)
+            return
         entry = self._entry_for(document)
         if entry is not None:
             self._window._service.documents.set_environment_override(entry.document_id, environment_key)
@@ -374,6 +391,13 @@ class EnvironmentController:
         )
         if selected is not None and not selected.isChecked():
             selected.setChecked(True)
+        for key, action in self.document_environment_actions.items():
+            if key in PROJECT_ENVIRONMENTS:
+                # USFM assumes a Paratext project (T1).
+                available = environment_available(key, view.document.path)
+                action.setEnabled(available)
+                label = descriptor_for_key(key).label
+                action.setText(label if available else f"{label} (needs a Paratext project)")
 
     def _populate_for_view(self, menu: QMenu, view: "UNITITextView") -> None:
         descriptor = self.descriptor_for(view.document)

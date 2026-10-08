@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from usfm_project_fixture import ensure_project  # noqa: E402
 from uniti.app.recovery_manager import (
     RecoveryCandidate,
     RecoveryDiagnostic,
@@ -2504,6 +2505,7 @@ def test_reassigning_an_extension_re_resolves_open_documents_environment_key(
     tmp_path: Path,
 ):
     app, service, _recovery = _desktop_service(tmp_path)
+    ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
     path = tmp_path / "book.sfm"
     path.write_text("\\id GEN\n\\c 1\n\\v 1 text\n", encoding="utf-8")
     window = service.new_window()
@@ -2527,6 +2529,7 @@ def test_reassigning_an_extension_re_resolves_open_documents_environment_key(
 
 def test_reassigning_an_extension_updates_every_open_window(tmp_path: Path):
     app, service, _recovery = _desktop_service(tmp_path)
+    ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
     path = tmp_path / "book.sfm"
     path.write_text("\\id GEN\n\\c 1\n\\v 1 text\n", encoding="utf-8")
     first = service.new_window()
@@ -2553,6 +2556,7 @@ def test_pinned_document_keeps_its_environment_through_extension_reassignment(
 ):
     app, service, _recovery = _desktop_service(tmp_path)
     text = "\\id GEN\n\\c 1\n\\v 1 text\n"
+    ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
     pinned_path = tmp_path / "pinned.sfm"
     follower_path = tmp_path / "follower.sfm"
     pinned_path.write_text(text, encoding="utf-8")

@@ -1,6 +1,8 @@
 # USFM
 
-Scripture text in USFM (Unified Standard Format Markers) and its older SFM form. Paratext projects, single books and anything else in backslash-marker format live here. See the [overview](README.md) for what all environments share.
+Scripture text in USFM (Unified Standard Format Markers) and its older SFM form, in Paratext projects. See the [overview](README.md) for what all environments share.
+
+**USFM assumes a Paratext project:** a folder with a `Settings.xml`. A `.usfm` or `.sfm` file outside one opens as plain text, without the "Open in USFM Environment?" question, and the status bar says why ("GEN.usfm isn't in a Paratext project: opened as plain text"). **Environment for This Document** doesn't offer USFM for such a file. Working with USFM files outside a project is planned for later.
 
 - **Extensions:** `.usfm`, `.sfm` (any case). The separate "SFM" environment was folded into USFM on 2026-10-08. A setting saved under the old name is read as USFM.
 - **Highlighting:** every marker is colored as a keyword: `\v`, `\wj*`, nested `\+it`, milestones `\qt-s … \*`, table cells `\th1-2`. The text is uncolored.
@@ -30,7 +32,7 @@ What Standard and Preview show:
 
 When you open a USFM file that uses markers no loaded stylesheet defines, a report pops up. Those are markers Standard and Preview can only show as tags, such as `\esb`, or a project's own `\zfoo`. It lists each marker with how often it's used; expand a marker to see each use, and double-click one to jump there.
 - **Copy Report** and **Save Report…** give you the whole report as text.
-- **Edit Stylesheet…** opens the file where the definitions belong: the project's `custom.sty`, or your own `uniti.sty` for a file outside a Paratext project. It creates the file from its template if needed.
+- **Edit Stylesheet…** opens the file where the definitions belong: the project's `custom.sty`. It creates the file from its template if needed.
 - **Add Definitions** adds a starter definition for the selected markers (or all of them) to that file and opens it. Complete each `\Name` and style, then save: the stylesheets reload and the report updates.
 
 **Check Undefined Markers** in the USFM menu runs the same check at any time. Milestones (`\qt-s … \*`) are never reported; they mark positions, not text. Files restored at startup aren't checked automatically.
@@ -38,9 +40,7 @@ When you open a USFM file that uses markers no loaded stylesheet defines, a repo
 ## Book, chapter and verse
 
 The environment window's toolbar has **Book**, **Chapter** and **Verse** at its right end.
-- **Book** lists the books available here:
-  - in a Paratext project, the project's books;
-  - otherwise, the open files of this window's group.
+- **Book** lists the project's books.
 
   Each book shows its `\id` code and its `\h` line, e.g. "GEN Genesis". UNITI looks for `\h` in the book's first 10 lines; a book without one shows just its code. Choosing a book opens it in this window and group, in the current mode.
 - **Chapter** and **Verse** jump to that place and follow the caret as it moves.
@@ -52,8 +52,8 @@ Jumping, here or with **Go to Chapter:Verse…** (Ctrl+Alt+G), puts the verse a 
 When two or more splits of one window show files of the **same document group**, moving the caret in one moves the others to the same chapter and verse, and highlights the verse in all of them.
 - **Versification:** the reference is mapped into each text's own versification, so English Ps 51:1 lands on 51:3 in a text numbered like the original.
 - **Different book:** if another split shows a different book, it switches to a tab of that book in the same split.
-  - Failing that, a **Paratext project** text opens the project's file of that book, in that split and view mode. You stay where you were.
-  - A **single file** without the book stays put, and the status bar says so ("GEN isn't in 02EXO.usfm").
+  - Failing that, it opens the project's file of that book, in that split and view mode. You stay where you were.
+  - A project without the book stays put, and the status bar says so ("GEN isn't in 02EXO.usfm").
 - **Book selector:** choosing a book in the Book selector carries the group's other splits to that book the same way.
 - **Bridges and parts:** verse bridges (`\v 10-12`) and parts (`\v 11a`) are matched.
 - Ungrouped files don't sync. To group everything in an environment window at once, use the toolbar's **Group** dropdown.
@@ -77,7 +77,7 @@ When a mapping lands on a verse the text doesn't have, sync uses the same refere
 - **Group:** the project goes to the USFM window of its group. That's the last group used, otherwise the active USFM window's group, otherwise Ungrouped.
 - **Recent Projects:** **File → Recent Projects** remembers each project's book, chapter:verse and group.
 - **From `Settings.xml`,** UNITI reads the name, the book-file naming, the encoding (books open in it), the versification, and the stylesheet to use in place of `usfm.sty`.
-- **Single files:** a book opened with Open File inside a project folder counts as that project's book. A file outside any project is a single file.
+- **Books opened as files:** a file opened with Open File inside a project folder counts as that project's book, whatever its extension. A file outside any project opens as plain text.
 
 ## Commands
 

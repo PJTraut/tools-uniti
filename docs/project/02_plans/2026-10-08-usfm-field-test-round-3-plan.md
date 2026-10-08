@@ -57,10 +57,27 @@ The user's answers, 2026-10-08:
   - a project book still opens in USFM;
   - Environment for This Document doesn't offer USFM for a file outside a project.
 
+**Implemented 2026-10-08.**
+- **`catalog.PROJECT_ENVIRONMENTS = {"usfm"}`**, `environment_available(key, path)` and `environment_key_for_path(path, overrides)`: a file assigned to a project environment resolves to Plain Text unless `project_for_file` finds its project. `FileEnvironmentManager.resolve_path_key` wraps it.
+- **Every place a window gives a file its environment uses it:**
+  - `EnvironmentController.environment_key_for`, which also ignores a USFM pin on a file outside a project (a session saved before T1);
+  - adopting and replacing a document;
+  - `open_path`'s R6 question, which isn't asked for such a file, plus the status message;
+  - Open Folder by Type, which asks only about the files that have an environment and reports the rest: "2 files aren't in a Paratext project: opened as plain text";
+  - opening inside a USFM window, which opens such a file in an ordinary window instead of pinning it.
+- **Environment for This Document** shows "USFM (needs a Paratext project)", disabled. `set_document_environment("usfm")` refuses with "notes.txt isn't in a Paratext project, so it can't be USFM".
+- **Unchanged:** the USFM parser, views, validation and checks.
+- **Docs:** the [USFM page](../../environments/usfm.md) says USFM assumes a project, and drops the single-file Book list, the single-file sync case and `uniti.sty` as the target for a file outside a project.
+
+Tests:
+- `tests/usfm_project_fixture.py`: `ensure_project` / `in_project` give the UI tests' USFM files a minimal `Settings.xml`;
+- `tests/app/test_environment_window.py` +6: a file outside a project opens as plain text with the message; a USFM window opens one elsewhere; USFM isn't offered; a restored pin is ignored; Open Folder by Type; a project's file of any extension opens in USFM without a question;
+- the single-file Book list test is now the project's Book list; the "unknown extension asks" test uses a Markdown window, since a USFM window no longer asks.
+
 ### T2 — Each environment has its own groups (item 1, answer 2)
 - **Storage:** `<user data>/Environments/<Environment>/groups.json` (R8's per-environment folder), in the schema of `document-groups.json`. A missing file starts from A, B, C.
 - **Migration (D3):** the existing `document-groups.json` becomes the Plain Text environment's groups, so nothing saved is lost. Every other environment starts from A, B, C. The old file stays where it is and is no longer written.
-- **A group id now means a group of the file's environment.** `DocumentEntry.group_id` stays as it is, looked up in the groups of the file's environment. A file that changes environment loses its group.
+- **A group id now means a group of the file's environment.** `DocumentEntry.group_id` stays as it is, looked up in the groups of the file's environment. Choosing another environment for a file (Environment for This Document) clears its group.
 - **Everywhere groups appear:**
   - tab swatches;
   - the Document Group menus and the toolbar dropdown;

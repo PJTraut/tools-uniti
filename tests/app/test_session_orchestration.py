@@ -18,6 +18,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from usfm_project_fixture import ensure_project  # noqa: E402
 from uniti.app.session import (
     SESSION_SCHEMA,
     DocumentRecord,
@@ -1356,6 +1357,7 @@ def test_environment_pin_and_plain_text_mode_round_trip_through_a_session(
     the view opens so it renders in the pinned environment from the start."""
 
     store, loaded, _paths = _published_session(tmp_path, document_count=1)
+    ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
     manifest = loaded.manifest
     assert manifest is not None
     manifest = replace(
@@ -1411,6 +1413,7 @@ def test_restored_tab_reopens_its_rich_view(qapp, tmp_path: Path):
     pane reopens beside it after restore."""
 
     store, loaded, _paths = _published_session(tmp_path, document_count=1)
+    ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
     manifest = loaded.manifest
     manifest = replace(
         manifest,
@@ -1445,6 +1448,7 @@ def test_restored_session_rebuilds_its_environment_window(qapp, tmp_path: Path):
     `ViewRecord.extra`, and restore_shell rebuilds the window's frame."""
 
     store, loaded, _paths = _published_session(tmp_path, document_count=1)
+    ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
     manifest = loaded.manifest
     manifest = replace(
         manifest,

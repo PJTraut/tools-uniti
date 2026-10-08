@@ -14,6 +14,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from usfm_project_fixture import in_project  # noqa: E402
 from uniti.app.settings import SettingsStore  # noqa: E402
 from uniti.core.environments import user_config  # noqa: E402
 from uniti.core.environments.sfm.paratext_project import PARATEXT_BOOKS  # noqa: E402
@@ -44,7 +45,7 @@ def window(app, tmp_path: Path):
 
 def _open(window, path: Path, text: str):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    in_project(path).write_text(text, encoding="utf-8")
     return window.open_path(path)
 
 
@@ -86,15 +87,16 @@ def test_activating_a_use_jumps_to_it(window, tmp_path: Path):
     assert view.state.cursor == _UNDEFINED.index("\\esb")
 
 
-def test_adding_definitions_to_your_rules_then_saving_defines_them(window, tmp_path: Path, app):
-    view = _open(window, tmp_path / "loose" / "GEN.usfm", _UNDEFINED)
+def test_adding_definitions_to_custom_sty_then_saving_defines_them(window, tmp_path: Path, app):
+    # USFM assumes a project (round 3 T1), so definitions go to its custom.sty.
+    view = _open(window, tmp_path / "project" / "GEN.usfm", _UNDEFINED)
     dialog = window._environment.undefined_dialogs[view.view_id]
-    assert dialog.target_path() == tmp_path / "settings" / "Environments" / "USFM" / "uniti.sty"
+    assert dialog.target_path() == tmp_path / "project" / "custom.sty"
 
     rules = dialog.add_definitions()
 
     text = rules.document.read(0, rules.document.total_chars())
-    assert text.startswith("# uniti.sty - your own rules")
+    assert "Paratext, PTXprint and UNITI all read this file" in text
     assert "\\Marker zfoo\n\\Endmarker zfoo*\n" in text and "\\Marker esbe\n" in text
     window.save_current()
     app.processEvents()

@@ -9,6 +9,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
+from usfm_project_fixture import ensure_project, in_project  # noqa: E402
 from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
 
 from uniti.app.document_groups import DocumentGroup  # noqa: E402
@@ -32,7 +33,7 @@ def desktop(tmp_path: Path):
 
 def _write(folder: Path, name: str, text: str) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / name
+    path = in_project(folder / name)
     path.write_text(text, encoding="utf-8")
     return path
 
@@ -59,7 +60,7 @@ def test_move_to_environment_window_groups_files_by_environment_and_group(deskto
     assert usfm_a.environment_window == ("usfm", "A")
     assert usfm_a.current_view is first
     assert usfm_a._environment_bar is not None
-    assert usfm_a.windowTitle() == "UNITI — USFM — A — 01GEN.usfm"
+    assert usfm_a.windowTitle() == "UNITI — USFM — A — TST — 01GEN.usfm"
     # The tab's own mode selector moves to the window's toolbar.
     assert usfm_a._rich_views.pane_mode_selector is False
 
@@ -100,27 +101,22 @@ def test_environment_window_survives_session_capture(desktop, tmp_path: Path):
     assert environment_window_identity(main_record.root, views) is None
 
 
-def test_book_selector_lists_the_groups_open_single_files(desktop, tmp_path: Path):
-    """Outside a Paratext project the Book list is the group's open files,
-    never a scan of the folder (plan P3)."""
+def test_book_selector_lists_the_projects_books_on_disk(desktop, tmp_path: Path):
+    """The Book list is the project's books, open or not (plan P3)."""
 
     app, service = desktop
-    folder = tmp_path / "loose"
+    folder = tmp_path / "proj"
     _write(folder, "41MAT.usfm", "\\id MAT\n\\c 1\n\\p\n\\v 1 Matthew.\n")  # on disk, not open
     exodus = _write(folder, "02EXO.usfm", _EXO)
     genesis = _write(folder, "01GEN.usfm", _GEN_A)
-    other = _write(tmp_path / "elsewhere", "02EXO.usfm", _EXO)
     main = service.new_window()
     view = main.open_path(genesis)
-    for path, group in ((exodus, "A"), (other, "B")):
-        _group(main, service, main.open_path(path), group)
-    _group(main, service, view, "A")
     window = main.move_to_environment_window(view)
     bar = window._environment_bar
 
     labels = [bar.book.itemText(index) for index in range(bar.book.count())]
     # The book id and its \h line (_GEN_A has no \h: the id alone).
-    assert labels == ["GEN", "EXO Exodus"]
+    assert labels == ["GEN", "EXO Exodus", "MAT"]
     assert bar.book.currentIndex() == 0
 
     opened = bar.open_book(exodus)
@@ -355,8 +351,10 @@ def test_a_file_opened_in_an_environment_window_lives_there(desktop, tmp_path: P
 
 def test_an_unknown_extension_asks_before_it_is_pinned(desktop, tmp_path: Path):
     app, service = desktop
-    _main, window = _usfm_window(service, tmp_path)
-    notes = _write(tmp_path, "notes.txt", "\\p plain words\n")
+    main = service.new_window()
+    readme = main.open_path(_write(tmp_path / "docs", "readme.md", "# Notes\n"))
+    window = main.move_to_environment_window(readme)
+    notes = _write(tmp_path / "docs", "notes.txt", "plain words\n")
 
     window._confirm_environment_pin = lambda path, key: False
     assert window.open_path(notes) is None
@@ -366,12 +364,25 @@ def test_an_unknown_extension_asks_before_it_is_pinned(desktop, tmp_path: Path):
     window._confirm_environment_pin = lambda path, key: asked.append((path.name, key)) or True
     opened = window.open_path(notes)
 
-    assert asked == [("notes.txt", "usfm")]
+    assert asked == [("notes.txt", "markdown")]
     assert window.view_for_id(opened.view_id) is opened
     entry = service.documents.entry_for_view(opened.view_id)
-    assert entry.environment_override == "usfm"
+    assert entry.environment_override == "markdown"
+    assert window._environment.environment_key_for(opened.document) == "markdown"
+    assert window._environment.menu.title() == "Markdown"
+
+
+def test_a_projects_file_of_any_extension_opens_in_usfm_without_a_question(desktop, tmp_path: Path):
+    app, service = desktop
+    _main, window = _usfm_window(service, tmp_path)
+    notes = _write(tmp_path, "notes.txt", "\\p plain words\n")  # tmp_path is the project
+    asked = []
+    window._confirm_environment_pin = lambda path, key: asked.append(path.name) or True
+
+    opened = window.open_path(notes)
+
+    assert asked == [] and window.view_for_id(opened.view_id) is opened
     assert window._environment.environment_key_for(opened.document) == "usfm"
-    assert window._environment.menu.title() == "USFM"
 
 
 def test_opening_a_file_open_elsewhere_moves_it_into_the_environment_window(desktop, tmp_path: Path):
@@ -389,6 +400,7 @@ def test_opening_a_file_open_elsewhere_moves_it_into_the_environment_window(desk
 def test_assigning_an_environment_moves_the_file_into_its_window(desktop, tmp_path: Path):
     app, service = desktop
     main = service.new_window()
+    ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
     view = main.open_path(_write(tmp_path, "notes.txt", "\\p words\n"))
     _group(main, service, view, "A")
 
@@ -646,7 +658,7 @@ def test_a_texts_versification_can_be_chosen_and_is_saved(desktop, tmp_path: Pat
     view = main.open_path(_write(tmp_path, "19PSA.usfm", "\\id PSA\n\\c 51\n\\p\n\\v 1 Have mercy.\n"))
     environment = main._environment
     actions = environment.versification_actions
-    assert actions[None].text() == "Default (English)" and actions[None].isChecked()
+    assert actions[None].text() == "Project (English)" and actions[None].isChecked()
     assert {"eng", "org"} <= set(actions)
 
     actions["org"].trigger()
@@ -871,3 +883,98 @@ def test_new_group_from_the_dropdown(desktop, tmp_path: Path, monkeypatch):
     assert window._group_by_id(group_id).name == "Translators"
     assert service.documents.entry_for_view(view.view_id).group_id == group_id
     assert window._environment_bar.group.currentText() == "Translators"
+
+
+# --- Round 3 T1: USFM assumes a Paratext project -------------------------------------
+
+
+def _loose(folder: Path, name: str, text: str) -> Path:
+    """A USFM file outside any project (no Settings.xml)."""
+
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_a_usfm_file_outside_a_project_opens_as_plain_text(desktop, tmp_path: Path, answer):
+    app, service = desktop
+    main = service.new_window()
+
+    view = main.open_path(_loose(tmp_path / "loose", "01GEN.usfm", _GEN_A))
+
+    assert answer.asked == []  # no "Open in USFM Environment?" question
+    assert service.windows.window_for_view(view.view_id) is main
+    assert main._environment.environment_key_for(view.document) == "plain_text"
+    assert main._environment.menu.title() == "Plain Text"
+    assert main._rich_views.providers_for(view) == ()
+    assert main.statusBar().currentMessage() == "01GEN.usfm isn't in a Paratext project: opened as plain text"
+    assert service.environment_window_for("usfm", None) is None
+
+    # A project book still opens in USFM.
+    book = main.open_path(_write(tmp_path / "proj", "01GEN.usfm", _GEN_A))
+    assert answer.asked == [("01GEN.usfm", "USFM", 1)]
+    assert service.windows.window_for_view(book.view_id).environment_window[0] == "usfm"
+
+
+def test_a_usfm_window_opens_a_file_outside_a_project_as_plain_text_elsewhere(desktop, tmp_path: Path):
+    app, service = desktop
+    main, window = _usfm_window(service, tmp_path / "proj")
+    asked = []
+    window._confirm_environment_pin = lambda path, key: asked.append(path.name) or True
+
+    opened = window.open_path(_loose(tmp_path / "loose", "02EXO.usfm", _EXO))
+
+    assert asked == []
+    home = service.windows.window_for_view(opened.view_id)
+    assert home is not window and home.environment_window is None
+    assert home._environment.environment_key_for(opened.document) == "plain_text"
+
+
+def test_usfm_is_not_offered_for_a_file_outside_a_project(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_loose(tmp_path / "loose", "notes.txt", "\\p words\n"))
+    environment = main._environment
+    environment.refresh()
+
+    action = environment.document_environment_actions["usfm"]
+    assert not action.isEnabled() and action.text() == "USFM (needs a Paratext project)"
+
+    environment.set_document_environment("usfm", view)
+
+    assert environment.environment_key_for(view.document) == "plain_text"
+    assert service.documents.entry_for_view(view.view_id).environment_override is None
+    assert service.windows.window_for_view(view.view_id) is main
+    assert main.statusBar().currentMessage() == "notes.txt isn't in a Paratext project, so it can't be USFM"
+
+
+def test_a_restored_usfm_pin_outside_a_project_is_plain_text(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_loose(tmp_path / "loose", "notes.txt", "\\p words\n"))
+    entry = service.documents.entry_for_view(view.view_id)
+    entry.environment_override = "usfm"  # as a session saved before T1 restores it
+
+    assert main._environment.environment_key_for(view.document) == "plain_text"
+
+
+def test_open_folder_by_type_opens_files_outside_a_project_as_plain_text(desktop, tmp_path: Path, answer, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog, QInputDialog
+
+    app, service = desktop
+    main = service.new_window()
+    folder = tmp_path / "loose"
+    _loose(folder, "01GEN.usfm", _GEN_A)
+    _loose(folder, "02EXO.usfm", _EXO)
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args, **kwargs: str(folder))
+    monkeypatch.setattr(
+        QInputDialog, "getItem", lambda _p, _t, _l, items, *a, **k: (items[0] if "No Group" not in items else "No Group", True)
+    )
+
+    main.open_folder_by_type()
+
+    assert answer.asked == []
+    assert len(main.views) == 2
+    assert all(main._environment.environment_key_for(view.document) == "plain_text" for view in main.views)
+    assert main.statusBar().currentMessage() == "2 files aren't in a Paratext project: opened as plain text"

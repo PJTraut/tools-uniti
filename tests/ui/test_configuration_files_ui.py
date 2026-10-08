@@ -14,6 +14,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from usfm_project_fixture import in_project  # noqa: E402
 from uniti.app.settings import SettingsStore  # noqa: E402
 from uniti.core.environments import user_config  # noqa: E402
 from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
@@ -40,7 +41,7 @@ def window(app, tmp_path: Path):
 
 def _open(window, path: Path, text: str):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    in_project(path).write_text(text, encoding="utf-8")
     return window.open_path(path)
 
 

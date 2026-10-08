@@ -41,7 +41,7 @@ from dataclasses import dataclass
 
 from uniti.core.document import Document
 from uniti.core.environment import Environment, EnvironmentContext, PlainEnvironment
-from uniti.core.environments.catalog import ENVIRONMENTS, environment_key_for_extension
+from uniti.core.environments.catalog import ENVIRONMENTS, environment_key_for_extension, environment_key_for_path
 
 logger = logging.getLogger("uniti.environment.file")
 
@@ -101,6 +101,13 @@ class FileEnvironmentManager:
         """
 
         return environment_key_for_extension(suffix, overrides)
+
+    def resolve_path_key(self, path, overrides: Mapping[str, str] | None = None) -> str:
+        """The environment key the file at `path` resolves to: its
+        extension's, or Plain Text when that environment needs a project
+        the file isn't in (round 3 T1)."""
+
+        return environment_key_for_path(path, overrides)
 
     def activate_for(self, document: Document, environment_key: str) -> Environment:
         """Activate the environment for `environment_key`.

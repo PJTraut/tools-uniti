@@ -12,6 +12,10 @@ already-persisted extension -> key map, now edited per environment through
 View > File Type Environments…) reassigns individual extensions. Extensions
 are case-insensitive and stored without the leading dot, so ``.USFM`` and
 ``.sfm`` both assign the same way.
+
+Some environments need a project (field test round 3, T1): USFM assumes a
+Paratext project, so a file assigned to it whose folder has no
+`Settings.xml` is Plain Text (`environment_key_for_path`).
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 from uniti.core.environment import Environment, PlainEnvironment
 from uniti.core.syntax_profiles import DEFAULT_EXTENSION_PROFILES, PROFILES_BY_KEY, SyntaxProfile, canonical_key
@@ -26,12 +31,15 @@ from uniti.core.syntax_profiles import DEFAULT_EXTENSION_PROFILES, PROFILES_BY_K
 from .delimited_environment import CsvEnvironment, TsvEnvironment
 from .json_environment import JsonEnvironment
 from .markdown_environment import MarkdownEnvironment
+from .sfm.paratext_project import project_for_file
 from .usfm_environment import UsfmEnvironment
 from .xml_environment import XmlEnvironment
 from .yaml_environment import YamlEnvironment
 
 PLAIN_ENVIRONMENT_KEY = PlainEnvironment.key
 MAX_EXTENSION_OVERRIDES = 64
+# Environments whose files must sit in a Paratext project folder (T1).
+PROJECT_ENVIRONMENTS = frozenset({"usfm"})
 _EXTENSION_RE = re.compile(r"[a-z0-9_-]{1,32}")
 
 
@@ -94,6 +102,21 @@ def environment_key_for_extension(
     normalized = extension.strip().lower().lstrip(".")
     key = canonical_key((overrides or {}).get(normalized) or DEFAULT_EXTENSION_PROFILES.get(normalized))
     return key if key in ENVIRONMENTS_BY_KEY else PLAIN_ENVIRONMENT_KEY
+
+
+def environment_available(key: str, path: Path | str) -> bool:
+    """Whether the file at `path` can live in environment `key`: always,
+    except that a project environment needs the file in a project (T1)."""
+
+    return key not in PROJECT_ENVIRONMENTS or project_for_file(Path(path)) is not None
+
+
+def environment_key_for_path(path: Path | str, overrides: Mapping[str, str] | None = None) -> str:
+    """The environment the file at `path` resolves to: its extension's,
+    or Plain Text when that environment needs a project the file isn't in."""
+
+    key = environment_key_for_extension(Path(path).suffix, overrides)
+    return key if environment_available(key, path) else PLAIN_ENVIRONMENT_KEY
 
 
 def extension_assignments(
@@ -173,8 +196,11 @@ __all__ = [
     "ExtensionAssignmentError",
     "MAX_EXTENSION_OVERRIDES",
     "PLAIN_ENVIRONMENT_KEY",
+    "PROJECT_ENVIRONMENTS",
     "descriptor_for_key",
+    "environment_available",
     "environment_key_for_extension",
+    "environment_key_for_path",
     "extension_assignments",
     "normalize_extension",
     "overrides_for_assignments",

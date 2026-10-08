@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from usfm_project_fixture import in_project  # noqa: E402
 from uniti.app.settings import SettingsStore  # noqa: E402
 from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
 
@@ -37,7 +38,7 @@ def window(app, tmp_path: Path):
 
 
 def _open(window, tmp_path: Path, name: str, text: str):
-    path = tmp_path / name
+    path = in_project(tmp_path / name)
     path.write_text(text, encoding="utf-8")
     return window.open_path(path)
 
@@ -265,7 +266,7 @@ def _rich_selection(pane) -> str:
 
 @pytest.mark.parametrize("key", ["sfm.standard", "sfm.preview"])
 def test_crlf_document_keeps_formatting_and_selection_on_the_right_text(window, tmp_path: Path, app, key):
-    path = tmp_path / "book.usfm"
+    path = in_project(tmp_path / "book.usfm")
     path.write_bytes(_USFM.replace("\n", "\r\n").encode("utf-8"))
     view = window.open_path(path)
     window._rich_views.show(key)
@@ -285,7 +286,7 @@ def test_crlf_document_keeps_formatting_and_selection_on_the_right_text(window, 
 
 
 def test_typing_into_a_crlf_document_keeps_crlf(window, tmp_path: Path):
-    path = tmp_path / "book.usfm"
+    path = in_project(tmp_path / "book.usfm")
     path.write_bytes(b"\\q1 line one\r\n")
     view = window.open_path(path)
     window._rich_views.show("sfm.standard")
