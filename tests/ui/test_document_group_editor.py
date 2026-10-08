@@ -152,3 +152,25 @@ def test_no_selection_leaves_rename_recolor_remove_as_no_ops(qapp):
         assert editor.groups() == _starting_groups()
     finally:
         editor.close()
+
+
+def test_editor_edits_each_environments_groups(qapp, monkeypatch):
+    usfm = (DocumentGroup("A", "Bibles", "#e06c75"),)
+    editor = DocumentGroupEditor(
+        usfm,
+        environments=[("plain_text", "Plain Text", _starting_groups()), ("usfm", "USFM", usfm)],
+        environment="usfm",
+    )
+    try:
+        assert editor.environment_choice.currentText() == "USFM"
+        assert editor.groups() == usfm and editor._list.count() == 1
+
+        editor.set_environment("plain_text")
+        assert editor.groups() == _starting_groups()
+        editor._list.setCurrentRow(0)
+        monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+        editor._remove()
+
+        assert editor.groups_by_environment() == {"plain_text": _starting_groups()[1:], "usfm": usfm}
+    finally:
+        editor.close()

@@ -529,7 +529,7 @@ class EnvironmentBar(QToolBar):
         try:
             self.group.clear()
             self.group.addItem("Ungrouped", None)
-            for group in window._groups:
+            for group in window.groups_for(self.environment_key):
                 self.group.addItem(swatch(group.color), group.name, group.id)
             self.group.insertSeparator(self.group.count())
             self.group.addItem("New Group…", self._NEW_GROUP)
@@ -546,10 +546,10 @@ class EnvironmentBar(QToolBar):
         window = self._window
         if data == self._MANAGE_GROUPS:
             self._refresh_group_choices()
-            window.show_document_group_editor()
+            window.show_document_group_editor(self.environment_key)
             return
         if data == self._NEW_GROUP:
-            created = window._groups_and_recent_files.new_group_for(None)
+            created = window._groups_and_recent_files.new_group_for(None, self.environment_key)
             if created is None:
                 self._refresh_group_choices()
                 return
@@ -558,7 +558,7 @@ class EnvironmentBar(QToolBar):
 
     def window_title_prefix(self) -> str:
         label = descriptor_for_key(self.environment_key).label
-        group = self._window._group_by_id(self.group_id) if self.group_id else None
+        group = self._window._group_by_id(self.group_id, self.environment_key)
         prefix = f"{label} — {group.name if group is not None else 'Ungrouped'}"
         project = self._project()
         return prefix if project is None else f"{prefix} — {project.name}"

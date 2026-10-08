@@ -39,8 +39,9 @@ def _write(folder: Path, name: str, text: str) -> Path:
 
 
 def _group(window, service, view, group_id: str) -> None:
-    if window._group_by_id(group_id) is None:
-        window._groups = window._groups + (DocumentGroup(group_id, f"Group {group_id}", "#61afef"),)
+    key = window._environment.environment_key_for(view.document)
+    if window._group_by_id(group_id, key) is None:
+        window._set_groups(key, window.groups_for(key) + (DocumentGroup(group_id, f"Group {group_id}", "#61afef"),))
     entry = service.documents.entry_for_view(view.view_id)
     window._set_document_group(entry.document_id, group_id)
 
@@ -406,12 +407,15 @@ def test_assigning_an_environment_moves_the_file_into_its_window(desktop, tmp_pa
 
     main._environment.set_document_environment("usfm", view)
 
-    window = service.environment_window_for("usfm", "A")
+    # Plain Text's group A isn't one of USFM's groups (round 3 T2): the file
+    # leaves its group as it changes environment.
+    assert service.documents.entry_for_view(view.view_id).group_id is None
+    window = service.environment_window_for("usfm", None)
     assert window is not None and window.view_for_id(view.view_id) is view
 
     # Re-assigned inside an environment window: it moves to the new one.
     window._environment.set_document_environment("plain_text", view)
-    plain = service.environment_window_for("plain_text", "A")
+    plain = service.environment_window_for("plain_text", None)
     assert plain is not None and plain.view_for_id(view.view_id) is view
 
 
@@ -880,7 +884,7 @@ def test_new_group_from_the_dropdown(desktop, tmp_path: Path, monkeypatch):
     _choose_group(window._environment_bar, "New Group…")
 
     group_id = window.environment_window[1]
-    assert window._group_by_id(group_id).name == "Translators"
+    assert window._group_by_id(group_id, "usfm").name == "Translators"
     assert service.documents.entry_for_view(view.view_id).group_id == group_id
     assert window._environment_bar.group.currentText() == "Translators"
 

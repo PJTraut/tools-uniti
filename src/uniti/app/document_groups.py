@@ -1,6 +1,7 @@
 """Qt-free document group (tag) profiles and their atomic storage."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -139,3 +140,67 @@ class DocumentGroupStore:
         if len(encoded) > MAX_BYTES:
             raise ValueError(f'Document group file exceeds {MAX_BYTES // 1024} KiB')
         return atomic_write_json(self.path, payload)
+
+
+GROUPS_FILE = 'groups.json'
+LEGACY_ENVIRONMENT = 'plain_text'
+
+
+class EnvironmentGroups:
+    """Each environment's own document groups (field test round 3, T2).
+
+    One `DocumentGroupStore` per environment, at `groups.json` in the folder
+    `folder_for(environment_key)` names (the environment's user
+    configuration folder); with no folder the groups live in memory only.
+    A missing file starts from the defaults (A, B, C), except Plain Text's,
+    which starts from the app-wide groups used before T2 (`legacy`, decision
+    D3). The legacy file is left in place and no longer written.
+    """
+
+    def __init__(
+        self,
+        folder_for: Callable[[str], Path | None] | None = None,
+        legacy: DocumentGroupStore | None = None,
+    ) -> None:
+        self._folder_for = folder_for
+        self._legacy = legacy
+        self._cache: dict[str, tuple[DocumentGroup, ...]] = {}
+
+    def store(self, environment_key: str) -> DocumentGroupStore | None:
+        folder = None if self._folder_for is None else self._folder_for(environment_key)
+        return None if folder is None else DocumentGroupStore(Path(folder) / GROUPS_FILE)
+
+    def groups(self, environment_key: str) -> tuple[DocumentGroup, ...]:
+        cached = self._cache.get(environment_key)
+        if cached is None:
+            cached = self._cache[environment_key] = self._load(environment_key)
+        return cached
+
+    def _load(self, environment_key: str) -> tuple[DocumentGroup, ...]:
+        store = self.store(environment_key)
+        if store is not None and store.path.exists():
+            return store.load()
+        if environment_key == LEGACY_ENVIRONMENT and self._legacy is not None:
+            return self._legacy.load()
+        return default_groups()
+
+    def save(self, environment_key: str, groups: tuple[DocumentGroup, ...]) -> None:
+        """Validate, persist and remember `environment_key`'s groups."""
+
+        groups = tuple(groups)
+        _validate(groups)
+        store = self.store(environment_key)
+        if store is not None:
+            store.path.parent.mkdir(parents=True, exist_ok=True)
+            store.save(groups)
+        self._cache[environment_key] = groups
+
+    def set_cached(self, environment_key: str, groups: tuple[DocumentGroup, ...]) -> None:
+        """Replace the in-memory groups without writing them."""
+
+        self._cache[environment_key] = tuple(groups)
+
+    def group(self, environment_key: str, group_id: str | None) -> DocumentGroup | None:
+        if group_id is None:
+            return None
+        return next((group for group in self.groups(environment_key) if group.id == group_id), None)

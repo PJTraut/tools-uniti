@@ -44,6 +44,15 @@ Ways a file gets there:
 
 Environment windows come back when UNITI restarts.
 
+## Groups
+
+**Each environment has its own groups**, starting from A, B and C. USFM's group A and Plain Text's group A are two different groups, each with its own name, colour and saved files.
+- A file's group menu (right-click its tab or its text → **Document Group**) lists the groups of the file's environment.
+- **Manage Groups…** edits one environment's groups at a time. Choose the environment at the top; it starts at the current window's or file's.
+- Choosing another environment for a file (**Environment for This Document**) takes it out of its group.
+- The groups you had before environments had their own are Plain Text's groups now.
+- Each environment's groups are saved in `groups.json` in its configuration folder (see [Configuration](#configuration)).
+
 A file in an environment window belongs to that window's group.
 - **One file:** give it another group (right-click its tab or its text → **Document Group**) and it moves to that group's environment window. **Dock** still takes it back where it came from.
 - **The whole window:** use the **Group** dropdown on the toolbar. Choosing a group regroups every file in the window.
@@ -105,6 +114,6 @@ Saving a stylesheet (`.sty`), a versification file (`.vrs`), `Settings.xml` or `
 | Windows | `%LOCALAPPDATA%\UNITI\Environments\<Environment>\` |
 | Linux | `$XDG_CONFIG_HOME/uniti/Environments/<Environment>/` (usually `~/.config/uniti/…`) |
 
-Today only USFM reads files from it: your `uniti.sty` and your `Versification/*.vrs` files. See [usfm.md](usfm.md#configuration-files).
+Every environment keeps its groups there (`groups.json`). USFM also reads your `uniti.sty` and your `Versification/*.vrs` files. See [usfm.md](usfm.md#configuration-files).
 
 UNITI writes into a project's folder only when you ask it to: **Create** in Configuration Files…, or saving a file you opened. It never writes there by itself (ADR-0018).

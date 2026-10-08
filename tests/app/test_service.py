@@ -651,7 +651,7 @@ def test_document_group_assignment_updates_registry_and_tab_icon(tmp_path: Path)
     try:
         view = window.open_path(path)
         assert view is not None
-        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        window._set_groups("plain_text", (DocumentGroup("A", "A", "#e06c75"),))
         entry = service.documents.entry_for_view(view.view_id)
         leaf = window.panes.leaf_for_view(view.view_id)
         index = leaf.index_of(view.view_id)
@@ -715,10 +715,10 @@ def test_group_menu_lists_groups_and_marks_the_assigned_one(
     monkeypatch.setattr(QMenu, "popup", lambda self, *a, **k: captured.append(self))
     try:
         view = window.open_path(path)
-        window._groups = (
+        window._set_groups("plain_text", (
             DocumentGroup("A", "A", "#e06c75"),
             DocumentGroup("B", "B", "#61afef"),
-        )
+        ))
         entry = service.documents.entry_for_view(view.view_id)
         service.documents.set_group(entry.document_id, "B")
 
@@ -773,10 +773,10 @@ def test_group_menu_offers_open_saved_for_groups_with_a_saved_set(
     monkeypatch.setattr(QMenu, "popup", lambda self, *a, **k: captured.append(self))
     try:
         view = window.open_path(path)
-        window._groups = (
+        window._set_groups("plain_text", (
             DocumentGroup("A", "A", "#e06c75"),
             DocumentGroup("B", "B", "#61afef", saved_paths=("/tmp/saved.sfm",)),
-        )
+        ))
 
         window._show_group_menu(view.view_id, QPoint(10, 10))
 
@@ -811,7 +811,7 @@ def test_save_group_persists_open_paths_and_open_group_reopens_and_retags(
         path.write_text("content", encoding="utf-8")
     window = service.new_window()
     try:
-        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        window._set_groups("plain_text", (DocumentGroup("A", "A", "#e06c75"),))
         first_view = window.open_path(first)
         second_view = window.open_path(second)
         window.open_path(unrelated)
@@ -819,16 +819,16 @@ def test_save_group_persists_open_paths_and_open_group_reopens_and_retags(
             entry = service.documents.entry_for_view(view.view_id)
             service.documents.set_group(entry.document_id, "A")
 
-        window._save_group("A")
+        window._save_group("A", "plain_text")
 
-        saved = next(group for group in window._groups if group.id == "A")
+        saved = next(group for group in window.groups_for("plain_text") if group.id == "A")
         assert set(saved.saved_paths) == {str(first), str(second)}
-        assert window._group_store.load()[0].saved_paths == saved.saved_paths
+        assert window._environment_groups.store("plain_text").load()[0].saved_paths == saved.saved_paths
 
         window.close_all_documents(force=True)
         assert len(window.view_ids) == 0
 
-        window._open_group("A")
+        window._open_group("A", "plain_text")
 
         assert len(window.view_ids) == 2
         reopened_paths = set()
@@ -859,7 +859,7 @@ def test_close_group_closes_only_that_groups_tabs(tmp_path: Path):
         path.write_text("content", encoding="utf-8")
     window = service.new_window()
     try:
-        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        window._set_groups("plain_text", (DocumentGroup("A", "A", "#e06c75"),))
         grouped_a_view = window.open_path(grouped_a)
         grouped_b_view = window.open_path(grouped_b)
         ungrouped_view = window.open_path(ungrouped)
@@ -867,7 +867,7 @@ def test_close_group_closes_only_that_groups_tabs(tmp_path: Path):
             entry = service.documents.entry_for_view(view.view_id)
             service.documents.set_group(entry.document_id, "A")
 
-        window._close_group("A")
+        window._close_group("A", "plain_text")
 
         assert len(window.view_ids) == 1
         remaining_entry = service.documents.entry_for_view(window.view_ids[0])
@@ -897,7 +897,7 @@ def test_recent_files_menu_shows_group_swatch_and_reopening_restores_the_group(
     path.write_text("content", encoding="utf-8")
     window = service.new_window()
     try:
-        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        window._set_groups("plain_text", (DocumentGroup("A", "A", "#e06c75"),))
         view = window.open_path(path)
         entry = service.documents.entry_for_view(view.view_id)
         window._set_document_group(entry.document_id, "A")
@@ -952,7 +952,7 @@ def test_close_group_prompts_per_unsaved_document_and_stops_on_cancel(
         lambda *a, **k: QMessageBox.StandardButton.Cancel,
     )
     try:
-        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        window._set_groups("plain_text", (DocumentGroup("A", "A", "#e06c75"),))
         modified_view = window.open_path(modified)
         clean_view = window.open_path(clean)
         modified_view.document.insert(0, "x")
@@ -961,7 +961,7 @@ def test_close_group_prompts_per_unsaved_document_and_stops_on_cancel(
             entry = service.documents.entry_for_view(view.view_id)
             service.documents.set_group(entry.document_id, "A")
 
-        window._close_group("A")
+        window._close_group("A", "plain_text")
 
         # Close proceeds in reverse-open order (matching close_all_documents):
         # "clean" (not modified, no prompt) closes first; "modified" then
@@ -989,12 +989,12 @@ def test_manage_groups_dialog_persists_and_clears_removed_group_assignment(
     window = service.new_window()
     try:
         view = window.open_path(path)
-        window._groups = (DocumentGroup("A", "A", "#e06c75"),)
+        window._set_groups("plain_text", (DocumentGroup("A", "A", "#e06c75"),))
         entry = service.documents.entry_for_view(view.view_id)
         service.documents.set_group(entry.document_id, "A")
 
         class FakeEditor:
-            def __init__(self, groups, parent=None) -> None:
+            def __init__(self, groups, parent=None, **_kwargs) -> None:
                 self._groups = groups
 
             def exec(self) -> bool:
@@ -1003,15 +1003,18 @@ def test_manage_groups_dialog_persists_and_clears_removed_group_assignment(
             def groups(self):
                 return ()
 
+            def groups_by_environment(self):
+                return {"plain_text": ()}
+
         monkeypatch.setattr(
             "uniti.ui.document_group_editor.DocumentGroupEditor", FakeEditor
         )
 
         window.show_document_group_editor()
 
-        assert window._groups == ()
+        assert window.groups_for("plain_text") == ()
         assert entry.group_id is None
-        assert window._group_store.load() == ()
+        assert window._environment_groups.store("plain_text").load() == ()
     finally:
         for _window_id, open_window in service.windows.items:
             open_window.close_all_documents(force=True)
@@ -1347,7 +1350,7 @@ def test_open_folder_by_type_opens_matching_files_and_assigns_a_new_group(
         opened_names = sorted(Path(v.document.path).name for v in window.views)
         assert opened_names == ["exo.sfm", "gen.sfm", "lev.sfm"]
 
-        groups = {group.name: group for group in window._groups}
+        groups = {group.name: group for group in window.groups_for("plain_text")}
         assert "Bible" in groups
         bible_group_id = groups["Bible"].id
         for view in window.views:
@@ -1382,11 +1385,11 @@ def test_open_folder_by_type_with_blank_group_name_leaves_documents_ungrouped(
     app, service, _recovery = _desktop_service(tmp_path)
     try:
         window = service.new_window()
-        groups_before = window._groups
+        groups_before = window.groups_for("plain_text")
         window.open_folder_by_type()
 
         assert len(window.views) == 2
-        assert window._groups == groups_before
+        assert window.groups_for("plain_text") == groups_before
         for view in window.views:
             entry = service.documents.entry_for_view(view.view_id)
             assert entry.group_id is None
@@ -1421,11 +1424,11 @@ def test_open_folder_by_type_assigns_to_an_existing_group_by_name(
     app, service, _recovery = _desktop_service(tmp_path)
     try:
         window = service.new_window()
-        groups_before = window._groups
+        groups_before = window.groups_for("plain_text")
         window.open_folder_by_type()
 
-        assert window._groups == groups_before  # no new group created
-        group_a_id = next(g.id for g in window._groups if g.name == "A")
+        assert window.groups_for("plain_text") == groups_before  # no new group created
+        group_a_id = next(g.id for g in window.groups_for("plain_text") if g.name == "A")
         assert len(window.views) == 2
         for view in window.views:
             entry = service.documents.entry_for_view(view.view_id)
@@ -2600,7 +2603,7 @@ def test_grouped_tabs_show_group_slots_and_a_recent_strip(tmp_path: Path):
             path = tmp_path / f"file-{index}.txt"
             path.write_text(str(index), encoding="utf-8")
             views.append(window.open_path(path))
-        window._groups = (DocumentGroup("A", "Alpha", "#e06c75"),)
+        window._set_groups("plain_text", (DocumentGroup("A", "Alpha", "#e06c75"),))
         for view in views[:3]:
             entry = service.documents.entry_for_view(view.view_id)
             window._set_document_group(entry.document_id, "A")
@@ -2617,12 +2620,12 @@ def test_grouped_tabs_show_group_slots_and_a_recent_strip(tmp_path: Path):
         assert len(visible) <= RECENT_LIMIT + 1
         assert views[-1].document.path.name in visible
 
-        alpha_menu = bar.buttons["A"].menu()
+        alpha_menu = bar.buttons[("plain_text", "A")].menu()
         assert [action.text() for action in alpha_menu.actions()] == ["file-0.txt", "file-1.txt", "file-2.txt"]
         alpha_menu.actions()[0].trigger()
         assert window.current_view is views[0]
         bar = leaf.cornerWidget(Qt.Corner.TopLeftCorner)
-        assert bar.buttons["A"].isChecked() is True
+        assert bar.buttons[("plain_text", "A")].isChecked() is True
         assert "file-0.txt" in visible_tab_texts(leaf)
 
         window._grouped_tabs_action.setChecked(False)
@@ -2651,13 +2654,13 @@ def test_dragging_a_group_slot_off_the_bar_moves_the_group_to_a_new_window(tmp_p
             path = tmp_path / f"g-{index}.txt"
             path.write_text(str(index), encoding="utf-8")
             views.append(window.open_path(path))
-        window._groups = (DocumentGroup("A", "Alpha", "#e06c75"),)
+        window._set_groups("plain_text", (DocumentGroup("A", "Alpha", "#e06c75"),))
         for view in views[:2]:
             window._set_document_group(service.documents.entry_for_view(view.view_id).document_id, "A")
         window._grouped_tabs_action.setChecked(True)
         app.processEvents()
         leaf = window.panes.leaf_for_view(views[3].view_id)
-        button = leaf.cornerWidget(Qt.Corner.TopLeftCorner).buttons["A"]
+        button = leaf.cornerWidget(Qt.Corner.TopLeftCorner).buttons[("plain_text", "A")]
 
         QTest.mousePress(button, Qt.MouseButton.LeftButton, pos=QPoint(5, 5))
         QTest.mouseMove(button, QPoint(5, 200))

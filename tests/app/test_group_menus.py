@@ -85,11 +85,13 @@ def test_new_group_creates_assigns_and_reaches_every_window(desktop, tmp_path: P
     next(a for a in _group_submenu(first._editor_context_menu(view)).actions() if a.text() == "New Group…").trigger()
 
     entry = service.documents.entry_for_view(view.view_id)
-    group = first._group_by_id(entry.group_id)
+    group = first._group_by_id(entry.group_id, "usfm")
     assert group is not None and group.name == "Translators"
-    assert [g.name for g in first._group_store.load()][-1] == "Translators"
+    # Saved with USFM's own groups (round 3 T2), not Plain Text's.
+    assert [g.name for g in first._environment_groups.store("usfm").load()][-1] == "Translators"
+    assert "Translators" not in [g.name for g in first.groups_for("plain_text")]
     # The other window knows the new group straight away.
-    assert second._group_by_id(group.id) is not None
+    assert second._group_by_id(group.id, "usfm") is not None
     assert "Translators" in _texts(_group_submenu(second._editor_context_menu(other)))
 
 
@@ -109,3 +111,57 @@ def test_regrouping_a_file_in_an_environment_window_moves_it_to_that_groups_wind
     # Dock still goes back to where the file came from.
     service.dock_view(view.view_id)
     assert service.windows.window_for_view(view.view_id) is main
+
+
+def test_each_file_offers_its_own_environments_groups(desktop, tmp_path: Path, monkeypatch):
+    """Round 3 T2: groups belong to an environment."""
+
+    app, service = desktop
+    window = service.new_window()
+    book = _open(window, tmp_path / "proj" / "GEN.usfm")
+    notes = _open(window, tmp_path / "notes" / "todo.txt", "plain words\n")
+    window._groups_and_recent_files._publish_groups(
+        "plain_text", window.groups_for("plain_text") + (DocumentGroup("work", "Work", "#123456"),)
+    )
+
+    assert "Work" in _texts(_group_submenu(window._editor_context_menu(notes)))
+    assert "Work" not in _texts(_group_submenu(window._editor_context_menu(book)))
+
+    # The same id in two environments is two groups: renaming USFM's A
+    # leaves Plain Text's A alone.
+    usfm = window.groups_for("usfm")
+    window._groups_and_recent_files._publish_groups("usfm", (DocumentGroup("A", "Bibles", usfm[0].color),) + usfm[1:])
+    for view, group_id in ((book, "A"), (notes, "A")):
+        window._set_document_group(service.documents.entry_for_view(view.view_id).document_id, group_id)
+    assert _group_submenu(window._editor_context_menu(book)).title() == "Document Group (Bibles)"
+    assert _group_submenu(window._editor_context_menu(notes)).title() == "Document Group (A)"
+
+
+def test_manage_groups_starts_at_the_files_environment(desktop, tmp_path: Path, monkeypatch):
+    app, service = desktop
+    window = service.new_window()
+    book = _open(window, tmp_path / "proj" / "GEN.usfm")
+    window._select_view(book)
+    seen = {}
+
+    class FakeEditor:
+        def __init__(self, groups, parent=None, *, environments=None, environment=None) -> None:
+            seen["environment"] = environment
+            seen["labels"] = [label for _key, label, _groups in environments]
+
+        def exec(self) -> bool:
+            return True
+
+        def groups_by_environment(self):
+            return {"usfm": (DocumentGroup("A", "Only", "#e06c75"),)}
+
+    monkeypatch.setattr("uniti.ui.document_group_editor.DocumentGroupEditor", FakeEditor)
+    entry = service.documents.entry_for_view(book.view_id)
+    window._set_document_group(entry.document_id, "B")
+
+    window.show_document_group_editor()
+
+    assert seen["environment"] == "usfm" and "Plain Text" in seen["labels"] and "USFM" in seen["labels"]
+    assert [group.name for group in window.groups_for("usfm")] == ["Only"]
+    assert entry.group_id is None  # its group B was removed
+    assert [group.id for group in window.groups_for("plain_text")] == ["A", "B", "C"]

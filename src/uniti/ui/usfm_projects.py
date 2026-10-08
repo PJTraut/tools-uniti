@@ -121,7 +121,7 @@ class UsfmProjectController(QObject):
         """The remembered group, else the active USFM window's, else none."""
 
         if remembered is not None and (
-            remembered.group_id is None or self._window._group_by_id(remembered.group_id) is not None
+            remembered.group_id is None or self._window._group_by_id(remembered.group_id, USFM) is not None
         ):
             return remembered.group_id
         identity = self._window.environment_window

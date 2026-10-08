@@ -263,15 +263,9 @@ class UNITIMainWindow(QMainWindow):
         self._theme_store = self._settings_store.theme_profiles if self._settings_store is not None else None
         self._theme_state = (self._theme_store.load(self._settings.theme_mode)
                              if self._theme_store is not None else ThemeProfileState(active_id=self._settings.theme_mode))
-        from uniti.app.document_groups import default_groups
-        self._group_store = (
-            self._settings_store.document_groups
-            if self._settings_store is not None
-            else None
-        )
-        self._groups = (
-            self._group_store.load() if self._group_store is not None else default_groups()
-        )
+        # Each environment has its own groups (round 3 T2), shared by the
+        # service's windows.
+        self._environment_groups = self._make_environment_groups(service)
         self._recent_files_store = (
             self._settings_store.recent_files
             if self._settings_store is not None
@@ -1820,23 +1814,61 @@ class UNITIMainWindow(QMainWindow):
     def _set_document_group(self, document_id: str, group_id: str | None) -> None:
         return self._groups_and_recent_files._set_document_group(document_id, group_id)
 
-    def _group_by_id(self, group_id: str) -> object | None:
-        return self._groups_and_recent_files._group_by_id(group_id)
+    def _make_environment_groups(self, service):
+        from uniti.app.document_groups import EnvironmentGroups
+        from uniti.core.environments.user_config import ENVIRONMENTS_FOLDER
 
-    def _save_group(self, group_id: str) -> None:
-        return self._groups_and_recent_files._save_group(group_id)
+        shared = getattr(service, "_environment_groups", None) if service is not None else None
+        if shared is not None:
+            return shared
+        store = self._settings_store
+        if store is None:
+            groups = EnvironmentGroups()
+        else:
+            root = store.path.parent / ENVIRONMENTS_FOLDER
+            groups = EnvironmentGroups(
+                lambda key: root / descriptor_for_key(key).label, legacy=store.document_groups
+            )
+        if service is not None:
+            service._environment_groups = groups
+        return groups
 
-    def _close_group(self, group_id: str) -> None:
-        return self._groups_and_recent_files._close_group(group_id)
+    def groups_for(self, environment_key: str) -> tuple:
+        """`environment_key`'s document groups (round 3 T2)."""
 
-    def _open_group(self, group_id: str) -> None:
-        return self._groups_and_recent_files._open_group(group_id)
+        return self._environment_groups.groups(environment_key)
+
+    def _set_groups(self, environment_key: str, groups) -> None:
+        """Replace `environment_key`'s groups in memory, without saving."""
+
+        self._environment_groups.set_cached(environment_key, groups)
+
+    def group_environment_key(self) -> str:
+        """The environment whose groups this window's group commands use:
+        an environment window's own, else the current file's."""
+
+        if self.environment_window is not None:
+            return self.environment_window[0]
+        view = self.current_view
+        return PLAIN_ENVIRONMENT_KEY if view is None else self._environment.environment_key_for(view.document)
+
+    def _group_by_id(self, group_id: str | None, environment_key: str) -> object | None:
+        return self._groups_and_recent_files._group_by_id(group_id, environment_key)
+
+    def _save_group(self, group_id: str, environment_key: str) -> None:
+        return self._groups_and_recent_files._save_group(group_id, environment_key)
+
+    def _close_group(self, group_id: str, environment_key: str) -> None:
+        return self._groups_and_recent_files._close_group(group_id, environment_key)
+
+    def _open_group(self, group_id: str, environment_key: str) -> None:
+        return self._groups_and_recent_files._open_group(group_id, environment_key)
 
     def _show_group_menu(self, view_id: str, position: QPoint) -> None:
         return self._groups_and_recent_files._show_group_menu(view_id, position)
 
-    def show_document_group_editor(self) -> None:
-        return self._groups_and_recent_files.show_document_group_editor()
+    def show_document_group_editor(self, environment_key: str | None = None) -> None:
+        return self._groups_and_recent_files.show_document_group_editor(environment_key)
 
     def show_environment_assignment_editor(self) -> None:
         """View > File Type Environments… (ADR-0014): which extensions open
@@ -2073,11 +2105,11 @@ class UNITIMainWindow(QMainWindow):
 
     _OPEN_FOLDER_WARN_THRESHOLD = 100
 
-    def _next_group_color(self) -> str:
-        return self._groups_and_recent_files._next_group_color()
+    def _next_group_color(self, environment_key: str) -> str:
+        return self._groups_and_recent_files._next_group_color(environment_key)
 
-    def _unique_group_id(self, name: str) -> str:
-        return self._groups_and_recent_files._unique_group_id(name)
+    def _unique_group_id(self, name: str, environment_key: str) -> str:
+        return self._groups_and_recent_files._unique_group_id(name, environment_key)
 
     def open_folder_by_type(self) -> None:
         """BF-029/ADR-0009: open every file of one chosen type from a folder
@@ -2139,44 +2171,6 @@ class UNITIMainWindow(QMainWindow):
             if proceed != QMessageBox.StandardButton.Yes:
                 return
 
-        group_id: str | None = None
-        if self._service is not None:
-            no_group_label = "No Group"
-            new_group_label = "New Group…"
-            options = (
-                [no_group_label]
-                + [group.name for group in self._groups]
-                + [new_group_label]
-            )
-            choice, accepted = QInputDialog.getItem(
-                self,
-                "Assign to Group",
-                "Assign the opened documents to a group:",
-                options,
-                editable=False,
-            )
-            if accepted and choice == new_group_label:
-                name, name_accepted = QInputDialog.getText(
-                    self, "New Group", "Group name:"
-                )
-                name = name.strip() if name_accepted else ""
-                if name:
-                    from uniti.app.document_groups import DocumentGroup
-
-                    new_group = DocumentGroup(
-                        self._unique_group_id(name), name, self._next_group_color()
-                    )
-                    self._groups = self._groups + (new_group,)
-                    if self._group_store is not None:
-                        self._group_store.save(self._groups)
-                    group_id = new_group.id
-            elif accepted and choice != no_group_label:
-                existing_group = next(
-                    (group for group in self._groups if group.name == choice), None
-                )
-                if existing_group is not None:
-                    group_id = existing_group.id
-
         # One question for the whole batch (R6), not one per file. Files
         # outside a project open as plain text without it (T1).
         open_mode: OpenMode | None = OpenMode.HERE
@@ -2200,6 +2194,44 @@ class UNITIMainWindow(QMainWindow):
             if open_mode is None:
                 return
 
+        # The group is one of the environment the files will be in (T2).
+        if self.environment_window is not None:
+            batch_key = self.environment_window[0]
+        elif asked and open_mode is not OpenMode.PLAIN_TEXT:
+            batch_key = self._file_environment_manager.resolve_path_key(asked[0], overrides)
+        else:
+            batch_key = PLAIN_ENVIRONMENT_KEY
+        group_id: str | None = None
+        if self._service is not None:
+            groups = self.groups_for(batch_key)
+            no_group_label = "No Group"
+            new_group_label = "New Group…"
+            options = [no_group_label] + [group.name for group in groups] + [new_group_label]
+            choice, accepted = QInputDialog.getItem(
+                self,
+                "Assign to Group",
+                f"Assign the opened documents to a {descriptor_for_key(batch_key).label} group:",
+                options,
+                editable=False,
+            )
+            if accepted and choice == new_group_label:
+                name, name_accepted = QInputDialog.getText(
+                    self, "New Group", "Group name:"
+                )
+                name = name.strip() if name_accepted else ""
+                if name:
+                    from uniti.app.document_groups import DocumentGroup
+
+                    new_group = DocumentGroup(
+                        self._unique_group_id(name, batch_key), name, self._next_group_color(batch_key)
+                    )
+                    self._groups_and_recent_files._publish_groups(batch_key, groups + (new_group,))
+                    group_id = new_group.id
+            elif accepted and choice != no_group_label:
+                existing_group = next((group for group in groups if group.name == choice), None)
+                if existing_group is not None:
+                    group_id = existing_group.id
+
         opened = 0
         failures: list[str] = []
         for path in matching:
@@ -2215,7 +2247,7 @@ class UNITIMainWindow(QMainWindow):
             opened += 1
             if group_id is not None and self._service is not None:
                 entry = self._service.documents.entry_for_view(view.view_id)
-                if entry is not None:
+                if entry is not None and self._environment.environment_key_for(view.document) == batch_key:
                     self._set_document_group(entry.document_id, group_id)
 
         if outside:

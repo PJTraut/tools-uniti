@@ -167,6 +167,7 @@ class EnvironmentController:
             self._sync_document_environment_menu(view)
             return
         entry = self._entry_for(document)
+        previous = self.environment_key_for(document)
         if entry is not None:
             self._window._service.documents.set_environment_override(entry.document_id, environment_key)
         elif environment_key is None:
@@ -174,6 +175,14 @@ class EnvironmentController:
         else:
             self._standalone_overrides[document] = environment_key
         key = self.environment_key_for(document)
+        if entry is not None and key != previous and entry.group_id is not None:
+            # Groups belong to an environment (round 3 T2): another
+            # environment's group of the same id is a different group.
+            self._window._service.documents.set_group(entry.document_id, None)
+            recent = self._window._recent_files_store
+            if recent is not None:
+                recent.record_group(str(entry.canonical_path), None)
+            self._window._refresh_group_indicator(view.view_id)
         self._window._refresh_all_syntax_profiles()
         self._window._environment_state_changed(view)
         window = self._window

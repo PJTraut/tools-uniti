@@ -36,16 +36,18 @@ if TYPE_CHECKING:
 
 RECENT_LIMIT = 5
 _SAVED_ELIDE = "unitiUngroupedElideMode"
-UNGROUPED = ""
+# A slot is (environment key, group id): each environment has its own
+# groups (round 3 T2), and an ordinary window can mix environments.
+UNGROUPED = ("", "")
 
 
 class GroupSlotButton(QToolButton):
     """A group slot: click opens its file dropdown; dragging it off the bar
     detaches the whole group (refinement 5's group half)."""
 
-    detachRequested = Signal(str)
+    detachRequested = Signal(object)
 
-    def __init__(self, group_id: str, parent: QWidget | None = None) -> None:
+    def __init__(self, group_id: tuple[str, str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.group_id = group_id
         self._press: QPoint | None = None
@@ -90,7 +92,7 @@ class GroupSlotBar(QWidget):
         self.slot_layout = QHBoxLayout(self)
         self.slot_layout.setContentsMargins(2, 0, 6, 0)
         self.slot_layout.setSpacing(2)
-        self.buttons: dict[str, QToolButton] = {}
+        self.buttons: dict[tuple[str, str], QToolButton] = {}
 
     def clear(self) -> None:
         while self.slot_layout.count():
@@ -119,26 +121,35 @@ class GroupedTabsController:
 
     # --- model --------------------------------------------------------------
 
-    def _group_of(self, view_id: str) -> str:
-        service = self._window._service
+    def _group_of(self, view_id: str) -> tuple[str, str]:
+        window = self._window
+        service = window._service
         if service is None:
             return UNGROUPED
         entry = service.documents.entry_for_view(view_id)
         if entry is None or entry.group_id is None:
             return UNGROUPED
-        return entry.group_id if self._window._group_by_id(entry.group_id) is not None else UNGROUPED
+        key = window._groups_and_recent_files._key_for_document(entry.document_id)
+        return (key, entry.group_id) if window._group_by_id(entry.group_id, key) is not None else UNGROUPED
 
-    def slots_for(self, leaf: "PaneLeaf") -> list[tuple[str, list[str]]]:
-        """[(group id or UNGROUPED, [view ids in tab order])], groups in the
-        window's group order, Ungrouped last."""
+    def slots_for(self, leaf: "PaneLeaf") -> list[tuple[tuple[str, str], list[str]]]:
+        """[((environment key, group id) or UNGROUPED, [view ids in tab
+        order])]: per environment (in first-use order), its groups in their
+        order; Ungrouped last."""
 
-        members: dict[str, list[str]] = {}
+        members: dict[tuple[str, str], list[str]] = {}
         for view_id in leaf.view_ids:
             members.setdefault(self._group_of(view_id), []).append(view_id)
-        ordered = [group.id for group in self._window._groups if group.id in members]
+        environments = list(dict.fromkeys(slot[0] for slot in members if slot != UNGROUPED))
+        ordered = [
+            (key, group.id)
+            for key in environments
+            for group in self._window.groups_for(key)
+            if (key, group.id) in members
+        ]
         if UNGROUPED in members:
             ordered.append(UNGROUPED)
-        return [(group_id, members[group_id]) for group_id in ordered]
+        return [(slot, members[slot]) for slot in ordered]
 
     def recent_for(self, leaf: "PaneLeaf") -> list[str]:
         present = set(leaf.view_ids)
@@ -207,11 +218,17 @@ class GroupedTabsController:
     def _populate_slots(self, bar: GroupSlotBar, leaf: "PaneLeaf", selected: str | None) -> None:
         bar.clear()
         helpers = self._window._groups_and_recent_files
-        for group_id, view_ids in self.slots_for(leaf):
-            group = self._window._group_by_id(group_id) if group_id else None
+        slots = self.slots_for(leaf)
+        mixed = len({slot[0] for slot, _ids in slots if slot != UNGROUPED}) > 1
+        for group_id, view_ids in slots:
+            group = self._window._group_by_id(group_id[1], group_id[0]) if group_id != UNGROUPED else None
             button = GroupSlotButton(group_id, bar)
             button.detachRequested.connect(lambda group_id, leaf=leaf: self.detach_group(leaf, group_id))
             name = group.name if group is not None else "Ungrouped"
+            if group is not None and mixed:
+                from uniti.core.environments.catalog import descriptor_for_key
+
+                name = f"{name} · {descriptor_for_key(group_id[0]).label}"
             button.setText(f"{name} ({len(view_ids)})")
             button.setToolTip(f"{name}: click to choose a file; drag off the bar to move the group to a new window")
             button.setIcon(helpers._group_swatch_icon(group.color) if group is not None else QIcon())
@@ -230,7 +247,7 @@ class GroupedTabsController:
             button.show()
             bar.buttons[group_id] = button
 
-    def detach_group(self, leaf: "PaneLeaf", group_id: str):
+    def detach_group(self, leaf: "PaneLeaf", group_id: tuple[str, str]):
         """Move every file of `group_id` in this split into one new window."""
 
         service = self._window._service

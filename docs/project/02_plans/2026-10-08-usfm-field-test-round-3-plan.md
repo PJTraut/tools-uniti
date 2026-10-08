@@ -91,6 +91,21 @@ Tests:
   - the same id in two environments is two groups;
   - Manage Groups… edits one environment's groups.
 
+**Implemented 2026-10-08.**
+- **`document_groups.EnvironmentGroups`**: one `DocumentGroupStore` per environment at `<settings folder>/Environments/<Environment>/groups.json`. It's cached, and shared by a service's windows (`UNITIService._environment_groups`). A missing file gives A, B, C; Plain Text's falls back to the old `document-groups.json` (D3), which is never written again.
+- **The window:** `groups_for(key)`, `_set_groups(key, groups)`, `_group_by_id(group_id, key)` and `group_environment_key()` (an environment window's environment, else the current file's) replace `_groups` and `_group_store`.
+- **Per environment:** the group menus, New Group…, Save / Close / Open Saved Group (which act only on files of that environment), the toolbar's Group dropdown, Recent Files' swatches (by the environment the path resolves to), recent projects' remembered group (USFM), and Grouped Tabs, whose slots are `(environment, group)` and are labelled "A · USFM" when a split mixes environments.
+- **Manage Groups…** (`DocumentGroupEditor(…, environments=…, environment=…)`) has an environment chooser and returns every environment's groups. Removing a group clears it only from that environment's files.
+- **Open Folder by Type** asks R6's question first, then offers the groups of the environment the files will be in.
+- **Environment for This Document** clears the file's group when its environment changes.
+- **Docs:** a [Groups](../../environments/README.md#groups) section and the user manual.
+
+Tests:
+- `tests/app/test_document_groups.py` +4: defaults per environment; Plain Text's migration; a file per environment and the same id as two groups; groups in memory without a folder;
+- `tests/ui/test_document_group_editor.py` +1: editing each environment's groups;
+- `tests/app/test_group_menus.py` +2: each file offers its own environment's groups; Manage Groups… starts at the file's environment;
+- updated: service and environment-window tests now name the environment of the groups they use.
+
 ### T3 — Environment windows are lettered, not per group (items 1 and 7, answer 1)
 - **Identity:** an environment window is (environment, letter): "USFM A", "USFM B", "USFM C" …
   - A new window takes the lowest free letter.

@@ -13,8 +13,8 @@ entanglement into two modules instead of removing it.
 Follows the same template `ToggleWindowManager` established rather than
 `DogfoodEvidenceController`'s (which had no shared mutable state at
 all): the raw state this cluster reads and writes --
-`owner._groups`, `owner._group_store`, `owner._recent_files_store`,
-`owner._recent_files_menu` -- stays declared on `UNITIMainWindow` itself
+`owner._environment_groups` (each environment's own groups, round 3
+T2), `owner._recent_files_store`, `owner._recent_files_menu` -- stays declared on `UNITIMainWindow` itself
 (other code, e.g. `open_folder_by_type`, reads/writes it directly), only
 the *logic* moves here. `UNITIMainWindow` keeps a thin delegating
 wrapper method for each of the 17 names below, so every existing caller,
@@ -82,10 +82,7 @@ class DocumentGroupsAndRecentFiles:
         if index < 0:
             return
         entry = owner._service.documents.entry_for_view(view_id)
-        group = next(
-            (g for g in owner._groups if entry is not None and g.id == entry.group_id),
-            None,
-        )
+        group = None if entry is None else self._group_by_id(entry.group_id, self._key_for_document(entry.document_id))
         leaf.tabs.setTabIcon(
             index, self._group_swatch_icon(group.color) if group is not None else QIcon()
         )
@@ -115,29 +112,45 @@ class DocumentGroupsAndRecentFiles:
         if callable(follow):
             follow(document_id, group_id)
 
+    def _key_for_document(self, document_id: str) -> str:
+        """The environment a document's group belongs to (T2)."""
+
+        owner = self._owner
+        entry = owner._service.documents.get(document_id)
+        if entry.document is not None:
+            return owner._environment.environment_key_for(entry.document)
+        return entry.environment_key
+
+    def _key_for_view(self, view_id: str) -> str | None:
+        owner = self._owner
+        entry = None if owner._service is None else owner._service.documents.entry_for_view(view_id)
+        return None if entry is None else self._key_for_document(entry.document_id)
+
     def _windows(self) -> list:
         owner = self._owner
         if owner._service is None:
             return [owner]
         return [window for _window_id, window in owner._service.windows.items]
 
-    def _publish_groups(self, groups) -> None:
-        """Save the group list and give it to every window (a group made in
-        one window is at once in every other's menus and titles)."""
+    def _publish_groups(self, environment_key: str, groups) -> None:
+        """Save `environment_key`'s groups and give them to every window (a
+        group made in one window is at once in every other's menus and
+        titles)."""
 
         owner = self._owner
-        if owner._group_store is not None:
-            owner._group_store.save(groups)
+        owner._environment_groups.save(environment_key, groups)
         for window in self._windows():
-            window._groups = groups
+            if window._environment_groups is not owner._environment_groups:
+                window._set_groups(environment_key, groups)
             window._groups_and_recent_files._refresh_all_group_indicators()
             bar = getattr(window, "_environment_bar", None)
             if bar is not None:
                 bar.refresh()
 
-    def new_group_for(self, document_id: str | None = None):
-        """Ask for a name, create the group (next free colour) and, with
-        `document_id`, put that document in it."""
+    def new_group_for(self, document_id: str | None = None, environment_key: str | None = None):
+        """Ask for a name, create the group (next free colour) in the
+        document's environment (else `environment_key`, else the window's)
+        and, with `document_id`, put that document in it."""
 
         from PySide6.QtWidgets import QInputDialog
 
@@ -148,8 +161,12 @@ class DocumentGroupsAndRecentFiles:
         name = name.strip() if accepted else ""
         if not name:
             return None
-        group = DocumentGroup(self._unique_group_id(name), name, self._next_group_color())
-        self._publish_groups(owner._groups + (group,))
+        if document_id is not None and owner._service is not None:
+            key = self._key_for_document(document_id)
+        else:
+            key = environment_key or owner.group_environment_key()
+        group = DocumentGroup(self._unique_group_id(name, key), name, self._next_group_color(key))
+        self._publish_groups(key, owner.groups_for(key) + (group,))
         if document_id is not None:
             self._set_document_group(document_id, group.id)
         return group
@@ -165,6 +182,8 @@ class DocumentGroupsAndRecentFiles:
         entry = None if owner._service is None else owner._service.documents.entry_for_view(view_id)
         if entry is None:
             return False
+        key = self._key_for_document(entry.document_id)
+        groups = owner.groups_for(key)
         choices = QActionGroup(menu)
         choices.setExclusive(True)
         none_action = menu.addAction("No Group")
@@ -174,9 +193,9 @@ class DocumentGroupsAndRecentFiles:
         none_action.triggered.connect(
             lambda _checked=False, document_id=entry.document_id: self._set_document_group(document_id, None)
         )
-        if owner._groups:
+        if groups:
             menu.addSeparator()
-        for group in owner._groups:
+        for group in groups:
             action = menu.addAction(self._group_swatch_icon(group.color), group.name)
             action.setCheckable(True)
             action.setChecked(entry.group_id == group.id)
@@ -191,24 +210,24 @@ class DocumentGroupsAndRecentFiles:
         new_action.triggered.connect(lambda _checked=False, document_id=entry.document_id: self.new_group_for(document_id))
         if not extras:
             manage_action = menu.addAction("Manage Groups…")
-            manage_action.triggered.connect(self.show_document_group_editor)
+            manage_action.triggered.connect(lambda _checked=False: self.show_document_group_editor(key))
             return True
-        openable = [group for group in owner._groups if group.saved_paths]
+        openable = [group for group in groups if group.saved_paths]
         if openable:
             menu.addSeparator()
             for group in openable:
                 action = menu.addAction(f'Open Saved "{group.name}"')
-                action.triggered.connect(lambda _checked=False, group_id=group.id: self._open_group(group_id))
-        current_group = self._group_by_id(entry.group_id) if entry.group_id is not None else None
+                action.triggered.connect(lambda _checked=False, group_id=group.id: self._open_group(group_id, key))
+        current_group = self._group_by_id(entry.group_id, key)
         if current_group is not None:
             menu.addSeparator()
             save_action = menu.addAction(f'Save Group "{current_group.name}"')
-            save_action.triggered.connect(lambda _checked=False, group_id=current_group.id: self._save_group(group_id))
+            save_action.triggered.connect(lambda _checked=False, group_id=current_group.id: self._save_group(group_id, key))
             close_action = menu.addAction(f'Close Group "{current_group.name}"')
-            close_action.triggered.connect(lambda _checked=False, group_id=current_group.id: self._close_group(group_id))
+            close_action.triggered.connect(lambda _checked=False, group_id=current_group.id: self._close_group(group_id, key))
         menu.addSeparator()
         manage_action = menu.addAction("Manage Groups…")
-        manage_action.triggered.connect(self.show_document_group_editor)
+        manage_action.triggered.connect(lambda _checked=False: self.show_document_group_editor(key))
         return True
 
     def add_group_submenu(self, menu: QMenu, view_id: str) -> QMenu | None:
@@ -219,7 +238,7 @@ class DocumentGroupsAndRecentFiles:
         entry = None if owner._service is None else owner._service.documents.entry_for_view(view_id)
         if entry is None:
             return None
-        current = self._group_by_id(entry.group_id) if entry.group_id is not None else None
+        current = self._group_by_id(entry.group_id, self._key_for_document(entry.document_id))
         submenu = menu.addMenu("Document Group")
         if current is not None:
             submenu.setIcon(self._group_swatch_icon(current.color))
@@ -227,43 +246,49 @@ class DocumentGroupsAndRecentFiles:
         self.populate_group_menu(submenu, view_id, extras=False)
         return submenu
 
-    def _group_by_id(self, group_id: str) -> object | None:
-        return next(
-            (group for group in self._owner._groups if group.id == group_id), None
-        )
+    def _group_by_id(self, group_id: str | None, environment_key: str) -> object | None:
+        return self._owner._environment_groups.group(environment_key, group_id)
 
-    def _save_group(self, group_id: str) -> None:
+    def _entries_of(self, group_id: str, environment_key: str):
+        """The registry entries of `environment_key`'s group `group_id`."""
+
+        service = self._owner._service
+        return [
+            entry
+            for entry in service.documents.entries
+            if entry.group_id == group_id and self._key_for_document(entry.document_id) == environment_key
+        ]
+
+    def _save_group(self, group_id: str, environment_key: str) -> None:
         """BF-081: persist the paths of every currently open document
         carrying ``group_id`` onto that group's record, so it can later be
         reopened with ``_open_group``. Untitled and already-closed
         documents have no reopenable path and are skipped."""
 
         owner = self._owner
-        if owner._service is None or owner._group_store is None:
+        if owner._service is None:
             return
-        index = next(
-            (i for i, group in enumerate(owner._groups) if group.id == group_id), None
-        )
+        current = owner.groups_for(environment_key)
+        index = next((i for i, group in enumerate(current) if group.id == group_id), None)
         if index is None:
             return
         paths = tuple(
             str(entry.canonical_path)
-            for entry in owner._service.documents.entries
-            if entry.group_id == group_id and entry.view_ids and not entry.is_untitled
+            for entry in self._entries_of(group_id, environment_key)
+            if entry.view_ids and not entry.is_untitled
         )
-        updated = dataclass_replace(owner._groups[index], saved_paths=paths)
-        groups = owner._groups[:index] + (updated,) + owner._groups[index + 1 :]
+        updated = dataclass_replace(current[index], saved_paths=paths)
+        groups = current[:index] + (updated,) + current[index + 1 :]
         try:
-            owner._group_store.save(groups)
-        except ValueError as exc:
+            self._publish_groups(environment_key, groups)
+        except (OSError, ValueError) as exc:
             owner.statusBar().showMessage(str(exc)[:256], 5000)
             return
-        owner._groups = groups
         owner.statusBar().showMessage(
             f'Saved {len(paths)} file(s) to group "{updated.name}".', 5000
         )
 
-    def _close_group(self, group_id: str) -> None:
+    def _close_group(self, group_id: str, environment_key: str) -> None:
         """BF-081: close every open tab currently carrying ``group_id``,
         prompting per unsaved document exactly like an ordinary Close would
         (matching ``close_all_documents``, BF-084)."""
@@ -271,19 +296,20 @@ class DocumentGroupsAndRecentFiles:
         owner = self._owner
         if owner._service is None:
             return
+        members = {entry.document_id for entry in self._entries_of(group_id, environment_key)}
         for view_id in reversed(owner.view_ids):
             entry = owner._service.documents.entry_for_view(view_id)
-            if entry is not None and entry.group_id == group_id:
+            if entry is not None and entry.document_id in members:
                 if not owner._close_view_id(view_id, force=False):
                     return
 
-    def _open_group(self, group_id: str) -> None:
+    def _open_group(self, group_id: str, environment_key: str) -> None:
         """BF-081: reopen every path saved onto ``group_id`` (an already
         open path is focused instead, per ``open_path``) and (re)assign it
         to the group -- restoring membership, not tab order/position."""
 
         owner = self._owner
-        group = self._group_by_id(group_id)
+        group = self._group_by_id(group_id, environment_key)
         if group is None or owner._service is None:
             return
         failed = 0
@@ -296,7 +322,11 @@ class DocumentGroupsAndRecentFiles:
             if view is None:
                 continue
             entry = owner._service.documents.entry_for_view(view.view_id)
-            if entry is not None and entry.group_id != group_id:
+            if (
+                entry is not None
+                and entry.group_id != group_id
+                and self._key_for_document(entry.document_id) == environment_key
+            ):
                 self._set_document_group(entry.document_id, group_id)
         if failed:
             owner.statusBar().showMessage(
@@ -314,33 +344,45 @@ class DocumentGroupsAndRecentFiles:
             return
         menu.popup(position)
 
-    def show_document_group_editor(self) -> None:
+    def show_document_group_editor(self, environment_key: str | None = None) -> None:
+        """Manage Groups…: each environment's groups, starting at
+        `environment_key` (default: the window's or current file's)."""
+
+        from uniti.core.environments.catalog import ENVIRONMENTS
         from uniti.ui.document_group_editor import DocumentGroupEditor
 
         owner = self._owner
-        editor = DocumentGroupEditor(owner._groups, owner)
-        if editor.exec() and owner._group_store is not None:
-            groups = editor.groups()
-            removed_ids = {g.id for g in owner._groups} - {g.id for g in groups}
+        key = environment_key or owner.group_environment_key()
+        environments = [
+            (descriptor.key, descriptor.label, owner.groups_for(descriptor.key)) for descriptor in ENVIRONMENTS
+        ]
+        editor = DocumentGroupEditor(owner.groups_for(key), owner, environments=environments, environment=key)
+        if not editor.exec():
+            return
+        for edited_key, groups in editor.groups_by_environment().items():
+            before = owner.groups_for(edited_key)
+            if tuple(groups) == tuple(before):
+                continue
+            removed_ids = {g.id for g in before} - {g.id for g in groups}
             if owner._service is not None and removed_ids:
-                for entry in owner._service.documents.entries:
-                    if entry.group_id in removed_ids:
+                for group_id in removed_ids:
+                    for entry in self._entries_of(group_id, edited_key):
                         owner._service.documents.set_group(entry.document_id, None)
-            self._publish_groups(groups)
+            self._publish_groups(edited_key, groups)
 
-    def _next_group_color(self) -> str:
-        owner = self._owner
-        used = {group.color for group in owner._groups}
+    def _next_group_color(self, environment_key: str) -> str:
+        groups = self._owner.groups_for(environment_key)
+        used = {group.color for group in groups}
         for color in self._OPEN_FOLDER_GROUP_PALETTE:
             if color not in used:
                 return color
         return self._OPEN_FOLDER_GROUP_PALETTE[
-            len(owner._groups) % len(self._OPEN_FOLDER_GROUP_PALETTE)
+            len(groups) % len(self._OPEN_FOLDER_GROUP_PALETTE)
         ]
 
-    def _unique_group_id(self, name: str) -> str:
+    def _unique_group_id(self, name: str, environment_key: str) -> str:
         base = re.sub(r"[^A-Za-z0-9_-]+", "-", name).strip("-")[:64] or "group"
-        existing = {group.id for group in self._owner._groups}
+        existing = {group.id for group in self._owner.groups_for(environment_key)}
         candidate = base
         suffix = 2
         while candidate in existing:
@@ -378,9 +420,7 @@ class DocumentGroupsAndRecentFiles:
             label = (
                 f"{name}  ({Path(entry.path).parent})" if name in duplicated_names else name
             )
-            group = (
-                self._group_by_id(entry.group_id) if entry.group_id is not None else None
-            )
+            group = self._group_by_id(entry.group_id, self._key_for_path(entry.path))
             action = (
                 menu.addAction(self._group_swatch_icon(group.color), label)
                 if group is not None
@@ -392,6 +432,14 @@ class DocumentGroupsAndRecentFiles:
             )
         menu.addSeparator()
         menu.addAction("Clear Recent Files", self._clear_recent_files)
+
+    def _key_for_path(self, path: str | Path) -> str:
+        """The environment a file that may not be open would get."""
+
+        owner = self._owner
+        return owner._file_environment_manager.resolve_path_key(
+            Path(path), owner._settings.syntax_extension_overrides
+        )
 
     def _open_recent_file(self, path: str) -> None:
         """BF-082: reopening a recent file restores the DocumentGroup it
@@ -409,20 +457,19 @@ class DocumentGroupsAndRecentFiles:
                 None,
             )
             group_id = match.group_id if match is not None else None
-        known_group = group_id if any(group.id == group_id for group in owner._groups) else None
+        known_group = group_id if self._group_by_id(group_id, self._key_for_path(path)) is not None else None
         try:
             view = owner.open_path(path, group_id=known_group)
         except Exception as exc:
             QMessageBox.critical(owner, "Open Failed", f"{path}\n\n{exc}")
             return
-        if (
-            group_id is not None
-            and view is not None
-            and owner._service is not None
-            and any(group.id == group_id for group in owner._groups)
-        ):
+        if known_group is not None and view is not None and owner._service is not None:
             entry = owner._service.documents.entry_for_view(view.view_id)
-            if entry is not None and entry.group_id != group_id:
+            if (
+                entry is not None
+                and entry.group_id != group_id
+                and self._group_by_id(group_id, self._key_for_document(entry.document_id)) is not None
+            ):
                 self._set_document_group(entry.document_id, group_id)
 
     def _clear_recent_files(self) -> None:

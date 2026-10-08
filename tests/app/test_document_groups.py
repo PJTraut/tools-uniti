@@ -134,3 +134,64 @@ def test_atomic_failure_retains_previous_file(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="disk full"):
         store.save(())
     assert store.path.read_bytes() == before
+
+
+# --- Round 3 T2: each environment has its own groups --------------------------------
+
+
+def _environment_groups(tmp_path, legacy=None):
+    from uniti.app.document_groups import DocumentGroupStore, EnvironmentGroups
+
+    root = tmp_path / "Environments"
+    return EnvironmentGroups(
+        lambda key: root / key, legacy=DocumentGroupStore(legacy) if legacy is not None else None
+    ), root
+
+
+def test_every_environment_starts_from_a_b_c(tmp_path):
+    from uniti.app.document_groups import default_groups
+
+    groups, _root = _environment_groups(tmp_path)
+
+    assert groups.groups("usfm") == default_groups()
+    assert groups.groups("markdown") == default_groups()
+
+
+def test_plain_text_starts_from_the_old_app_wide_groups(tmp_path):
+    from uniti.app.document_groups import DocumentGroup, DocumentGroupStore, default_groups
+
+    legacy = tmp_path / "document-groups.json"
+    mine = (DocumentGroup("work", "Work", "#123456", saved_paths=("/tmp/a.txt",)),)
+    DocumentGroupStore(legacy).save(mine)
+    groups, root = _environment_groups(tmp_path, legacy)
+
+    assert groups.groups("plain_text") == mine  # nothing saved is lost (D3)
+    assert groups.groups("usfm") == default_groups()  # the others start afresh
+    assert not (root / "plain_text").exists()  # nothing written until a change
+
+
+def test_each_environment_saves_its_own_file_and_the_same_id_is_two_groups(tmp_path):
+    from uniti.app.document_groups import DocumentGroup, DocumentGroupStore, EnvironmentGroups
+
+    legacy = tmp_path / "document-groups.json"
+    groups, root = _environment_groups(tmp_path, legacy)
+    groups.save("usfm", (DocumentGroup("A", "NIV and CARS", "#e06c75"),))
+
+    assert DocumentGroupStore(root / "usfm" / "groups.json").load()[0].name == "NIV and CARS"
+    assert groups.group("usfm", "A").name == "NIV and CARS"
+    assert groups.group("plain_text", "A").name == "A"
+    assert not legacy.exists()  # the old file is never written
+
+    reread = EnvironmentGroups(lambda key: root / key, legacy=DocumentGroupStore(legacy))
+    assert reread.group("usfm", "A").name == "NIV and CARS"
+
+
+def test_without_a_folder_groups_live_in_memory(tmp_path):
+    from uniti.app.document_groups import DocumentGroup, EnvironmentGroups
+
+    groups = EnvironmentGroups()
+    groups.save("usfm", (DocumentGroup("X", "X", "#e06c75"),))
+
+    assert [group.id for group in groups.groups("usfm")] == ["X"]
+    with pytest.raises(ValueError):
+        groups.save("usfm", (DocumentGroup("X", "X", "#e06c75"),) * 2)  # duplicate ids

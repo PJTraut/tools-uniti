@@ -1,4 +1,5 @@
-"""Modal editor for document group (tag) names and colors."""
+"""Modal editor for document group (tag) names and colors: one environment's
+groups, with the environment chosen at the top (round 3 T2)."""
 from __future__ import annotations
 
 from dataclasses import replace
@@ -9,6 +10,7 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QColorDialog,
+    QComboBox,
     QDialog,
     QHBoxLayout,
     QInputDialog,
@@ -37,12 +39,36 @@ def _swatch_icon(color: str) -> QIcon:
 
 
 class DocumentGroupEditor(QDialog):
-    """Add, rename, recolor, and remove document groups before Save/Cancel."""
+    """Add, rename, recolor, and remove document groups before Save/Cancel.
 
-    def __init__(self, groups: tuple[DocumentGroup, ...], parent=None) -> None:
+    With `environments` ([(key, label, groups)]) it edits each environment's
+    groups, starting at `environment`; `groups` is then that environment's.
+    """
+
+    def __init__(
+        self,
+        groups: tuple[DocumentGroup, ...],
+        parent=None,
+        *,
+        environments=None,
+        environment: str | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Document Groups")
-        self._groups: list[DocumentGroup] = list(groups)
+        self._by_environment: dict[str | None, list[DocumentGroup]] = {}
+        self._labels: dict[str | None, str] = {}
+        for key, label, environment_groups in environments or ():
+            self._by_environment[key] = list(environment_groups)
+            self._labels[key] = label
+        self._key = environment if environment in self._by_environment else None
+        self._by_environment[self._key] = list(groups)
+        self.environment_choice = QComboBox(self)
+        for key, label in self._labels.items():
+            self.environment_choice.addItem(label, key)
+        self.environment_choice.setVisible(bool(self._labels))
+        if self._key is not None:
+            self.environment_choice.setCurrentIndex(self.environment_choice.findData(self._key))
+        self.environment_choice.currentIndexChanged.connect(self._environment_chosen)
 
         self._list = QListWidget(self)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -74,12 +100,33 @@ class DocumentGroupEditor(QDialog):
         buttons.addWidget(self.save_button)
 
         layout = QVBoxLayout(self)
+        layout.addWidget(self.environment_choice)
         layout.addWidget(self._list)
         layout.addLayout(buttons)
         self.resize(360, 320)
 
+    @property
+    def _groups(self) -> list[DocumentGroup]:
+        return self._by_environment[self._key]
+
     def groups(self) -> tuple[DocumentGroup, ...]:
+        """The shown environment's groups."""
+
         return tuple(self._groups)
+
+    def groups_by_environment(self) -> dict[str, tuple[DocumentGroup, ...]]:
+        """Every environment's groups, as edited."""
+
+        return {key: tuple(groups) for key, groups in self._by_environment.items() if key is not None}
+
+    def set_environment(self, key: str) -> None:
+        self.environment_choice.setCurrentIndex(self.environment_choice.findData(key))
+
+    def _environment_chosen(self, index: int) -> None:
+        key = self.environment_choice.itemData(index)
+        if key in self._by_environment:
+            self._key = key
+            self._populate()
 
     def _populate(self) -> None:
         self._list.clear()

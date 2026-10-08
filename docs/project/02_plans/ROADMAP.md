@@ -41,7 +41,7 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 | 9 | P4 — Versification (built-in English and Original; others from `.vrs` files in a user folder; project `custom.vrs`) | implemented 2026-10-08 | [Projects plan](2026-10-07-usfm-projects-and-versification-plan.md) |
 | 10 | P5 — Sync across books and versifications (opens a project's missing book) | implemented 2026-10-08 | [Projects plan](2026-10-07-usfm-projects-and-versification-plan.md) |
 | 11 | T1 — USFM needs a project: a USFM file outside a Paratext project opens as Plain Text | implemented 2026-10-08 | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
-| 12 | T2 — Each environment has its own groups (A, B, C to start; existing groups become Plain Text's) | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
+| 12 | T2 — Each environment has its own groups (A, B, C to start; existing groups become Plain Text's) | implemented 2026-10-08 | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
 | 13 | T3 — Environment windows are named per environment (USFM A, B, C …, renameable), not per group | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
 | 14 | T4 — One tab per project, titled with its short name; changing the book changes it in the tab, asking to save | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
 | 15 | T5 — Projects belong to groups; the group colours the tab and binds projects for sync across windows | planned | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
