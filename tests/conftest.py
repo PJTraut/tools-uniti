@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+import faulthandler
 import importlib.util
+import signal
+import sys
 
 import pytest
+
+# The suite's rare interpreter crash (2026-10-08) came once as SIGTRAP,
+# which faulthandler's default set (SIGSEGV, SIGFPE, SIGABRT, SIGBUS,
+# SIGILL) doesn't cover: dump every thread's traceback for it too, then let
+# it end the run as before.
+if hasattr(signal, "SIGTRAP") and sys.platform != "win32":
+    faulthandler.register(signal.SIGTRAP, all_threads=True, chain=True)
 
 
 @pytest.fixture(autouse=True)
