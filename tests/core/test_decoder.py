@@ -1,8 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from uniti.core.byte_source import ByteSource
 from uniti.core.boundaries import LinearBoundaries
-from uniti.core.decoder import decode_span, iter_decoded_spans
+from uniti.core.decoder import decode_span, decode_text, iter_decoded_spans
 
 
 def test_utf8_span_maps_character_boundaries_to_bytes(tmp_path: Path):
@@ -189,3 +191,29 @@ def test_ascii_span_uses_constant_size_boundary_metadata(tmp_path: Path):
     assert len(span.char_boundaries) == 65_537
     assert span.char_boundaries[65_536] == 65_536
     assert span.retained_size_bytes < 128 << 10
+
+
+@pytest.mark.parametrize(
+    ("encoding", "data", "middle"),
+    [
+        ("utf-8", "plain ascii".encode("utf-8"), 6),
+        ("utf-8", "Псалом 11:1 “Help, LORD,” non‑breaking 中".encode("utf-8"), 2),
+        ("utf-8-sig", b"\xef\xbb\xbf" + "BOM then Ж".encode("utf-8"), 3),
+        ("utf-8", b"A\xffB\xc3", 1),  # undecodable bytes, a cut-off sequence
+        ("windows-1252", b"caf\xe9 \x81 undefined", 3),
+        ("utf-16-le", b"\xff\xfe" + "Ж中\U0001f600".encode("utf-16-le"), 2),
+        ("utf-16-le", "dangling".encode("utf-16-le") + b"\x00", 4),
+        ("utf-32-be", b"\x00\x00\xfe\xff" + "Ω".encode("utf-32-be"), 4),
+    ],
+)
+def test_decode_text_is_decode_spans_text(tmp_path: Path, encoding: str, data: bytes, middle: int):
+    """A read that needs only the text skips the per-character boundaries
+    (2026-10-09: 60 ms of every keystroke on a 300 KB book), and gets the
+    same text: valid, invalid, with and without a BOM, and from mid-file."""
+
+    path = tmp_path / "text.bin"
+    path.write_bytes(data)
+    with ByteSource.open(path) as source:
+        for start in (0, middle):
+            length = source.size - start
+            assert decode_text(source, start, length, encoding) == decode_span(source, start, length, encoding).text

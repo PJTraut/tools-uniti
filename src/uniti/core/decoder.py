@@ -150,6 +150,26 @@ def _stable_char_byte_length(
     return -1
 
 
+# Encodings in which every character's bytes are stable
+# (`_stable_char_byte_length`): with no undecodable byte, the codec's text
+# is exactly the span's text.
+_STABLE_TEXT_ENCODINGS = frozenset(
+    {
+        "utf-8",
+        "utf-8-sig",
+        "windows-1252",
+        "cp1252",
+        "latin-1",
+        "iso-8859-1",
+        "ascii",
+        "utf-16-le",
+        "utf-16-be",
+        "utf-32-le",
+        "utf-32-be",
+    }
+)
+
+
 def decode_span(
     source: ByteSource,
     start: int,
@@ -159,9 +179,40 @@ def decode_span(
     """Decode one bounded source range without discarding undecodable bytes."""
 
     raw = source.read(start, length)
-    decoded, prefix_length, roundtrip_encoding, decode_events = _decode_payload(
-        raw, start, encoding
-    )
+    return _decoded_span(raw, start, length, encoding, _decode_payload(raw, start, encoding))
+
+
+def decode_text(
+    source: ByteSource,
+    start: int,
+    length: int,
+    encoding: str,
+) -> str:
+    """`decode_span(...).text`, for a read that needs only the text.
+
+    Valid text in a stable encoding is returned as the codec decoded it,
+    without the per-character byte boundaries `decode_span` builds (a
+    Python loop over every character: 60 ms for a 300 KB non-ASCII book).
+    Undecodable bytes and other encodings take `decode_span`'s path, so
+    the text is the same either way.
+    """
+
+    raw = source.read(start, length)
+    payload = _decode_payload(raw, start, encoding)
+    decoded, _prefix_length, roundtrip_encoding, decode_events = payload
+    if not decode_events and _normalized_encoding(roundtrip_encoding) in _STABLE_TEXT_ENCODINGS:
+        return decoded
+    return _decoded_span(raw, start, length, encoding, payload).text
+
+
+def _decoded_span(
+    raw: bytes,
+    start: int,
+    length: int,
+    encoding: str,
+    payload: tuple[str, int, str, tuple[_DecodeEvent, ...]],
+) -> DecodedSpan:
+    decoded, prefix_length, roundtrip_encoding, decode_events = payload
 
     content = raw[prefix_length:]
     normalized_roundtrip = roundtrip_encoding.lower().replace("_", "-")

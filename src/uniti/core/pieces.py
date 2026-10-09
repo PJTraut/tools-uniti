@@ -7,7 +7,7 @@ from bisect import bisect_left
 from collections.abc import Iterator
 
 from .byte_source import ByteSource
-from .decoder import decode_span, iter_decoded_spans
+from .decoder import decode_span, decode_text, iter_decoded_spans
 from .history import EditOperation
 from .offsets import OffsetMapper, ReadIntent
 
@@ -473,12 +473,12 @@ class PieceTable:
                         )
                     elif byte_end > byte_start:
                         collected.append(
-                            decode_span(
+                            decode_text(
                                 self._source,
                                 byte_start,
                                 byte_end - byte_start,
                                 self._encoding,
-                            ).text
+                            )
                         )
                 else:
                     if preserve:
@@ -563,13 +563,12 @@ class PieceTable:
         source_end = piece.source_char_start + end
         byte_start = self._mapper.char_to_byte(source_start, intent=intent)
         byte_end = self._mapper.char_to_byte(source_end, intent=intent)
-        span = decode_span(
+        return decode_text(
             self._source,
             byte_start,
             byte_end - byte_start,
             self._encoding,
         )
-        return span.text
 
     def _read_source_piece_annotated(
         self,
