@@ -768,6 +768,9 @@ class SfmStandardView(_SfmViewBase):
     label = "Standard"
     proportional = True
     editable = True
+    # No Bold/Italic/… buttons on the pane's top bar (field test, 2026-10-09):
+    # the commands stay on the right-click menu and their shortcuts.
+    command_buttons = False
 
     def project(self, source: str) -> Projection:
         return layout_projection(source, self._styles(), self.key, show_markers=True)

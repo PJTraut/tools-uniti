@@ -132,6 +132,19 @@ def test_view_commands_apply_styles_through_the_source(window, tmp_path: Path):
     assert _source(view) == "\\q2 In the beginning"
 
 
+def test_standard_has_no_command_buttons_but_keeps_its_commands(window, tmp_path: Path):
+    """Field test, 2026-10-09: no Bold/Italic/… buttons on Standard's top
+    bar; the right-click menu keeps the commands."""
+
+    _open(window, tmp_path, "book.usfm", "\\p In the beginning")
+    window._rich_views.show("sfm.standard")
+    pane = window._rich_views.pane
+
+    assert pane.command_bar.count() == 0
+    labels = [action.text() for action in pane.editor.context_menu().actions()]
+    assert "Bold" in labels and "Italic" in labels
+
+
 def test_source_edits_and_caret_flow_into_the_rich_view(window, tmp_path: Path, app):
     view = _open(window, tmp_path, "book.usfm", _USFM)
     window._rich_views.show("sfm.standard")

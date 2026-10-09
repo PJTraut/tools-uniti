@@ -14,7 +14,7 @@ A USFM tab has three modes. Switch with the environment toolbar, the menu's **Vi
 | Mode | What it shows | Editing |
 |---|---|---|
 | **Plain Text** | the source, exactly as written | yes |
-| **Standard** | formatted from the stylesheets, with every marker shown as a small tag | yes: typing goes into the text, markers are protected; Bold, Italic, Character Style…, Remove Character Style, Paragraph Style…, Insert Verse…; Enter starts a paragraph of the same kind |
+| **Standard** | formatted from the stylesheets, with every marker shown as a small tag | yes: typing goes into the text, markers are protected; Bold (Ctrl+B), Italic (Ctrl+I), Character Style…, Remove Character Style, Paragraph Style… and Insert Verse… on the right-click menu; Enter starts a paragraph of the same kind |
 | **Preview** | a print-like rendering: no markers, book metadata left out | read-only |
 
 What Standard and Preview show:

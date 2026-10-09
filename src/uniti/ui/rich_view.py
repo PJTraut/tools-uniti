@@ -766,6 +766,8 @@ class RichViewPane(QWidget):
             if widget is not None:
                 widget.setParent(None)  # gone now, not at the next idle
                 widget.deleteLater()
+        if not getattr(self.provider, "command_buttons", True):
+            return  # the provider's commands are on the right-click menu only
         for command in self.commands:
             button = QToolButton(self)
             button.setText(command.label)
