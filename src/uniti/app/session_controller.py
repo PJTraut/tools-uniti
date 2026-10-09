@@ -414,7 +414,7 @@ class SessionController:
         self._generation = manifest.generation
         self._created_at = manifest.created_at
         self._updated_at = manifest.updated_at
-        from .session_runtime import environment_window_identity
+        from .session_runtime import environment_window_identity, environment_window_shows_one_chapter
 
         for record in manifest.windows:
             window = existing_windows.get(record.window_id)
@@ -426,6 +426,9 @@ class SessionController:
             set_environment_window = getattr(window, "set_environment_window", None)
             if identity is not None and callable(set_environment_window):
                 set_environment_window(*identity)
+                chapter_view = getattr(window, "_chapter_view", None)
+                if chapter_view is not None:
+                    chapter_view.set_enabled(environment_window_shows_one_chapter(record.root, self._views))
         find_record = merge_find_replace_history(
             manifest.find_replace,
             find_replace_pack,

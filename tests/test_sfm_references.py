@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from uniti.core.environments.sfm.references import Reference, ReferenceMap, book_code, book_rank, scan_books
+import pytest
+
+from uniti.core.environments.sfm.references import (
+    Reference,
+    ReferenceMap,
+    book_code,
+    book_rank,
+    chapter_window,
+    scan_books,
+)
 
 _GEN = (
     "\\id GEN Genesis\n\\c 1\n\\s1 Creation\n\\p\n\\v 1 In the beginning\n\\v 2 The earth\n"
@@ -50,6 +59,32 @@ def test_heading_range_runs_from_the_chapter_to_its_first_verse():
     assert _GEN[start:end] == "\\c 1\n\\s1 Creation\n\\p\n"
     assert reference_map.heading_range("9") is None
     assert reference_map.heading_range(None) is None
+
+
+def test_chapter_window_is_whole_lines_from_one_chapter_to_the_next():
+    # \id … on lines 0-3, \c 1 on line 4, \c 2 on line 9, \c 3 on line 15; 20 lines.
+    chapters = [4, 9, 15]
+    assert chapter_window(chapters, 6, 20) == (0, 8)  # the header goes with chapter 1
+    assert chapter_window(chapters, 0, 20) == (0, 8)
+    assert chapter_window(chapters, 9, 20) == (9, 14)
+    assert chapter_window(chapters, 14, 20) == (9, 14)
+    assert chapter_window(chapters, 19, 20) == (15, 19)  # the last runs to the end
+    assert chapter_window([4, 9, 9, 15], 10, 20) == (9, 14)  # two \c on one line
+    assert chapter_window([], 3, 20) is None
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_chapter_lines_count_lines_as_the_document_does(tmp_path: Path, newline: str):
+    from uniti.core.document import Document
+
+    text = _GEN.replace("\n", newline)
+    path = tmp_path / "gen.usfm"
+    path.write_bytes(text.encode("utf-8"))
+    reference_map = ReferenceMap(text)
+    with Document.open(path, encoding="utf-8") as document:
+        assert reference_map.chapter_lines == tuple(document.line_for_char(c.start) for c in reference_map.chapters)
+        assert reference_map.line_count == document.line_count()
+    assert reference_map.chapter_lines == (1, 6)
 
 
 def test_scan_books_lists_matching_files_in_canonical_order(tmp_path: Path):

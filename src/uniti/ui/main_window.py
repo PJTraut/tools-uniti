@@ -247,10 +247,13 @@ class UNITIMainWindow(QMainWindow):
         from uniti.ui.rich_view_controller import RichViewController
 
         self._rich_views = RichViewController(self)
+        from uniti.ui.chapter_view import ChapterView
         from uniti.ui.environment_window import ReferenceSync
 
         # Side-by-side sync by scripture reference (ADR-0017), every window.
         self._reference_sync = ReferenceSync(self)
+        # Show One Chapter: the USFM per-chapter view, per window (2026-10-09).
+        self._chapter_view = ChapterView(self)
         # (environment key, slot) once this is an environment window: slot 0
         # is "USFM A", 1 "USFM B" … (round 3 T3).
         self.environment_window: tuple[str, int] | None = None
@@ -2552,6 +2555,7 @@ class UNITIMainWindow(QMainWindow):
     def _connect_view(self, view: UNITITextView) -> None:
         self._apply_read_only(view)
         view.set_progressive_navigation(True)
+        view.line_window_provider = self._chapter_view.line_window
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
         view.cursorPositionChanged.connect(self._status.update_cursor)
         view.zoomChanged.connect(
@@ -4773,7 +4777,7 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is None or not view.isEnabled():
             return
-        view.state.select_all()
+        view.select_all()  # the shown chapter, in the per-chapter view
         view._state_changed()
 
     def toggle_unicode_hex(self) -> None:

@@ -36,12 +36,8 @@ from .session import (
 ENVIRONMENT_WINDOW_EXTRA = "environment_window"
 
 
-def environment_window_identity(
-    root: PaneRecord, views: dict[str, ViewRecord]
-) -> tuple[str, int | None] | None:
-    """The (environment key, window slot) a saved window's views name, if
-    any. A record saved before round 3 T3 names a group instead: its slot is
-    None, so the window takes the lowest free slot."""
+def _environment_window_extra(root: PaneRecord, views: dict[str, ViewRecord]) -> dict | None:
+    """The environment window entry a saved window's views carry, if any."""
 
     pending = [root]
     while pending:
@@ -51,11 +47,31 @@ def environment_window_identity(
             record = views.get(view_id)
             value = None if record is None else record.extra.get(ENVIRONMENT_WINDOW_EXTRA)
             if isinstance(value, dict) and isinstance(value.get("environment"), str):
-                from uniti.core.syntax_profiles import canonical_key
-
-                slot = value.get("window")
-                return canonical_key(value["environment"]), slot if type(slot) is int and slot >= 0 else None
+                return value
     return None
+
+
+def environment_window_identity(
+    root: PaneRecord, views: dict[str, ViewRecord]
+) -> tuple[str, int | None] | None:
+    """The (environment key, window slot) a saved window's views name, if
+    any. A record saved before round 3 T3 names a group instead: its slot is
+    None, so the window takes the lowest free slot."""
+
+    value = _environment_window_extra(root, views)
+    if value is None:
+        return None
+    from uniti.core.syntax_profiles import canonical_key
+
+    slot = value.get("window")
+    return canonical_key(value["environment"]), slot if type(slot) is int and slot >= 0 else None
+
+
+def environment_window_shows_one_chapter(root: PaneRecord, views: dict[str, ViewRecord]) -> bool:
+    """Whether a saved environment window had Show One Chapter on."""
+
+    value = _environment_window_extra(root, views)
+    return value is not None and value.get("chapter") is True
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,13 +221,11 @@ def capture_service_session(
             if identity is not None:
                 # Rides in the view's `extra` (no window-schema change);
                 # restore_shell rebuilds the environment window from it.
-                record = replace(
-                    record,
-                    extra={
-                        **record.extra,
-                        ENVIRONMENT_WINDOW_EXTRA: {"environment": identity[0], "window": identity[1]},
-                    },
-                )
+                entry = {"environment": identity[0], "window": identity[1]}
+                chapter_view = getattr(window, "_chapter_view", None)
+                if chapter_view is not None and chapter_view.enabled:
+                    entry["chapter"] = True  # Show One Chapter
+                record = replace(record, extra={**record.extra, ENVIRONMENT_WINDOW_EXTRA: entry})
             views.append(record)
 
     retained_view_ids = frozenset(view.view_id for view in views)

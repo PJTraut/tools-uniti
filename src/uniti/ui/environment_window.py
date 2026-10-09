@@ -559,9 +559,18 @@ class EnvironmentBar(QToolBar):
             self.addAction(window._reference_sync.action)
             self.addSeparator()
             for text, combo in (("Book", self.book), ("Chapter", self.chapter), ("Verse", self.verse)):
-                label = QLabel(text, self)
-                label.setContentsMargins(6, 0, 3, 0)
-                self.addWidget(label)
+                if combo is self.chapter:
+                    # "Chapter" is also the Show One Chapter toggle: no
+                    # extra button on a toolbar that must stay short.
+                    self.chapter_toggle = QToolButton(self)
+                    self.chapter_toggle.setDefaultAction(window._chapter_view.action)
+                    self.chapter_toggle.setAutoRaise(True)
+                    self.chapter_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+                    self.addWidget(self.chapter_toggle)
+                else:
+                    label = QLabel(text, self)
+                    label.setContentsMargins(6, 0, 3, 0)
+                    self.addWidget(label)
                 self.addWidget(combo)
         else:
             for combo in (self.book, self.chapter, self.verse):

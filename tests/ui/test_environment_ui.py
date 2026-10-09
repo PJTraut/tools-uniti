@@ -71,6 +71,7 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "Standard",
         "Preview",
         "Move to Environment Window",
+        "Show One Chapter",
         "Sync Side-by-Side by Reference",
         "Versification",
         "Configuration Files…",

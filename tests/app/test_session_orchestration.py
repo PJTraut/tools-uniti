@@ -1498,5 +1498,34 @@ def test_restored_session_keeps_each_environment_windows_slot(qapp, tmp_path: Pa
     window = service.windows.windows[0]
     assert window.environment_window == ("usfm", 1)
     assert window.environment_window_name() == "USFM B"
+    assert not window._chapter_view.enabled
+    service.request_quit(lambda _entry: None)
+    qapp.processEvents()
+
+
+def test_restored_session_keeps_show_one_chapter(qapp, tmp_path: Path):
+    """The USFM per-chapter view (2026-10-09) is per window, saved with it."""
+
+    store, loaded, _paths = _published_session(tmp_path, document_count=1)
+    ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
+    manifest = loaded.manifest
+    manifest = replace(
+        manifest,
+        documents=tuple(replace(r, extra={"environment_override": "usfm"}) for r in manifest.documents),
+        views=tuple(
+            replace(r, extra={"environment_window": {"environment": "usfm", "window": 0, "chapter": True}})
+            for r in manifest.views
+        ),
+    )
+    store.publish(SessionSnapshot(manifest, loaded.packs, None))
+    reloaded = store.load_latest()
+    service = _restoring_service(tmp_path, store)
+    service.restore_shell(
+        reloaded.manifest,
+        pack_loader=lambda document_id: store.load_document_pack(reloaded.manifest, document_id),
+    )
+    window = service.windows.windows[0]
+    assert window.environment_window == ("usfm", 0)
+    assert window._chapter_view.enabled
     service.request_quit(lambda _entry: None)
     qapp.processEvents()

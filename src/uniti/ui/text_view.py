@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections import Counter, OrderedDict
+from collections.abc import Callable
 import time
 import math
 import uuid
@@ -239,6 +240,11 @@ class UNITITextView(QAbstractScrollArea):
         self.environment_plain_mode = False
         # ADR-0015: which rich view (provider key) this tab shows beside it.
         self.rich_view_key: str | None = None
+        # The USFM per-chapter view: given this view, the logical lines
+        # (first, last) it shows — the chapter the caret is in — or None
+        # to show every line.
+        self.line_window_provider: Callable[[UNITITextView], tuple[int, int] | None] | None = None
+        self._applied_line_window: tuple[int, int] | None = None
         self._syntax_colors = self._theme_tokens.syntax
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_InputMethodEnabled, True)
@@ -926,6 +932,97 @@ class UNITITextView(QAbstractScrollArea):
         self._match_index = MatchIndex(()) if match_index is None else match_index
         self.viewport().update()
 
+    # --- the USFM per-chapter view ------------------------------------------------
+
+    def line_window(self) -> tuple[int, int] | None:
+        """The logical lines (first, last) this view shows, or None for all."""
+
+        provider = self.line_window_provider
+        if provider is None:
+            return None
+        try:
+            window = provider(self)
+        except Exception:  # a failing provider never hides the text
+            return None
+        if window is None:
+            return None
+        first = max(0, window[0])
+        return first, max(first, window[1])
+
+    def source_window(self) -> tuple[int, int] | None:
+        """`line_window` as source offsets (start, end), end exclusive."""
+
+        window = self.line_window()
+        if window is None:
+            return None
+        start = self.document.line_start(window[0])
+        try:
+            end = self.document.line_start(window[1] + 1)
+        except ValueError:
+            end = self.document.total_chars()
+        return start, end
+
+    def refresh_line_window(self) -> None:
+        """The window's provider changed (the per-chapter view toggled)."""
+
+        if self.line_window() == self._applied_line_window:
+            return
+        self._refresh_scrollbars(advance_index=False)
+        self._ensure_cursor_visible()
+        self.viewport().update()
+
+    def _window_bounds(self, window: tuple[int, int] | None) -> tuple[int, int] | None:
+        """The first and last caret positions inside `window`'s lines."""
+
+        if window is None:
+            return None
+        return self.document.line_start(window[0]), self.document.line_end(window[1])
+
+    def _keep_in_window(self, window: tuple[int, int] | None) -> None:
+        """Keep the caret and selection inside `window`: a move the user
+        makes never leaves the chapter it started in."""
+
+        bounds = self._window_bounds(window)
+        if bounds is None:
+            return
+        low, high = bounds
+        self.state.cursor = min(max(self.state.cursor, low), high)
+        self.state.anchor = min(max(self.state.anchor, low), high)
+
+    def _clamp_to_window(self, offset: int) -> int:
+        bounds = self._window_bounds(self.line_window())
+        return offset if bounds is None else min(max(offset, bounds[0]), bounds[1])
+
+    def select_all(self) -> None:
+        """Select the whole text, or the shown chapter."""
+
+        bounds = self._window_bounds(self.line_window())
+        if bounds is None:
+            self.state.select_all()
+        else:
+            self.state.move_to(bounds[0])
+            self.state.move_to(bounds[1], selecting=True)
+
+    def _window_rows(self, index: WrappedRowIndex, window: tuple[int, int]) -> tuple[int, int] | None:
+        """With wrap on, the visual rows [first, end) of `window`'s lines;
+        None while the wrapped-row index hasn't reached them yet."""
+
+        known = index.known_count
+        try:
+            first = index.row_for_position(window[0], 0)
+            if window[1] + 1 < self.document.line_count():
+                end = index.row_for_position(window[1] + 1, 0)
+            elif index.complete:
+                end = index.known_count
+            else:
+                index.ensure_row(index.known_count + 511)
+                raise ValueError("rows pending")
+        except ValueError:
+            if index.known_count > known:
+                QTimer.singleShot(0, lambda: self._refresh_scrollbars(advance_index=False))
+            return None
+        return first, end
+
     def _visible_line_capacity(self) -> int:
         return max(1, self.viewport().height() // self._line_height + 1)
 
@@ -966,6 +1063,9 @@ class UNITITextView(QAbstractScrollArea):
     def _refresh_scrollbars(self, *, advance_index: bool) -> None:
         self._update_gutter_width()
         visible = self._visible_line_capacity()
+        window = self.line_window()
+        self._applied_line_window = window
+        minimum = 0
         if self._soft_wrap:
             first_row = self.verticalScrollBar().value()
             index = self._prepare_wrapped_rows(first_row, visible)
@@ -973,9 +1073,14 @@ class UNITITextView(QAbstractScrollArea):
                 maximum = max(0, index.known_count - self._visible_whole_line_capacity())
             else:
                 maximum = max(first_row, index.known_count - visible)
+            rows = None if window is None else self._window_rows(index, window)
+            if rows is not None:
+                # The per-chapter view: scroll only through the chapter's rows.
+                minimum = rows[0]
+                maximum = max(minimum, rows[1] - self._visible_whole_line_capacity())
             self.verticalScrollBar().setPageStep(visible)
             self.verticalScrollBar().setSingleStep(1)
-            self.verticalScrollBar().setRange(0, maximum)
+            self.verticalScrollBar().setRange(minimum, maximum)
             self.horizontalScrollBar().setPageStep(1)
             self.horizontalScrollBar().setRange(0, 0)
             return
@@ -992,9 +1097,13 @@ class UNITITextView(QAbstractScrollArea):
             maximum = max(0, known_lines - self._visible_whole_line_capacity())
         else:
             maximum = max(self.verticalScrollBar().value(), known_lines - 1)
+        if window is not None:
+            # The per-chapter view: scroll only through the chapter's lines.
+            minimum = window[0]
+            maximum = max(minimum, window[1] + 1 - self._visible_whole_line_capacity())
         self.verticalScrollBar().setPageStep(visible)
         self.verticalScrollBar().setSingleStep(1)
-        self.verticalScrollBar().setRange(0, maximum)
+        self.verticalScrollBar().setRange(minimum, maximum)
 
         horizontal_page = max(1, self.viewport().width() - self._gutter_width)
         self.horizontalScrollBar().setPageStep(horizontal_page)
@@ -1567,12 +1676,17 @@ class UNITITextView(QAbstractScrollArea):
             tokens.gutter_base,
         )
 
+        # The per-chapter view shows nothing past the chapter's last line.
+        window = self.line_window()
+        last_shown = None if window is None else window[1]
         display_rows: list[tuple[int, int, float, float, int, int]] = []
         if wrapped is not None:
             for row in range(min(visible, max(0, wrapped.known_count - first_line))):
                 try:
                     visual = wrapped.row(first_line + row)
                 except ValueError:
+                    break
+                if last_shown is not None and visual.line > last_shown:
                     break
                 display_rows.append(
                     (
@@ -1586,6 +1700,8 @@ class UNITITextView(QAbstractScrollArea):
                 )
         else:
             for row in range(visible):
+                if last_shown is not None and first_line + row > last_shown:
+                    break
                 try:
                     column_start, offset, geometry, _ = self._horizontal_geometry(
                         first_line + row
@@ -1874,7 +1990,8 @@ class UNITITextView(QAbstractScrollArea):
             align=self._soft_wrap,
         )
         text_x += self._composition_pan(shaped, text_x)
-        return line_start + column_start + shaped.cp_for_x(max(0.0, x - text_x))
+        # Below the shown chapter's last line: its end (per-chapter view).
+        return self._clamp_to_window(line_start + column_start + shaped.cp_for_x(max(0.0, x - text_x)))
 
     def _select_range(self, start: int, end: int) -> None:
         self.state.move_to(start)
@@ -1944,7 +2061,7 @@ class UNITITextView(QAbstractScrollArea):
             start, end = self._logical_line_range(position)
         else:
             start = end = position
-        self._select_range(start, end)
+        self._select_range(self._clamp_to_window(start), self._clamp_to_window(end))
 
     def _register_click(self, event: QMouseEvent) -> int:
         now = time.monotonic()
@@ -2293,9 +2410,14 @@ class UNITITextView(QAbstractScrollArea):
             modifiers
             & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)
         )
+        # The per-chapter view: moves stay in the shown chapter, and
+        # Backspace/Delete don't join its edge lines to the next chapter's.
+        window = self.line_window()
+        bounds = self._window_bounds(window)
+        editing = False
 
         if primary and key == Qt.Key.Key_A:
-            self.state.select_all()
+            self.select_all()
         elif primary and key == Qt.Key.Key_C:
             self.copy_selection()
         elif primary and key == Qt.Key.Key_X:
@@ -2319,7 +2441,7 @@ class UNITITextView(QAbstractScrollArea):
         elif primary and key in (Qt.Key.Key_Home, Qt.Key.Key_Up):
             self.state.move_document_start(selecting=selecting)
         elif primary and key in (Qt.Key.Key_End, Qt.Key.Key_Down):
-            if self._progressive_navigation:
+            if self._progressive_navigation and window is None:
                 self.navigationRequested.emit("document_end", selecting)
                 event.accept()
                 return
@@ -2347,25 +2469,31 @@ class UNITITextView(QAbstractScrollArea):
         elif key == Qt.Key.Key_End:
             self.state.move_end(selecting=selecting)
         elif key == Qt.Key.Key_Backspace:
-            if self._read_only:
+            at_edge = bounds is not None and self.state.selection is None and self.state.cursor <= bounds[0]
+            if self._read_only or at_edge:
                 event.accept()
                 return
             self.state.backspace()
+            editing = True
         elif key == Qt.Key.Key_Delete:
-            if self._read_only:
+            at_edge = bounds is not None and self.state.selection is None and self.state.cursor >= bounds[1]
+            if self._read_only or at_edge:
                 event.accept()
                 return
             self.state.delete_forward()
+            editing = True
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             if self._read_only:
                 event.accept()
                 return
             self.state.insert_newline()
+            editing = True
         elif key == Qt.Key.Key_Tab and not primary:
             if self._read_only:
                 event.accept()
                 return
             self.state.insert_text("\t")
+            editing = True
         elif not primary and not (modifiers & Qt.KeyboardModifier.AltModifier):
             text = event.text()
             if text:
@@ -2373,6 +2501,7 @@ class UNITITextView(QAbstractScrollArea):
                     event.accept()
                     return
                 self.state.insert_text(text)
+                editing = True
             else:
                 super().keyPressEvent(event)
                 return
@@ -2380,6 +2509,9 @@ class UNITITextView(QAbstractScrollArea):
             super().keyPressEvent(event)
             return
 
+        if not editing:
+            # An edit shifts the chapter's lines; only moves are kept in it.
+            self._keep_in_window(window)
         self._state_changed()
         event.accept()
 
@@ -2433,6 +2565,10 @@ class UNITITextView(QAbstractScrollArea):
             horizontal.setValue(max(0, cursor_pixel - page + self._cell_width))
 
     def _state_changed(self) -> None:
+        if self.line_window_provider is not None and self.line_window() != self._applied_line_window:
+            # The caret is in another chapter (per-chapter view): its range
+            # first, so scrolling to the caret isn't held in the old one.
+            self._refresh_scrollbars(advance_index=False)
         self._ensure_cursor_visible()
         self._refresh_scrollbars(advance_index=False)
         line = self.document.line_for_char(self.state.cursor)

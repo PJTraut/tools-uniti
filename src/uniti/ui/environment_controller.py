@@ -475,6 +475,7 @@ class EnvironmentController:
             self._owned_command_actions.append(rename)
             self.rename_window_action = rename
         if environment_key in REFERENCE_ENVIRONMENTS:
+            menu.addAction(window._chapter_view.action)
             menu.addAction(window._reference_sync.action)
             menu.addMenu(self._versification_menu(view))
         configuration = QAction("Configuration Files…", window)

@@ -125,6 +125,13 @@ def _numbers(label: str) -> tuple[int, int] | None:
     return first, int(match.group(2)) if match.group(2) else first
 
 
+def _line_breaks(text: str, start: int, end: int) -> int:
+    """Line breaks in `text[start:end]` as a document counts them: `\\n`,
+    `\\r\\n` and a lone `\\r` (`end` never splits a `\\r\\n`: it's a `\\c`)."""
+
+    return text.count("\n", start, end) + text.count("\r", start, end) - text.count("\r\n", start, end)
+
+
 @dataclass(frozen=True, slots=True)
 class Chapter:
     label: str
@@ -174,6 +181,16 @@ class ReferenceMap:
                 verses.append(Verse(current, match.group(1), token.start))
         self.chapters: tuple[Chapter, ...] = tuple(chapters)
         self.verses: tuple[Verse, ...] = tuple(verses)
+        # Each chapter's `\\c` line and the text's line count, counted here
+        # so the per-chapter view never has to index a whole book's lines.
+        chapter_lines: list[int] = []
+        line = previous = 0
+        for chapter in chapters:
+            line += _line_breaks(text, previous, chapter.start)
+            previous = chapter.start
+            chapter_lines.append(line)
+        self.chapter_lines: tuple[int, ...] = tuple(chapter_lines)
+        self.line_count = line + _line_breaks(text, previous, len(text)) + 1
         self._chapter_starts = [chapter.start for chapter in chapters]
         self._verse_starts = [verse.start for verse in verses]
         # Every boundary a verse runs up to: the next verse or chapter.
@@ -233,6 +250,23 @@ class ReferenceMap:
         return start, end
 
 
+def chapter_window(chapter_lines: Iterable[int], line: int, line_count: int) -> tuple[int, int] | None:
+    """The lines (first, last) of the chapter `line` is in, for the
+    per-chapter view: from a chapter's `\\c` line up to the line before the
+    next one. `chapter_lines` are the chapters' `\\c` lines. The lines
+    before the first chapter (identification, headers, introduction) go
+    with the first chapter; chapters sharing a line share a window. None
+    without chapters."""
+
+    starts = sorted(set(chapter_lines))
+    if not starts or line_count <= 0:
+        return None
+    index = max(0, bisect.bisect_right(starts, line) - 1)
+    first = 0 if index == 0 else starts[index]
+    last = starts[index + 1] - 1 if index + 1 < len(starts) else line_count - 1
+    return first, max(first, last)
+
+
 @dataclass(frozen=True, slots=True)
 class BookFile:
     code: str
@@ -281,5 +315,6 @@ __all__ = [
     "book_header",
     "book_header_for_path",
     "book_rank",
+    "chapter_window",
     "scan_books",
 ]

@@ -58,6 +58,15 @@ The environment window's toolbar has **Book**, **Chapter** and **Verse** at its 
 
 Jumping, here or with **Go to Chapter:Verse…** (Ctrl+Alt+G), puts the verse a third of the way down and highlights it in every mode. The highlight clears when the caret leaves the verse.
 
+### One chapter at a time
+
+Click **Chapter** (the word before the Chapter selector), or choose **USFM → Show One Chapter**, to show only the chapter the caret is in. It works in Plain Text, Standard and Preview, and is set per window: every tab and split of the window shows its own chapter. It's saved with the session.
+- **A chapter** runs from its `\c` line to the line before the next `\c`. The book's identification, headers and introduction (everything before `\c 1`) show with the first chapter.
+- **The edges hold.** Arrow keys, Page Up/Down, Ctrl+Home/End, clicks and scrolling stay in the chapter, and Select All selects it. Backspace at its first character and Delete after its last do nothing, so a chapter is never joined to the next by accident.
+- **Changing chapter:** the Chapter and Verse selectors, Go to Chapter:Verse…, side-by-side sync, Find (which still searches the whole book) and Undo all move the caret, and the view shows the chapter it lands in.
+- **Preview's notes frame** lists only the chapter's notes; a kind of note with none in the chapter is hidden.
+- A tab opened as Plain Text (no USFM features), a book without `\c`, and a file above 1 MiB always show whole.
+
 ## Groups and side-by-side sync
 
 **A project belongs to a group**, not each book: give any of its books a group (the toolbar's **Group**, or right-click the tab or the text → **Project Group**) and every book of the project is in it, including books you open later. The project's tab is tinted with the group's colour. UNITI keeps the assignment in `projects.json` in your USFM configuration folder; it writes nothing into the project.

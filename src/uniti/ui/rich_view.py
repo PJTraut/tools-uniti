@@ -346,6 +346,34 @@ def render_into(editor: QTextEdit, projection: Projection, base: QFont, palette:
     editor.setDocument(document)
 
 
+def show_blocks_in(
+    document: QTextDocument, offsets: Utf16Offsets, source_map, window: tuple[int, int] | None
+) -> tuple[int, int] | None:
+    """Hide the blocks whose start isn't in the source `window`, the USFM
+    per-chapter view (None shows every block). Returns the Qt positions of
+    the first and last caret positions shown; None when every block is
+    shown, or when none is."""
+
+    shown: tuple[int, int] | None = None
+    changed = False
+    block = document.begin()
+    while block.isValid():
+        visible = True
+        if window is not None:
+            source = source_map.view_to_source(offsets.from_qt(block.position()), prefer_left=False)
+            visible = window[0] <= source < window[1]
+        if block.isVisible() != visible:
+            block.setVisible(visible)
+            changed = True
+        if visible and window is not None:
+            end = block.position() + block.length() - 1
+            shown = (block.position(), end) if shown is None else (shown[0], end)
+        block = block.next()
+    if changed:
+        document.markContentsDirty(0, document.characterCount())
+    return shown
+
+
 class ProjectionCache:
     """The last projection per document and view, reused while the
     document's revision and the provider's stylesheets are unchanged — so
@@ -534,6 +562,15 @@ class _NoteSectionView(QWidget):
         finally:
             self.editor.blockSignals(blocked)
 
+    def show_window(self, window: tuple[int, int] | None) -> None:
+        """Only the notes in the source `window` (the per-chapter view); the
+        section is hidden when none is."""
+
+        if self.section is None:
+            return
+        shown = show_blocks_in(self.editor.document(), self.offsets, self.section.projection.source_map, window)
+        self.setVisible(window is None or shown is not None)
+
     def entry_starts(self) -> list[tuple[int, int]]:
         """(source offset of the entry's first text, view line start) per entry."""
 
@@ -611,6 +648,10 @@ class RichViewPane(QWidget):
         self._syncing_caret = False
         self._palette: RichPalette | None = None
         self._highlight: tuple[int, int] | None = None
+        # The per-chapter view: the source window shown (the target view's
+        # chapter) and the Qt positions the caret may take within it.
+        self._window: tuple[int, int] | None = None
+        self._window_positions: tuple[int, int] | None = None
         self._offsets = Utf16Offsets("")
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
@@ -793,12 +834,50 @@ class RichViewPane(QWidget):
             assert self._palette is not None
             render_into(self.editor, projection, self.editor.font(), self._palette)
             self._render_notes(projection)
+            self.apply_window(force=True)
             self._apply_highlights()
             self._place_caret(caret_source or 0, anchor_source)
         finally:
             self._syncing_caret = False
         self.editor.verticalScrollBar().setValue(scroll)
         self._sync_note_highlight()
+
+    # --- the USFM per-chapter view -----------------------------------------------
+
+    def apply_window(self, *, force: bool = False) -> None:
+        """Show only the target view's chapter (its `source_window`), or
+        every block when it has none."""
+
+        if self.projection is None:
+            return
+        view = self.target_view
+        window = view.source_window() if view is not None and hasattr(view, "source_window") else None
+        if window == self._window and not force:
+            return
+        self._window = window
+        source_map = self.projection.source_map
+        self._window_positions = show_blocks_in(self.editor.document(), self._offsets, source_map, window)
+        if window is not None and self._window_positions is None:
+            show_blocks_in(self.editor.document(), self._offsets, source_map, None)  # nothing in it: show all
+        for section in self.note_sections:
+            section.show_window(window)
+
+    def _keep_caret_in_window(self) -> bool:
+        """Put a caret the user moved outside the shown chapter back (QTextEdit
+        walks into hidden blocks); True when it was moved."""
+
+        if self._window_positions is None:
+            return False
+        low, high = self._window_positions
+        cursor = self.editor.textCursor()
+        position, anchor = cursor.position(), cursor.anchor()
+        kept_position, kept_anchor = min(max(position, low), high), min(max(anchor, low), high)
+        if (kept_position, kept_anchor) == (position, anchor):
+            return False
+        cursor.setPosition(kept_anchor)
+        cursor.setPosition(kept_position, QTextCursor.MoveMode.KeepAnchor)
+        self.editor.setTextCursor(cursor)
+        return True
 
     # --- notes frame (Preview) -------------------------------------------------
 
@@ -924,23 +1003,29 @@ class RichViewPane(QWidget):
             return
         self._syncing_caret = True
         try:
+            self.apply_window()  # a move from elsewhere may show another chapter
             self._place_caret(cursor_source, anchor_source)
             self.editor.ensureCursorVisible()
         finally:
             self._syncing_caret = False
 
-    def _caret_moved(self) -> None:
+    def _caret_moved(self, *, keep_in_window: bool = True) -> None:
         if self.projection is None:
             return
         self._sync_note_highlight()
         if self._syncing_caret:
             return
+        if keep_in_window and self._keep_caret_in_window():
+            return  # moved back; that move reported it
         cursor = self.editor.textCursor()
         source_map = self.projection.source_map
         self.caretSourceChanged.emit(
             source_map.view_to_source(self._offsets.from_qt(cursor.position())),
             source_map.view_to_source(self._offsets.from_qt(cursor.anchor())),
         )
+        # The source caret is now here; an edit that added or removed a
+        # `\c` may have put it in another chapter.
+        self.apply_window()
 
     def _document_edited(self, _operation) -> None:
         if not self._applying:
@@ -995,8 +1080,9 @@ class RichViewPane(QWidget):
         self.refresh(plan.caret_source, plan.caret_source)
         # Push the new caret to the Source editor first, then let the host
         # repaint it — never the other way round, or the Source editor's
-        # pre-edit caret would be echoed back into this view.
-        self._caret_moved()
+        # pre-edit caret would be echoed back into this view. An edit's
+        # caret isn't a move: it isn't held in the chapter shown before.
+        self._caret_moved(keep_in_window=False)
         self._notify_applied()
 
     def _notify_applied(self) -> None:
@@ -1040,12 +1126,15 @@ class RichViewPane(QWidget):
     def delete(self, *, backwards: bool) -> bool:
         start, end = self._selection()
         if start == end and self.projection is not None:
+            # The shown chapter's edges, like the document's: never joined
+            # to the hidden chapter beside them.
+            shown = self._window_positions
             if backwards:
-                if start == 0:
+                if start == 0 or (shown is not None and self._offsets.to_qt(start) <= shown[0]):
                     return False
                 start -= 1
             else:
-                if end >= len(self.projection.text):
+                if end >= len(self.projection.text) or (shown is not None and self._offsets.to_qt(end) >= shown[1]):
                     return False
                 end += 1
         if self._replace_view_range(start, end, ""):
