@@ -1037,3 +1037,22 @@ def test_open_folder_by_type_opens_files_outside_a_project_as_plain_text(desktop
     assert len(main.views) == 2
     assert all(main._environment.environment_key_for(view.document) == "plain_text" for view in main.views)
     assert main.statusBar().currentMessage() == "2 files aren't in a Paratext project: opened as plain text"
+
+
+def test_the_toolbar_keeps_the_sync_button_short(desktop, tmp_path: Path):
+    """2026-10-09: the full "Sync Side-by-Side by Reference" made the USFM
+    toolbar overflow below about 1,150 px; the menu keeps the full name."""
+
+    from PySide6.QtWidgets import QToolButton
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+    action = window._reference_sync.action
+
+    button = bar.widgetForAction(action)
+    assert isinstance(button, QToolButton) and button.text() == "Sync"
+    assert action.text() == "Sync Side-by-Side by Reference"
+    assert bar.sizeHint().width() < 1000

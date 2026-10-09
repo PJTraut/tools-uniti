@@ -104,6 +104,9 @@ class ReferenceSync(QObject):
         # A jump's highlight: (view, start, end), kept until its caret leaves.
         self._pinned: tuple[weakref.ReferenceType, int, int] | None = None
         self.action = QAction("Sync Side-by-Side by Reference", window)
+        # Short on the environment toolbar, which is crowded; the menu and
+        # the tooltip keep the full name.
+        self.action.setIconText("Sync")
         self.action.setCheckable(True)
         self.action.setChecked(True)
         self.action.setToolTip(
@@ -473,7 +476,10 @@ class EnvironmentBar(QToolBar):
         self.group.setToolTip(
             "The current file's document group. Side-by-side sync works within a group."
         )
-        self.group.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        # About ten characters wide on the toolbar; the list opens wide
+        # enough for every group name.
+        self.group.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        self.group.setMinimumContentsLength(10)
         self.group.activated.connect(self._group_chosen)
         group_label = QLabel("Group", self)
         group_label.setContentsMargins(6, 0, 3, 0)
@@ -587,6 +593,8 @@ class EnvironmentBar(QToolBar):
             current = None if entry is None else entry.group_id
             self.group.setCurrentIndex(max(0, self.group.findData(current)))
             self.group.setEnabled(entry is not None)
+            popup = self.group.view()
+            popup.setMinimumWidth(popup.sizeHintForColumn(0) + 2 * popup.frameWidth() + 24)
         finally:
             self._updating = False
 
