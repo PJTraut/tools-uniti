@@ -494,8 +494,6 @@ def _resource_recovery(manifest: CorpusManifest) -> ScenarioResult:
     resources = ResourceManager()
     start_current = current_process_rss_bytes()
     start_peak = peak_process_rss_bytes()
-    normal_worker_limit = resources.workers.max_workers
-    normal_cache_budget = resources.cache_budget_bytes
     physical = max(1, resources.status.physical_memory)
     base = {
         "physical_memory": physical,
@@ -506,6 +504,16 @@ def _resource_recovery(manifest: CorpusManifest) -> ScenarioResult:
         "active_workers": 0,
         "queued_tasks": 0,
     }
+    # Start from a known healthy state. The manager's first state is the
+    # host's real pressure (BUSY on a loaded machine, with a smaller cache
+    # budget), which isn't the normal capacity this scenario must restore.
+    for _ in range(resources.policy.pressure.healthier_samples_before_recovery + 1):
+        if resources.observe_resources(
+            ResourceSnapshot(**base, available_memory=physical, captured_at=time.monotonic())
+        ) is ResourceState.NORMAL:
+            break
+    normal_worker_limit = resources.workers.max_workers
+    normal_cache_budget = resources.cache_budget_bytes
     timings: list[float] = []
     try:
         resources.put_cache(

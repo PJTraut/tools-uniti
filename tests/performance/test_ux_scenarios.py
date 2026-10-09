@@ -72,6 +72,46 @@ def test_resource_recovery_scenario_restores_parallel_capacity(tmp_path: Path):
     assert result.facts["recovered_worker_limit"] == result.facts["normal_worker_limit"]
 
 
+def test_resource_recovery_scenario_holds_on_a_busy_host(tmp_path: Path, monkeypatch):
+    """A loaded machine starts the manager BUSY, with a smaller cache budget
+    than NORMAL; the scenario still measures recovery to normal capacity
+    (it failed on such a host until 2026-10-09)."""
+
+    import time
+
+    import benchmarks.scenarios as scenarios
+    from uniti.resources import ResourceSnapshot, ResourceState
+
+    class BusyAtStart(scenarios.ResourceManager):
+        def __init__(self, *args, **kwargs) -> None:
+            super().__init__(*args, **kwargs)
+            physical = max(1, self.status.physical_memory)
+            self.observe_resources(
+                ResourceSnapshot(
+                    physical_memory=physical,
+                    available_memory=physical // 5,
+                    process_rss=0,
+                    load_per_logical_core=0.0,
+                    free_disk=self.status.free_disk,
+                    cache_used=0,
+                    active_workers=0,
+                    queued_tasks=0,
+                    captured_at=time.monotonic(),
+                )
+            )
+            assert self.status.state is not ResourceState.NORMAL
+
+    monkeypatch.setattr(scenarios, "ResourceManager", BusyAtStart)
+    manifest = generate_corpus(
+        CorpusSpec(CorpusKind.ORDINARY_LINES, size_bytes=1 << 20),
+        tmp_path / "resources",
+    )
+
+    result = run_scenario("resource_recovery", manifest)
+
+    assert result.facts["integrity_ok"] is True
+
+
 def test_regex_intelligence_scenario_is_bounded_cancellable_and_exact(
     tmp_path: Path,
 ):
