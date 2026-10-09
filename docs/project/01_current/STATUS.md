@@ -26,7 +26,7 @@ A separate engineering track alongside B4. It doesn't gate B4's qualification. I
 
 | Item | Current value |
 |---|---|
-| Branch | `usfm-field-test`, 29 commits ahead of local `main` (`21164ea`), from `35f6fe4` to `2a3ca75`. Not merged into `main`, not pushed. |
+| Branch | `usfm-field-test`, from `35f6fe4` to `4324602`: merged into local `main` (fast-forward from `21164ea`) on 2026-10-09 at the user's request. Not pushed: local `main` is 34 commits ahead of `origin/main`. |
 | Decisions | [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)–[ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md) |
 | Plans (all implemented) | [USFM field test](../02_plans/2026-10-07-usfm-field-test-plan.md); [projects and versification](../02_plans/2026-10-07-usfm-projects-and-versification-plan.md) P1–P5; [field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R1–R8; [field test round 3](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T7 |
 | User documentation | [Environments](../../environments/README.md) (one page per environment), [USFM Stylesheet Rules](../../usfm-stylesheet-rules.md) |
