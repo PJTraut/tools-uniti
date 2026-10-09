@@ -14,8 +14,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from .tokenizer import tokenize_sfm
-from .tokens import SfmTokenKind
+from .tokenizer import marker_at
 
 # USFM book identifiers in canonical order (USFM 3.1 "Book Identifiers").
 BOOK_ORDER: tuple[str, ...] = (
@@ -125,6 +124,30 @@ def _numbers(label: str) -> tuple[int, int] | None:
     return first, int(match.group(2)) if match.group(2) else first
 
 
+_CANDIDATE_RE = re.compile(r"\\[cv]")
+
+
+def _reference_markers(text: str):
+    """(marker, label, start) of each `\\c` and `\\v` followed by its number:
+    the markers `tokenize_sfm` finds whose next token is text, labelled by
+    that text's first word. Only `\\c`/`\\v` candidates are looked at, not a
+    whole book's tokens: the map is rebuilt on every keystroke."""
+
+    length = len(text)
+    for candidate in _CANDIDATE_RE.finditer(text):
+        start = candidate.start()
+        marker = marker_at(text, start)
+        if marker not in (r"\c", r"\v"):
+            continue  # \cl, \va, \c* …
+        end = start + len(marker)
+        if end >= length or marker_at(text, end) is not None:
+            continue  # no text token follows
+        stop = text.find("\\", end + 1)
+        label = _LEADING_RE.match(text, end, length if stop == -1 else stop)
+        if label is not None:
+            yield marker, label.group(1), start
+
+
 def _line_breaks(text: str, start: int, end: int) -> int:
     """Line breaks in `text[start:end]` as a document counts them: `\\n`,
     `\\r\\n` and a lone `\\r` (`end` never splits a `\\r\\n`: it's a `\\c`)."""
@@ -163,22 +186,13 @@ class ReferenceMap:
         self.length = len(text)
         chapters: list[Chapter] = []
         verses: list[Verse] = []
-        tokens = tokenize_sfm(text)
         current: str | None = None
-        for index, token in enumerate(tokens):
-            if token.kind is not SfmTokenKind.MARKER or token.text not in (r"\c", r"\v"):
-                continue
-            following = tokens[index + 1] if index + 1 < len(tokens) else None
-            if following is None or following.kind is not SfmTokenKind.TEXT:
-                continue
-            match = _LEADING_RE.match(following.text)
-            if match is None:
-                continue
-            if token.text == r"\c":
-                current = match.group(1)
-                chapters.append(Chapter(current, token.start))
+        for marker, label, start in _reference_markers(text):
+            if marker == r"\c":
+                current = label
+                chapters.append(Chapter(current, start))
             else:
-                verses.append(Verse(current, match.group(1), token.start))
+                verses.append(Verse(current, label, start))
         self.chapters: tuple[Chapter, ...] = tuple(chapters)
         self.verses: tuple[Verse, ...] = tuple(verses)
         # Each chapter's `\\c` line and the text's line count, counted here

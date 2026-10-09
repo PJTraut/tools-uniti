@@ -50,4 +50,11 @@ C1 → C2 → C3 → C4. Documentation when C4 lands: the [USFM](../../environme
 
 Tests: `tests/test_sfm_references.py` +4 (`chapter_window`, the map's lines with three line endings), `tests/ui/test_line_window.py` (7: the scroll range, keys, Backspace/Delete at the edges, a click below the last line, a move from elsewhere, Select All, wrapped rows), `tests/app/test_chapter_view.py` (7: the toggle; the selector, Go To and Find changing the chapter while keys don't; sync; Preview's text and notes; Standard's caret and edges; a tab opened as Plain Text; the session capture), `tests/app/test_session_orchestration.py` +1 (the restore), and the USFM menu's entries in `tests/ui/test_environment_ui.py`.
 
-On a copy of `usNIVv2`'s Psalms (300 KB, 150 chapters), offscreen: switching chapter takes 60–135 ms in Plain Text and 20–135 ms in Preview; turning the view on takes 9 ms. Typing costs the same with one chapter shown as with the whole book (176 vs 172 ms a keystroke). That keystroke cost was already there before this work (171 ms): it isn't the chapter view's.
+On a copy of `usNIVv2`'s Psalms (300 KB, 150 chapters), offscreen: switching chapter took 60–135 ms in Plain Text and 20–135 ms in Preview; turning the view on, 9 ms. Typing cost the same with one chapter shown as with the whole book (176 vs 172 ms a keystroke). That keystroke cost was already there before this work (171 ms).
+
+**Typing speed, the same day.** Of those ~170 ms, about 60 went to re-reading the whole book after each edit for the toolbar's reference map, and most of the rest to the reference map itself and to repainting:
+- `decoder.decode_text`: a read that needs only the text (`PieceTable` reads) no longer builds per-character byte boundaries. A non-ASCII span went through a Python loop over every character; valid text in a stable encoding now comes straight from the codec, and anything else still takes `decode_span`. Re-reading the book: 60 ms → under 1 ms.
+- `ReferenceMap` looks only at `\c`/`\v` candidates instead of tokenizing the whole book: 20 ms → 4 ms. It finds exactly what the tokenizer did: checked on 3,000 random strings and on every book of `ruCARSv3` and `usNIVv2` (145 books, 64,700 chapters and verses).
+
+A keystroke now takes 16 ms with the whole book and 19 ms with one chapter; switching chapter takes 12–24 ms in Plain Text and 18–65 ms in Preview.
+

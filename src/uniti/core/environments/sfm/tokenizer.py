@@ -40,6 +40,14 @@ def tokenize_sfm(text: str) -> tuple[SfmToken, ...]:
     return tuple(tokens)
 
 
+def marker_at(text: str, position: int) -> str | None:
+    """The marker `tokenize_sfm` finds at `position`, if one starts there.
+    (It tries every backslash, so markers never overlap.)"""
+
+    match = _MARKER_RE.match(text, position)
+    return None if match is None else match.group()
+
+
 def reconstruct(tokens: Sequence[SfmToken]) -> str:
     """Rebuild the original source from a token stream (lossless-ness check)."""
 

@@ -122,3 +122,55 @@ def test_book_header_reads_id_and_h_from_the_header_block(tmp_path: Path):
     stat = path.stat()
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
     assert book_header_for_path(path).label == "GEN Bereshit"
+
+
+def _tokenized_references(text: str):
+    """The map's chapters and verses as found from a full `tokenize_sfm`
+    (how `ReferenceMap` found them before 2026-10-09)."""
+
+    from uniti.core.environments.sfm.tokenizer import tokenize_sfm
+    from uniti.core.environments.sfm.tokens import SfmTokenKind
+
+    found, tokens = [], tokenize_sfm(text)
+    for index, token in enumerate(tokens):
+        if token.kind is not SfmTokenKind.MARKER or token.text not in ("\\c", "\\v"):
+            continue
+        following = tokens[index + 1] if index + 1 < len(tokens) else None
+        if following is None or following.kind is not SfmTokenKind.TEXT:
+            continue
+        label = following.text.split()
+        if label:
+            found.append((token.text, label[0], token.start))
+    return found
+
+
+def _mapped_references(text: str):
+    reference_map = ReferenceMap(text)
+    items = [("\\c", c.label, c.start) for c in reference_map.chapters] + [
+        ("\\v", v.label, v.start) for v in reference_map.verses
+    ]
+    return sorted(items, key=lambda item: item[2])
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        _GEN,
+        "\\c 1\\v 1 a\\v2 b \\v \\v 3\\f + \\fr 1:3 \\ft n\\f*\\c\n\\c 2",
+        "\\cl Psalm\\ca 2\\ca*\\cp B\\c* x\\c-s y\\c-e\\c-1 z\\c- w\\v-sx 1\\va 4\\va*\\vp 1a\\vp*\\+v 5",
+        "\\\\c 1 \\\\\\v 2 \\v\\p 3 \\v\t\n7 \\c",
+        "",
+    ],
+)
+def test_reference_scan_finds_what_the_tokenizer_does(text: str):
+    assert _mapped_references(text) == _tokenized_references(text)
+
+
+def test_reference_scan_matches_the_tokenizer_on_random_text():
+    import random
+
+    pieces = ["\\", "c", "v", "\\c", "\\v", " ", "\n", "1", "12", "*", "-", "s", "e", "+", "a", "p", "l", "\\p", "\\c*"]
+    generator = random.Random(20261009)
+    for _ in range(3000):
+        text = "".join(generator.choice(pieces) for _ in range(generator.randint(0, 40)))
+        assert _mapped_references(text) == _tokenized_references(text), repr(text)
