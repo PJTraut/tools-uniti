@@ -199,8 +199,10 @@ def map_reference(
     """`chapter`:`verse` of `book` in `source`'s numbering, in `target`'s.
 
     Goes through Original. Verse bridges and parts map by their first
-    number (``16-17`` and ``16a`` as 16). Anything that can't be mapped
-    (no book, no verse, an unparseable number) is returned unchanged.
+    number (``16-17`` and ``16a`` as 16). Verse 0 is a chapter's title,
+    before its verse 1: English numbers psalm titles 0 where Russian
+    numbers them 1 (ruCARS Ps 11:1 is NIV Ps 12:0). Anything that can't be
+    mapped (no book, no verse, an unparseable number) is returned unchanged.
     """
 
     if book is None or chapter is None or verse is None or source.table is target.table:
@@ -232,14 +234,15 @@ def map_reference(
 
 def _exists(versification: TextVersification, book: str, chapter: int, verse: int) -> bool:
     """Whether `book` `chapter`:`verse` is within the versification's own
-    chapter/verse counts (unknown counts: assume it is)."""
+    chapter/verse counts (unknown counts: assume it is). Every chapter has
+    a verse 0, its title."""
 
     sums = versification.table.vnums.get(book) if hasattr(versification.table, "vnums") else None
     if not sums:
         return True
     if chapter < 1 or chapter >= len(sums):
         return False
-    return 1 <= verse <= sums[chapter] - sums[chapter - 1]
+    return 0 <= verse <= sums[chapter] - sums[chapter - 1]
 
 
 __all__ = [

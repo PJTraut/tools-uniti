@@ -166,6 +166,16 @@ Tests: `tests/app/test_environment_window.py` +4:
 - a single file staying with a notice;
 - the Book selector carrying a project split from GEN to EXO.
 
+**Found in the field test, 2026-10-09** (`ruCARSv3` against `usNIVv2`; the 2026-10-08 check above only went NIV → ruCARS): ruCARS Ps 11:1 synced to NIV Ps 11:1, a psalm off. Russian numbers a psalm's title as verse 1 (sometimes 1–2), English as verse 0 (`eng.vrs`: "PSA 12:0-8 = PSA 12:1-9"), so the mapping gave NIV 12:0. `map_reference` took verse 0 for a verse that doesn't exist and kept the same numbers, and sync, finding no `\v 0`, did the same. A sweep of both projects found 67 ruCARS Psalm verses affected: 59 landed in the wrong psalm (every numbered title from Ps 11 to 139), 8 on verse 1 instead of the title (Ps 3–9, 89). A caret in a heading also followed the chapter number unmapped, so every Psalm heading from 10 to 147 went a psalm off, both ways.
+- **`map_reference`:** every chapter has a verse 0, its title.
+- **`ReferenceMap.heading_range`:** a chapter's heading, from `\c` to its first verse.
+- **`ReferenceSync._landing`:**
+  - a verse mapped to verse 0 lands on the target's heading and highlights it;
+  - a caret in a heading is that chapter's verse 0: it lands on the target's heading, or on the verse the target numbers the title as (NIV Ps 12's title → ruCARS 11:1, both highlighted). That holds only while it agrees with where verse 1 lands; otherwise it lands where verse 1 does (NIV Ps 10 → ruCARS 9:22), so a `.vrs` without title mappings can't put a heading a psalm off.
+- **Unchanged:** the same-reference fallback (Mal 4:1, Rom 16:25–27).
+
+After the fix, a sweep of both projects (31,167 NIV and 31,130 ruCARS verses, every chapter heading) puts each Psalm title and heading in its own psalm, including ruCARS Ps 147's heading on NIV 147:12. Tests: `tests/test_sfm_versification.py` +7 (Russian titles both ways, a two-verse title), `tests/test_sfm_references.py` +1, `tests/app/test_environment_window.py` +2 (a title syncing to the English title; English headings syncing to the Russian title verse, Russian Ps 10's heading, and 9:22).
+
 ## Verification plan
 
 - **Core:** `Settings.xml` parsing and naming, `books()`, `project_for_file`, versification mapping pairs, and the custom `.vrs` layer.

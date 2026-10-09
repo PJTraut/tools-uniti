@@ -9,7 +9,7 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from usfm_project_fixture import ensure_project, in_project  # noqa: E402
+from usfm_project_fixture import RUSSIAN_PSALMS_VRS, ensure_project, in_project  # noqa: E402
 from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
 
 from uniti.app.document_groups import DocumentGroup  # noqa: E402
@@ -836,6 +836,88 @@ def test_sync_falls_back_to_the_same_reference_when_the_text_lacks_the_mapped_ve
     left._state_changed()
     assert main._reference_sync.sync_from(left) == 1
     assert right.state.cursor == malachi.format("B").index("\\v 1 Surely")
+
+
+# Russian numbers psalm titles as verse 1, English as 0 (field test,
+# 2026-10-09: ruCARSv3 Ps 11:1 synced to usNIVv2 Ps 11:1, a psalm off).
+_PSA_RU = (
+    "\\id PSA ru\n\\c 9\n\\d\n\\v 1 Дирижёру хора.\n\\v 21 Наведи страх.\n\\v 22 Почему, Вечный?\n"
+    "\\c 10\n\\d\n\\v 1 Песнь Давуда. На Вечного уповаю.\n"
+    "\\c 11\n\\d\n\\v 1 Дирижёру хора. Под шеминит.\n\\q1\n\\v 2 Вечный, помоги.\n\\v 3 Каждый лжёт.\n"
+)
+_PSA_EN = (
+    "\\id PSA en\n\\c 10\n\\q1\n\\v 1 Why, LORD, do you stand far off?\n"
+    "\\c 11\n\\d Of David.\n\\q1\n\\v 1 In the LORD I take refuge.\n"
+    "\\c 12\n\\d According to sheminith.\n\\q1\n\\v 1 Help, LORD.\n\\v 2 Everyone lies.\n"
+)
+
+
+def _psalms_project(folder: Path, versification: int, text: str) -> Path:
+    _write(
+        folder,
+        "Settings.xml",
+        f"<ScriptureText><Name>{folder.name}</Name><Versification>{versification}</Versification>"
+        f'<Naming PrePart="" PostPart="{folder.name}.SFM" BookNameForm="41MAT" /></ScriptureText>',
+    )
+    return _write(folder, f"19PSA{folder.name}.SFM", text)
+
+
+def _russian_and_english_psalms(service, tmp_path: Path, russian_left: bool):
+    from uniti.core.environments.sfm.versification import versification_path
+
+    root = tmp_path / "Paratext Projects"
+    russian = _psalms_project(root / "ruTEST", 5, _PSA_RU)
+    _write(root, "rsc.vrs", versification_path("org").read_text(encoding="utf-8"))  # stand-in base
+    _write(root / "ruTEST", "custom.vrs", RUSSIAN_PSALMS_VRS)
+    english = _psalms_project(root / "enTEST", 4, _PSA_EN)
+    left, right = (russian, english) if russian_left else (english, russian)
+    return _two_splits(service, left, right)
+
+
+def _sync_at(main, view, offset: int) -> None:
+    view.state.move_to(offset)
+    view._state_changed()
+    assert main._reference_sync.sync_from(view) == 1
+
+
+def _highlighted(view, text: str, start: str, end: str) -> bool:
+    document = view.document
+    lines = range(document.line_for_char(text.index(start)), document.line_for_char(text.index(end)))
+    return set(view._line_highlights) == set(lines)
+
+
+def test_a_russian_psalm_title_syncs_to_the_english_title(desktop, tmp_path: Path):
+    main, left, right, _leaf = _russian_and_english_psalms(desktop[1], tmp_path, russian_left=True)
+
+    _sync_at(main, left, _PSA_RU.index("Под шеминит"))  # Russian 11:1, English 12:0
+    assert right.state.cursor == _PSA_EN.index("\\c 12")
+    assert _highlighted(right, _PSA_EN, "\\c 12", "\\v 1 Help")
+    assert _highlighted(left, _PSA_RU, "\\v 1 Дирижёру хора. Под", "\\v 2 Вечный")
+
+    _sync_at(main, left, _PSA_RU.index("помоги"))  # Russian 11:2, English 12:1
+    assert right.state.cursor == _PSA_EN.index("\\v 1 Help")
+
+    _sync_at(main, left, _PSA_RU.index("На Вечного"))  # Russian 10:1, English 11:1
+    assert right.state.cursor == _PSA_EN.index("\\v 1 In the LORD")
+
+
+def test_an_english_psalm_heading_syncs_to_its_russian_title_or_first_verse(desktop, tmp_path: Path):
+    main, left, right, _leaf = _russian_and_english_psalms(desktop[1], tmp_path, russian_left=False)
+
+    # Ps 12's title is English 12:0, Russian 11:1: both are highlighted.
+    _sync_at(main, left, _PSA_EN.index("sheminith"))
+    assert right.state.cursor == _PSA_RU.index("\\v 1 Дирижёру хора. Под")
+    assert _highlighted(right, _PSA_RU, "\\v 1 Дирижёру хора. Под", "\\v 2 Вечный")
+    assert _highlighted(left, _PSA_EN, "\\c 12", "\\v 1 Help")
+
+    # Ps 11's title is part of its verse 1: Russian Ps 10's heading.
+    _sync_at(main, left, _PSA_EN.index("Of David"))
+    assert right.state.cursor == _PSA_RU.index("\\c 10")
+
+    # English Ps 10 starts at Russian 9:22 (no title mapping in this
+    # custom.vrs: the heading follows verse 1, not Russian Ps 10).
+    _sync_at(main, left, _PSA_EN.index("\\q1\n\\v 1 Why"))
+    assert right.state.cursor == _PSA_RU.index("\\v 22")
 
 
 # --- the toolbar's Group dropdown ---------------------------------------------------

@@ -140,7 +140,8 @@ class Verse:
 
 @dataclass(frozen=True, slots=True)
 class Reference:
-    """Where a source offset is: `verse` is None between `\\c` and the first `\\v`."""
+    """Where a source offset is: `verse` is None between `\\c` and the first
+    `\\v` (in the chapter's heading, which versification calls verse 0)."""
 
     book: str | None
     chapter: str | None
@@ -217,9 +218,19 @@ class ReferenceMap:
     def verse_range(self, verse: Verse) -> tuple[int, int]:
         """`verse` from its marker up to the next verse or chapter."""
 
-        index = bisect.bisect_right(self._boundaries, verse.start)
+        return self._range_from(verse.start)
+
+    def heading_range(self, chapter: str | None) -> tuple[int, int] | None:
+        """`chapter`'s heading — its title, verse 0 — from its `\\c` marker
+        up to its first verse (or the next chapter)."""
+
+        start = None if chapter is None else self.chapter_start(chapter)
+        return None if start is None else self._range_from(start)
+
+    def _range_from(self, start: int) -> tuple[int, int]:
+        index = bisect.bisect_right(self._boundaries, start)
         end = self._boundaries[index] if index < len(self._boundaries) else self.length
-        return verse.start, end
+        return start, end
 
 
 @dataclass(frozen=True, slots=True)

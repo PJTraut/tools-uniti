@@ -44,6 +44,14 @@ def test_verse_range_runs_to_the_next_verse_or_chapter():
     assert _GEN[start:end] == "\\v 4a Split\n"
 
 
+def test_heading_range_runs_from_the_chapter_to_its_first_verse():
+    reference_map = ReferenceMap(_GEN)
+    start, end = reference_map.heading_range("1")
+    assert _GEN[start:end] == "\\c 1\n\\s1 Creation\n\\p\n"
+    assert reference_map.heading_range("9") is None
+    assert reference_map.heading_range(None) is None
+
+
 def test_scan_books_lists_matching_files_in_canonical_order(tmp_path: Path):
     (tmp_path / "41MATXX.SFM").write_text("\\id MAT\n", encoding="utf-8")
     (tmp_path / "01GENXX.usfm").write_text("\\id GEN\n", encoding="utf-8")

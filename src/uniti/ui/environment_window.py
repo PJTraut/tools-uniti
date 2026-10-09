@@ -39,6 +39,7 @@ from uniti.core.environments.sfm.paratext_project import ParatextProject, projec
 from uniti.core.environments.sfm.references import (
     ID_PROBE_BYTES,
     BookHeader,
+    Reference,
     ReferenceMap,
     Verse,
     book_header,
@@ -212,6 +213,9 @@ class ReferenceSync(QObject):
         book = source_map.book
         reference = source_map.reference_at(source.state.cursor)
         source_verse = source_map.find(reference.chapter, reference.verse)
+        source_span = (
+            source_map.verse_range(source_verse) if source_verse is not None else source_map.heading_range(reference.chapter)
+        )
         environment = self._window._environment
         source_versification = environment.versification_for(source.document)
         source_leaf = self._window._panes.leaf_for_view(source.view_id)
@@ -221,26 +225,15 @@ class ReferenceSync(QObject):
             target_map = self.maps.for_document(target.document)
             if target_map is None:
                 continue
-            chapter, verse = map_reference(
-                book, reference.chapter, reference.verse, source_versification, environment.versification_for(target.document)
-            )
-            found = target_map.find(chapter, verse)
-            if found is None and (chapter, verse) != (reference.chapter, reference.verse):
-                # The text doesn't have the mapped verse (its versification
-                # and its text disagree): the same reference, if it has it.
-                found = target_map.find(reference.chapter, reference.verse)
-            if found is not None:
-                moves.append((target, found.start, target_map.verse_range(found)))
-            elif reference.verse is None:
-                # The caret is in a heading or before the first chapter:
-                # follow the chapter (or the book's start).
-                start = target_map.chapter_start(chapter) if chapter is not None else 0
-                moves.append((target, 0 if start is None else start, None))
+            target_versification = environment.versification_for(target.document)
+            landing = self._landing(book, reference, source_versification, target_versification, target_map)
+            if landing is not None:
+                moves.append((target, *landing))
         self._syncing = True
         try:
             self.clear()
-            if source_verse is not None and any(span is not None for _target, _start, span in moves):
-                self._highlight(source, source_map.verse_range(source_verse))
+            if source_span is not None and any(span is not None for _target, _start, span in moves):
+                self._highlight(source, source_span)
             for target, start, span in moves:
                 self._move(target, start)
                 if span is not None:
@@ -253,6 +246,56 @@ class ReferenceSync(QObject):
                 6000,
             )
         return len(moves)
+
+    @staticmethod
+    def _landing(
+        book: str, reference: Reference, source_versification, target_versification, target_map: ReferenceMap
+    ) -> tuple[int, tuple[int, int] | None] | None:
+        """Where `reference` lands in a target text, and what to highlight
+        there; None when it has no such place.
+
+        Verse 0 is a chapter's title: Russian numbers psalm titles as verse
+        1, English as 0, so ruCARS Ps 11:1 lands on NIV Ps 12's title, and
+        a caret in NIV Ps 12's heading lands on ruCARS Ps 11:1.
+        """
+
+        def mapped(verse: str) -> tuple[str | None, str | None]:
+            return map_reference(book, reference.chapter, verse, source_versification, target_versification)
+
+        if reference.verse is not None:
+            chapter, verse = mapped(reference.verse)
+            if verse == "0":
+                heading = target_map.heading_range(chapter)
+                if heading is not None:
+                    return heading[0], heading
+            found = target_map.find(chapter, verse)
+            if found is None and (chapter, verse) != (reference.chapter, reference.verse):
+                # The text doesn't have the mapped verse (its versification
+                # and its text disagree): the same reference, if it has it.
+                found = target_map.find(reference.chapter, reference.verse)
+            return None if found is None else (found.start, target_map.verse_range(found))
+        if reference.chapter is None:
+            return 0, None  # before the first chapter: the book's start
+        # The caret is in a chapter's heading, its verse 0. It lands where
+        # the target numbers the title (a heading, or Russian psalms' verse
+        # 1) when that agrees with where verse 1 lands — a versification
+        # file without the title's mapping would put it a chapter off; else
+        # where verse 1 lands (English Ps 10 starts at Russian 9:22); else on
+        # the same chapter (the text and its versification disagree).
+        first_chapter, first_verse = mapped("1")
+        title_chapter, title_verse = mapped("0")
+        candidates = [(title_chapter, title_verse)] if title_chapter == first_chapter else []
+        candidates += [(first_chapter, "0" if first_verse == "1" else first_verse), (reference.chapter, "0")]
+        for chapter, verse in candidates:
+            if verse == "0":
+                start = None if chapter is None else target_map.chapter_start(chapter)
+                if start is not None:
+                    return start, None
+                continue
+            found = target_map.find(chapter, verse)
+            if found is not None:
+                return found.start, target_map.verse_range(found)
+        return 0, None
 
     def _targets(self, source, source_leaf, group: str, book: str, missing: list[str]) -> list["UNITITextView"]:
         """Per other split showing a text of `group`: its shown tab when it

@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from usfm_project_fixture import RUSSIAN_PSALMS_VRS
+
 from uniti.core.environments import user_config
 from uniti.core.environments.sfm.paratext_project import PARATEXT_BOOKS
 from uniti.core.environments.sfm.versification import (
@@ -142,3 +144,37 @@ def test_a_mapping_onto_a_verse_the_text_does_not_have_is_ignored(user_root: Pat
 
     assert map_reference("ROM", "16", "25", english, russian) == ("16", "25")
     assert map_reference("ROM", "14", "23", english, russian) == ("14", "23")
+
+
+def _russian_psalms(root: Path):
+    book = _project(root / "ruTEST", versification=5)
+    shutil.copyfile(versification_path("org"), root / "rsc.vrs")  # stand-in base
+    (book.parent / "custom.vrs").write_text(RUSSIAN_PSALMS_VRS, encoding="utf-8")
+    return versification_for(book)
+
+
+@pytest.mark.parametrize(
+    ("russian", "english"),
+    [
+        (("11", "1"), ("12", "0")),  # the title
+        (("11", "2"), ("12", "1")),
+        (("11", "3"), ("12", "2")),
+        (("10", "1"), ("11", "1")),  # English numbers this title 1 too
+        (("50", "1"), ("51", "0")),  # a two-verse title
+        (("50", "3"), ("51", "1")),
+    ],
+)
+def test_russian_psalm_titles_are_english_verse_0(user_root: Path, tmp_path: Path, russian, english):
+    """ruCARS Ps 11:1 synced to NIV Ps 11:1, a psalm off: English verse 0
+    was taken for a verse that doesn't exist (field test, 2026-10-09)."""
+
+    russian_text = _russian_psalms(tmp_path / "Paratext Projects")
+    english_text = load_versification("eng")
+
+    assert map_reference("PSA", *russian, russian_text, english_text) == english
+    assert map_reference("PSA", *english, english_text, russian_text) == russian
+
+
+def test_both_verses_of_a_two_verse_russian_title_are_englishs_title(user_root: Path, tmp_path: Path):
+    russian_text = _russian_psalms(tmp_path / "Paratext Projects")
+    assert map_reference("PSA", "50", "2", russian_text, load_versification("eng")) == ("51", "0")

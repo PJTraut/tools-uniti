@@ -64,6 +64,8 @@ Jumping, here or with **Go to Chapter:Verse…** (Ctrl+Alt+G), puts the verse a 
 
 **A group binds its projects across windows.** When splits, in any USFM window, show texts of the same group, moving the caret in one moves the others to the same chapter and verse, and highlights the verse in all of them.
 - **Versification:** the reference is mapped into each text's own versification, so English Ps 51:1 lands on 51:3 in a text numbered like the original.
+  - **Psalm titles:** Russian numbers a psalm's title as verse 1, English doesn't number it (verse 0). Russian Ps 11:1 lands on the title of English Ps 12, and the caret in English Ps 12's title lands on Russian 11:1.
+  - **Headings:** the caret in a chapter's heading, before its first verse, lands on the matching heading or title in the other texts, or where their chapter begins (English Ps 10 begins at Russian 9:22).
 - **Different book:** a project tab showing another book changes its book: to that book if it's open in the tab, otherwise it opens the project's file of that book, in the same view mode. You stay where you were.
   - Sync never asks about unsaved changes: the book it leaves stays open in the tab, with its changes.
   - A project without the book stays put, and the status bar says so ("GEN isn't in 02EXO.usfm").
