@@ -2,7 +2,7 @@
 
 Date: 2026-10-09
 Status: **Implemented** (2026-10-09): C1–C4.
-Origin: the [wishlist](../FEATURE_WISHLIST.md) entry "USFM per-chapter view" (2026-10-07 field test: "have option to view per chapter or per book"), un-paused by the user 2026-10-09 ("do USFM per chapter view option").
+Origin: the [wishlist](../../FEATURE_WISHLIST.md) entry "USFM per-chapter view" (2026-10-07 field test: "have option to view per chapter or per book"), un-paused by the user 2026-10-09 ("do USFM per chapter view option").
 
 ## The user's answers, 2026-10-09
 
@@ -44,7 +44,7 @@ Origin: the [wishlist](../FEATURE_WISHLIST.md) entry "USFM per-chapter view" (20
 
 ## Order
 
-C1 → C2 → C3 → C4. Documentation when C4 lands: the [USFM](../../environments/usfm.md) page, the [roadmap](ROADMAP.md)'s environment track queue, and the wishlist entry removed.
+C1 → C2 → C3 → C4. Documentation when C4 lands: the [USFM](../../../environments/usfm.md) page, the [roadmap](../../02_plans/ROADMAP.md)'s environment track queue, and the wishlist entry removed.
 
 ## Results
 

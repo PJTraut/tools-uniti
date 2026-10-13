@@ -1,7 +1,7 @@
 # ADR-0016: Per-Tab Rich Views, Notes and Tables, `.sty` Export, Marker Placement, Group Detach
 
 Date: 2026-10-03
-Status: accepted (implemented — see the [implementation record](../02_plans/2026-10-02-rich-views-and-grouped-tabs-plan.md#follow-up-2026-10-03-adr-0016))
+Status: accepted (implemented — see the [implementation record](../03_implemented/milestones/2026-10-02-rich-views-and-grouped-tabs-plan.md#follow-up-2026-10-03-adr-0016))
 
 ## Context
 

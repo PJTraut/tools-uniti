@@ -2,7 +2,7 @@
 
 Date: 2026-10-13
 Status: **Planned**, not started: S1–S5. Reviewed for render speed 2026-10-13 (see [Performance](#performance)).
-Origin: field test feedback item 8, 2026-10-08 ("toggle spellchecking using hyphenatedwords.txt data; plan this"). The first sketch is in the [round 3 plan](2026-10-08-usfm-field-test-round-3-plan.md#spellcheck-from-hyphenatedwordstxt-item-8--plan-only-not-queued). This plan replaces it and answers its open questions.
+Origin: field test feedback item 8, 2026-10-08 ("toggle spellchecking using hyphenatedwords.txt data; plan this"). The first sketch is in the [round 3 plan](../03_implemented/milestones/2026-10-08-usfm-field-test-round-3-plan.md#spellcheck-from-hyphenatedwordstxt-item-8--plan-only-not-queued). This plan replaces it and answers its open questions.
 
 ## The user's answers, 2026-10-13
 

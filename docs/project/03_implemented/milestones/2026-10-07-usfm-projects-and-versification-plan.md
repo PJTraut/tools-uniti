@@ -2,7 +2,7 @@
 
 Date: 2026-10-07
 Status: **Implemented**: P1–P3 on 2026-10-07, P4–P5 on 2026-10-08. Hand checks with a real Paratext project are still open (see Verification plan).
-Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md): environment windows, the Book/Chapter/Verse selector, and reference sync within a group.
+Builds on: [ADR-0017](../../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md): environment windows, the Book/Chapter/Verse selector, and reference sync within a group.
 Origin: user, 2026-10-07: "single file vs 'working folder' for USFM; plan this... should we need to 'open folder' for 'project' view and 'open file' for single files outside of projects? how would we compare BK:CH:VS for 'files' only".
 
 ## Decisions (user, 2026-10-07)
@@ -68,7 +68,7 @@ Tests: `tests/test_paratext_project.py` (11).
   - Project folders are read-only to it: nothing is written into them, there's no watching and no recursion.
   - There's no project manifest, and no project-wide commands beyond the existing Find/Replace scopes.
 
-**Implemented 2026-10-07** ([ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md)):
+**Implemented 2026-10-07** ([ADR-0018](../../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md)):
 - `app/recent_projects.py` (`RecentProjectsStore`, `SettingsStore.recent_projects`);
 - `ui/usfm_projects.py` (`UsfmProjectController`);
 - the registered `file.open_usfm_project` command, with no default shortcut.

@@ -1,7 +1,7 @@
 # ADR-0019: Named Environment Windows, Groups per Environment, Project Tabs
 
 Date: 2026-10-08
-Status: accepted (implemented: [round 3 plan](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T7)
+Status: accepted (implemented: [round 3 plan](../03_implemented/milestones/2026-10-08-usfm-field-test-round-3-plan.md) T1–T7)
 
 ## Context
 

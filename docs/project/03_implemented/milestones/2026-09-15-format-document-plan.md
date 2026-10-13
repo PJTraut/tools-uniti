@@ -1,7 +1,7 @@
 # Format Document / Minify Document — Implementation Plan
 
 Date: 2026-09-15
-Status: implemented, integrated on `main`. See [BF-061](../BETA_FEEDBACK.md#bf-061--format-document--minify-document-for-json-xml-and-markdown) for the final implementation summary and verification; this document is retained for the design rationale (particularly the XML mixed-content fidelity risk, confirmed real during implementation and fixed as described below).
+Status: implemented, integrated on `main`. See [BF-061](../../BETA_FEEDBACK.md#bf-061--format-document--minify-document-for-json-xml-and-markdown) for the final implementation summary and verification; this document is retained for the design rationale (particularly the XML mixed-content fidelity risk, confirmed real during implementation and fixed as described below).
 
 ## Scope (confirmed with the user)
 
@@ -14,7 +14,7 @@ Status: implemented, integrated on `main`. See [BF-061](../BETA_FEEDBACK.md#bf-0
 
 Every other bulk-rewrite operation in UNITI (BF-023 EOL conversion, tabs-to-spaces) works as a streaming regex `replace_all` over the document without ever materializing the whole text as one Python object. Structural reformatting cannot work that way: JSON/XML must be parsed into a tree before re-serializing, which requires the complete document text in memory, and a naive line-based Markdown normalizer at least needs whole-document context for blank-line collapsing between blocks. This conflicts with UNITI's bounded/streaming design philosophy for large files.
 
-Mitigation: read the document's full text through `document.iter_text` up to a hard cap (proposed: 16 MiB, matching the general "structural documents are not typically huge" assumption for JSON/XML/Markdown — config files, API payloads, docs — as opposed to UNITI's giant-log-file use case). Above the cap, refuse with a clear message ("document too large to format: relies on parsing the whole file into memory") rather than attempting it. This cap is a new, explicit constant — not inherited from any existing bound — and should be documented next to [Current Status](../01_current/STATUS.md)'s "Storage and safety policy" table once implemented.
+Mitigation: read the document's full text through `document.iter_text` up to a hard cap (proposed: 16 MiB, matching the general "structural documents are not typically huge" assumption for JSON/XML/Markdown — config files, API payloads, docs — as opposed to UNITI's giant-log-file use case). Above the cap, refuse with a clear message ("document too large to format: relies on parsing the whole file into memory") rather than attempting it. This cap is a new, explicit constant — not inherited from any existing bound — and should be documented next to [Current Status](../../01_current/STATUS.md)'s "Storage and safety policy" table once implemented.
 
 ## Architecture
 
@@ -82,7 +82,7 @@ No parser dependency — a modest, explicitly bounded line-based normalizer, not
 
 ## Resolved during implementation
 
-- Size cap: `MAX_REFORMAT_CHARS = 16 * 1024 * 1024` (16 Mi characters, not bytes — counted this way for simplicity, documented in `reformatters.py`'s module docstring rather than [Current Status](../01_current/STATUS.md)'s storage-policy table, since it's specific to this one feature rather than a document-wide bound).
+- Size cap: `MAX_REFORMAT_CHARS = 16 * 1024 * 1024` (16 Mi characters, not bytes — counted this way for simplicity, documented in `reformatters.py`'s module docstring rather than [Current Status](../../01_current/STATUS.md)'s storage-policy table, since it's specific to this one feature rather than a document-wide bound).
 - JSON indent width: fixed at 2 spaces, not detected from the document's own style, as recommended.
 - `CommandCategory`/Hotkeys placement: resolved by following the existing convention — every other `Format` menu action (Encoding, Line Endings) is a plain `QAction` outside the command-registry/Hotkeys system entirely, so Format Document/Minify Document follow suit. No new `CommandCategory` was added, and `tests/ui/test_hotkeys.py`'s asserted category list is unaffected.
 - The XML mixed-content fidelity risk flagged above was real: `dom.toprettyxml()` alone splits mixed text/element content (e.g. `<a>text <b/> more</a>`) across separate indented lines, corrupting it. Fixed with a custom recursive serializer that leaves any element containing significant text completely untouched internally (see BF-061's implementation note for detail); confirmed idempotent on a mixed-content fixture in `tests/core/test_reformatters.py`.

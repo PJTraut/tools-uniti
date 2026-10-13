@@ -2,7 +2,7 @@
 
 Date: 2026-10-02
 Status: **Implemented.**
-Decision: [ADR-0014](../05_decisions/ADR-0014-environment-workbench-and-extension-assignment.md)
+Decision: [ADR-0014](../../05_decisions/ADR-0014-environment-workbench-and-extension-assignment.md)
 Origin: request to give each file-type environment its own functions, tools, features and menus, to assign extensions to environments (e.g. `.USFM` + `.sfm`), and to let every environment fall back to plain text within itself. Builds on the [E1–E4](2026-09-29-environment-framework-e1-e4-plan.md), [E5](2026-09-29-environment-framework-e5-sfm-foundation-plan.md) and [E6](2026-09-30-environment-framework-e6-usfm-layer-plan.md) records.
 
 ## What shipped

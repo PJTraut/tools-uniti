@@ -2,8 +2,8 @@
 
 Date: 2026-09-15 (initial), continued 2026-09-16, 2026-09-17
 Status: content-level bidi correctness (tasks 1, 2, 4, and whitespace-marker positioning) implemented, tested, and integrated on `main`, including a significant bug found and fixed on 2026-09-16 (typing/composing into a right-to-left line froze the caret — see "Progress"). Arabic/Hebrew font bundling (task 7) is also implemented (BF-066). As of 2026-09-16, full multi-rect selection splitting at a run boundary and embedding-level caret affinity — both previously deferred — are implemented and verified too. As of 2026-09-17, task 3's deeper non-wrapped/multi-checkpoint scrolling case — previously the one remaining non-hardware-dependent gap — is also implemented and verified (see "Progress"). The only work remaining on this plan is native/physical qualification, which is impossible without hardware; see "Progress" below for the exact line.
-Feedback: [BF-064](../BETA_FEEDBACK.md#bf-064--rtlbidi-content-support-arabic--hebrew)
-Milestone: new workstream inside the active [B3 milestone](v0.001b3-find-replace-and-editor-refinement-beta.md)
+Feedback: [BF-064](../../BETA_FEEDBACK.md#bf-064--rtlbidi-content-support-arabic--hebrew)
+Milestone: new workstream inside the active [B3 milestone](../../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md)
 
 ## Progress
 
@@ -53,7 +53,7 @@ Verified directly with real cursor moves spanning both checkpoints on the same 1
 
 - **Content-level bidi only.** Arabic/Hebrew (and mixed RTL+LTR) text renders and edits correctly *inside* the editor: correct visual ordering, caret movement, and selection. The application's own chrome — menus, dialogs, the gutter, the scrollbar — stays left-to-right, unchanged. This matches how most code/text editors handle RTL content (VS Code, etc.) rather than offering a fully mirrored RTL UI, which would be a materially larger, differently-shaped effort (touching nearly every widget, not just the text engine) and is explicitly out of scope here.
 - **Target scripts: Arabic and Hebrew**, verified to the same rigor BF-006 used for its LTR script expansion (representative glyph/shaping/editing/rendering tests per script, physical native confirmation tracked separately as its own open item, synthetic tests do not substitute for it).
-- Everything below is *content* work. It does not reopen [ADR-0006](../05_decisions/ADR-0006-executable-health-recovery-boundary.md) or any other architectural boundary.
+- Everything below is *content* work. It does not reopen [ADR-0006](../../05_decisions/ADR-0006-executable-health-recovery-boundary.md) or any other architectural boundary.
 
 ## Why this is tractable: the encouraging finding (BF-043)
 
@@ -123,4 +123,4 @@ Mirror BF-006's rigor:
 - Item 3's decision: full RTL-aware horizontal-scroll rework vs. the scoped interim (force-wrap RTL lines) for the first cut.
 - Item 4's caret-affinity policy at direction boundaries — the single biggest design risk in this plan; needs a concrete proposal reviewed before coding, not resolved inline during implementation.
 - Exact Arabic/Hebrew font faces to bundle and their licensing notices.
-- Whether this lands as a workstream inside the still-active B3 milestone (verified/implemented pieces move to [Implemented](../03_implemented/README.md) individually as they land, per the project's workstream rule) or is later promoted to its own milestone if the scope grows during implementation.
+- Whether this lands as a workstream inside the still-active B3 milestone (verified/implemented pieces move to [Implemented](../README.md) individually as they land, per the project's workstream rule) or is later promoted to its own milestone if the scope grows during implementation.

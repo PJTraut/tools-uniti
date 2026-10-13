@@ -15,6 +15,20 @@ Historical plans may contain unchecked task boxes because they are retained as o
 
 An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. a16's startup/bootstrap foundation and a21's Editor Layout and Visibility workstream were retained here before their parent gates closed; the complete a16 through a21 product milestones are now implemented.
 
+## Environment track records (2026-09-29 → 2026-10-09)
+
+The file-type environment and USFM track, run alongside B4 ([ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)–[ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md)). Moved here 2026-10-13; every phase is implemented. Live-app checks still open are tracked in [Current Status](../01_current/STATUS.md#environment-track-2026-09-29--2026-10-09), not here.
+
+- [Environment framework E1–E4](milestones/2026-09-29-environment-framework-e1-e4-plan.md), [E5 SFM foundation](milestones/2026-09-29-environment-framework-e5-sfm-foundation-plan.md), [E6 USFM layer](milestones/2026-09-30-environment-framework-e6-usfm-layer-plan.md)
+- [Environment workbench](milestones/2026-10-02-environment-workbench-plan.md) and [rich views and grouped tabs](milestones/2026-10-02-rich-views-and-grouped-tabs-plan.md) (E7–E10)
+- [USFM field test](milestones/2026-10-07-usfm-field-test-plan.md), [round 2](milestones/2026-10-08-usfm-field-test-round-2-plan.md) (R1–R8) and [round 3](milestones/2026-10-08-usfm-field-test-round-3-plan.md) (T1–T7, plus the 2026-10-13 spec-check fixes)
+- [USFM projects and versification](milestones/2026-10-07-usfm-projects-and-versification-plan.md) (P1–P5)
+- [Show One Chapter](milestones/2026-10-09-usfm-per-chapter-view-plan.md) (C1–C4)
+
+## v0.001b4 workstream records
+
+- [Compare/diff plan](milestones/2026-09-17-compare-diff-plan.md) (BF-070): Phases 1–2 implemented; Phase 3 (doc-vs-disk) is [parked](../04_parked/CATALOG.md#compare-doc-vs-disk-mode).
+
 ## v0.001b3 workstream records
 
 Retained here individually while their parent [B3 milestone](../02_plans/v0.001b3-find-replace-and-editor-refinement-beta.md) is still active, per the same pattern as a16/a21 below.

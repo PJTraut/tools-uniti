@@ -1,7 +1,7 @@
 # ADR-0018: USFM Projects — Open USFM Project… and Recent Projects
 
 Date: 2026-10-07
-Status: accepted (implemented: [plan](../02_plans/2026-10-07-usfm-projects-and-versification-plan.md) phases P1–P2)
+Status: accepted (implemented: [plan](../03_implemented/milestones/2026-10-07-usfm-projects-and-versification-plan.md) phases P1–P2)
 
 ## Context
 
@@ -44,6 +44,6 @@ Un-park a second narrow slice: **Paratext USFM projects, read-only, remembered b
 - [Parked Capability Catalog](../04_parked/CATALOG.md): the "Project and workspace concepts" entry gains this second narrow exception.
 - [ADR-0009](ADR-0009-bounded-open-folder-by-type.md): unchanged; Open Folder by Type still retains nothing.
 
-Update 2026-10-08 ([field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R8): **Configuration Files…** can create a project's `custom.sty` or `uniti.sty` from a template, and open project files to edit. Those are writes you ask for, like saving any file you opened. UNITI still never writes into a project folder by itself.
+Update 2026-10-08 ([field test round 2](../03_implemented/milestones/2026-10-08-usfm-field-test-round-2-plan.md) R8): **Configuration Files…** can create a project's `custom.sty` or `uniti.sty` from a template, and open project files to edit. Those are writes you ask for, like saving any file you opened. UNITI still never writes into a project folder by itself.
 
 Update 2026-10-08 ([ADR-0019](ADR-0019-named-environment-windows-groups-and-project-tabs.md), round 3 T3): environment windows are no longer one per group. Open USFM Project… opens the book in the window that already shows the project, else the most recent USFM window, else a new one, and gives the book the group the project was left in.

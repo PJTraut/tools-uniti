@@ -1,8 +1,8 @@
 # Isolated File-Type Environments — Phase E6 (USFM Layer) Plan
 
 Date: 2026-09-30
-Status: **Implemented.** Its "later phases" list (project `.sty` loading, the marker/style inspector, E7+ rich views) was implemented 2026-10-02; see [ADR-0015](../05_decisions/ADR-0015-stylesheet-layers-and-rich-views.md). OccursUnder-driven validation is still left to `usfmtc`.
-Origin: [E1–E4 plan](2026-09-29-environment-framework-e1-e4-plan.md) / [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md) deferred SFM/STY design past E4; [E5 plan](2026-09-29-environment-framework-e5-sfm-foundation-plan.md) shipped generic SFM and deferred everything USFM-specific to this phase — Phase E6 of the external handover spec's own phase numbering (`@externalresources/UNITI_Claude_Code_Environment_Handover_Spec.md` §74).
+Status: **Implemented.** Its "later phases" list (project `.sty` loading, the marker/style inspector, E7+ rich views) was implemented 2026-10-02; see [ADR-0015](../../05_decisions/ADR-0015-stylesheet-layers-and-rich-views.md). OccursUnder-driven validation is still left to `usfmtc`.
+Origin: [E1–E4 plan](2026-09-29-environment-framework-e1-e4-plan.md) / [ADR-0013](../../05_decisions/ADR-0013-environment-framework-ownership-boundary.md) deferred SFM/STY design past E4; [E5 plan](2026-09-29-environment-framework-e5-sfm-foundation-plan.md) shipped generic SFM and deferred everything USFM-specific to this phase — Phase E6 of the external handover spec's own phase numbering (`@externalresources/UNITI_Claude_Code_Environment_Handover_Spec.md` §74).
 
 ## Scope
 

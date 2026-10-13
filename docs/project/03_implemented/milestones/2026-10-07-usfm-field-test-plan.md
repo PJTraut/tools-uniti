@@ -2,8 +2,8 @@
 
 Date: 2026-10-07
 Status: **Implemented** (not committed).
-Decision: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md).
-Origin: `@externalresources/field_test_feedback` (2026-10-07), with the user's answers the same day. The per-chapter view was paused and moved to the [wishlist](../FEATURE_WISHLIST.md#usfm-per-chapter-view).
+Decision: [ADR-0017](../../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md).
+Origin: `@externalresources/field_test_feedback` (2026-10-07), with the user's answers the same day. The per-chapter view was paused and moved to the [wishlist](../../FEATURE_WISHLIST.md#usfm-per-chapter-view).
 
 ## Feedback → change
 
@@ -13,7 +13,7 @@ Origin: `@externalresources/field_test_feedback` (2026-10-07), with the user's a
 | Plain text / standard / preview in the same window, not a side panel | Rich views are panes laid over the tab's own Source editor, one per tab. Plain Text is a mode. |
 | Preview: footnote and cross-reference frame, stacked per class | Preview hides note bodies, keeps generated callers, and stacks one section per note class below the text. Clicking a note moves the caret to it, and the caret on a caller highlights its note. |
 | Conditional styling, e.g. `\p` then `\q` → blank line | `\Marker p+q1` adjacent-sibling rules. The built-in rule gives a 12 pt blank line between prose and poetry. |
-| "How are we extending the STY to PREVIEW?" | Selector records in ordinary `.sty` layers: a built-in `uniti.sty` plus a project `uniti.sty`. See [USFM stylesheet rules](../../usfm-stylesheet-rules.md). |
+| "How are we extending the STY to PREVIEW?" | Selector records in ordinary `.sty` layers: a built-in `uniti.sty` plus a project `uniti.sty`. See [USFM stylesheet rules](../../../usfm-stylesheet-rules.md). |
 | Book / chapter / verse selector in the USFM frame | Book lists every file of the environment in the project folder, by `\id`, in canonical order. Chapter and Verse follow the caret. |
 | View per chapter or per book | Paused (wishlist). |
 | Side-by-side sync within a group, highlight matched lines | `ReferenceSync` scrolls the other splits of the same group and book to the caret's chapter:verse, and highlights the verse on every side. |

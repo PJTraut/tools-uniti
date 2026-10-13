@@ -2,7 +2,7 @@
 
 Date: 2026-09-29
 Status: **Implemented.**
-Origin: [E1–E4 plan](2026-09-29-environment-framework-e1-e4-plan.md) explicitly deferred SFM/STY design ("Per this project's documentation rules, SFM/STY design deserves its own record once E4 has proven the framework"); [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md) names the same deferral. This is that record for the first slice — Phase E5 of the external handover spec's own phase numbering (`@externalresources/UNITI_Claude_Code_Environment_Handover_Spec.md` §74).
+Origin: [E1–E4 plan](2026-09-29-environment-framework-e1-e4-plan.md) explicitly deferred SFM/STY design ("Per this project's documentation rules, SFM/STY design deserves its own record once E4 has proven the framework"); [ADR-0013](../../05_decisions/ADR-0013-environment-framework-ownership-boundary.md) names the same deferral. This is that record for the first slice — Phase E5 of the external handover spec's own phase numbering (`@externalresources/UNITI_Claude_Code_Environment_Handover_Spec.md` §74).
 
 ## Scope
 

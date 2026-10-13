@@ -1,7 +1,7 @@
 # ADR-0013: Isolated File-Type Environment Framework — Ownership Boundary
 
 Date: 2026-09-29
-Status: accepted (Phases E1–E4 implemented — see the [implementation plan](../02_plans/2026-09-29-environment-framework-e1-e4-plan.md))
+Status: accepted (Phases E1–E4 implemented — see the [implementation plan](../03_implemented/milestones/2026-09-29-environment-framework-e1-e4-plan.md))
 
 ## Context
 
@@ -35,7 +35,7 @@ This decision reconciles the spec's architecture against those facts before furt
 
 - [Current Architecture](../01_current/ARCHITECTURE.md)
 - [ADR-0002: UNITI Document Authority and Qt Boundary](ADR-0002-document-authority-boundary.md) — this decision extends its invariant to the new environment seam.
-- [Isolated File-Type Environments (E0–E4) — Implementation Plan](../02_plans/2026-09-29-environment-framework-e1-e4-plan.md)
+- [Isolated File-Type Environments (E0–E4) — Implementation Plan](../03_implemented/milestones/2026-09-29-environment-framework-e1-e4-plan.md)
 - [Parked Capability Catalog](../04_parked/CATALOG.md) — the [File-type profiles and syntax highlighting](../04_parked/CATALOG.md#file-type-profiles-and-syntax-highlighting) entry's remaining parked scope is unaffected; noted here for clarity only, not changed.
 
-Update 2026-10-08: the generic SFM environment was retired ([field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R5). `.sfm` and `.usfm` both resolve to the USFM environment, and a saved `sfm` key is read as `usfm` (`syntax_profiles.RETIRED_KEYS`).
+Update 2026-10-08: the generic SFM environment was retired ([field test round 2](../03_implemented/milestones/2026-10-08-usfm-field-test-round-2-plan.md) R5). `.sfm` and `.usfm` both resolve to the USFM environment, and a saved `sfm` key is read as `usfm` (`syntax_profiles.RETIRED_KEYS`).

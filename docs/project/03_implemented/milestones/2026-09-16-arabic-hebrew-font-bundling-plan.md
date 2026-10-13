@@ -2,8 +2,8 @@
 
 Date: 2026-09-16
 Status: implemented (2026-09-16). Both faces registered and verified; full suite green (1,888 passed, 6 platform skips).
-Feedback: [BF-064](../BETA_FEEDBACK.md#bf-064--rtlbidi-content-support-arabic--hebrew) (RTL/bidi content support), task 7
-Policy: [ADR-0010](../05_decisions/ADR-0010-bundled-font-selection-policy.md)
+Feedback: [BF-064](../../BETA_FEEDBACK.md#bf-064--rtlbidi-content-support-arabic--hebrew) (RTL/bidi content support), task 7
+Policy: [ADR-0010](../../05_decisions/ADR-0010-bundled-font-selection-policy.md)
 
 ## Why
 
@@ -11,7 +11,7 @@ BF-064's RTL content work has no font behind it: the bundled Noto fallback set c
 
 ## Sourced and verified faces
 
-Following [ADR-0010](../05_decisions/ADR-0010-bundled-font-selection-policy.md)'s process — the `notofonts` GitHub org's lowercase generic per-script repo (matching every existing entry's pattern), latest tagged release, `Regular` weight only:
+Following [ADR-0010](../../05_decisions/ADR-0010-bundled-font-selection-policy.md)'s process — the `notofonts` GitHub org's lowercase generic per-script repo (matching every existing entry's pattern), latest tagged release, `Regular` weight only:
 
 | | Arabic | Hebrew |
 |---|---|---|
@@ -36,7 +36,7 @@ Sourcing was verified directly, not assumed: both archives were downloaded, unzi
 
 1. **Manifest** (`src/uniti/ui/assets/fonts/manifest.json`): append two entries (Arabic, Hebrew) following the exact schema of the existing 13, using the verified fields in the table above.
 2. **Assets**: add `NotoNaskhArabic-Regular.otf` and `NotoSansHebrew-Regular.otf` to `src/uniti/ui/assets/fonts/`; add `NotoNaskhArabic-OFL.txt` and `NotoSansHebrew-OFL.txt` to `src/uniti/ui/assets/fonts/licenses/`, matching the `NotoSans<Script>-OFL.txt` naming convention (adapted to `NotoNaskhArabic-OFL.txt` for the one that isn't a "Sans" family).
-3. **`src/uniti/ui/bundled_fonts.py`** (per [ADR-0010](../05_decisions/ADR-0010-bundled-font-selection-policy.md)'s registration-code contract, done *before* adding the new entries so the count-derivation change is tested against the current 13 first, then verified again after adding 15):
+3. **`src/uniti/ui/bundled_fonts.py`** (per [ADR-0010](../../05_decisions/ADR-0010-bundled-font-selection-policy.md)'s registration-code contract, done *before* adding the new entries so the count-derivation change is tested against the current 13 first, then verified again after adding 15):
    - `BundledFontCapability.complete`: replace `len(self.families) == 13` with a count derived from the manifest (e.g. store the manifest's expected entry count on the capability, or compare `len(self.families) + len(self.failures)` against `len(entries)` read at registration time) rather than a hardcoded literal.
    - `register_bundled_fonts()`: replace `if len(entries) != 13` similarly — the real invariant worth checking is "the manifest is well-formed and non-empty," not an exact hardcoded count.
 4. **`tests/ui/test_font_policy.py`**: replace the hardcoded `assert len(manifest['fonts']) == 13` with an assertion appropriate to the new contract (e.g. asserting the manifest's count matches whatever `bundled_fonts.py` now derives, plus updating any test that constructs a `BundledFontCapability` expecting exactly 13 families).

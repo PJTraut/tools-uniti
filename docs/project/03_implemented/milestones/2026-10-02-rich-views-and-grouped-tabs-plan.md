@@ -2,7 +2,7 @@
 
 Date: 2026-10-02
 Status: **Implemented.**
-Decision: [ADR-0015](../05_decisions/ADR-0015-stylesheet-layers-and-rich-views.md) (stylesheet layers, inspector, E7–E10); BF-082 per its own [feedback entry](../BETA_FEEDBACK.md#bf-082--file-tabs-stack-files-per-group-longer-filenames-paging-nav).
+Decision: [ADR-0015](../../05_decisions/ADR-0015-stylesheet-layers-and-rich-views.md) (stylesheet layers, inspector, E7–E10); BF-082 per its own [feedback entry](../../BETA_FEEDBACK.md#bf-082--file-tabs-stack-files-per-group-longer-filenames-paging-nav).
 Origin: "implement everything" (2026-10-02). Covers the E6 follow-ups, spec Phases E7–E10, and BF-082.
 
 ## What shipped
@@ -47,7 +47,7 @@ It is built on the existing `QTabWidget`, not a replacement:
 
 ## Follow-up, 2026-10-03 (ADR-0016)
 
-Decision: [ADR-0016](../05_decisions/ADR-0016-rich-view-persistence-notes-export-placement.md).
+Decision: [ADR-0016](../../05_decisions/ADR-0016-rich-view-persistence-notes-export-placement.md).
 
 What shipped:
 

@@ -3,7 +3,7 @@
 Date: 2026-09-17
 Status: active — a living index, not a milestone. Updated whenever the [Beta Feedback Log](../BETA_FEEDBACK.md) review below is repeated; individual item disposition always lives in its own `BF-NNN` entry, not here.
 Feedback: [Beta Feedback Log](../BETA_FEEDBACK.md), [Parked Capability Catalog](../04_parked/CATALOG.md), [Feature Wishlist](../FEATURE_WISHLIST.md)
-Milestone: reviewed against the active [B3 milestone](v0.001b3-find-replace-and-editor-refinement-beta.md)
+Milestone: reviewed against the active [B4 milestone](v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) (2026-10-13: every pooled feedback item has landed; what's left is Pool 1's native/hosted confirmation)
 
 ## Why this document exists
 
@@ -24,7 +24,7 @@ Seven items from a batch of external beta-tester feedback ([BF-076](../BETA_FEED
 - [BF-077](../BETA_FEEDBACK.md#bf-077--compare-enable-line-wrap) — Compare line wrap. Resolves BF-070's 2026-09-18 finding: the user chose the full wrap-aware scroll-sync rework (2026-09-22) over the accept-imprecision fallback — new `UNITITextView.visual_row_for_line`/`line_for_visual_row` convert between a logical line and each pane's own scrollbar value (line index, or wrapped-row index when wrap is on), so `uniti.core.text_diff`'s alignment math stays wrap-agnostic. Per-pane toggle in Compare's right-click context menu.
 - [BF-081](../BETA_FEEDBACK.md#bf-081--groups-save-group-close-group) — Groups: save group, close group. **New architecture**, landed 2026-09-22: `DocumentGroup` gained a `saved_paths` field (persisted, membership-only, no order/position); Save/Close/Open Saved actions added to the tab's group context menu, Close prompting per-document exactly like `close_all_documents` (BF-084).
 
-**Still open:**
+**Landed, awaiting native/tester confirmation:**
 
 - [BF-082](../BETA_FEEDBACK.md#bf-082--file-tabs-stack-files-per-group-longer-filenames-paging-nav) — File tabs: per-group stacking, horizontal groups/vertical files, paging nav. **Implemented 2026-10-02 as an opt-in mode (View > Grouped Tabs); awaiting native/tester confirmation.** Scoped with the user 2026-09-21: per-split stacking — each `PaneLeaf` gets its own horizontal group row/vertical file stack, layered onto the existing `EditorPaneTree` split model, not a window-wide concept spanning splits. Interaction model refined 2026-09-22 and built as an interactive HTML prototype for the user (and a tester) to try before real code — the actual `panes.py`/`_DetachableTabBar` rework is blocked on that feedback. The Recent-Files sub-piece (longer list, remembers/restores a file's group) has already landed independently.
 

@@ -3,7 +3,7 @@
 Date: 2026-10-08
 Status: **Implemented** (2026-10-08): R1–R8 and R4b. Next on the roadmap: projects plan P4 (versification) and P5 (sync across books).
 Origin: `@externalresources/field_test_feedback` (2026-10-08).
-Builds on: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
+Builds on: [ADR-0017](../../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) and [ADR-0018](../../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md). It's ordered on the [roadmap](../../02_plans/ROADMAP.md) ahead of the remaining [projects plan](2026-10-07-usfm-projects-and-versification-plan.md) phases P4–P5.
 
 ## Feedback
 
@@ -99,7 +99,7 @@ Tests: `tests/test_sfm_markers.py` (10). It covers marker names, lossless tokeni
 - Preview shows a note's category as generated, protected `[People]` text right after its caller in the notes frame, and hides the `\cat`/`\cat*` markers.
 - The brackets are styled by a new built-in rule, `\Marker cat` in `uniti.sty`, so they can be restyled like everything else.
 - Standard keeps `\cat` visible as a tag, as it does every marker.
-- Choosing which categories Preview shows is in the [wishlist](../FEATURE_WISHLIST.md#footnote-category-filter-in-preview).
+- Choosing which categories Preview shows is in the [wishlist](../../FEATURE_WISHLIST.md#footnote-category-filter-in-preview).
 
 **Implemented 2026-10-08.**
 - **In Preview,** a paired `\cat …\cat*` shows its content between generated, protected brackets: "a [People] 1:1 A note." in the notes frame, and the same in body text (e.g. a sidebar's category). Its markers are hidden.
@@ -140,7 +140,7 @@ Tests: `tests/app/test_environment_window.py` +4: verse in every mode and cleari
 
   The rich-view keys (`sfm.standard`, `sfm.preview`) stay as they are, since they name the shared SFM views.
 - **What changes for non-Scripture SFM** (e.g. Toolbox dictionaries): it now gets USFM validation and the official stylesheet. Undefined-marker reports (R7) and Plain Text (R6) are the way to work with those files.
-- **Docs:** ADR-0013/ADR-0014's catalogs and the [SFM syntax-highlighting entry](../../syntax-highlighting.md) are updated.
+- **Docs:** ADR-0013/ADR-0014's catalogs and the [SFM syntax-highlighting entry](../../../syntax-highlighting.md) are updated.
 
 **Implemented 2026-10-08.**
 - **Gone:** `SfmEnvironment` (and `sfm_environment.py`) and the `SFM` syntax profile.
@@ -250,7 +250,7 @@ Tests: `tests/test_sfm_undefined.py` (5) and `tests/ui/test_undefined_markup_ui.
 - **Documentation**, as `docs/environments/`:
   - an overview: what an environment is; environment windows; Open as Plain Text vs. Plain Text Mode; extension assignment; configuration layers and folders;
   - one page per environment (Plain Text, Markdown, XML, JSON, YAML, CSV, TSV, USFM): extensions, menu commands, views, validation and findings, environment window, and every configuration file with its location, format, precedence and how to edit it, with examples;
-  - folded in: the USFM page carries [USFM stylesheet rules](../../usfm-stylesheet-rules.md), `Settings.xml` projects, and versification.
+  - folded in: the USFM page carries [USFM stylesheet rules](../../../usfm-stylesheet-rules.md), `Settings.xml` projects, and versification.
 
   The pages are linked from the README and the user manual, and each menu's **Configuration Files…** links to its page.
 - **Tests:** the layer order with a user `uniti.sty`; creating a file from the template; reload after saving a configuration file; the Configuration Files list for a single file and for a project file.

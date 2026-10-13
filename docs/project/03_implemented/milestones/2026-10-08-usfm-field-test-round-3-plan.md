@@ -1,9 +1,9 @@
 # USFM Field Test, Round 3 — Plan
 
 Date: 2026-10-08
-Status: **Implemented** (2026-10-08): T1–T7. Spellcheck (item 8) is planned separately: the [spellcheck plan](2026-10-13-usfm-spellcheck-plan.md), 2026-10-13.
+Status: **Implemented** (2026-10-08): T1–T7. Spellcheck (item 8) is planned separately: the [spellcheck plan](../../02_plans/2026-10-13-usfm-spellcheck-plan.md), 2026-10-13.
 Origin: `@externalresources/field_test_feedback` (2026-10-08, the day's second round) and the user's answers the same day.
-Changes: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) decisions 2–4 (an environment window per group, the Book selector, sync within one window) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md)'s consequence that "a document group is still which splits move together". A new ADR-0019 records the replacement when T3 lands.
+Changes: [ADR-0017](../../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) decisions 2–4 (an environment window per group, the Book selector, sync within one window) and [ADR-0018](../../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md)'s consequence that "a document group is still which splits move together". A new ADR-0019 records the replacement when T3 lands.
 
 ## Feedback
 
@@ -51,7 +51,7 @@ The user's answers, 2026-10-08:
   - The same applies to Open Folder by Type, Recent Files and a restored pin to USFM.
   - **Environment for This Document** doesn't offer USFM for such a file.
 - **The gate is where a window gives a file its environment.** The USFM parser, views, validation and checks don't change, so the core tests are unaffected. UI tests that open a single `.usfm` file get a minimal `Settings.xml` fixture.
-- Planning USFM outside a project is in the [wishlist](../FEATURE_WISHLIST.md#usfm-files-outside-a-project).
+- Planning USFM outside a project is in the [wishlist](../../FEATURE_WISHLIST.md#usfm-files-outside-a-project).
 - **Tests:**
   - a file outside a project opens as plain text, with the message;
   - a project book still opens in USFM;
@@ -67,7 +67,7 @@ The user's answers, 2026-10-08:
   - opening inside a USFM window, which opens such a file in an ordinary window instead of pinning it.
 - **Environment for This Document** shows "USFM (needs a Paratext project)", disabled. `set_document_environment("usfm")` refuses with "notes.txt isn't in a Paratext project, so it can't be USFM".
 - **Unchanged:** the USFM parser, views, validation and checks.
-- **Docs:** the [USFM page](../../environments/usfm.md) says USFM assumes a project, and drops the single-file Book list, the single-file sync case and `uniti.sty` as the target for a file outside a project.
+- **Docs:** the [USFM page](../../../environments/usfm.md) says USFM assumes a project, and drops the single-file Book list, the single-file sync case and `uniti.sty` as the target for a file outside a project.
 
 Tests:
 - `tests/usfm_project_fixture.py`: `ensure_project` / `in_project` give the UI tests' USFM files a minimal `Settings.xml`;
@@ -98,7 +98,7 @@ Tests:
 - **Manage Groups…** (`DocumentGroupEditor(…, environments=…, environment=…)`) has an environment chooser and returns every environment's groups. Removing a group clears it only from that environment's files.
 - **Open Folder by Type** asks R6's question first, then offers the groups of the environment the files will be in.
 - **Environment for This Document** clears the file's group when its environment changes.
-- **Docs:** a [Groups](../../environments/README.md#groups) section and the user manual.
+- **Docs:** a [Groups](../../../environments/README.md#groups) section and the user manual.
 
 Tests:
 - `tests/app/test_document_groups.py` +4: defaults per environment; Plain Text's migration; a file per environment and the same id as two groups; groups in memory without a folder;
@@ -130,7 +130,7 @@ Tests:
   - opening goes to the project's tab, otherwise to the active window;
   - regrouping doesn't move a tab.
 
-**Implemented 2026-10-08.** Recorded in [ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md).
+**Implemented 2026-10-08.** Recorded in [ADR-0019](../../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md).
 - **Identity:** `UNITIMainWindow.environment_window` is `(environment key, slot)`. `UNITIService` gained `environment_window_for(key, slot)`, `environment_windows(key)` (most recent first), `free_environment_slot`, `new_environment_window` and `environment_window_target(key, path)`: the window showing the path's project, else the most recent. `move_to_environment_window(view_id, key, slot=None)` uses them.
 - **Names:** `app/environment_window_names.py` (`EnvironmentWindowNames`, `default_window_name`: A … Z, AA …) stores renamed slots in `windows.json` per environment, shared by the service's windows. Names are validated (1–32 printable characters) and must differ from every other slot's, defaults included.
   - **Rename Window…** in the environment menu, and the toolbar's name (now a button) rename the window.
@@ -299,7 +299,7 @@ Tests: `tests/app/test_read_only_folders.py` (5): paths in or below a folder; a 
 
 ## Spellcheck from `hyphenatedWords.txt` (item 8) — plan only, not queued
 
-Superseded 2026-10-13 by the [spellcheck plan](2026-10-13-usfm-spellcheck-plan.md), which answers the open questions below. Kept as the first sketch.
+Superseded 2026-10-13 by the [spellcheck plan](../../02_plans/2026-10-13-usfm-spellcheck-plan.md), which answers the open questions below. Kept as the first sketch.
 
 **What Paratext keeps.** Read, read-only, in `usNIVv3` and `ruCARSv3`:
 - **`hyphenatedWords.txt`**: UTF-8 with a BOM and CRLF line ends.
@@ -346,4 +346,4 @@ T1 → T2 → T3 → T4 → T5 → T6 → T7.
 - T5 needs T4's tabs to colour and sync. T6 needs T4's tabs to move.
 - T7 is independent and goes last, if D5 keeps it in this round.
 
-Documentation, as each phase lands: ADR-0019 (at T3), the [Environments](../../environments/README.md) overview and [USFM](../../environments/usfm.md) pages, the user manual, [Current Status](../01_current/STATUS.md) and the [roadmap](ROADMAP.md)'s environment track queue.
+Documentation, as each phase lands: ADR-0019 (at T3), the [Environments](../../../environments/README.md) overview and [USFM](../../../environments/usfm.md) pages, the user manual, [Current Status](../../01_current/STATUS.md) and the [roadmap](../../02_plans/ROADMAP.md)'s environment track queue.

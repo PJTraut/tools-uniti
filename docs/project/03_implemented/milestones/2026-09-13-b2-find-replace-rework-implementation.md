@@ -2,11 +2,11 @@
 
 Date: 2026-09-13
 Status: implemented, integrated on `main`. All 13 consolidated P1 items complete (see "Verification" below); archived here 2026-09-16 after this review found the status line stale (all phases had long been checked off).
-Feedback: [Beta Feedback Log](../BETA_FEEDBACK.md), consolidated P1 scope
+Feedback: [Beta Feedback Log](../../BETA_FEEDBACK.md), consolidated P1 scope
 
 ## Goal
 
-Resolve [BF-039](../BETA_FEEDBACK.md#bf-039-p1--findreplace-jobresult-model-refactor) (the escalated Find/Replace job/result-model architecture finding) together with every outstanding Find/Replace-panel feedback item consolidated into P1 on 2026-09-13: BF-017, BF-018, BF-019, BF-020, BF-021, BF-022, BF-032, BF-033, BF-035, BF-036, BF-037, BF-038. (BF-014 and BF-015 were already implemented earlier and are not part of this plan.)
+Resolve [BF-039](../../BETA_FEEDBACK.md#bf-039-p1--findreplace-jobresult-model-refactor) (the escalated Find/Replace job/result-model architecture finding) together with every outstanding Find/Replace-panel feedback item consolidated into P1 on 2026-09-13: BF-017, BF-018, BF-019, BF-020, BF-021, BF-022, BF-032, BF-033, BF-035, BF-036, BF-037, BF-038. (BF-014 and BF-015 were already implemented earlier and are not part of this plan.)
 
 Three investigation passes (2026-09-13) confirmed root causes for every bug and found reusable primitives for every feature; those findings are recorded in the individual `BF-NNN` entries in the feedback log, not duplicated here. This plan tracks phase sequencing and completion only.
 
@@ -22,7 +22,7 @@ Three investigation passes (2026-09-13) confirmed root causes for every bug and 
 
 ### Phase 2 — Independent panel fixes: BF-017, BF-018, BF-022
 
-- [x] BF-017: `BoundedSingleLineTextEdit.event()` declines `ShortcutOverride` for the standard zoom sequences. **Root cause not confirmed** — direct testing disproved the specific claim from the initial investigation (a bare `QTextEdit` does not swallow the shortcut in this environment); the fix is a defensible hardening, not a proven resolution. A more plausible lead (ambiguous shortcuts across multiple windows sharing one panel) is recorded in BF-019... see [BF-017](../BETA_FEEDBACK.md#bf-017--findreplace-zoom-keyboard-shortcut-does-not-work-in-the-find-field) for the full note. Native affected-host confirmation remains the real test.
+- [x] BF-017: `BoundedSingleLineTextEdit.event()` declines `ShortcutOverride` for the standard zoom sequences. **Root cause not confirmed** — direct testing disproved the specific claim from the initial investigation (a bare `QTextEdit` does not swallow the shortcut in this environment); the fix is a defensible hardening, not a proven resolution. A more plausible lead (ambiguous shortcuts across multiple windows sharing one panel) is recorded in BF-019... see [BF-017](../../BETA_FEEDBACK.md#bf-017--findreplace-zoom-keyboard-shortcut-does-not-work-in-the-find-field) for the full note. Native affected-host confirmation remains the real test.
 - [x] BF-018: custom title-bar widget with an attach/detach toggle button, reusing `attach_to`/`detach` directly.
 - [x] BF-022: Cancel button kept as-is (confirmed distinct from closing); `closeEvent`/`reject()` now cancel an in-flight job instead of leaving it running after the panel closes.
 
