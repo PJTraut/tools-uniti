@@ -188,3 +188,28 @@ def test_ordinary_windows_keep_a_tab_per_file(desktop, tmp_path: Path):
 
     assert main._project_tabs.active is False
     assert visible_tab_texts(_leaf(main, view)) == ["01GEN.usfm", "02EXO.usfm"]
+
+
+def test_the_same_book_can_be_open_in_two_windows(desktop, tmp_path: Path):
+    """Two windows' tabs of one project can show the same book: choosing it
+    in one window, or opening it there, doesn't take it out of the other
+    (2026-10-13 spec check)."""
+
+    app, service = desktop
+    niv = _project(tmp_path / "niv", "NIV")
+    window_a, genesis_a = _usfm_window(service, niv)
+    exodus_a = window_a._environment_bar.open_book(niv / "02EXO.usfm")
+    window_b = service.new_environment_window("usfm")
+
+    genesis_b = window_b.open_path(niv / "01GEN.usfm")
+    exodus_b = window_b._environment_bar.open_book(niv / "02EXO.usfm")
+
+    assert window_a.view_for_id(genesis_a.view_id) is genesis_a
+    assert window_a.view_for_id(exodus_a.view_id) is exodus_a
+    assert genesis_b is not genesis_a and genesis_b.document is genesis_a.document
+    assert exodus_b is not exodus_a and exodus_b.document is exodus_a.document
+    assert window_b.current_view is exodus_b
+    assert visible_tab_texts(_leaf(window_a, exodus_a)) == ["NIV"]
+    assert visible_tab_texts(_leaf(window_b, exodus_b)) == ["NIV"]
+    # Opening it again in B shows B's own view of it.
+    assert window_b.open_path(niv / "01GEN.usfm") is genesis_b

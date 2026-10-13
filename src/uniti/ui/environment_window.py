@@ -317,11 +317,17 @@ class ReferenceSync(QObject):
             if self._matches(shown, group, book):
                 targets.append(shown)
                 continue
+            project = project_for_file(shown.document.path)
+            # A project's tab changes its own book (T5): another project's
+            # tab with `book` in this split isn't this tab.
             candidate = next(
                 (
                     view
                     for view in (window.view_for_id(view_id) for view_id in leaf.view_ids)
-                    if view is not None and view is not shown and self._matches(view, group, book)
+                    if view is not None
+                    and view is not shown
+                    and self._matches(view, group, book)
+                    and (project is None or _same_project(view, project))
                 ),
                 None,
             )
@@ -329,7 +335,6 @@ class ReferenceSync(QObject):
                 self._show_tab(leaf, candidate, source)
                 targets.append(candidate)
                 continue
-            project = project_for_file(shown.document.path)
             project_book = None if project is None else project.book_for(book)
             opened = None if project_book is None else self._open_in_split(shown, project_book.path, source, group)
             if opened is not None:
@@ -878,11 +883,15 @@ class EnvironmentBar(QToolBar):
                 if window._reference_sync.enabled:
                     window._reference_sync.sync_from(existing)
                 return existing
-            elsewhere = next((view for view in window.views if _same_path(view.document.path, path)), None)
+            elsewhere = next((view.document for view in window.views if _same_path(view.document.path, path)), None)
+            if elsewhere is None:
+                # Open in another window of the environment: a second view
+                # of it here too, not a move (T4).
+                elsewhere = window.open_in_other_environment_window(path)
             if elsewhere is not None:
-                # Open in another split: a second view of it, in this tab.
+                # Open in another split or window: a second view of it, in this tab.
                 window._panes.activate_view(previous.view_id)
-                opened = window.open_existing_document(elsewhere.document)
+                opened = window.open_existing_document(elsewhere)
                 return self._finish_open(opened, mode, group_id)
         else:
             for view in window.views:
@@ -957,6 +966,11 @@ def _same_path(first: Path, second: Path) -> bool:
         return first.resolve() == second.resolve()
     except OSError:
         return first == second
+
+
+def _same_project(view: "UNITITextView", project: ParatextProject) -> bool:
+    other = project_for_file(view.document.path)
+    return other is not None and _same_path(other.folder, project.folder)
 
 
 def _resolved(path: Path) -> Path:

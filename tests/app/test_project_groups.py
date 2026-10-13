@@ -139,3 +139,36 @@ def test_ungrouped_projects_dont_sync(desktop, tmp_path: Path):
 
     assert window_a._reference_sync.sync_from(left) == 0
     assert right.state.cursor != _GEN.index("\\v 2")
+
+
+def test_sync_changes_the_shown_projects_book_not_another_projects_tab(desktop, tmp_path: Path):
+    """When another project's tab in the target split has the book, sync
+    still changes the book in the shown project's tab (2026-10-13 spec check)."""
+
+    from PySide6.QtCore import Qt
+
+    app, service = desktop
+    niv = _project(tmp_path / "niv", "NIV")
+    esv = _project(tmp_path / "esv", "ESV")
+    cars = _project(tmp_path / "cars", "CARS")
+    main = service.new_window()
+    source = main.open_path(cars / "01GEN.usfm")
+    window = main.move_to_environment_window(source)
+    window._panes.split_view(source.view_id, Qt.Orientation.Horizontal)
+    esv_genesis = window.open_path(esv / "01GEN.usfm")
+    niv_exodus = window.open_path(niv / "02EXO.usfm")
+    leaf = window._panes.leaf_for_view(niv_exodus.view_id)
+    assert window._panes.leaf_for_view(esv_genesis.view_id) is leaf
+    assert window._panes.leaf_for_view(source.view_id) is not leaf
+    for view in (source, esv_genesis, niv_exodus):
+        _group(window, service, view, "A")
+    window._select_view(niv_exodus)
+    window._select_view(source)
+
+    _caret_at(source, _GEN, "\\v 2")
+    window._reference_sync.sync_from(source)
+
+    shown = leaf.active_view
+    assert shown is not esv_genesis
+    assert shown.document.path == niv / "01GEN.usfm"
+    assert shown.state.cursor == _GEN.index("\\v 2")

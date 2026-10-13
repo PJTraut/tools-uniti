@@ -640,6 +640,9 @@ class RichViewPane(QWidget):
         # Whether the document may be edited right now; the host returns
         # False while the Source editor is disabled (e.g. during a save).
         self.can_edit: Callable[[], bool] = lambda: True
+        # False while the pane's window is frozen (not the active window):
+        # edits made elsewhere then wait until the window is activated.
+        self.is_live: Callable[[], bool] = lambda: True
         # Adds the host's entries to the right-click menu.
         self.context_menu_hook: Callable[[QMenu], None] | None = None
         self._providers: tuple[EditorViewProvider, ...] = ()
@@ -1030,8 +1033,19 @@ class RichViewPane(QWidget):
         self.apply_window()
 
     def _document_edited(self, _operation) -> None:
-        if not self._applying:
-            self._refresh_timer.start()
+        if self._applying:
+            return
+        if not self.is_live():
+            # A frozen window: re-render when it's activated (`catch_up`).
+            self._stale = True
+            return
+        self._refresh_timer.start()
+
+    @property
+    def stale(self) -> bool:
+        """Whether the shown text is behind the document's."""
+
+        return self._stale
 
     # --- editing --------------------------------------------------------------
 

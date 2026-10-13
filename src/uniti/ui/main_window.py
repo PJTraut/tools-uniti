@@ -317,6 +317,9 @@ class UNITIMainWindow(QMainWindow):
         )
         self._command_actions: dict[str, QAction] = {}
         self._find_replace_shortcuts: dict[str, QShortcut] = {}
+        # Only the active window, with all its splits, follows edits live;
+        # the others are frozen until they're activated (`is_live_window`).
+        self._live_window = True
         self._hotkeys_popup: HotkeysPopup | None = None
         self._command_registry.add_listener(self._on_command_binding_changed)
         self._owns_resources = service is None and resource_manager is None
@@ -1612,18 +1615,37 @@ class UNITIMainWindow(QMainWindow):
             shutil.rmtree(scratch_dir, ignore_errors=True)
             raise
 
-    def _quit_choice(self, entry):
-        from uniti.app.service import QuitChoice
+    def _ask_save_changes(self, document: Document) -> QMessageBox.StandardButton:
+        """Save / Discard / Cancel for a modified document. One in a
+        read-only folder can't be saved in place (round 3 T7): Discard or
+        Cancel, so its changes can still be kept with Save As…."""
 
-        result = QMessageBox.warning(
+        if document.read_only:
+            return QMessageBox.warning(
+                self,
+                "Unsaved UNITI Document",
+                (
+                    f"{document.path.name} has unsaved changes, but it's in a read-only folder, "
+                    "so they can't be saved there. Discard them, or Cancel and use Save As… "
+                    "to keep a copy elsewhere."
+                ),
+                QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+        return QMessageBox.warning(
             self,
             "Unsaved UNITI Document",
-            f"Save changes to {entry.document.path.name}?",
+            f"Save changes to {document.path.name}?",
             QMessageBox.StandardButton.Save
             | QMessageBox.StandardButton.Discard
             | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Save,
         )
+
+    def _quit_choice(self, entry):
+        from uniti.app.service import QuitChoice
+
+        result = self._ask_save_changes(entry.document)
         if result == QMessageBox.StandardButton.Save:
             return QuitChoice.SAVE
         if result == QMessageBox.StandardButton.Discard:
@@ -1675,7 +1697,18 @@ class UNITIMainWindow(QMainWindow):
     def _split_limit_reached(self) -> bool:
         """An environment window has at most four splits (round 3 T6)."""
 
-        return self.environment_window is not None and self._panes.leaf_count >= MAX_ENVIRONMENT_SPLITS
+        return self.environment_window is not None and len(self._editor_pane_ids()) >= MAX_ENVIRONMENT_SPLITS
+
+    def _editor_pane_ids(self) -> tuple[str, ...]:
+        """The splits that hold documents: an attached Find/Replace's pane
+        isn't a split of the window's (it's neither counted, numbered nor
+        a place to move tabs to)."""
+
+        return tuple(
+            pane_id
+            for pane_id in self._panes.pane_ids
+            if FIND_REPLACE_VIEW_ID not in self._panes.leaf(pane_id).view_ids
+        )
 
     # --- the tab's menu: group, splits and windows (round 3 T6) -------------------
 
@@ -1715,7 +1748,7 @@ class UNITIMainWindow(QMainWindow):
                 lambda _checked=False, orientation=orientation: self.move_tab_to_new_split(view_id, orientation)
             )
         leaf = self._panes.leaf_for_view(view_id)
-        pane_ids = self._panes.pane_ids
+        pane_ids = self._editor_pane_ids()
         others = [(number, pane_id) for number, pane_id in enumerate(pane_ids, start=1) if leaf is None or pane_id != leaf.pane_id]
         if others:
             split.addSeparator()
@@ -1798,8 +1831,8 @@ class UNITIMainWindow(QMainWindow):
         """Close `view_id`'s split: its tabs join the neighbouring split."""
 
         leaf = self._panes.leaf_for_view(view_id)
-        pane_ids = self._panes.pane_ids
-        if leaf is None or len(pane_ids) < 2:
+        pane_ids = self._editor_pane_ids()
+        if leaf is None or leaf.pane_id not in pane_ids or len(pane_ids) < 2:
             return None
         position = pane_ids.index(leaf.pane_id)
         neighbour = self._panes.leaf(pane_ids[position - 1] if position > 0 else pane_ids[1])
@@ -1815,7 +1848,7 @@ class UNITIMainWindow(QMainWindow):
     def _move_books_to_leaf(self, books, target, source):
         for book in books:
             self._panes.move_view(book.view_id, target.pane_id)
-        if source is not None and source is not target and source.count() == 0 and self._panes.leaf_count > 1:
+        if source is not None and source is not target and source.count() == 0 and len(self._editor_pane_ids()) > 1:
             self._panes.close_leaf(source.pane_id)
             self._project_tabs.forget(source.pane_id)
         self._project_tabs.refresh_all()
@@ -1845,7 +1878,7 @@ class UNITIMainWindow(QMainWindow):
             source is not None
             and source.pane_id in self._panes.pane_ids
             and source.count() == 0
-            and self._panes.leaf_count > 1
+            and len(self._editor_pane_ids()) > 1
         ):
             # Don't leave an empty split behind (Dock falls back to the
             # window's active split).
@@ -2922,6 +2955,24 @@ class UNITIMainWindow(QMainWindow):
         )
         return True
 
+    def _refuse_read_only_destination(self, destination: Path) -> bool:
+        """True (with a message) when Save As would write into a read-only
+        folder: UNITI never changes one (round 3 T7)."""
+
+        from uniti.app.read_only import read_only_folder_for
+
+        folder = read_only_folder_for(destination, self._settings.read_only_folders)
+        if folder is None:
+            return False
+        QMessageBox.warning(
+            self,
+            "Read-Only Folder",
+            f"{destination.name} can't be saved in {folder}: it's a read-only folder. Choose another folder.",
+            QMessageBox.StandardButton.Ok,
+            QMessageBox.StandardButton.Ok,
+        )
+        return True
+
     def _set_status_document(self, view: UNITITextView) -> None:
         report = self._eol_reports.get(id(view))
         self._status.update_eol_report(report)
@@ -3127,6 +3178,26 @@ class UNITIMainWindow(QMainWindow):
         self._rich_views.set_mode_selector_visible(False)
         self._on_current_changed(self._tabs.currentIndex())
 
+    def open_in_other_environment_window(self, path: Path) -> Document | None:
+        """`path`'s document when it's open in another window of this
+        window's environment and not in this one."""
+
+        if self._service is None or self.environment_window is None:
+            return None
+        entry = self._service.documents.find_path(Path(path))
+        if entry is None:
+            return None
+        key = self.environment_window[0]
+        windows = [self._service.windows.window_for_view(view_id) for view_id in entry.view_ids]
+        if any(window is self for window in windows):
+            return None
+        if any(
+            window is not None and getattr(window, "environment_window", None) is not None and window.environment_window[0] == key
+            for window in windows
+        ):
+            return entry.document
+        return None
+
     def _open_in_environment(self, path: Path, profile: EncodingProfile | None) -> UNITITextView | None:
         """A file opened in an environment window lives there (ADR-0017):
         pinned to the window's environment, after an "are you sure" when
@@ -3156,6 +3227,20 @@ class UNITIMainWindow(QMainWindow):
             known = is_project_book(path)
         if not known and not self._confirm_environment_pin(path, key):
             return None
+        here = next((view for view in self.views if native_paths_equal(view.document.path, path)), None)
+        if here is not None:
+            # Already open here (maybe in other windows too): show it here.
+            self._select_view(here)
+            here.setFocus()
+            return here
+        shared = self.open_in_other_environment_window(path)
+        if shared is not None:
+            # Open in another window of this environment: a second view of
+            # it here, not a move (round 3 T4: the same project in two
+            # windows is two tabs, and both can show the same book).
+            view = self.open_existing_document(shared)
+            self._record_recent_file(path)
+            return view
         self._opening_into_environment = True
         try:
             view = self.open_path(path, profile=profile)
@@ -4294,6 +4379,8 @@ class UNITIMainWindow(QMainWindow):
             selected = selection.output_format
 
         destination = normalize_native_path(destination).path
+        if self._refuse_read_only_destination(destination):
+            return None
         if native_paths_equal(destination, view.document.path):
             if not self._confirm_encoding_change(
                 view.document.path,
@@ -4595,6 +4682,8 @@ class UNITIMainWindow(QMainWindow):
             selected = selection.output_format
 
         destination = normalize_native_path(destination).path
+        if self._refuse_read_only_destination(destination):
+            return None
         if native_paths_equal(destination, view.document.path):
             if not self._confirm_encoding_change(
                 view.document.path,
@@ -4797,15 +4886,7 @@ class UNITIMainWindow(QMainWindow):
         if not view.document.modified:
             return True
         untitled = self._is_untitled_view(view)
-        result = QMessageBox.warning(
-            self,
-            "Unsaved UNITI Document",
-            f"Save changes to {view.document.path.name}?",
-            QMessageBox.StandardButton.Save
-            | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Save,
-        )
+        result = self._ask_save_changes(view.document)
         if result == QMessageBox.StandardButton.Cancel:
             return False
         if result == QMessageBox.StandardButton.Save:
@@ -5087,15 +5168,7 @@ class UNITIMainWindow(QMainWindow):
                 or not set(entry.view_ids).issubset(local_view_ids)
             ):
                 continue
-            result = QMessageBox.warning(
-                self,
-                "Unsaved UNITI Document",
-                f"Save changes to {entry.document.path.name}?",
-                QMessageBox.StandardButton.Save
-                | QMessageBox.StandardButton.Discard
-                | QMessageBox.StandardButton.Cancel,
-                QMessageBox.StandardButton.Save,
-            )
+            result = self._ask_save_changes(entry.document)
             if result == QMessageBox.StandardButton.Cancel:
                 return False
             decisions[entry.document_id] = result
@@ -5147,3 +5220,17 @@ class UNITIMainWindow(QMainWindow):
         current = self.current_view if enabled else None
         for view in self.views:
             view.document.set_resource_active(view is current)
+        self._live_window = enabled
+        if enabled:
+            # Frozen while inactive: catch up on edits made in other windows.
+            self._rich_views.catch_up()
+
+    @property
+    def is_live_window(self) -> bool:
+        """Whether this window follows edits as they happen. Only the active
+        window and its splits are live; the others are frozen: their
+        Standard and Preview views aren't re-rendered for edits made
+        elsewhere until the window is activated. Navigation (sync, Go To)
+        still reaches them."""
+
+        return self._live_window

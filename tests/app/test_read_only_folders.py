@@ -115,3 +115,65 @@ def test_definitions_for_a_read_only_project_go_to_your_rules(desktop, tmp_path:
     dialog = main._environment.undefined_dialogs[view.view_id]
     assert isinstance(dialog, UndefinedMarkupDialog)
     assert dialog.target_path() == tmp_path / "Environments" / "USFM" / "uniti.sty"
+
+
+def test_save_as_doesnt_write_into_a_read_only_folder(desktop, tmp_path: Path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    app, service = desktop
+    niv = _project(tmp_path / "NIV")
+    (tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
+    main = service.new_window()
+    main.set_read_only_folders([str(niv)])
+    main.open_path(tmp_path / "notes.txt")
+    warnings = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda *args, **kwargs: warnings.append(args[2]) or QMessageBox.StandardButton.Ok
+    )
+
+    assert main.save_current_as(niv / "copy.txt") is None
+    assert main.start_save_current_as(niv / "01GEN.usfm") is None
+
+    assert not (niv / "copy.txt").exists()
+    assert (niv / "01GEN.usfm").read_text(encoding="utf-8") == _GEN
+    assert len(warnings) == 2 and "read-only folder" in warnings[0]
+
+
+def test_format_refuses_a_read_only_file(desktop, tmp_path: Path):
+    app, service = desktop
+    folder = tmp_path / "data"
+    folder.mkdir()
+    (folder / "a.json").write_text('{"a":1}', encoding="utf-8")
+    main = service.new_window()
+    main.set_read_only_folders([str(folder)])
+    view = main.open_path(folder / "a.json")
+
+    main._environment.run_command("format")
+
+    assert not view.document.modified
+    assert main.statusBar().currentMessage().startswith("a.json is in a read-only folder")
+
+
+def test_closing_a_modified_read_only_file_offers_discard_not_save(desktop, tmp_path: Path, monkeypatch):
+    from PySide6.QtWidgets import QMessageBox
+
+    app, service = desktop
+    niv = _project(tmp_path / "NIV")
+    main = service.new_window()
+    view = main.open_path(niv / "01GEN.usfm")
+    view.document.insert(0, "\\rem edited\n")
+    main.set_folder_read_only(niv, True)
+    asked = []
+
+    def answer(_parent, _title, text, buttons, default):
+        asked.append((text, buttons))
+        return QMessageBox.StandardButton.Cancel
+
+    monkeypatch.setattr(QMessageBox, "warning", answer)
+
+    assert not main._confirm_close(view)
+
+    text, buttons = asked[0]
+    assert "read-only folder" in text and "Save As" in text
+    assert not buttons & QMessageBox.StandardButton.Save
+    assert buttons & QMessageBox.StandardButton.Discard

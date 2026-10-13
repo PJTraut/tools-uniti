@@ -163,6 +163,15 @@ class RichViewController:
 
     # --- panes ----------------------------------------------------------------------
 
+    def catch_up(self) -> None:
+        """Re-render the shown panes that were frozen while this window
+        was inactive (edits made in another window)."""
+
+        for view in self._window.views:
+            pane = self.pane_for(view)
+            if pane is not None and pane.stale and pane.isVisible():
+                pane.refresh()
+
     def _ensure_pane(self, view: "UNITITextView") -> "RichViewPane":
         pane = self.pane_for(view)
         if pane is not None:
@@ -180,6 +189,8 @@ class RichViewController:
         pane.focused.connect(lambda: view.viewFocused.emit(view.view_id))
         pane.document_applied = lambda: self._after_rich_edit(view)
         pane.can_edit = view.isEnabled
+        # The window the pane is in now (a tab can move between windows).
+        pane.is_live = lambda: getattr(pane.window(), "is_live_window", True)
         pane.context_menu_hook = lambda menu: self._window.add_view_context_entries(menu, view)
         slot = lambda: self._sync_appearance(view)  # noqa: E731
         view.appearanceChanged.connect(slot)

@@ -197,3 +197,26 @@ def test_moving_a_splits_only_tab_to_another_window_closes_the_split(desktop, tm
     # Dock still brings it back (to the window's remaining split).
     usfm_b.dock_tab(other.view_id)
     assert service.windows.window_for_view(other.view_id) is window
+
+
+def test_an_attached_find_pane_isnt_a_split(desktop, tmp_path: Path):
+    """Four editor splits with Find/Replace attached, and Find's pane is
+    never a place to move a tab to (2026-10-13 spec check)."""
+
+    app, service = desktop
+    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window._find_replace.attach_to(window)
+    assert window._panes.leaf_count == 2
+
+    splits = 1
+    while window.split_right() is not None:
+        splits += 1
+
+    assert splits == 4
+    assert window._panes.leaf_count == 5
+    split = _submenu(window.tab_menu(genesis.view_id), "Split")
+    assert [text for text in _texts(split) if text.startswith("Move to Split")] == [
+        "Move to Split 2",
+        "Move to Split 3",
+        "Move to Split 4",
+    ]

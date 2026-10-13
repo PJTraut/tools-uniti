@@ -706,6 +706,8 @@ class EnvironmentController:
         if isinstance(result, ReplaceDocumentText):
             if document.revision != revision or not view.isEnabled():
                 return
+            if self._window._refuse_read_only(view):
+                return  # Format/Minify can't change a read-only file (T7)
             document.replace(0, document.total_chars(), result.text)
         elif isinstance(result, NavigateTo):
             offset = max(0, min(result.offset, document.total_chars()))
