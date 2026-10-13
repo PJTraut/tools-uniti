@@ -20,15 +20,15 @@ The user directed the project to move beyond A22 after the beta feedback work wa
 
 The critical BF-002 affected-host confirmation, physical Chinese/Korean IME qualification, and same-commit hosted validation also remain open. Source integration and version advancement do not supply those results. The [Roadmap](../02_plans/ROADMAP.md) records the revised development and qualification order.
 
-## Environment track (2026-09-29 → 2026-10-08)
+## Environment track (2026-09-29 → 2026-10-09)
 
 A separate engineering track alongside B4. It doesn't gate B4's qualification. Its order is the [roadmap's environment track queue](../02_plans/ROADMAP.md#environment-track-queue).
 
 | Item | Current value |
 |---|---|
-| Branch | `usfm-field-test`, from `35f6fe4` to `4324602`: merged into local `main` (fast-forward from `21164ea`) on 2026-10-09 at the user's request. Not pushed: local `main` is 34 commits ahead of `origin/main`. |
+| Branch | `usfm-field-test`, from `35f6fe4`. Merged into `main` (fast-forward from `21164ea`) on 2026-10-09 at the user's request, and pushed: `main`, `origin/main` and `usfm-field-test` are all at `bb06aab` (checked 2026-10-13). |
 | Decisions | [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)–[ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md) |
-| Plans (all implemented) | [USFM field test](../02_plans/2026-10-07-usfm-field-test-plan.md); [projects and versification](../02_plans/2026-10-07-usfm-projects-and-versification-plan.md) P1–P5; [field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R1–R8; [field test round 3](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T7 |
+| Plans | Implemented: [USFM field test](../02_plans/2026-10-07-usfm-field-test-plan.md); [projects and versification](../02_plans/2026-10-07-usfm-projects-and-versification-plan.md) P1–P5; [field test round 2](../02_plans/2026-10-08-usfm-field-test-round-2-plan.md) R1–R8; [field test round 3](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T7; [per-chapter view](../02_plans/2026-10-09-usfm-per-chapter-view-plan.md) C1–C4. Planned: [spellcheck](../02_plans/2026-10-13-usfm-spellcheck-plan.md) S1–S5. |
 | User documentation | [Environments](../../environments/README.md) (one page per environment), [USFM Stylesheet Rules](../../usfm-stylesheet-rules.md) |
 | Schema changes | None. New persisted values ride in existing `extra` blobs; the new user files (`recent-projects.json`, and per environment `Environments/<Environment>/groups.json`, `windows.json`, `projects.json`) sit next to the settings; `settings.json` gained an optional `read_only_folders` list without a schema bump. |
 
@@ -41,6 +41,24 @@ What it does:
 - Paratext projects (`Settings.xml`) open with Open USFM Project…, and Recent Projects remembers them.
 - Per-environment user configuration with **Configuration Files…**, reload on save, and a report of undefined markers on open.
 - Read-only folders: files in them can't be changed or saved in place.
+- **Show One Chapter** (2026-10-09), per window: Plain Text, Standard and Preview show only the caret's chapter, and the caret stops at its edges; the Chapter selector, sync, Go to Chapter:Verse and Find change the chapter.
+- **Live and frozen windows** (2026-10-13): only the active window and its splits follow edits; Standard and Preview in other windows re-render when their window is activated (`UNITIMainWindow.is_live_window`, `RichViewController.catch_up`). Before, every shown Preview of an edited book re-rendered on each keystroke, about 148 ms on a 281 KB Psalms.
+- Psalm titles map as verse 0 in versification (ruCARS Ps 11:1 is NIV Ps 12's title), and Standard's top bar has no format buttons.
+
+Local verification after round 3, 2026-10-09 → 2026-10-13:
+- **Typing speed** on a 300 KB Psalms: a keystroke went from about 170 ms to 16 ms (19 ms with one chapter shown). Re-reading the book after an edit no longer builds per-character byte boundaries (60 ms → under 1 ms, `95e6a07`), and the reference map looks only at `\c`/`\v` candidates (20 ms → 4 ms, `bb06aab`), checked identical to the tokenizer on 3,000 random strings and every book of `ruCARSv3` and `usNIVv2`.
+- **Full suite at `bb06aab`, 2026-10-13: 2,653 passed, 6 platform skips**, offscreen, nothing deselected, no crash.
+- **With the spec-check fixes and live/frozen windows, 2026-10-13: 2,661 passed, 6 platform skips** (8 new tests), offscreen, no crash.
+
+
+Spec check of round 3 and Show One Chapter, 2026-10-13, against the field-test feedback, the user's answers and the round 3 plan (code read, phase tests run, the app driven offscreen with throwaway projects). T1–T3, T5's group colours and sync, T6's menu and moves, T7's edit paths and C1–C4 conform; the full project name appears nowhere. Five deviations, **all fixed the same day**, each with a regression test that fails on the old code:
+- **T4: the same book can't be open in two USFM windows.** Choosing a book in one window's Book list, or opening it with File › Open, moves it out of the other window (`EnvironmentBar.open_book` looks only in its own window, `environment_window.py:881`, then `open_path` moves the file). A window could be left with no tabs. Now a book open in another window of the environment gets a second view here (`UNITIMainWindow.open_in_other_environment_window`); a book from an ordinary window still moves in.
+- **T5: sync can switch to another project's tab.** When the target split has another project's tab showing the same book in the same group, sync showed that tab instead of changing the book in the shown project's tab. The candidate must now be of the shown tab's project.
+- **T6: the Find/Replace pane counts as a split.** With Find attached only 3 editor splits are allowed, and the tab menu's Move to Split and Unsplit could target Find's pane. Only panes holding documents now count (`_editor_pane_ids`).
+- **T7: Save As writes into a read-only folder.** Neither Save As path checked the destination; both now refuse with a message (`_refuse_read_only_destination`).
+- **T7 (minor):** Format/Minify on a read-only file raised an uncaught `DocumentReadOnlyError`; it now shows the read-only message. Closing a modified read-only file offered Save, which then failed; it now offers Discard or Cancel and points to Save As (`_ask_save_changes`).
+
+Untested: Find's "All open documents" including a project tab's hidden books; a session saved with more than 4 splits isn't capped on restore.
 
 Local verification of round 3, 2026-10-08. Each phase's full suite ran (from T3 on in a separate worktree at the phase's commit, importing that tree's code), with the same deselected test as below:
 - T1 `9a575d1`: 2,564 passed (and the 2 tests it broke, fixed in the same commit); T2 `c58135b`: 2,573; T3 `95a3253`: 2,581; T4 `bb47e25`: 2,588; T5 `eff5ecd`: 2,593; T6 `5790d51`: 2,600; T7 `2a3ca75`: **2,605 passed**. Each with 6 platform skips.

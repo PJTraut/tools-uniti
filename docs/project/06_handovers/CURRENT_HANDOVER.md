@@ -1,6 +1,6 @@
 # UNITI Current Handover
 
-Captured: 2026-09-20; environment track section updated 2026-10-08
+Captured: 2026-09-20; environment track section updated 2026-10-13
 
 This is a continuation snapshot. [Current Status](../01_current/STATUS.md) owns the baseline and verification evidence; the [Documentation System](../00_governance/DOCUMENTATION_SYSTEM.md) defines authority.
 
@@ -48,14 +48,15 @@ BF-074 (font family selection) landed 2026-09-28 at `e80d634`, after this handov
 
 Since `366ea42`, `main` also gained several `main_window.py` god-object extraction refactors and the [isolated file-type environment framework](../02_plans/2026-09-29-environment-framework-e1-e4-plan.md) (Phases E1–E4, complete 2026-09-29 per [ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)) — a separate engineering track running alongside B4 that does not gate its qualification. This handover's version identity, verification evidence, and "Remaining work" list above predate all of this and describe the `366ea42` tip only; [Current Status](../01_current/STATUS.md) and the [Roadmap](../02_plans/ROADMAP.md) are the canonical sources for what has landed since.
 
-## Environment track state (2026-10-08)
+## Environment track state (2026-10-13)
 
-The environment track (file-type environments, USFM) was merged from `usfm-field-test` into local `main` on 2026-10-09 (fast-forward to `4324602`). It isn't pushed: local `main` is 34 commits ahead of `origin/main`. [Current Status](../01_current/STATUS.md#environment-track-2026-09-29--2026-10-08) has what it contains and its verification. The [roadmap's environment track queue](../02_plans/ROADMAP.md#environment-track-queue) is complete through [field test round 3](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T7 ([ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md)). Users' documentation is [Environments](../../environments/README.md).
+The environment track (file-type environments, USFM) was merged from `usfm-field-test` into `main` on 2026-10-09 and pushed: `main`, `origin/main` and `usfm-field-test` are all at `bb06aab`. [Current Status](../01_current/STATUS.md#environment-track-2026-09-29--2026-10-09) has what it contains and its verification, including the 2026-10-13 full suite (2,653 passed, 6 platform skips). The [roadmap's environment track queue](../02_plans/ROADMAP.md#environment-track-queue) is implemented through [field test round 3](../02_plans/2026-10-08-usfm-field-test-round-3-plan.md) T1–T7 ([ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md)) and [Show One Chapter](../02_plans/2026-10-09-usfm-per-chapter-view-plan.md) C1–C4. Users' documentation is [Environments](../../environments/README.md).
 
 Next safe actions, in order:
-1. With the user, the live-app check of round 3: project tabs and changing books (with the save question), USFM A/B windows and renaming, groups per environment and per project, sync across windows, the tab menu (splits, windows, Dock) and read-only folders. Also still open from round 2: versification and sync by hand, and other projects' `Settings.xml` and book naming.
-2. Push `main` once the user asks.
-3. Watch for the intermittent full-suite crash (a `SIGTRAP` or `SIGSEGV` in the interpreter, once each on 2026-10-08). Since 2026-10-09 `tests/conftest.py` registers `faulthandler` for `SIGTRAP` too, so a crash prints every thread's Python traceback; macOS's crash reports in `~/Library/Logs/DiagnosticReports/Python-*.ips` have the native side, and the log's dot count gives the test that was running.
-4. The USFM per-chapter view (Show One Chapter) was implemented 2026-10-09 ([plan](../02_plans/2026-10-09-usfm-per-chapter-view-plan.md)). Wishlist items stay paused: the footnote category filter, USFM files outside a project, and spellcheck from Paratext's word lists (planned in round 3, not queued).
+1. The five deviations from the 2026-10-13 spec check are fixed, with regression tests ([Current Status](../01_current/STATUS.md#environment-track-2026-09-29--2026-10-09)). The user's live-app check should include them: the same book in two USFM windows, sync with two projects in one split, Find attached with four splits, Save As into a read-only folder.
+2. With the user, the live-app check of round 3 and Show One Chapter: project tabs and changing books (with the save question), USFM A/B windows and renaming, groups per environment and per project, sync across windows, the tab menu (splits, windows, Dock) and read-only folders. Also still open from round 2: versification and sync by hand, and other projects' `Settings.xml` and book naming.
+3. [Spellcheck](../02_plans/2026-10-13-usfm-spellcheck-plan.md) S1–S5 is planned and queued (roadmap row 19), with the user's answers recorded and its render speed measured on a prototype. Start when the user asks.
+4. Watch for the intermittent full-suite crash (a `SIGTRAP` or `SIGSEGV` in the interpreter, once each on 2026-10-08; not seen since). `tests/conftest.py` registers `faulthandler` for `SIGTRAP` too, so a crash prints every thread's Python traceback; macOS's crash reports in `~/Library/Logs/DiagnosticReports/Python-*.ips` have the native side, and the log's dot count gives the test that was running.
+5. Wishlist items stay paused: the footnote category filter, USFM files outside a project, and hyphenation in Preview ([wishlist](../FEATURE_WISHLIST.md)).
 
 Use the [Roadmap](../02_plans/ROADMAP.md) for ordering, the [B4 milestone](../02_plans/v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) for the current scope table, and [Development](../01_current/DEVELOPMENT.md) for bootstrap and validation commands. Historical implementation details remain in [Implemented](../03_implemented/README.md), dated handovers, and Git history.

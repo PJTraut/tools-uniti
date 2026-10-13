@@ -48,8 +48,9 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 | 16 | T6 — The tab's menu: Group, Split (up to four splits, Unsplit) and Window (new, other, Dock) | implemented 2026-10-08 | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
 | 17 | T7 — Read-only folders | implemented 2026-10-08 | [Field test round 3](2026-10-08-usfm-field-test-round-3-plan.md) |
 | 18 | C1–C4 — Show One Chapter: the USFM per-chapter view in Plain Text, Standard and Preview, per window; the caret stops at the chapter's edges | implemented 2026-10-09 | [Per-chapter view](2026-10-09-usfm-per-chapter-view-plan.md) |
+| 19 | S1–S5 — Check Spelling: Paratext's `SpellingStatus.xml` and `hyphenatedWords.txt`, wrong and unknown words underlined in all three modes, per project tab | planned 2026-10-13 | [Spellcheck](2026-10-13-usfm-spellcheck-plan.md) |
 
-Wishlist, not queued: choosing which footnote categories Preview shows, USFM files outside a project, and spellcheck from Paratext's word lists ([wishlist](../FEATURE_WISHLIST.md)).
+Wishlist, not queued: choosing which footnote categories Preview shows, USFM files outside a project, and hyphenation in Preview ([wishlist](../FEATURE_WISHLIST.md)).
 
 A21 Cross-Platform Alpha and earlier completed milestones remain in [Implemented](../03_implemented/README.md). A22 source infrastructure and the beta feedback code are implemented, but unfinished milestone acceptance records remain here.
 

@@ -44,7 +44,9 @@ Ways a file gets there:
 - **Opening inside the window:** a file opened inside an environment window lives there.
   - It's pinned to that environment, and keeps its own group.
   - If its extension isn't assigned to that environment, UNITI asks "Open as <Environment>?" first.
-  - A file that's already open somewhere else moves in.
+  - A file that's already open in an ordinary window moves in. A book that's open in another window of the same environment stays there too: this window gets a second view of it, so both windows can show the same book.
+
+**The active window is live; the others are frozen.** The window you're working in, with all its splits, follows every edit as you type. Standard and Preview in your other windows don't re-render for edits made elsewhere: they catch up as soon as you switch to that window. Sync and Go to Chapter:Verse still move them. This keeps typing fast when the same book is shown in more than one window.
 
 Environment windows come back when UNITI restarts.
 

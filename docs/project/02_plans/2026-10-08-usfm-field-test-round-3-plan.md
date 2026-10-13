@@ -1,7 +1,7 @@
 # USFM Field Test, Round 3 — Plan
 
 Date: 2026-10-08
-Status: **Implemented** (2026-10-08): T1–T7. The spellcheck plan is in the wishlist, not queued.
+Status: **Implemented** (2026-10-08): T1–T7. Spellcheck (item 8) is planned separately: the [spellcheck plan](2026-10-13-usfm-spellcheck-plan.md), 2026-10-13.
 Origin: `@externalresources/field_test_feedback` (2026-10-08, the day's second round) and the user's answers the same day.
 Changes: [ADR-0017](../05_decisions/ADR-0017-environment-windows-in-place-views-reference-sync.md) decisions 2–4 (an environment window per group, the Book selector, sync within one window) and [ADR-0018](../05_decisions/ADR-0018-usfm-projects-and-recent-projects.md)'s consequence that "a document group is still which splits move together". A new ADR-0019 records the replacement when T3 lands.
 
@@ -299,7 +299,7 @@ Tests: `tests/app/test_read_only_folders.py` (5): paths in or below a folder; a 
 
 ## Spellcheck from `hyphenatedWords.txt` (item 8) — plan only, not queued
 
-Also in the [wishlist](../FEATURE_WISHLIST.md#spellcheck-from-paratext-word-lists).
+Superseded 2026-10-13 by the [spellcheck plan](2026-10-13-usfm-spellcheck-plan.md), which answers the open questions below. Kept as the first sketch.
 
 **What Paratext keeps.** Read, read-only, in `usNIVv3` and `ruCARSv3`:
 - **`hyphenatedWords.txt`**: UTF-8 with a BOM and CRLF line ends.
