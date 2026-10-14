@@ -48,6 +48,8 @@ class ProjectTabs:
         # tab (spellcheck plan D3). A tab seen for the first time takes it
         # from its books (a restored session, a moved tab).
         self._spelling: dict[tuple[str, str], bool] = {}
+        # The same for the footnote categories Preview leaves out.
+        self._note_filters: dict[tuple[str, str], frozenset[str]] = {}
 
     @property
     def active(self) -> bool:
@@ -121,8 +123,9 @@ class ProjectTabs:
             tab_bar = leaf.tabBar()
             selected = leaf.selected_view_id
             members = self.members(leaf)
-            for tab in [tab for tab in self._spelling if tab[0] == leaf.pane_id and tab[1] not in members]:
-                del self._spelling[tab]  # a closed tab forgets its setting
+            for settings in (self._spelling, self._note_filters):
+                for tab in [tab for tab in settings if tab[0] == leaf.pane_id and tab[1] not in members]:
+                    del settings[tab]  # a closed tab forgets its setting
             for key, books in members.items():
                 ids = [book.view_id for book in books]
                 remembered = self._current.get((leaf.pane_id, key))
@@ -134,6 +137,7 @@ class ProjectTabs:
                     shown = ids[0]
                 self._current[(leaf.pane_id, key)] = shown
                 self._sync_spelling((leaf.pane_id, key), books)
+                self._sync_note_filter((leaf.pane_id, key), books)
                 first = min(leaf.index_of(view_id) for view_id in ids)
                 index = leaf.index_of(shown)
                 if index != first:
@@ -177,8 +181,38 @@ class ProjectTabs:
             self._window._spelling.apply(book)
 
     def forget_spelling(self, pane_id: str) -> None:
-        for key in [key for key in self._spelling if key[0] == pane_id]:
-            del self._spelling[key]
+        for settings in (self._spelling, self._note_filters):
+            for key in [key for key in settings if key[0] == pane_id]:
+                del settings[key]
+
+    def _sync_note_filter(self, tab: tuple[str, str], books: list["UNITITextView"]) -> None:
+        """Every book of a tab leaves out the tab's footnote categories:
+        books that join take them from the tab; a tab seen first takes the
+        union of its books' (a restored session, a moved tab)."""
+
+        hidden = self._note_filters.get(tab)
+        if hidden is None:
+            hidden = self._note_filters[tab] = frozenset().union(*(book.hidden_note_categories for book in books))
+        for book in books:
+            if book.hidden_note_categories != hidden:
+                book.hidden_note_categories = hidden
+            pane = self._window._rich_views.pane_for(book)
+            if pane is not None:
+                pane.set_hidden_categories(hidden)
+
+    def set_note_filter(self, view: "UNITITextView", hidden: frozenset[str]) -> None:
+        """Leave `hidden` footnote categories out of Preview for `view`'s whole tab."""
+
+        leaf = self._window._panes.leaf_for_view(view.view_id)
+        if leaf is None:
+            return
+        hidden = frozenset(hidden)
+        self._note_filters[(leaf.pane_id, self._key(view))] = hidden
+        for book in self.books_of(view):
+            book.hidden_note_categories = hidden
+            pane = self._window._rich_views.pane_for(book)
+            if pane is not None:
+                pane.set_hidden_categories(hidden)
 
     def label(self, view: "UNITITextView", books: list["UNITITextView"] | None = None) -> str:
         """The tab's title: the project's short name, starred while any of

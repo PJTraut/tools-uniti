@@ -21,14 +21,6 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
 - Not yet scoped at all: whether UNITI would parse a user-supplied `.sty` file directly, bundle a default/standard one, or something else; the `.sty` format itself (described only qualitatively so far, not yet inspected against a real file); and how this would interact with the existing extension→profile mapping model.
 - Reference, provided by the user 2026-09-18: [USFM 3.1 documentation](https://docs.usfm.bible/usfm/3.1/index.html), which also covers USJ (the JSON-serialized form of USFM — relevant to the existing JSON profile too, not just SFM). Not yet read/incorporated into this entry's scoping.
 
-## Footnote category filter in Preview
-
-- Noted: 2026-10-08, from USFM field-test feedback ("`\cat` in footnotes needs to be displayed in [] for now; later feature select category/ies of footnotes to display in preview").
-- Idea: choose which footnote categories (`\cat …\cat*`) Preview's notes frame shows, so a reader can, for example, hide textual notes and keep study notes.
-- Current state: per the [round 2 plan](03_implemented/milestones/2026-10-08-usfm-field-test-round-2-plan.md) R3, Preview shows each note's category in brackets and shows every note.
-- Open questions: is the filter per tab, per project or global? Are uncategorized notes shown? Should Standard follow the filter too?
-
-
 ## USFM files outside a project
 
 - Noted: 2026-10-08, from the user's answers to the round 3 field-test feedback ("USFM environment assumes PROJECT, plain text only for now / add to todo later planning").

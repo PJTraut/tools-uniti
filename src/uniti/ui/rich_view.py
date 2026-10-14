@@ -395,14 +395,24 @@ class ProjectionCache:
         cache_token = getattr(provider, "cache_token", None)
         return (provider, cache_token() if callable(cache_token) else None)
 
-    def project(self, document: Document, provider: EditorViewProvider, source: Callable[[], str]) -> Projection:
+    def project(
+        self,
+        document: Document,
+        provider: EditorViewProvider,
+        source: Callable[[], str],
+        variant: frozenset[str] | None = None,
+    ) -> Projection:
+        """`variant` (the hidden footnote categories, Preview) is part of the
+        cache key: a filtered projection is kept beside the unfiltered one."""
+
         token = self._token(provider)
         per_document = self._entries.setdefault(document, {})
-        cached = per_document.get(provider.key)
+        slot = provider.key if not variant else f"{provider.key}|{'|'.join(sorted(variant))}"
+        cached = per_document.get(slot)
         if cached is not None and cached[0] == document.revision and cached[1][0] is token[0] and cached[1][1] is token[1]:
             return cached[2]
-        projection = provider.project(source())
-        per_document[provider.key] = (document.revision, token, projection)
+        projection = provider.project(source()) if not variant else provider.project_filtered(source(), variant)
+        per_document[slot] = (document.revision, token, projection)
         return projection
 
 
@@ -661,6 +671,8 @@ class RichViewPane(QWidget):
         # Check Spelling (spellcheck plan S4): the document's `SpellingCache`,
         # its book-wide spans (remembered per revision) and the spans now
         # underlined, as (view start, view end, span).
+        # Preview: the footnote categories left out (filter, plan 2026-10-14).
+        self._hidden_categories: frozenset[str] = frozenset()
         self._spelling = None
         self._spelling_book: tuple[tuple, object] | None = None
         self._spelling_shown: list[tuple[int, int, object]] = []
@@ -844,7 +856,13 @@ class RichViewPane(QWidget):
             caret_source = self.projection.source_map.view_to_source(self._offsets.from_qt(cursor.position()))
             anchor_source = self.projection.source_map.view_to_source(self._offsets.from_qt(cursor.anchor()))
         try:
-            projection = PROJECTIONS.project(self.document, self.provider, self.source_text)
+            filtered = bool(self._hidden_categories) and hasattr(self.provider, "project_filtered")
+            projection = PROJECTIONS.project(
+                self.document,
+                self.provider,
+                self.source_text,
+                self._hidden_categories if filtered else None,
+            )
         except Exception:
             logger.exception("rich view %r failed to project", self.provider.key)
             self.projection = None
@@ -1002,6 +1020,17 @@ class RichViewPane(QWidget):
                     selections.append(selection)
             selections.extend(self._spelling_selections())
         self.editor.setExtraSelections(selections)
+
+    def set_hidden_categories(self, hidden: frozenset[str], *, refresh: bool = True) -> None:
+        """Leave the notes of these categories out of Preview (a provider
+        without `project_filtered` ignores it); re-renders when it changed."""
+
+        hidden = frozenset(hidden)
+        if hidden == self._hidden_categories:
+            return
+        self._hidden_categories = hidden
+        if refresh and hasattr(self.provider, "project_filtered"):
+            self.refresh()
 
     # --- spelling (spellcheck plan S4) ---------------------------------------------
 

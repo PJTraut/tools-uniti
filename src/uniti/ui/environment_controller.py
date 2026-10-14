@@ -480,6 +480,7 @@ class EnvironmentController:
             menu.addAction(window._chapter_view.action)
             menu.addAction(window._book_lock.action)
             menu.addAction(window._spelling.action)
+            menu.addMenu(window._note_categories.menu)
             menu.addAction(window._reference_sync.action)
             menu.addMenu(self._versification_menu(view))
         configuration = QAction("Configuration Files…", window)

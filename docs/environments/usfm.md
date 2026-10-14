@@ -87,6 +87,12 @@ When another book replaces a book that has unsaved changes in its tab (the Book 
 
 A USFM book is UTF-8 with CRLF line endings. A book that isn't (LF, CR or mixed lines, or another encoding such as Windows-1252) asks "GEN (NIV) isn't UTF-8 with CRLF line endings (found: LF)" with **Update** or **Close**. **Close** closes the book and writes nothing. **Update** converts the text and the output encoding as one change (Undo takes the text back once the book is unlocked); the book stays locked, so the change is saved only with **Unlock and Save**. A BOM is kept as found. While a book is locked, the Format menu's encoding and line-ending choices are off.
 
+## Footnote categories
+
+A note's categories are the words inside its `\cat … \cat*` (`\cat People Places\cat*` is in two); a note with none is in **None**. **USFM → Footnote Categories** (also on the tab's right-click menu) lists the book's categories and **None**, all checked. Unchecking one leaves the notes out of **Preview**, caller and body, when all of a note's categories are unchecked; the callers that remain number from a. **Show All** checks everything again.
+- **Per project tab,** like Check Spelling: it applies to every book of the tab and the books you open into it, and is saved with the session.
+- **Preview only.** Standard and Plain Text keep every note, since they show the source you edit.
+
 ## Check Spelling
 
 **Check Spelling** underlines wrong and unknown words, from the project's Paratext word lists. It is **per project tab** and off by default: turn it on from **USFM → Check Spelling** or the tab's right-click menu. It then applies to every book of the tab, including books you open into it later (the Book list, sync), and is saved with the session. A tab moved to another split or window keeps it; a book merged into a tab that has checking off takes that tab's setting. A project with neither list shows it greyed out ("NIV has no spelling list (SpellingStatus.xml or hyphenatedWords.txt)").

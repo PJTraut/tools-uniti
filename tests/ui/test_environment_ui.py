@@ -74,6 +74,7 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "Show One Chapter",
         "Lock Book",
         "Check Spelling",
+        "Footnote Categories",
         "Sync Side-by-Side by Reference",
         "Versification",
         "Configuration Files…",

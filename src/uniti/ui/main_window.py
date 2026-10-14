@@ -333,6 +333,9 @@ class UNITIMainWindow(QMainWindow):
         from uniti.ui.spelling import SpellingController
 
         self._spelling = SpellingController(self)
+        from uniti.ui.note_categories import NoteCategories
+
+        self._note_categories = NoteCategories(self)
         self._file_operations = FileOperationController(
             self._resources,
             self,
@@ -1760,6 +1763,7 @@ class UNITIMainWindow(QMainWindow):
             menu.addAction(self._book_lock.make_action(view, menu))
         if self._spelling.project_of(view) is not None:
             menu.addAction(self._spelling.make_action(view, menu))
+            menu.addMenu(self._note_categories.make_menu(view, menu))
         split = menu.addMenu("Split")
         full = self._split_limit_reached()
         for label, orientation in (("Move to New Split Right", Qt.Orientation.Horizontal), ("Move to New Split Down", Qt.Orientation.Vertical)):

@@ -44,7 +44,7 @@ from uniti.core.rich_views.editing import EditPlan
 from uniti.core.rich_views.projection import NoteSection, Projection, ProjectionBuilder
 from uniti.core.rich_views.provider import ViewCommand
 
-from .markers import is_closing, is_milestone, is_milestone_close, is_nested, marker_name
+from .markers import NOTE_MARKERS, is_closing, is_milestone, is_milestone_close, is_nested, marker_name
 from .nodes import SfmNode, SfmNodeKind
 from .parser import parse_sfm
 from .semantic import (
@@ -79,9 +79,52 @@ _ALIGN = {"left": "left", "center": "center", "right": "right", "both": "justify
 
 
 # Markers whose content Preview shows between generated brackets: a
-# note's category (`\cat People\cat*` -> "[People]"). Choosing which
-# categories to show is a wishlist item.
+# note's category (`\cat People\cat*` -> "[People]").
 _BRACKETED = frozenset({"cat"})
+
+# The footnote category filter (plan 2026-10-14-footnote-category-filter):
+# `\cat aa bb cc\cat*` gives a note the categories aa, bb and cc. A note
+# with none is in `NO_CATEGORY`, which the filter lists as "None".
+NO_CATEGORY = ""
+_CATEGORY_RE = re.compile(r"\\\+?cat\s+(.*?)\\\+?cat\*", re.DOTALL)
+
+
+def note_categories(body: str) -> tuple[str, ...]:
+    """The categories of one note's text: every word inside its
+    `\\cat …\\cat*` spans, or `(NO_CATEGORY,)` when it has none."""
+
+    found: list[str] = []
+    for match in _CATEGORY_RE.finditer(body):
+        for word in match.group(1).split():
+            if word not in found:
+                found.append(word)
+    return tuple(found) or (NO_CATEGORY,)
+
+
+def source_note_categories(source: str) -> tuple[str, ...]:
+    """The categories used by the notes of `source`, in order of first
+    appearance, with `NO_CATEGORY` last when some note has none."""
+
+    found: list[str] = []
+    uncategorized = False
+    tokens = tokenize_sfm(source)
+    pairs: dict[int, tuple[int, str]] = {}
+    _paired_openers(parse_sfm(tokens), pairs)
+    for token in tokens:
+        if token.kind is not SfmTokenKind.MARKER or token.start not in pairs or marker_name(token.text) not in NOTE_MARKERS:
+            continue
+        for category in note_categories(source[token.end : pairs[token.start][0]]):
+            if category == NO_CATEGORY:
+                uncategorized = True
+            elif category not in found:
+                found.append(category)
+    return tuple(found) + ((NO_CATEGORY,) if uncategorized else ())
+
+
+def note_is_hidden(body: str, hidden: frozenset[str]) -> bool:
+    """A note is hidden when every one of its categories is."""
+
+    return bool(hidden) and all(category in hidden for category in note_categories(body))
 
 
 def _bare(marker: str) -> str:
@@ -339,13 +382,21 @@ def note_label(styles: LayeredStyleRegistry, marker: str) -> str:
     return label if label.endswith("s") else label + "s"
 
 
-def layout_projection(source: str, styles: LayeredStyleRegistry, key: str, *, show_markers: bool) -> Projection:
+def layout_projection(
+    source: str,
+    styles: LayeredStyleRegistry,
+    key: str,
+    *,
+    show_markers: bool,
+    hidden_categories: frozenset[str] = frozenset(),
+) -> Projection:
     """Paragraph blocks with each marker's effective STY formatting.
 
     `show_markers` keeps every marker visible as a protected tag (Standard
     View); otherwise markers are hidden and closed notes leave only their
     caller in the text, their bodies going to `Projection.notes`
-    (Preview). In both, source line breaks inside a paragraph flow as
+    (Preview). In Preview, a note whose categories are all in
+    `hidden_categories` leaves neither its caller nor its body. In both, source line breaks inside a paragraph flow as
     spaces — in USFM a line break is just whitespace — and a new block
     starts at each paragraph or chapter marker.
     """
@@ -461,6 +512,12 @@ def layout_projection(source: str, styles: LayeredStyleRegistry, key: str, *, sh
         closer_start = pairs[token.start][0]
         closer_end = closer_start + len(token.text) + 1
         caller_start, caller_end, body_start = _caller_bounds(source, token.end, closer_start)
+        if hidden_categories and note_is_hidden(source[body_start:closer_start], hidden_categories):
+            # Filtered out: no caller, no body, and the callers after it
+            # number as if it weren't there.
+            builder.hidden(closer_end, marker)
+            skip_until = closer_end
+            return
         written = source[caller_start:caller_end]
         if written == "-":
             caller = ""
@@ -786,6 +843,13 @@ class SfmPreviewView(_SfmViewBase):
 
     def project(self, source: str) -> Projection:
         return layout_projection(source, self._styles(), self.key, show_markers=False)
+
+    def project_filtered(self, source: str, hidden_categories: frozenset[str]) -> Projection:
+        """Preview without the notes of the hidden categories."""
+
+        return layout_projection(
+            source, self._styles(), self.key, show_markers=False, hidden_categories=hidden_categories
+        )
 
     def view_commands(self) -> tuple[ViewCommand, ...]:
         return ()

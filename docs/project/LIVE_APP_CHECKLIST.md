@@ -74,7 +74,13 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] Change `SpellingStatus.xml` in Paratext (or by hand) and activate the window: the underlines follow.
 - [ ] Dark and light themes: both underline colours are easy to see.
 
-## 11. Grouped Tabs (BF-082, ordinary windows)
+## 11. Footnote categories
+- [ ] On a book whose notes have `\cat` (`usNIVv3`): **USFM → Footnote Categories** lists the categories and **None**, all checked.
+- [ ] Uncheck one in Preview: its notes' callers and bodies go, and the remaining callers are a, b, c… Standard still shows every note.
+- [ ] Uncheck **None**: notes without `\cat` go. **Show All** brings everything back.
+- [ ] Change the book from the Book list: the filter stays on for the tab; another project's tab is unaffected. Restart: it's restored.
+
+## 12. Grouped Tabs (BF-082, ordinary windows)
 - [ ] **View › Grouped Tabs** on, in an ordinary window: files stack per group in each split; it feels right to use.
 
 ## Results
