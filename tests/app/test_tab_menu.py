@@ -69,7 +69,7 @@ def test_the_tab_menu_has_group_split_and_window(desktop, tmp_path: Path):
 
     menu = window.tab_menu(exodus.view_id)
 
-    assert _texts(menu) == ["Group", "Lock Book", "Split", "Window", "Read Only"]  # Read Only: a project tab (T7)
+    assert _texts(menu) == ["Group", "Lock Book", "Check Spelling", "Split", "Window", "Read Only"]  # Read Only: a project tab (T7)
     assert _texts(_submenu(menu, "Group"))[0] == "No Group"
     split = _submenu(menu, "Split")
     assert _texts(split) == ["Move to New Split Right", "Move to New Split Down", "Unsplit"]

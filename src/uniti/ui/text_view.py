@@ -10,8 +10,9 @@ import math
 import uuid
 import weakref
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal, QTimer
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, Signal, QTimer
 from PySide6.QtGui import (
+    QBrush,
     QColor,
     QFont,
     QFontMetrics,
@@ -21,6 +22,7 @@ from PySide6.QtGui import (
     QKeyEvent,
     QMouseEvent,
     QPainter,
+    QPixmap,
     QTextCharFormat,
     QTextLayout,
     QWheelEvent,
@@ -221,6 +223,11 @@ class UNITITextView(QAbstractScrollArea):
         self._horizontal_signature = None
         self.geometry_pending = False
         self._match_index = MatchIndex(())
+        self._spelling = None  # a SpellingCache while Check Spelling is on (plan S3)
+        self.check_spelling = False  # the tab's Check Spelling setting, saved with the session (D3)
+        self._spelling_memo: dict[int, tuple] = {}
+        self._spelling_memo_key: tuple | None = None
+        self._squiggles: dict[tuple[int, float], QBrush] = {}
         self._progressive_navigation = False
         self._dock_return: DockReturnRecord | None = None
         self._whitespace_mode = WhitespaceMode.OFF
@@ -756,6 +763,8 @@ class UNITITextView(QAbstractScrollArea):
             extra["environment_plain_mode"] = True
         if self.rich_view_key is not None:
             extra["rich_view"] = self.rich_view_key
+        if self.check_spelling:
+            extra["check_spelling"] = True
         return ViewRecord(
             self.view_id,
             document_id,
@@ -833,6 +842,7 @@ class UNITITextView(QAbstractScrollArea):
         # Only remembered here; `UNITIMainWindow` re-renders from it right
         # after this call (the profile depends on the document's environment).
         self.environment_plain_mode = record.extra.get("environment_plain_mode") is True
+        self.check_spelling = record.extra.get("check_spelling") is True
         rich_view = record.extra.get("rich_view")
         rich_view = _RENAMED_RICH_VIEWS.get(rich_view, rich_view)
         self.rich_view_key = rich_view if isinstance(rich_view, str) and rich_view else None
@@ -928,6 +938,106 @@ class UNITITextView(QAbstractScrollArea):
 
     def set_progressive_navigation(self, enabled: bool) -> None:
         self._progressive_navigation = bool(enabled)
+
+    # --- spelling (spellcheck plan S3) ---------------------------------------------
+
+    def set_spelling(self, cache) -> None:
+        """Underline the flagged words of `cache` (a `SpellingCache`) under
+        the painted lines; None turns it off."""
+
+        self._spelling = cache
+        self._spelling_memo.clear()
+        self._spelling_memo_key = None
+        self.viewport().update()
+
+    @property
+    def spelling(self):
+        return self._spelling
+
+    def spelling_spans(self, line: int) -> tuple:
+        """The flagged words of `line` (columns), from the document's cache,
+        remembered until the text or the word list changes."""
+
+        cache = self._spelling
+        if cache is None:
+            return ()
+        key = (self.document.revision, cache.generation)
+        if key != self._spelling_memo_key:
+            self._spelling_memo.clear()
+            self._spelling_memo_key = key
+        spans = self._spelling_memo.get(line)
+        if spans is None:
+            try:
+                spans = cache.spans_for(line)
+            except ValueError:
+                spans = ()
+            self._spelling_memo[line] = spans
+        return spans
+
+    def _squiggle_brush(self, color: QColor) -> QBrush:
+        """A tiled wavy underline in `color`: one pixmap per color and scale,
+        filled under a span, not a path drawn per word (0.6 ms against 4.8
+        ms for 600 words)."""
+
+        scale = self.devicePixelRatioF()
+        key = (color.rgba(), scale)
+        brush = self._squiggles.get(key)
+        if brush is None:
+            period, height = 4, 3
+            pixmap = QPixmap(round(period * scale), round(height * scale))
+            pixmap.setDevicePixelRatio(scale)
+            pixmap.fill(Qt.GlobalColor.transparent)
+            painter = QPainter(pixmap)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(color)
+            for x, y in ((0, 2), (1, 1), (2, 0), (3, 1)):
+                painter.drawRect(QRectF(x, y, 1, 1))
+            painter.end()
+            brush = self._squiggles[key] = QBrush(pixmap)
+        return brush
+
+    def _paint_spelling(self, painter: QPainter, line_number: int, column_start: int, text: str, shaped, text_x: float, y: int) -> None:
+        spans = self.spelling_spans(line_number)
+        if not spans:
+            return
+        from uniti.core.environments.sfm.spelling import SpellingState
+
+        tokens = self._theme_tokens
+        for span in spans:
+            a = max(0, span.start - column_start)
+            b = min(len(text), span.end - column_start)
+            if b <= a:
+                continue
+            color = tokens.spelling_unknown if span.spelling.state is SpellingState.UNKNOWN else tokens.spelling_wrong
+            brush = self._squiggle_brush(color)
+            for rect in self._span_rects(shaped, text_x, a, b, y + self._line_height - 3, 3):
+                painter.setBrushOrigin(rect.left(), rect.top())
+                painter.fillRect(rect, brush)
+
+    def viewportEvent(self, event) -> bool:  # noqa: N802 - Qt override
+        if event.type() == QEvent.Type.ToolTip and self._spelling is not None:
+            if self._show_spelling_tooltip(event):
+                return True
+        return super().viewportEvent(event)
+
+    def _show_spelling_tooltip(self, event) -> bool:
+        from PySide6.QtWidgets import QToolTip
+
+        from uniti.core.environments.sfm.spellcheck import describe
+
+        position = event.pos()
+        char = self._char_for_point(position.x(), position.y())
+        try:
+            line = self.document.line_for_char(char)
+            column = char - self.document.line_start(line)
+        except ValueError:
+            return False
+        for span in self.spelling_spans(line):
+            if span.start <= column < span.end:
+                QToolTip.showText(event.globalPos(), describe(span.spelling, self._spelling.context.project_name), self.viewport())
+                return True
+        QToolTip.hideText()
+        return False
 
     def set_match_index(self, match_index: MatchIndex | MatchStore | None) -> None:
         self._match_index = MatchIndex(()) if match_index is None else match_index
@@ -1908,6 +2018,8 @@ class UNITITextView(QAbstractScrollArea):
                 line_number=line_number,
                 column_start=column_start,
             )
+            if self._spelling is not None:
+                self._paint_spelling(painter, line_number, column_start, text, shaped, text_x, y)
             self._paint_whitespace_for_row(
                 painter,
                 layout,

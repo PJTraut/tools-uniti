@@ -44,6 +44,10 @@ class ProjectTabs:
         self._current: dict[tuple[str, str], str] = {}
         self._modified: dict[str, bool] = {}
         self._refreshing = False
+        # (pane id, project folder) -> whether Check Spelling is on for the
+        # tab (spellcheck plan D3). A tab seen for the first time takes it
+        # from its books (a restored session, a moved tab).
+        self._spelling: dict[tuple[str, str], bool] = {}
 
     @property
     def active(self) -> bool:
@@ -116,7 +120,10 @@ class ProjectTabs:
         try:
             tab_bar = leaf.tabBar()
             selected = leaf.selected_view_id
-            for key, books in self.members(leaf).items():
+            members = self.members(leaf)
+            for tab in [tab for tab in self._spelling if tab[0] == leaf.pane_id and tab[1] not in members]:
+                del self._spelling[tab]  # a closed tab forgets its setting
+            for key, books in members.items():
                 ids = [book.view_id for book in books]
                 remembered = self._current.get((leaf.pane_id, key))
                 if selected in ids:
@@ -126,6 +133,7 @@ class ProjectTabs:
                 else:
                     shown = ids[0]
                 self._current[(leaf.pane_id, key)] = shown
+                self._sync_spelling((leaf.pane_id, key), books)
                 first = min(leaf.index_of(view_id) for view_id in ids)
                 index = leaf.index_of(shown)
                 if index != first:
@@ -143,6 +151,34 @@ class ProjectTabs:
                         set_tint(view_id, self.group_color(shown_view) if view_id == shown else None)
         finally:
             self._refreshing = False
+
+    def _sync_spelling(self, tab: tuple[str, str], books: list["UNITITextView"]) -> None:
+        """Every book of a tab has the tab's Check Spelling setting: books
+        that join take it from the tab; a tab seen first takes it from its
+        books (any one on turns it on)."""
+
+        setting = self._spelling.get(tab)
+        if setting is None:
+            setting = self._spelling[tab] = any(book.check_spelling for book in books)
+        for book in books:
+            if book.check_spelling != setting:
+                book.check_spelling = setting
+            self._window._spelling.apply(book)
+
+    def set_spelling(self, view: "UNITITextView", enabled: bool) -> None:
+        """Check Spelling for `view`'s whole tab."""
+
+        leaf = self._window._panes.leaf_for_view(view.view_id)
+        if leaf is None:
+            return
+        self._spelling[(leaf.pane_id, self._key(view))] = enabled
+        for book in self.books_of(view):
+            book.check_spelling = enabled
+            self._window._spelling.apply(book)
+
+    def forget_spelling(self, pane_id: str) -> None:
+        for key in [key for key in self._spelling if key[0] == pane_id]:
+            del self._spelling[key]
 
     def label(self, view: "UNITITextView", books: list["UNITITextView"] | None = None) -> str:
         """The tab's title: the project's short name, starred while any of
@@ -180,6 +216,7 @@ class ProjectTabs:
     def forget(self, pane_id: str) -> None:
         for key in [key for key in self._current if key[0] == pane_id]:
             del self._current[key]
+        self.forget_spelling(pane_id)
 
 
 def _resolved(path: Path) -> Path:

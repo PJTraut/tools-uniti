@@ -73,6 +73,7 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "Move to Environment Window",
         "Show One Chapter",
         "Lock Book",
+        "Check Spelling",
         "Sync Side-by-Side by Reference",
         "Versification",
         "Configuration Files…",

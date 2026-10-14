@@ -37,6 +37,7 @@ class TaskKind(StrEnum):
     PREFETCH = "prefetch"
     REGEX_ANALYSIS = "regex_analysis"
     CAPTURE_REPORT = "capture_report"
+    SPELLING = "spelling"
 
 
 class TaskState(StrEnum):
@@ -61,6 +62,7 @@ _PRIORITIES = {
     TaskKind.PREFETCH: WorkPriority.PREFETCH,
     TaskKind.REGEX_ANALYSIS: WorkPriority.INTERACTIVE,
     TaskKind.CAPTURE_REPORT: WorkPriority.VISIBLE,
+    TaskKind.SPELLING: WorkPriority.VISIBLE,
 }
 _BACKGROUND_KINDS = {
     TaskKind.INDEX,

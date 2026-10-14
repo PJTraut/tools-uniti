@@ -35,6 +35,8 @@ class EditorThemeTokens:
     invisible_background: QColor
     invisible_border: QColor
     current_line: QColor
+    spelling_wrong: QColor
+    spelling_unknown: QColor
     syntax: Mapping[str, QColor]
 
 
@@ -238,15 +240,19 @@ def _editor_tokens(
     if high_contrast and dark:
         markers = ("#cfcfcf", "#ffffff", "#66ccff", "#ff80ff")
         invisible_background = QColor("#240024")
+        spelling = ("#ff9f99", "#ffd24d")
     elif high_contrast:
         markers = ("#595959", "#404040", "#004c99", "#700070")
         invisible_background = QColor("#fff2cc")
+        spelling = ("#a31d12", "#7a4d00")
     elif dark:
         markers = ("#8b949e", "#a5b4c3", "#79c0ff", "#ffa198")
         invisible_background = QColor("#2d1b20")
+        spelling = ("#ff7b72", "#e3b341")
     else:
         markers = ("#667085", "#475467", "#075fd8", "#7a271a")
         invisible_background = QColor("#fffaeb")
+        spelling = ("#c4281b", "#9a6700")
     match = role(QPalette.ColorRole.Highlight)
     match.setAlpha(120)
     current_match = QColor("#ffbf00" if dark else "#b54708")
@@ -269,6 +275,8 @@ def _editor_tokens(
         invisible_background=invisible_background,
         invisible_border=QColor(markers[3]),
         current_line=_current_line_tint(base_color, text_color),
+        spelling_wrong=QColor(spelling[0]),
+        spelling_unknown=QColor(spelling[1]),
         syntax=MappingProxyType(syntax_category_palette(base_color)),
     )
 
@@ -380,7 +388,7 @@ def contrast_feedback(spec: ThemeSpec) -> tuple[tuple[str, float, float], ...]:
                           ('Selection text', 'HighlightedText', 'Highlight')]:
         pairs.append((label, spec.palette.color(getattr(QPalette.ColorRole, fg)),
                       spec.palette.color(getattr(QPalette.ColorRole, bg)), 4.5))
-    for role in ('space_marker', 'tab_marker', 'eol_marker', 'invisible_marker', 'invisible_border', 'invalid_byte', 'current_match'):
+    for role in ('space_marker', 'tab_marker', 'eol_marker', 'invisible_marker', 'invisible_border', 'invalid_byte', 'current_match', 'spelling_wrong', 'spelling_unknown'):
         pairs.append((role.replace('_', ' ').capitalize(), getattr(e, role), e.base, marker_threshold))
     for category, color in e.syntax.items():
         # Syntax highlighting is secondary color-coding, not primary body

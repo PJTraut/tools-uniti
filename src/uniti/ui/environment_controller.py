@@ -479,6 +479,7 @@ class EnvironmentController:
         if environment_key in REFERENCE_ENVIRONMENTS:
             menu.addAction(window._chapter_view.action)
             menu.addAction(window._book_lock.action)
+            menu.addAction(window._spelling.action)
             menu.addAction(window._reference_sync.action)
             menu.addMenu(self._versification_menu(view))
         configuration = QAction("Configuration Files…", window)

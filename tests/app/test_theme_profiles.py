@@ -52,7 +52,7 @@ def test_schema_1_profile_migrates_by_freezing_todays_syntax_colors(tmp_path):
     assert all(migrated.colors[role] == paper.colors[role]
                for role in paper.colors if role.startswith('syntax.'))
     store.save(loaded.profiles, loaded.active_id)
-    assert json.loads(store.path.read_text())['schema'] == THEME_SCHEMA == 2
+    assert json.loads(store.path.read_text())['schema'] == THEME_SCHEMA == 3
 
 
 @pytest.mark.parametrize('mutation', [
@@ -147,3 +147,26 @@ def test_atomic_replace_failure_preserves_real_file_and_cleans_temp(tmp_path, mo
         store.save((), 'Slate')
     assert store.path.read_bytes() == original
     assert list(tmp_path.iterdir()) == [store.path]
+
+
+def test_schema_2_profile_gets_spelling_colors_by_its_background(tmp_path):
+    import json
+
+    from uniti.app.theme_profiles import COLOR_ROLES, ThemeProfileStore, packaged_profiles
+
+    packaged = packaged_profiles()
+    light = next(p for p in packaged if p.base_mode == 'Light')
+    dark = next(p for p in packaged if p.base_mode == 'Dark')
+    profiles = []
+    for index, source in enumerate((light, dark)):
+        colors = {k: v for k, v in source.colors.items() if 'spelling' not in k}
+        profiles.append({'id': f'old{index}', 'name': f'Old {index}', 'base_mode': source.base_mode, 'colors': colors})
+    store = ThemeProfileStore(tmp_path / 'themes.json')
+    store.path.write_text(json.dumps({'schema': 2, 'profiles': profiles, 'active_id': 'old0'}))
+
+    state = store.load()
+
+    assert state.error is None and [p.id for p in state.profiles] == ['old0', 'old1']
+    assert all(set(p.colors) == set(COLOR_ROLES) for p in state.profiles)
+    assert state.profiles[0].colors['editor.spelling_wrong'] == '#c4281b'
+    assert state.profiles[1].colors['editor.spelling_wrong'] == '#ff7b72'

@@ -38,13 +38,13 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
 ## Spellcheck from Paratext word lists
 
 - Noted: 2026-10-08, from USFM field-test feedback ("toggle spellchecking using hyphenatedwords.txt data; plan this").
-- Plan: the [spellcheck plan](02_plans/2026-10-13-usfm-spellcheck-plan.md) (2026-10-13), queued as row 20 of the [roadmap](02_plans/ROADMAP.md#environment-track-queue): `SpellingStatus.xml` first, then `hyphenatedWords.txt`; wrong and unknown words underlined in two colours; **Check Spelling** per project tab. This entry goes when it lands.
+- Implemented 2026-10-14: the [spellcheck plan](03_implemented/milestones/2026-10-13-usfm-spellcheck-plan.md) (S1–S5). What's left is its "Later" list: approving or rejecting words, word pairs, Next/Previous issue, suggestions and `WordPrefixes`/`WordSuffixes`.
 
 ## Hyphenation in Preview
 
 - Noted: 2026-10-13 ("wishlist: use hyphenation in PREVIEw mode").
 - Idea: Preview breaks long words at the line end where the project's `hyphenatedWords.txt` allows it, as Paratext's Publishing Assistant does.
-- What the file gives (read in `usNIVv3`, see the [spellcheck plan](02_plans/2026-10-13-usfm-spellcheck-plan.md#what-paratext-keeps)): one word per line with `=` at its break points (`a=ro=se`), `SoftHyphenOut = "­"` (U+00AD) as the character to print there, and `HyphenatedMarkers` listing the paragraph markers whose text is hyphenated (`p`, `m`, `pi1`, `ip` …; not poetry or headings).
+- What the file gives (read in `usNIVv3`, see the [spellcheck plan](03_implemented/milestones/2026-10-13-usfm-spellcheck-plan.md#what-paratext-keeps)): one word per line with `=` at its break points (`a=ro=se`), `SoftHyphenOut = "­"` (U+00AD) as the character to print there, and `HyphenatedMarkers` listing the paragraph markers whose text is hyphenated (`p`, `m`, `pi1`, `ip` …; not poetry or headings).
 - Current state: Preview wraps only at spaces. The spellcheck plan's S1 reads `hyphenatedWords.txt` already, so its loader can keep the break points too.
 - Open questions:
   - Does Qt's text layout break at a U+00AD in Preview's text and show a hyphen there? If so, Preview's projection would put U+00AD at the break points, and the source map would have to skip them so the caret, sync and editing keep their offsets.

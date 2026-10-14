@@ -87,6 +87,16 @@ When another book replaces a book that has unsaved changes in its tab (the Book 
 
 A USFM book is UTF-8 with CRLF line endings. A book that isn't (LF, CR or mixed lines, or another encoding such as Windows-1252) asks "GEN (NIV) isn't UTF-8 with CRLF line endings (found: LF)" with **Update** or **Close**. **Close** closes the book and writes nothing. **Update** converts the text and the output encoding as one change (Undo takes the text back once the book is unlocked); the book stays locked, so the change is saved only with **Unlock and Save**. A BOM is kept as found. While a book is locked, the Format menu's encoding and line-ending choices are off.
 
+## Check Spelling
+
+**Check Spelling** underlines wrong and unknown words, from the project's Paratext word lists. It is **per project tab** and off by default: turn it on from **USFM → Check Spelling** or the tab's right-click menu. It then applies to every book of the tab, including books you open into it later (the Book list, sync), and is saved with the session. A tab moved to another split or window keeps it; a book merged into a tab that has checking off takes that tab's setting. A project with neither list shows it greyed out ("NIV has no spelling list (SpellingStatus.xml or hyphenatedWords.txt)").
+
+- **The lists:** `SpellingStatus.xml` decides (`R` correct, `W` wrong; a `W` entry's correction is shown; an `R` entry with a specific capitalization, like `Paul`, is wrong in other cases unless written in capitals). `hyphenatedWords.txt` only adds correct words. A hyphenated word found in neither is correct when each part is. UNITI only reads the lists, and never writes them. Lists are read on a background thread the first time a tab turns checking on, and again when their files change (checked when the window is activated, since Paratext's Send/Receive can change them).
+- **Two colours:** a wavy underline in **wrong** (Paratext marks it wrong, or its capitalization) and **unknown** (in neither list). Both are editor theme colours (`spelling_wrong`, `spelling_unknown`) in every built-in theme; older saved themes get them by their background. Hover a flagged word: "Paratext marks this wrong: use ayʼifyufyu", "Paratext spells it: Paul", or "Not in NIV's spelling list".
+- **What is checked:** the text of every marker except `nonvernacular` ones in the project's stylesheets (`\id`, `\rem`, `\ide`, … and any your `custom.sty` marks), and not markers, `\c`/`\v` numbers, `\ca`/`\va`/`\vp`, or attributes after `|`. A word is letters and combining marks, joined by an apostrophe, U+02BC, a hyphen or a zero-width joiner only when a letter follows.
+- **All three modes.** Plain Text underlines the lines it paints; Standard and Preview underline the words on screen. Preview's notes frame isn't underlined. Only the active window and its splits update their Standard and Preview underlines as you type; the others catch up when activated.
+- **No suggestions, and no adding words:** only Paratext's own correction is shown.
+
 ## Find and Replace across a project
 
 With **Current Group** as the Replace scope, **the group is the project**: every SFM book of the current project, open or not.

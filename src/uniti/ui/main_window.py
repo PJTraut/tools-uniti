@@ -330,6 +330,9 @@ class UNITIMainWindow(QMainWindow):
             if service is not None
             else resource_manager or ResourceManager()
         )
+        from uniti.ui.spelling import SpellingController
+
+        self._spelling = SpellingController(self)
         self._file_operations = FileOperationController(
             self._resources,
             self,
@@ -1755,6 +1758,8 @@ class UNITIMainWindow(QMainWindow):
         helpers.populate_group_menu(group_menu, view_id)
         if self._book_lock.applies_to(view):
             menu.addAction(self._book_lock.make_action(view, menu))
+        if self._spelling.project_of(view) is not None:
+            menu.addAction(self._spelling.make_action(view, menu))
         split = menu.addMenu("Split")
         full = self._split_limit_reached()
         for label, orientation in (("Move to New Split Right", Qt.Orientation.Horizontal), ("Move to New Split Down", Qt.Orientation.Vertical)):
@@ -3289,6 +3294,7 @@ class UNITIMainWindow(QMainWindow):
         self._project_tabs.refresh_all()
         self._environment.refresh()
         self._book_lock.refresh()
+        self._spelling.refresh()
         if self._environment_bar is not None:
             self._environment_bar.refresh()
         if self._markdown_preview is not None:
@@ -5316,6 +5322,7 @@ class UNITIMainWindow(QMainWindow):
                 self._resource_probe_future.cancel()
                 self._resource_probe_future = None
             self._file_operations.shutdown()
+            self._spelling.shutdown()
             self._detach_global_panel_bindings()
             if self.window_id in dict(self._service.windows.items):
                 self._service.unregister_window(self.window_id)
@@ -5333,6 +5340,7 @@ class UNITIMainWindow(QMainWindow):
                 self._resource_probe_future.cancel()
                 self._resource_probe_future = None
             self._file_operations.shutdown()
+            self._spelling.shutdown()
             self._find_replace.shutdown()
             if self._recovery_manager is not None:
                 self._recovery_manager.shutdown()
@@ -5427,6 +5435,7 @@ class UNITIMainWindow(QMainWindow):
         if enabled:
             # Frozen while inactive: catch up on edits made in other windows.
             self._rich_views.catch_up()
+            self._spelling.window_activated()
 
     @property
     def is_live_window(self) -> bool:

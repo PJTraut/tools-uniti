@@ -65,7 +65,16 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] Find Next with Current Group steps into the next book with a match (one that wasn't open too) and asks at the end of the project.
 - [ ] A book in a read-only folder can't be unlocked.
 
-## 10. Grouped Tabs (BF-082, ordinary windows)
+## 10. Check Spelling (S1–S5)
+- [ ] Open a project with `SpellingStatus.xml` (usNIVv3, rnBKCv1): **USFM → Check Spelling** is on offer; for a project with neither list it's greyed with the reason.
+- [ ] Turn it on from the USFM menu and from a tab's right-click menu: wrong words and unknown words get different wavy underlines in Plain Text, Standard and Preview; hover shows the reason (and Paratext's correction).
+- [ ] Footnote text isn't underlined in Preview's notes frame; `\id`, `\rem` and verse numbers aren't underlined anywhere.
+- [ ] Change the book from the Book list and with sync: the new book is checked too. Another project's tab isn't. Quit and restore the session: it's still on.
+- [ ] Type in Plain Text and Standard: no lag, the underline of an edited word updates.
+- [ ] Change `SpellingStatus.xml` in Paratext (or by hand) and activate the window: the underlines follow.
+- [ ] Dark and light themes: both underline colours are easy to see.
+
+## 11. Grouped Tabs (BF-082, ordinary windows)
 - [ ] **View › Grouped Tabs** on, in an ordinary window: files stack per group in each split; it feels right to use.
 
 ## Results

@@ -35,6 +35,8 @@
     "editor.invisible_marker": "#dc322f",
     "editor.invisible_background": "#3a1e1a",
     "editor.invisible_border": "#dc322f",
+    "editor.spelling_wrong": "#ff7b72",
+    "editor.spelling_unknown": "#e3b341",
     "syntax.keyword": "#6c71c4",
     "syntax.string": "#859900",
     "syntax.number": "#2aa198",

@@ -26,7 +26,7 @@ import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QEvent, QMimeData, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QMimeData, QPoint, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -135,6 +135,9 @@ class RichPalette:
     selected_text: QColor
     # The synced verse in side-by-side reference sync.
     highlight: QColor = field(default_factory=QColor)
+    # The spelling underlines (spellcheck plan S4).
+    spelling_wrong: QColor = field(default_factory=lambda: QColor("#c4281b"))
+    spelling_unknown: QColor = field(default_factory=lambda: QColor("#9a6700"))
 
     @classmethod
     def from_tokens(cls, tokens: EditorThemeTokens) -> "RichPalette":
@@ -148,6 +151,8 @@ class RichPalette:
             selection=QColor(tokens.selection),
             selected_text=QColor(tokens.selected_text),
             highlight=reference_highlight_color(tokens),
+            spelling_wrong=QColor(tokens.spelling_wrong),
+            spelling_unknown=QColor(tokens.spelling_unknown),
         )
 
     @classmethod
@@ -431,6 +436,8 @@ class _RichEditor(QTextEdit):
         if event.type() == QEvent.Type.ShortcutOverride and any(event.matches(key) for key in self._OWN_KEYS):
             event.accept()
             return True
+        if event.type() == QEvent.Type.ToolTip and self._owner.show_spelling_tooltip(event):
+            return True
         return super().event(event)
 
     def focusInEvent(self, event) -> None:  # noqa: N802 - Qt override
@@ -651,6 +658,16 @@ class RichViewPane(QWidget):
         self._syncing_caret = False
         self._palette: RichPalette | None = None
         self._highlight: tuple[int, int] | None = None
+        # Check Spelling (spellcheck plan S4): the document's `SpellingCache`,
+        # its book-wide spans (remembered per revision) and the spans now
+        # underlined, as (view start, view end, span).
+        self._spelling = None
+        self._spelling_book: tuple[tuple, object] | None = None
+        self._spelling_shown: list[tuple[int, int, object]] = []
+        self._spelling_timer = QTimer(self)
+        self._spelling_timer.setSingleShot(True)
+        self._spelling_timer.setInterval(0)
+        self._spelling_timer.timeout.connect(self._apply_highlights)
         # The per-chapter view: the source window shown (the target view's
         # chapter) and the Qt positions the caret may take within it.
         self._window: tuple[int, int] | None = None
@@ -685,6 +702,7 @@ class RichViewPane(QWidget):
         self.editor = _RichEditor(self)
         self.editor.cursorPositionChanged.connect(self._caret_moved)
         self.editor.selectionChanged.connect(self._caret_moved)
+        self.editor.verticalScrollBar().valueChanged.connect(lambda _value: self._schedule_spelling())
         # The text, then one stacked section per note class (Preview only).
         self.body = QSplitter(Qt.Orientation.Vertical, self)
         self.body.setChildrenCollapsible(False)
@@ -848,6 +866,7 @@ class RichViewPane(QWidget):
             self._syncing_caret = False
         self.editor.verticalScrollBar().setValue(scroll)
         self._sync_note_highlight()
+        self._schedule_spelling()
 
     # --- the USFM per-chapter view -----------------------------------------------
 
@@ -962,23 +981,117 @@ class RichViewPane(QWidget):
         self._apply_highlights()
 
     def _apply_highlights(self) -> None:
-        if self.projection is None or self._highlight is None:
-            self.editor.setExtraSelections([])
-            return
+        """The editor's extra selections: the synced verse, and the visible
+        flagged words (a few hundred at most)."""
+
+        selections: list[QTextEdit.ExtraSelection] = []
+        self._spelling_shown = []
+        if self.projection is not None:
+            if self._highlight is not None:
+                source_map = self.projection.source_map
+                start = source_map.source_to_view(self._highlight[0])
+                end = source_map.source_to_view(self._highlight[1])
+                if end > start:
+                    cursor = QTextCursor(self.editor.document())
+                    cursor.setPosition(self._offsets.to_qt(start))
+                    cursor.setPosition(self._offsets.to_qt(end), QTextCursor.MoveMode.KeepAnchor)
+                    selection = QTextEdit.ExtraSelection()
+                    selection.cursor = cursor
+                    if self._palette is not None:
+                        selection.format.setBackground(QBrush(self._palette.highlight))
+                    selections.append(selection)
+            selections.extend(self._spelling_selections())
+        self.editor.setExtraSelections(selections)
+
+    # --- spelling (spellcheck plan S4) ---------------------------------------------
+
+    def set_spelling(self, cache) -> None:
+        """Underline flagged words, from the document's `SpellingCache`; None
+        turns it off. Spelling isn't part of the render: nothing re-renders."""
+
+        self._spelling = cache
+        self._spelling_book = None
+        self._apply_highlights()
+
+    def _schedule_spelling(self) -> None:
+        if self._spelling is not None and not self._spelling_timer.isActive():
+            self._spelling_timer.start()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._schedule_spelling()
+
+    def _book_spans(self):
+        cache = self._spelling
+        key = (self.document.revision, cache.generation)
+        if self._spelling_book is None or self._spelling_book[0] != key:
+            self._spelling_book = (key, cache.book_spans())
+        return self._spelling_book[1]
+
+    def _visible_source_range(self) -> tuple[int, int] | None:
+        """The source range of the text on screen, a screen's margin each way."""
+
+        if self.projection is None:
+            return None
+        height = self.editor.viewport().height()
         source_map = self.projection.source_map
-        start = source_map.source_to_view(self._highlight[0])
-        end = source_map.source_to_view(self._highlight[1])
-        if end <= start:
-            self.editor.setExtraSelections([])
-            return
-        cursor = QTextCursor(self.editor.document())
-        cursor.setPosition(self._offsets.to_qt(start))
-        cursor.setPosition(self._offsets.to_qt(end), QTextCursor.MoveMode.KeepAnchor)
-        selection = QTextEdit.ExtraSelection()
-        selection.cursor = cursor
-        if self._palette is not None:
-            selection.format.setBackground(QBrush(self._palette.highlight))
-        self.editor.setExtraSelections([selection])
+        ends = []
+        for y in (-height, 2 * height):
+            position = self.editor.cursorForPosition(QPoint(0, y)).position()
+            ends.append(source_map.view_to_source(self._offsets.from_qt(position)))
+        start, end = min(ends), max(ends)
+        if self._window is not None:
+            start, end = max(start, self._window[0]), min(end, self._window[1])
+        return (start, end) if end > start else None
+
+    def _spelling_selections(self) -> list[QTextEdit.ExtraSelection]:
+        """Wavy underlines under the flagged words now on screen. Only a
+        live window works; a frozen one catches up when it is activated."""
+
+        if self._spelling is None or self.projection is None or self.document is None or not self.is_live():
+            return []
+        if self._stale or self._palette is None:
+            return []
+        from uniti.core.environments.sfm.spelling import SpellingState
+
+        visible = self._visible_source_range()
+        if visible is None:
+            return []
+        source_map = self.projection.source_map
+        length = len(self.projection.text)
+        selections = []
+        for span in self._book_spans().overlapping(*visible):
+            start = source_map.source_to_view(span.start)
+            end = source_map.source_to_view(span.end)
+            if end <= start or end > length:
+                continue  # hidden here (a note's text lives in the notes frame)
+            cursor = QTextCursor(self.editor.document())
+            cursor.setPosition(self._offsets.to_qt(start))
+            cursor.setPosition(self._offsets.to_qt(end), QTextCursor.MoveMode.KeepAnchor)
+            selection = QTextEdit.ExtraSelection()
+            selection.cursor = cursor
+            unknown = span.spelling.state is SpellingState.UNKNOWN
+            selection.format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.SpellCheckUnderline)
+            selection.format.setUnderlineColor(self._palette.spelling_unknown if unknown else self._palette.spelling_wrong)
+            selections.append(selection)
+            self._spelling_shown.append((start, end, span))
+        return selections
+
+    def show_spelling_tooltip(self, event) -> bool:
+        """The hover text of the flagged word under the pointer (plan D6)."""
+
+        if self._spelling is None or not self._spelling_shown:
+            return False
+        from PySide6.QtWidgets import QToolTip
+
+        from uniti.core.environments.sfm.spellcheck import describe
+
+        position = self._offsets.from_qt(self.editor.cursorForPosition(event.pos()).position())
+        for start, end, span in self._spelling_shown:
+            if start <= position < end:
+                QToolTip.showText(event.globalPos(), describe(span.spelling, self._spelling.context.project_name), self.editor)
+                return True
+        return False
 
     def scroll_to_source(self, source: int) -> None:
         """Bring a source offset into view without moving the caret."""

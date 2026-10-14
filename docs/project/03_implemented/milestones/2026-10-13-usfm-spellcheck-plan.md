@@ -1,8 +1,8 @@
 # USFM Spellcheck from Paratext's Word Lists — Plan
 
 Date: 2026-10-13
-Status: **Planned**, not started: S1–S5. Reviewed for render speed 2026-10-13 (see [Performance](#performance)).
-Origin: field test feedback item 8, 2026-10-08 ("toggle spellchecking using hyphenatedwords.txt data; plan this"). The first sketch is in the [round 3 plan](../03_implemented/milestones/2026-10-08-usfm-field-test-round-3-plan.md#spellcheck-from-hyphenatedwordstxt-item-8--plan-only-not-queued). This plan replaces it and answers its open questions.
+Status: **Implemented** (2026-10-14): S1–S5. Reviewed for render speed 2026-10-13 (see [Performance](#performance)); see [As built](#as-built) for where the code differs and what was measured.
+Origin: field test feedback item 8, 2026-10-08 ("toggle spellchecking using hyphenatedwords.txt data; plan this"). The first sketch is in the [round 3 plan](2026-10-08-usfm-field-test-round-3-plan.md#spellcheck-from-hyphenatedwordstxt-item-8--plan-only-not-queued). This plan replaces it and answers its open questions.
 
 ## The user's answers, 2026-10-13
 
@@ -108,7 +108,7 @@ Tests drive the real window: turning it on for a tab and not another tab of anot
 
 ## Order
 
-S1 → S2 → S3 → S4 → S5. S3 and S4 are independent once S2 lands. Documentation when S5 lands: the [USFM](../../environments/usfm.md) page, the user manual, the [roadmap](ROADMAP.md)'s environment track queue and [Current Status](../01_current/STATUS.md), and the wishlist entry removed.
+S1 → S2 → S3 → S4 → S5. S3 and S4 are independent once S2 lands. Documentation when S5 lands: the [USFM](../../../environments/usfm.md) page, the user manual, the [roadmap](../../02_plans/ROADMAP.md)'s environment track queue and [Current Status](../../01_current/STATUS.md), and the wishlist entry removed.
 
 ## Performance
 
@@ -139,5 +139,26 @@ Budgets, checked with the real code when each phase lands:
 - Word-pair entries (`grain field` W): flag the pair.
 - Next/Previous spelling issue, and a count in the status bar.
 - Suggestions beyond Paratext's Correction.
-- Hyphenation in Preview from the same `hyphenatedWords.txt` break points ([wishlist](../FEATURE_WISHLIST.md#hyphenation-in-preview)): S1's loader should keep them rather than discard them.
+- Hyphenation in Preview from the same `hyphenatedWords.txt` break points ([wishlist](../../FEATURE_WISHLIST.md#hyphenation-in-preview)): S1's loader should keep them rather than discard them.
 - `WordPrefixes`/`WordSuffixes` from `Settings.xml` (`usNIVv3` lists `ʼs` and `ing`) for words that are only listed without them.
+
+## As built
+
+Implemented 2026-10-14, S1–S5 in order (core `sfm/spelling.py` and `sfm/spellcheck.py`; UI `ui/spelling.py`, the paint code in `text_view.py` and `rich_view.py`).
+
+**Measured with the real code** (usNIVv3, offscreen Qt, Apple silicon, other work running):
+
+| What | Measured | Budget |
+|---|---|---|
+| Loading the lists | usNIVv3 41 ms, rnBKCv1 248 ms (on a worker) | off the UI thread |
+| Checking Genesis cold / again through the cache | 97 ms / 3.7 ms; 6 words flagged, all `Theyʼve`-style contractions the list lacks | one cold check under 50 ms was the plan's figure; here it was 97 ms on a loaded machine, once per document |
+| Typing in Plain Text on Psalms (edit and repaint) | 6.1 ms off, 6.2 ms on | +1 ms |
+| Scrolling Preview on Psalms | 0.75 ms a step off, 0.58 ms on | 2 ms |
+| Extra selections for the words on screen | 1.3 ms | under 5 ms |
+
+**Where the code differs from the plan:**
+- **Theme colours.** `spelling_wrong` and `spelling_unknown` are new editor roles, so the saved-theme schema is now 3; a schema 1 or 2 file gets the two colours by its background when it loads.
+- **Standard shows a note where it is,** so its words are underlined there; only Preview moves notes to the frame, which isn't underlined.
+- **The setting lives on the books.** `UNITITextView.check_spelling` is saved in each view's `extra`, and `ProjectTabs` keeps every book of a tab in step (a tab seen first takes it from its books; a book that joins takes the tab's). A second view of the same book in another window is another tab and has its own setting; the line cache is shared.
+- **A new task kind, `TaskKind.SPELLING`,** carries the list loading; the controller closes its task bridge when its window closes.
+- **Tests** are `tests/test_spelling_lists.py`, `test_spellcheck_lines.py`, `tests/ui/test_spelling_view.py`, `test_spelling_rich.py` and `tests/app/test_spelling_toggle.py`.

@@ -106,6 +106,7 @@ class RichViewController:
         try:
             pane = self._ensure_pane(view)
             pane.bind(view.document, providers, provider_key, *self._appearance(view, provider_key, providers))
+            pane.set_spelling(view.spelling)
             pane.show_source_caret(view.state.cursor, view.state.anchor)
             reference_sync = getattr(self._window, "_reference_sync", None)
             if reference_sync is not None:

@@ -27,7 +27,8 @@ PALETTE_ROLES = ('Window', 'WindowText', 'Base', 'AlternateBase', 'ToolTipBase',
 EDITOR_ROLES = ('base', 'text', 'gutter_base', 'gutter_text', 'selection',
                 'selected_text', 'match', 'current_match', 'invalid_byte',
                 'space_marker', 'tab_marker', 'eol_marker', 'invisible_marker',
-                'invisible_background', 'invisible_border')
+                'invisible_background', 'invisible_border',
+                'spelling_wrong', 'spelling_unknown')
 # BF-063: matches `uniti.ui.syntax_theme`'s tokenizer categories exactly.
 SYNTAX_ROLES = ('keyword', 'string', 'number', 'tag', 'attribute', 'heading',
                  'comment', 'punctuation')
@@ -37,8 +38,15 @@ COLOR_ROLES = tuple('palette.' + r for r in PALETTE_ROLES) + (
 MAX_PROFILES = 32
 MAX_BYTES = 128 * 1024
 # Schema 2 added the `syntax.*` roles above (BF-063); a schema-1 file on disk
-# predates them entirely, not merely omits optional fields.
-THEME_SCHEMA = 2
+# predates them entirely, not merely omits optional fields. Schema 3 added
+# the `editor.spelling_*` roles (spellcheck plan, D2).
+THEME_SCHEMA = 3
+
+
+def _hex_luminance(color: str) -> float:
+    channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,13 +124,15 @@ class ThemeProfileStore:
             if len(raw) > MAX_BYTES:
                 raise ValueError('Theme file exceeds 128 KiB')
             payload = json.loads(raw, object_pairs_hook=_unique_object)
-            if not isinstance(payload, dict) or set(payload) != {'schema', 'profiles', 'active_id'} or type(payload['schema']) is not int or payload['schema'] not in (1, THEME_SCHEMA):
+            if not isinstance(payload, dict) or set(payload) != {'schema', 'profiles', 'active_id'} or type(payload['schema']) is not int or payload['schema'] not in (1, 2, THEME_SCHEMA):
                 raise ValueError('Unsupported theme profile schema')
             if not isinstance(payload['profiles'], list) or len(payload['profiles']) > MAX_PROFILES:
                 raise ValueError('At most 32 custom profiles are supported')
             raw_profiles = payload['profiles']
             if payload['schema'] == 1:
                 raw_profiles = [self._migrate_schema_1_profile(p) for p in raw_profiles]
+            if payload['schema'] in (1, 2):
+                raw_profiles = [self._migrate_schema_2_profile(p) for p in raw_profiles]
             profiles = tuple(ThemeProfile.from_dict(p) for p in raw_profiles)
             self._validate(profiles)
             selected = payload['active_id']
@@ -175,6 +185,22 @@ class ThemeProfileStore:
         migrated = dict(colors)
         migrated.update({'syntax.' + role: derived[role].name() for role in SYNTAX_ROLES})
         return {**payload, 'colors': migrated}
+
+    @staticmethod
+    def _migrate_schema_2_profile(payload):
+        """Add the two spelling colors to a profile saved before them: red
+        for wrong words and amber for unknown ones, light or dark by the
+        profile's own background."""
+        if not isinstance(payload, dict) or not isinstance(payload.get('colors'), dict):
+            return payload
+        colors = payload['colors']
+        base = colors.get('editor.base')
+        if not isinstance(base, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', base):
+            return payload
+        dark = _hex_luminance(base) < 0.5
+        defaults = {'editor.spelling_wrong': '#ff7b72' if dark else '#c4281b',
+                    'editor.spelling_unknown': '#e3b341' if dark else '#9a6700'}
+        return {**payload, 'colors': {**defaults, **colors}}
 
     def save(self, profiles: tuple[ThemeProfile, ...], active_id: str):
         self._validate(profiles)
