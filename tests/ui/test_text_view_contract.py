@@ -410,7 +410,9 @@ def test_rtl_eol_marker_is_positioned_clear_of_the_arabic_text(
             if kind == "eol":
                 painted.append((label, x1, rtl))
 
-        view.resize(300, 100)
+        # Wide enough for the whole line in any platform's Arabic font: an
+        # RTL line ends on the left, off-screen in a view narrower than it.
+        view.resize(900, 100)
         view.set_soft_wrap(False)
         view.set_whitespace_mode("eol")
         view.show()
