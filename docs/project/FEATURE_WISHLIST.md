@@ -55,7 +55,7 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
 
 ## Paratext books open locked
 
-- **Planned 2026-10-14:** the [book-lock plan](02_plans/2026-10-14-usfm-book-lock-plan.md) (L1–L4, roadmap row 19). This entry goes when it lands.
+- **Planned 2026-10-14:** the [book-lock plan](02_plans/2026-10-14-usfm-book-lock-plan.md) (L1–L5, roadmap row 19). This entry goes when it lands.
 
 - Noted: 2026-10-13 ("all paratext folders should start in READONLY mode"). To plan.
 - **The user's answers, 2026-10-13:**
