@@ -537,7 +537,7 @@ class A21CIDriver:
             capture=True,
             env=environment,
         )
-        payload = self._validated_json_result(completed.stdout, f"{mode} smoke")
+        payload = self._validated_json_result(_json_document(completed.stdout), f"{mode} smoke")
         if (
             payload.get("ok") is not True
             or payload.get("platform_family") != self.family
@@ -547,6 +547,17 @@ class A21CIDriver:
         _write_json(self.results / f"smoke-{mode}.json", payload)
         print(completed.stdout, end="")
         return payload
+
+
+def _json_document(text: str) -> str:
+    """The JSON document in `text`, from its first line that starts with
+    "{": under xvfb-run, Qt's own log lines ("qt.text.font.db: OpenType
+    support missing ...") arrive in the same stream before it."""
+
+    if text.startswith("{"):
+        return text
+    start = text.find("\n{")
+    return text if start < 0 else text[start + 1 :]
 
 
 def _redactor(
