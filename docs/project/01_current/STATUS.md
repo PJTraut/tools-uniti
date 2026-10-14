@@ -11,8 +11,8 @@ Date: 2026-09-20
 | Implemented feedback | All reviewed BF-019 (real fix), BF-070 (Compare full editor parity), BF-072, BF-073 (Character Inspector rebuild), and BF-075 (per-view settings) source changes, plus the shared toggle-window state-persistence mechanism, integrated on local `main` at `366ea42` (see the [B4 milestone plan](../02_plans/v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) for the full item table) |
 | Pre-promotion baseline | `3861e63`, the B3-era commit through which the B3 promotion below was verified |
 | Promotion scope | Version metadata and project records; existing document, settings, session, and recovery schemas remain unchanged |
-| Latest complete hosted feedback pass | `aab3f3c`, [run `34253008439`](https://github.com/PJTraut/tools-uniti/actions/runs/34253008439), all four lanes (no hosted run yet exists for the B4 candidate) |
-| Last recorded hosted account block | [Run `34259043043`](https://github.com/PJTraut/tools-uniti/actions/runs/34259043043) on `33c71d3`: zero executed steps in all four jobs; GitHub annotations cite failed payments or spending limits |
+| Latest complete hosted feedback pass | `3607d1f` (B4 candidate with the environment track), [run `38531633321`](https://github.com/PJTraut/tools-uniti/actions/runs/38531633321), 2026-10-14: all four lanes (macOS, Windows, Linux 3.12 and latest) pass every step |
+| Last recorded hosted account block | Resolved 2026-10-13 (account 2FA updated). Getting the lanes green took: byte-pinning the vendored `.sty` assets (CRLF checkout on Windows broke their SHA-256, so UNITI rejected them), LF test writes on every platform, a caret never inside CRLF, platform-neutral font and layout tests, and the Linux smoke reading its JSON past Qt's log lines |
 | Latest completed milestone | A21 Cross-Platform Alpha at hosted-proven `8b24f4b` |
 | Latest immutable release tag | `v0.001a15` at `10f419e`; no beta tag or native distribution is created by this source promotion |
 
@@ -82,7 +82,6 @@ Not yet verified:
 - the user trying round 3 in the live app: project tabs, named windows, per-environment and per-project groups, sync across windows, the tab menu and read-only folders;
 - the user trying versification and sync in the live app;
 - Paratext book-file numbering and `Settings.xml` fields beyond `usNIVv3` and `ruCARSv3`;
-- hosted CI;
 - any affected-host check.
 
 ## B4 source promotion
