@@ -95,7 +95,8 @@ def test_adding_definitions_to_custom_sty_then_saving_defines_them(window, tmp_p
 
     rules = dialog.add_definitions()
 
-    text = rules.document.read(0, rules.document.total_chars())
+    # A new file takes the platform's line ending (CRLF on Windows).
+    text = rules.document.read(0, rules.document.total_chars()).replace("\r\n", "\n")
     assert "Paratext, PTXprint and UNITI all read this file" in text
     assert "\\Marker zfoo\n\\Endmarker zfoo*\n" in text and "\\Marker esbe\n" in text
     window.save_current()

@@ -15,6 +15,10 @@ src/uniti/ui/assets/lucide/LICENSE text eol=lf
 # UNITI's future byte/EOL/encoding fixtures must never be rewritten by Git.
 tests/fixtures/** -text
 
+# Vendored stylesheets are SHA-256 pinned in their manifest: never rewrite
+# their line endings (CRLF on Windows made UNITI reject them).
+src/uniti/core/environments/sfm/assets/*.sty -text
+
 # Pinned font payload and upstream notices retain exact SHA-256 on every host.
 src/uniti/ui/assets/fonts/*.otf binary
 src/uniti/ui/assets/fonts/licenses/* -text

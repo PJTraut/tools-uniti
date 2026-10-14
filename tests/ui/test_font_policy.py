@@ -302,7 +302,7 @@ def test_bundled_faces_cover_each_declared_sample_without_system_fallback(qapp):
     from PySide6.QtGui import QRawFont
     root = Path('src/uniti/ui/assets/fonts')
     assert (root / 'manifest.json').is_file()
-    manifest = json.loads((root / 'manifest.json').read_text())
+    manifest = json.loads((root / 'manifest.json').read_text(encoding='utf-8'))
     assert len(manifest['fonts']) == 15
     for entry in manifest['fonts']:
         path = root / entry['path']

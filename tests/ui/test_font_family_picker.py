@@ -61,9 +61,17 @@ def test_current_family_is_preselected(app):
     from PySide6.QtCore import Qt
     from uniti.ui.font_family_picker import FontFamilyPicker
 
-    picker = FontFamilyPicker("Courier New", default_family="Menlo")
+    from PySide6.QtGui import QFontDatabase
+
+    # A fixed-pitch family this platform has (Linux runners lack Courier New).
+    family = next(
+        name
+        for name in ("Courier New", "Menlo", "Consolas", "DejaVu Sans Mono", "Liberation Mono")
+        if name in QFontDatabase.families() and QFontDatabase.isFixedPitch(name)
+    )
+    picker = FontFamilyPicker(family, default_family="Menlo")
     try:
-        assert picker._list.currentItem().data(Qt.ItemDataRole.UserRole) == "Courier New"
+        assert picker._list.currentItem().data(Qt.ItemDataRole.UserRole) == family
     finally:
         picker.close()
 
@@ -86,16 +94,16 @@ def test_filter_hides_non_matching_families(app):
 
     picker = FontFamilyPicker(None, default_family="Menlo")
     try:
-        picker._filter.setText("courier")
+        # Filter on a family this platform lists (row 0 is "Default (...)").
+        word = picker._list.item(1).text().split()[0]
+        picker._filter.setText(word.lower())
         visible = [
             picker._list.item(row).text()
             for row in range(picker._list.count())
             if not picker._list.item(row).isHidden()
         ]
-        assert any("Courier" in text for text in visible)
-        assert all(
-            "courier" in text.lower() for text in visible
-        )
+        assert any(word in text for text in visible)
+        assert all(word.lower() in text.lower() for text in visible)
     finally:
         picker.close()
 
@@ -108,12 +116,12 @@ def test_selected_family_reflects_the_highlighted_row(app):
 
     picker = FontFamilyPicker(None, default_family="Menlo")
     try:
-        for row in range(picker._list.count()):
-            item = picker._list.item(row)
-            if item.data(Qt.ItemDataRole.UserRole) == "Courier New":
-                picker._list.setCurrentItem(item)
-                break
+        # The first real family listed (row 0 is "Default (...)"), whatever
+        # this platform has.
+        item = picker._list.item(1)
+        family = item.data(Qt.ItemDataRole.UserRole)
+        picker._list.setCurrentItem(item)
         assert isinstance(picker._list.currentItem(), QListWidgetItem)
-        assert picker.selected_family() == "Courier New"
+        assert family and picker.selected_family() == family
     finally:
         picker.close()
