@@ -1902,7 +1902,9 @@ def test_restored_deep_wrapped_row_has_six_digit_gutter_before_first_paint(
                 break
         assert view._gutter_width > initial_width
         assert view._gutter_width >= view._gutter_metrics.horizontalAdvance("100000") + 12
-        assert view._wrap_columns() < initial_columns
+        # A wider gutter never adds columns; whether it costs one depends on
+        # the font (Linux's wide M at 300% doesn't lose one to a digit).
+        assert view._wrap_columns() <= initial_columns
         index = view._wrapped_row_index()
         assert index.columns == view._wrap_columns()
         assert index.known_count > 99_999
