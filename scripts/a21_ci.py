@@ -506,7 +506,9 @@ class A21CIDriver:
         try:
             payload = _json_loads(text)
         except (TypeError, ValueError, json.JSONDecodeError) as error:
-            raise A21CIError(f"{name} returned invalid JSON") from error
+            # Show what came back, so a failing lane explains itself.
+            excerpt = (text or "")[:600].replace("\n", "\\n")
+            raise A21CIError(f"{name} returned invalid JSON: {excerpt!r}") from error
         if not isinstance(payload, dict):
             raise A21CIError(f"{name} returned invalid evidence")
         return payload
