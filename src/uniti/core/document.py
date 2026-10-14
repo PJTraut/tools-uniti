@@ -81,6 +81,11 @@ class DocumentReadOnlyError(PermissionError):
     test round 3 T7): edits and saving in place are refused."""
 
 
+class DocumentLockedError(DocumentReadOnlyError):
+    """The document is locked (a USFM book opens locked until the user
+    unlocks it): the same edits and saving are refused as for read-only."""
+
+
 class Document:
     """Own the lazy immutable-source services and edited piece table."""
 
@@ -126,6 +131,7 @@ class Document:
         self._last_save_durability: DurabilityResult | None = None
         self._closed = False
         self._read_only = False
+        self._locked = False
 
     @classmethod
     def open(
@@ -577,9 +583,27 @@ class Document:
 
         self._read_only = bool(enabled)
 
+    @property
+    def locked(self) -> bool:
+        return self._locked
+
+    def set_locked(self, enabled: bool) -> None:
+        """Lock (or unlock) the document: it refuses what read-only refuses,
+        but the user can unlock it. A change notifies the metadata
+        listeners so every view of the document refreshes."""
+
+        enabled = bool(enabled)
+        if enabled == self._locked:
+            return
+        self._locked = enabled
+        for listener in tuple(self._metadata_listeners):
+            listener(self.output_encoding, self.output_eol)
+
     def _ensure_writable(self) -> None:
         if self._read_only:
             raise DocumentReadOnlyError(f"{self._path.name} is read-only")
+        if self._locked:
+            raise DocumentLockedError(f"{self._path.name} is locked")
 
     def insert(
         self,

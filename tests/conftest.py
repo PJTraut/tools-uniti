@@ -33,16 +33,40 @@ def _open_files_here_without_asking(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _keep_unsaved_books_without_asking(monkeypatch):
-    """Changing the book in a USFM project tab with unsaved changes asks
-    whether to save (field test round 3, T4) in a modal dialog. Tests that
-    aren't about that question answer No: the changes stay in the book."""
+def _replace_all_changes_every_file(monkeypatch):
+    """A multi-file Replace All lists its files for the user to tick (book-lock
+    plan L4). Tests that aren't about that list tick every file the list
+    allows; the ones that are replace `replace_files.choose` themselves."""
 
     if importlib.util.find_spec("PySide6") is None:
         return
-    from uniti.ui import project_tabs
+    from uniti.ui import replace_files
 
-    monkeypatch.setattr(project_tabs, "ask_save_before_switch", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        replace_files,
+        "choose",
+        lambda parent, rows: {index for index, row in enumerate(rows) if not row.read_only},
+    )
+
+
+@pytest.fixture(autouse=True)
+def _books_open_as_they_always_did(request, monkeypatch):
+    """USFM project books open locked, ask Close or Update when they aren't
+    UTF-8 with CRLF line endings, and ask Save or Discard when they leave
+    their tab with changes (book-lock plan L2). Tests written for the plain
+    book keep working: a book opens unlocked, isn't format-checked, and
+    leaves its tab keeping its changes. A test of the lock itself is marked
+    `book_lock` and gets the real behaviour."""
+
+    if importlib.util.find_spec("PySide6") is None or request.node.get_closest_marker("book_lock"):
+        return
+    from uniti.ui.environment_window import EnvironmentBar
+    from uniti.ui.main_window import UNITIMainWindow
+
+    monkeypatch.setattr(UNITIMainWindow, "_lock_new_book", lambda self, document, **kwargs: False)
+    monkeypatch.setattr(UNITIMainWindow, "_lock_book_on_becoming_usfm", lambda self, view: None)
+    monkeypatch.setattr(UNITIMainWindow, "_check_book_format", lambda self, view, report: None)
+    monkeypatch.setattr(EnvironmentBar, "_leave_book", lambda self, view: "keep")
 
 
 # Tests build their text files with `Path.write_text` and count offsets on

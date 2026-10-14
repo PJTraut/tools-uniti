@@ -109,6 +109,7 @@ class UNITITextView(QAbstractScrollArea):
     wrapChanged = Signal(bool)
     navigationRequested = Signal(str, bool)
     viewFocused = Signal(str)
+    editRefused = Signal()  # typing, paste or cut on a read-only or locked view
     contextMenuRequested = Signal(QPoint)
     _documentRevisionChanged = Signal()
 
@@ -2180,6 +2181,7 @@ class UNITITextView(QAbstractScrollArea):
 
     def inputMethodEvent(self, event: QInputMethodEvent) -> None:
         if self._read_only:
+            self.editRefused.emit()
             event.ignore()
             return
         commit = event.commitString()
@@ -2423,11 +2425,15 @@ class UNITITextView(QAbstractScrollArea):
         elif primary and key == Qt.Key.Key_X:
             if not self._read_only:
                 self.cut_selection()
+            else:
+                self.editRefused.emit()
             event.accept()
             return
         elif primary and key == Qt.Key.Key_V:
             if not self._read_only:
                 self.paste_clipboard()
+            else:
+                self.editRefused.emit()
             event.accept()
             return
         elif primary and key == Qt.Key.Key_Left:
@@ -2471,6 +2477,8 @@ class UNITITextView(QAbstractScrollArea):
         elif key == Qt.Key.Key_Backspace:
             at_edge = bounds is not None and self.state.selection is None and self.state.cursor <= bounds[0]
             if self._read_only or at_edge:
+                if self._read_only:
+                    self.editRefused.emit()
                 event.accept()
                 return
             self.state.backspace()
@@ -2478,18 +2486,22 @@ class UNITITextView(QAbstractScrollArea):
         elif key == Qt.Key.Key_Delete:
             at_edge = bounds is not None and self.state.selection is None and self.state.cursor >= bounds[1]
             if self._read_only or at_edge:
+                if self._read_only:
+                    self.editRefused.emit()
                 event.accept()
                 return
             self.state.delete_forward()
             editing = True
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             if self._read_only:
+                self.editRefused.emit()
                 event.accept()
                 return
             self.state.insert_newline()
             editing = True
         elif key == Qt.Key.Key_Tab and not primary:
             if self._read_only:
+                self.editRefused.emit()
                 event.accept()
                 return
             self.state.insert_text("\t")
@@ -2498,6 +2510,7 @@ class UNITITextView(QAbstractScrollArea):
             text = event.text()
             if text:
                 if self._read_only:
+                    self.editRefused.emit()
                     event.accept()
                     return
                 self.state.insert_text(text)

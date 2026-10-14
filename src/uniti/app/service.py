@@ -13,6 +13,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from uniti.core.durability import DurabilityLevel, DurabilityResult
+from uniti.core.environments.catalog import PROJECT_ENVIRONMENTS
+from uniti.core.environments.sfm.paratext_project import project_for_file
 from uniti.resources.tasks import TaskHandle, TaskKind, TaskSpec
 
 from .document_registry import DocumentEntry, DocumentRegistry
@@ -293,6 +295,7 @@ class UNITIService:
         self._last_quit_error: str | None = None
         self._quitting = False
         self._find_replace: FindReplaceWindow | None = None
+        self._transient_documents: list = []  # books opened only to be searched (book-lock plan L4)
         self._find_replace_placement = "detached"
         self._publication_queue: _PublicationQueue | None = None
         self._publication_generation = 0
@@ -434,15 +437,103 @@ class UNITIService:
         return window
 
     def _documents_in_same_group(self, document) -> list:
-        """Every open document sharing `document`'s group, `document` included."""
+        """Every open document sharing `document`'s group, `document` included.
+
+        In USFM the group is the project (book-lock plan D3): every SFM
+        book of the document's project, open or not."""
 
         entries = self.documents.entries
         current = next((entry for entry in entries if entry.document is document), None)
+        if current is not None and current.environment_key in PROJECT_ENVIRONMENTS:
+            project = project_for_file(document.path)
+            if project is not None:
+                return self._project_documents(project, document)
         if current is None or current.group_id is None:
             return []
         return [
             entry.document for entry in entries if entry.group_id == current.group_id
         ]
+
+    def _project_documents(self, project, current) -> list:
+        """`project`'s books as documents: the open ones, then ones the
+        service knows (closed lately), then books opened here just to be
+        searched (`_transient_documents`, dropped by `release_group_document`
+        unless they're chosen)."""
+
+        from uniti.core.document import Document
+        from uniti.core.environments.sfm.paratext_project import project_encoding_profile
+
+        documents = []
+        for book in project.books():
+            entry = self.documents.find_path(book.path)
+            if entry is not None:
+                documents.append(entry.document)
+                continue
+            try:
+                opened = Document.open(
+                    book.path,
+                    profile=project_encoding_profile(book.path),
+                    resource_manager=self.resources,
+                )
+            except Exception:
+                continue  # an unreadable book is left out of the search
+            folders = self._read_only_folders()
+            if folders:
+                from uniti.app.read_only import is_read_only_path
+
+                opened.set_read_only(is_read_only_path(book.path, folders))
+            self._transient_documents.append(opened)
+            documents.append(opened)
+        if not any(document is current for document in documents):
+            documents.append(current)
+        return documents
+
+    def _book_stepping_available(self, view) -> bool:
+        """Whether `view` shows a book of a USFM project (plan L5)."""
+
+        entry = self.documents.entry_for_view(view.view_id)
+        return (
+            entry is not None
+            and entry.environment_key in PROJECT_ENVIRONMENTS
+            and project_for_file(view.document.path) is not None
+        )
+
+    def _step_to_book(self, view, path):
+        """Show the book at `path` in `view`'s project tab (the Book
+        selector's way: its Save / Discard question included); its view, or
+        None when the user stays."""
+
+        window = self.windows.window_for_view(view.view_id)
+        bar = getattr(window, "_environment_bar", None)
+        if bar is None or not window._project_tabs.active:
+            return None
+        return bar.open_book(Path(path))
+
+    def _read_only_folders(self) -> tuple[str, ...]:
+        load = getattr(self.settings, "load", None)
+        return tuple(load().read_only_folders) if callable(load) else ()
+
+    def adopt_group_document(self, document) -> None:
+        """A book of a project search that was chosen: open it in the
+        active window, in its project's tab, without taking focus. One
+        already shown stays as it is."""
+
+        entry = self.documents.find_path(document.path)
+        if entry is not None and entry.view_ids and entry.document is document:
+            return
+        view = self.active_view
+        window = None if view is None else self.windows.window_for_view(view.view_id)
+        if window is None:
+            window = self.most_recent_window
+        self._transient_documents = [item for item in self._transient_documents if item is not document]
+        window.open_existing_document(document, select=False)
+
+    def release_group_document(self, document) -> None:
+        """A book opened only to be searched that wasn't chosen: close it."""
+
+        if any(item is document for item in self._transient_documents):
+            self._transient_documents = [item for item in self._transient_documents if item is not document]
+            document.close()
 
     @property
     def find_replace(self) -> FindReplaceWindow:
@@ -468,6 +559,8 @@ class UNITIService:
                 group_provider=self._documents_in_same_group,
                 recipe_store=getattr(self.settings, "find_replace_recipes", None),
             )
+            self._find_replace.set_group_document_hooks(self.adopt_group_document, self.release_group_document)
+            self._find_replace.set_book_stepping(self._book_stepping_available, self._step_to_book)
             self._find_replace.placementChanged.connect(
                 self._record_find_replace_placement
             )
@@ -1625,6 +1718,7 @@ class UNITIService:
                 entry = self.documents.get(decision.document_id)
                 save_started_at = time.monotonic()
                 try:
+                    entry.document.set_locked(False)  # a locked book's prompt offered Unlock and Save
                     entry.document.save()
                     if self._session_capture is None:
                         self._complete_saved_hash(decision.document_id)

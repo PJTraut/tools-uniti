@@ -701,6 +701,8 @@ class RichViewPane(QWidget):
     def editable(self) -> bool:
         if self.document is not None and getattr(self.document, "read_only", False):
             return False  # a file in a read-only folder (round 3 T7)
+        if self.document is not None and getattr(self.document, "locked", False):
+            return False  # a locked USFM book (book-lock plan L2)
         return self.provider is not None and getattr(self.provider, "editable", True)
 
     def bind(

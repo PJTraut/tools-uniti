@@ -1286,7 +1286,7 @@ def _save_output(manifest: CorpusManifest, *, in_place: bool) -> ScenarioResult:
     try:
         started = time.perf_counter()
         operation = (
-            window.start_save_current()
+            window.start_save_current(force=True)
             if in_place
             else window.start_save_current_as(target, view.document.output_format)
         )

@@ -119,6 +119,7 @@ from uniti.ui.file_format_dialogs import (
 )
 from uniti.ui.file_operations import FileOperationController, FileOperationHandle
 from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID, FindReplaceWindow
+from uniti.ui import book_lock
 from uniti.ui import open_mode as open_mode_dialog
 from uniti.ui.open_mode import OpenMode
 from uniti.ui.hotkeys import HotkeysPopup
@@ -254,6 +255,7 @@ class UNITIMainWindow(QMainWindow):
         self._reference_sync = ReferenceSync(self)
         # Show One Chapter: the USFM per-chapter view, per window (2026-10-09).
         self._chapter_view = ChapterView(self)
+        self._book_lock = book_lock.BookLock(self)
         # (environment key, slot) once this is an environment window: slot 0
         # is "USFM A", 1 "USFM B" … (round 3 T3).
         self.environment_window: tuple[str, int] | None = None
@@ -1188,6 +1190,7 @@ class UNITIMainWindow(QMainWindow):
         )
 
         format_menu = self.menuBar().addMenu("F&ormat")
+        format_menu.aboutToShow.connect(lambda menu=format_menu: self._refresh_format_menu(menu))
         reinterpret_menu = format_menu.addMenu("Reinterpret As")
         convert_menu = format_menu.addMenu("Convert on Save")
         for profile in encoding_profiles():
@@ -1632,6 +1635,19 @@ class UNITIMainWindow(QMainWindow):
                 QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Cancel,
             )
+        if document.locked:
+            # A locked book is unlocked to save (book-lock plan, D1).
+            box = QMessageBox(
+                QMessageBox.Icon.Warning,
+                "Unsaved UNITI Document",
+                f"Save changes to {book_lock.document_title(document)}? It is locked: Unlock and Save unlocks it.",
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                self,
+            )
+            box.button(QMessageBox.StandardButton.Save).setText("Unlock and Save")
+            box.setDefaultButton(QMessageBox.StandardButton.Save)
+            box.exec()
+            return box.standardButton(box.clickedButton())
         return QMessageBox.warning(
             self,
             "Unsaved UNITI Document",
@@ -1737,6 +1753,8 @@ class UNITIMainWindow(QMainWindow):
             return None
         group_menu = menu.addMenu("Group")
         helpers.populate_group_menu(group_menu, view_id)
+        if self._book_lock.applies_to(view):
+            menu.addAction(self._book_lock.make_action(view, menu))
         split = menu.addMenu("Split")
         full = self._split_limit_reached()
         for label, orientation in (("Move to New Split Right", Qt.Orientation.Horizontal), ("Move to New Split Down", Qt.Orientation.Vertical)):
@@ -1970,6 +1988,9 @@ class UNITIMainWindow(QMainWindow):
         """Entries every right-click menu of a document has, Plain Text or
         Standard/Preview: its Document Group."""
 
+        if self._book_lock.applies_to(view):
+            menu.addSeparator()
+            menu.addAction(self._book_lock.make_action(view, menu))
         if self._service is None:
             return
         menu.addSeparator()
@@ -2325,8 +2346,9 @@ class UNITIMainWindow(QMainWindow):
             index=selected_index,
         )
         self._connect_view(view)
-        if view.document.read_only:
+        if view.document.read_only or view.document.locked:
             leaf.setTabText(leaf.index_of(view.view_id), self._tab_label(view))  # the lock (T7)
+            self._project_tabs.refresh_leaf(leaf)  # a project's tab is titled with its name
         self._panes.set_dock_mode(
             view.view_id,
             "dock" if view.dock_return is not None else "undock",
@@ -2587,6 +2609,16 @@ class UNITIMainWindow(QMainWindow):
 
     def _connect_view(self, view: UNITITextView) -> None:
         self._apply_read_only(view)
+        view_ref = weakref.ref(view)
+
+        def lock_changed(_encoding: str, _eol) -> None:
+            target = view_ref()
+            if target is not None and target.document.locked != getattr(target, "_book_locked_seen", False):
+                self._document_lock_changed(target)
+
+        remove_lock_listener = view.document.add_metadata_listener(lock_changed)
+        view.destroyed.connect(lambda *_: remove_lock_listener())
+        view.editRefused.connect(lambda view=view: self._refuse_edit(view))
         view.set_progressive_navigation(True)
         view.line_window_provider = self._chapter_view.line_window
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
@@ -2679,6 +2711,8 @@ class UNITIMainWindow(QMainWindow):
                 )
         elif attach_recovery and self._recovery_manager is not None:
             self._recovery_manager.attach(document)
+        first_view = adopted or entry is None or not entry.view_ids  # a reopened book is locked again
+        locked_book = self._lock_new_book(document, first_view=first_view, is_untitled=is_untitled)
         state = EditorState(document)
         view = UNITITextView(state, view_id=view_id)
         view.set_zoom_percent(self._settings.editor_zoom_percent)
@@ -2693,8 +2727,9 @@ class UNITIMainWindow(QMainWindow):
         self._connect_view(view)
         leaf = self._panes.add_view(view, pane_id=pane_id, select=select)
         self._tabs = leaf.tabs
-        if view.document.read_only:
+        if view.document.read_only or view.document.locked:
             leaf.setTabText(leaf.index_of(view.view_id), self._tab_label(view))  # the lock (T7)
+            self._project_tabs.refresh_leaf(leaf)  # a project's tab is titled with its name
         if entry is not None:
             self._service.documents.bind_view(entry.document_id, view.view_id)
             self._refresh_group_indicator(view.view_id)
@@ -2706,6 +2741,8 @@ class UNITIMainWindow(QMainWindow):
         self._status.update_cursor(0, 0)
         if initial_eol_report is None or not initial_eol_complete:
             self._schedule_eol_analysis(view)
+        elif locked_book:
+            self._schedule_book_format_check(view, initial_eol_report)
         elif initial_eol_report.kind == "MIXED":
             self._show_mixed_eol_report(view, initial_eol_report)
         if restore_record is not None:
@@ -2728,10 +2765,94 @@ class UNITIMainWindow(QMainWindow):
             view.setFocus()
         return view
 
-    def open_existing_document(self, document: Document) -> UNITITextView:
+    # --- the book lock (plan 2026-10-14-usfm-book-lock-plan) -------------------
+
+    def _lock_new_book(self, document: Document, *, first_view: bool, is_untitled: bool) -> bool:
+        """Lock a project book when its first USFM view is added: every
+        open path comes through here, and every view of the book shares
+        the lock. True when the book is one (locked now or already)."""
+
+        if is_untitled or self._file_environment_manager.resolve_path_key(
+            document.path, self._settings.syntax_extension_overrides
+        ) not in PROJECT_ENVIRONMENTS:
+            return False
+        if first_view:
+            document.set_locked(True)
+        return document.locked
+
+    def _lock_book_on_becoming_usfm(self, view: UNITITextView) -> None:
+        """A document that becomes USFM (from Plain Text) is locked, unless
+        it has unsaved changes: those stay editable, with a message."""
+
+        document = view.document
+        if document.locked:
+            return
+        if document.modified:
+            self.statusBar().showMessage(
+                f"{document.path.name} has unsaved changes: it stays unlocked", 8000
+            )
+            return
+        document.set_locked(True)
+
+    def _schedule_book_format_check(self, view: UNITITextView, report: EOLReport | None) -> None:
+        """A project book must be UTF-8 with CRLF: ask Close or Update once
+        its line endings are known (the check runs after the open returns)."""
+
+        if report is None:
+            return  # the background analysis asks when it finishes
+        QTimer.singleShot(0, lambda ref=weakref.ref(view): self._check_book_format(ref(), report))
+
+    def _check_book_format(self, view: UNITITextView | None, report: EOLReport) -> None:
+        if view is None or not self._contains_view(view) or not view.document.locked:
+            return
+        document = view.document
+        found = []
+        profile = document.saved_output_format.encoding
+        if profile.codec != "utf-8":
+            found.append(profile.label)
+        if report.kind in ("LF", "CR"):
+            found.append(report.kind)
+        elif report.kind == "MIXED":
+            found.append("mixed")
+        if not found:
+            return
+        title = book_lock.document_title(document)
+        if not book_lock.ask_update_or_close(self, title, " / ".join(found)):
+            self.close_view_discarding(view)
+            return
+        self._update_book_format(view)
+
+    def _update_book_format(self, view: UNITITextView) -> None:
+        """Convert a book to CRLF line endings and UTF-8 output. The book
+        stays locked: the change is saved only with Unlock and Save (D6)."""
+
+        from uniti.core.text_format import encoding_profile
+
+        document = view.document
+        profile = document.output_format.encoding
+        target = encoding_profile("utf-8-bom" if profile.bom else "utf-8")
+        document.set_locked(False)
+        try:
+            _convert_and_set_output_eol(document, "CRLF")
+            document.set_output_format(OutputFormat(target, EOLPolicy.CRLF))
+        finally:
+            document.set_locked(True)
+        self._on_view_state_changed(view)
+
+    def close_view_discarding(self, view: UNITITextView) -> None:
+        """Close `view` without asking about its changes."""
+
+        if not self._contains_view(view):
+            return
+        if self._service is not None:
+            self._close_service_view(view, force=True)
+        else:
+            self._close_tab(self._tabs.indexOf(view), force=True)
+
+    def open_existing_document(self, document: Document, *, select: bool = True) -> UNITITextView:
         if not isinstance(document, Document):
             raise TypeError("document must be a Document")
-        return self._add_document(document)
+        return self._add_document(document, select=select)
 
     def _inspect_open_path(
         self,
@@ -2879,6 +3000,7 @@ class UNITIMainWindow(QMainWindow):
         if open_mode is OpenMode.PLAIN_TEXT:
             # The default editor environment: no extended features (D2).
             self._environment.set_document_environment(PLAIN_ENVIRONMENT_KEY, view, move=False)
+            view.document.set_locked(False)  # only a book opened into USFM is locked
         self._usfm_projects.note_opened(view)
         if outside_project and not self._quiet_open:
             self.statusBar().showMessage(f"{Path(path).name} isn't in a Paratext project: opened as plain text", 8000)
@@ -2895,7 +3017,7 @@ class UNITIMainWindow(QMainWindow):
 
     def _tab_label(self, view: UNITITextView) -> str:
         marker = "*" if view.document.modified else ""
-        lock = READ_ONLY_MARK if view.document.read_only else ""
+        lock = READ_ONLY_MARK if view.document.read_only or view.document.locked else ""
         return f"{lock}{view.document.path.name}{marker}"
 
     # --- read-only folders (round 3 T7) -----------------------------------------
@@ -2909,7 +3031,9 @@ class UNITIMainWindow(QMainWindow):
         read_only = is_read_only_path(view.document.path, self._settings.read_only_folders)
         if view.document.read_only != read_only:
             view.document.set_read_only(read_only)
-        view.set_read_only(read_only)
+        # A locked book (book-lock plan) blocks the view like a read-only file.
+        view.set_read_only(read_only or view.document.locked)
+        view._book_locked_seen = view.document.locked
         pane = self._rich_views.pane_for(view) if hasattr(self, "_rich_views") else None
         if pane is not None:
             pane.editor.setReadOnly(not pane.editable)
@@ -2953,6 +3077,66 @@ class UNITIMainWindow(QMainWindow):
         self.statusBar().showMessage(
             f"{view.document.path.name} is in a read-only folder: use Save As… to save a copy elsewhere", 6000
         )
+        return True
+
+    def _refresh_format_menu(self, menu) -> None:
+        """Encoding and line-ending choices are off while the shown book is
+        locked (book-lock plan L2)."""
+
+        view = self.current_view
+        locked = view is not None and view.document.locked
+        for action in menu.actions():
+            action.setEnabled(not locked)
+            submenu = action.menu()
+            if submenu is not None:
+                for inner in submenu.actions():
+                    inner.setEnabled(not locked)
+
+    def _document_lock_changed(self, view: UNITITextView) -> None:
+        """A book was locked or unlocked (in any window): every view of it
+        refreshes: the text view, Standard, the tab's lock and the title."""
+
+        if not self._contains_view(view):
+            return
+        self._apply_read_only(view)
+        self._on_view_state_changed(view)
+        self._project_tabs.refresh_all()
+        self._book_lock.refresh()
+        if view is self.current_view:
+            self._on_current_changed(self._tabs.currentIndex())
+
+    def _unlock_to_save(self, view: UNITITextView) -> bool:
+        """A locked book is unlocked to save: ask first (False: cancelled)."""
+
+        document = view.document
+        if not document.locked:
+            return True
+        if not book_lock.ask_unlock_and_save(self, book_lock.document_title(document)):
+            return False
+        document.set_locked(False)
+        return True
+
+    def _refuse_locked(self, view: UNITITextView) -> bool:
+        """True (with a message) when `view`'s book is locked."""
+
+        if not view.document.locked:
+            return False
+        self.statusBar().showMessage(book_lock.locked_message(book_lock.document_title(view.document)), 6000)
+        return True
+
+    def _refuse_edit(self, view: UNITITextView) -> bool:
+        """True (with a message) when `view`'s file is read-only or locked."""
+
+        return self._refuse_read_only(view) or self._refuse_locked(view)
+
+    def _skip_unchanged_save(self, view: UNITITextView) -> bool:
+        """True (with a message) when a saved file has no changes: UNITI
+        never writes a file without changes. A document with no file yet
+        (untitled, or a new file) is written by its first save."""
+
+        if view.document.modified or self._is_untitled_view(view) or not view.document.path.exists():
+            return False
+        self.statusBar().showMessage(f"{view.document.path.name} has no changes: nothing saved", 6000)
         return True
 
     def _refuse_read_only_destination(self, destination: Path) -> bool:
@@ -3104,6 +3288,7 @@ class UNITIMainWindow(QMainWindow):
         self._grouped_tabs.note_active(None if view is None else view.view_id)
         self._project_tabs.refresh_all()
         self._environment.refresh()
+        self._book_lock.refresh()
         if self._environment_bar is not None:
             self._environment_bar.refresh()
         if self._markdown_preview is not None:
@@ -3139,7 +3324,7 @@ class UNITIMainWindow(QMainWindow):
         line = view.document.line_for_char(view.state.cursor)
         column = view.state.cursor - view.document.line_start(line)
         self._status.update_cursor(line, column)
-        read_only = " (read-only)" if view.document.read_only else ""
+        read_only = " (read-only)" if view.document.read_only else " (locked)" if view.document.locked else ""
         self.setWindowTitle(f"{self._title_prefix()} — {view.document.path.name}{read_only}")
 
     def _title_prefix(self) -> str:
@@ -3448,7 +3633,9 @@ class UNITIMainWindow(QMainWindow):
                 continue
             self._eol_reports[id(view)] = report
             view.document.set_source_eol_report(report)
-            if report.kind == "MIXED":
+            if view.document.locked and self._environment.environment_key_for(view.document) in PROJECT_ENVIRONMENTS:
+                self._check_book_format(view, report)
+            elif report.kind == "MIXED":
                 self._show_mixed_eol_report(view, report)
             if view is self.current_view:
                 self._set_status_document(view)
@@ -3457,14 +3644,14 @@ class UNITIMainWindow(QMainWindow):
 
     def set_output_encoding(self, encoding: str) -> None:
         view = self.current_view
-        if view is None or not view.isEnabled():
+        if view is None or not view.isEnabled() or self._refuse_locked(view):
             return
         view.document.set_output_encoding(encoding)
         self._on_view_state_changed(view)
 
     def set_output_profile(self, profile: EncodingProfile) -> None:
         view = self.current_view
-        if view is None or not view.isEnabled():
+        if view is None or not view.isEnabled() or self._refuse_locked(view):
             return
         view.document.set_output_format(
             OutputFormat(profile, view.document.output_format.eol)
@@ -3473,7 +3660,7 @@ class UNITIMainWindow(QMainWindow):
 
     def set_output_eol(self, eol) -> None:
         view = self.current_view
-        if view is None or not view.isEnabled():
+        if view is None or not view.isEnabled() or self._refuse_locked(view):
             return
         _convert_and_set_output_eol(view.document, eol)
         self._on_view_state_changed(view)
@@ -3551,7 +3738,7 @@ class UNITIMainWindow(QMainWindow):
 
     def reinterpret_current(self, profile: EncodingProfile | str) -> None:
         view = self.current_view
-        if view is None or not view.isEnabled():
+        if view is None or not view.isEnabled() or self._refuse_locked(view):
             return
         if view.document.modified:
             QMessageBox.information(
@@ -3785,6 +3972,8 @@ class UNITIMainWindow(QMainWindow):
         allow_path_change: bool = False,
     ) -> None:
         old_document = view.document
+        if old_document.locked and replacement.path == old_document.path:
+            replacement.set_locked(True)  # a reloaded book stays locked
         if self._service is not None:
             entry = self._service.documents.entry_for_view(view.view_id)
             if entry is None or entry.document is not old_document:
@@ -4495,11 +4684,18 @@ class UNITIMainWindow(QMainWindow):
         self.statusBar().showMessage("Saving…")
         return operation
 
-    def start_save_current(self) -> FileOperationHandle | None:
+    def start_save_current(self, *, force: bool = False) -> FileOperationHandle | None:
+        """Save in the background. `force` writes a file with no changes too
+        (the save benchmarks measure writing an unmodified file)."""
+
         view = self.current_view
         if view is None or not view.isEnabled():
             return None
         if self._refuse_read_only(view):
+            return None
+        if not force and self._skip_unchanged_save(view):
+            return None
+        if not self._unlock_to_save(view):
             return None
         if self._is_untitled_view(view):
             return self.start_save_current_as()
@@ -4634,6 +4830,10 @@ class UNITIMainWindow(QMainWindow):
         if view is None or not view.isEnabled():
             return None
         if self._refuse_read_only(view):
+            return None
+        if self._skip_unchanged_save(view):
+            return None
+        if not self._unlock_to_save(view):
             return None
         if self._is_untitled_view(view):
             return self.save_current_as()
@@ -4797,7 +4997,7 @@ class UNITIMainWindow(QMainWindow):
             pane.undo()
             return
         view = self.current_view
-        if view is None or not view.isEnabled() or not view.document.can_undo or self._refuse_read_only(view):
+        if view is None or not view.isEnabled() or not view.document.can_undo or self._refuse_edit(view):
             return
         view.state.undo()
         view._state_changed()
@@ -4810,7 +5010,7 @@ class UNITIMainWindow(QMainWindow):
             pane.redo()
             return
         view = self.current_view
-        if view is None or not view.isEnabled() or not view.document.can_redo or self._refuse_read_only(view):
+        if view is None or not view.isEnabled() or not view.document.can_redo or self._refuse_edit(view):
             return
         view.state.redo()
         view._state_changed()
@@ -4896,6 +5096,7 @@ class UNITIMainWindow(QMainWindow):
                     return False
             else:
                 try:
+                    view.document.set_locked(False)  # the prompt offered Unlock and Save
                     view.document.save()
                 except Exception as exc:
                     self._show_save_error(exc)
@@ -5176,7 +5377,9 @@ class UNITIMainWindow(QMainWindow):
             if decision != QMessageBox.StandardButton.Save:
                 continue
             try:
-                self._service.documents.get(document_id).document.save()
+                saved = self._service.documents.get(document_id).document
+                saved.set_locked(False)  # the prompt offered Unlock and Save
+                saved.save()
             except Exception as exc:
                 self._show_save_error(exc)
                 return False

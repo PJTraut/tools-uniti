@@ -99,6 +99,9 @@ def test_adding_definitions_to_custom_sty_then_saving_defines_them(window, tmp_p
     text = rules.document.read(0, rules.document.total_chars()).replace("\r\n", "\n")
     assert "Paratext, PTXprint and UNITI all read this file" in text
     assert "\\Marker zfoo\n\\Endmarker zfoo*\n" in text and "\\Marker esbe\n" in text
+    # The stubs are already on disk; completing them (any edit) and saving
+    # applies them. Saving an unchanged file writes nothing.
+    rules.document.insert(rules.document.total_chars(), "\n")
     window.save_current()
     app.processEvents()
 

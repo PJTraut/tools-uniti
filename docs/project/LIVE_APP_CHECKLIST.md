@@ -53,7 +53,19 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] The Chapter selector, Go to Chapter:Verse, sync and Find change the chapter.
 - [ ] Preview's notes list only that chapter's notes.
 
-## 9. Grouped Tabs (BF-082, ordinary windows)
+## 9. USFM book lock (L1–L5)
+- [ ] Open a project book: the tab shows 🔒 and the title "(locked)"; typing, paste, Undo and Replace say it's locked in the status bar.
+- [ ] Unlock Book from the toolbar's lock, the USFM menu, the Book list's right-click menu, and a tab's and the text's right-click menus; Lock Book locks again.
+- [ ] Open the same book in a second split or window: both show the lock and follow it.
+- [ ] Edit an unlocked book, lock it, then Save: asked Unlock and Save or Cancel. Save with no changes: "has no changes: nothing saved".
+- [ ] Change the book with unsaved changes: Save / Discard / Cancel. Discard, then reopen: the file's text, no Undo history.
+- [ ] Open a book that's LF, mixed or not UTF-8: Close / Update. Update leaves it locked and unsaved.
+- [ ] Replace in a locked book: Unlock and Replace / Skip.
+- [ ] Current Group **Replace All**: the list shows files with matches, all unticked, locked ones marked; only ticked files change; Cancel changes nothing; books that weren't open and weren't ticked close again.
+- [ ] Find Next with Current Group steps into the next book with a match (one that wasn't open too) and asks at the end of the project.
+- [ ] A book in a read-only folder can't be unlocked.
+
+## 10. Grouped Tabs (BF-082, ordinary windows)
 - [ ] **View › Grouped Tabs** on, in an ordinary window: files stack per group in each split; it feels right to use.
 
 ## Results

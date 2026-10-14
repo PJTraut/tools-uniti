@@ -10,16 +10,14 @@ where the project's first tab is, so changing the book doesn't move it.
 
 Changing the book (the toolbar's Book list) shows another book in the same
 tab: its hidden tab, or a newly opened one. When the current book has
-unsaved changes it asks first (D1): Yes saves; No keeps the changes in the
-book, which stays open, hidden in the tab.
+unsaved changes and this is its last view it asks first (book-lock plan
+D4): Save, or Discard, which closes the book without saving.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-
-from PySide6.QtWidgets import QMessageBox
 
 from uniti.core.environments.catalog import PROJECT_ENVIRONMENTS
 from uniti.core.environments.sfm.paratext_project import ParatextProject, project_for_file
@@ -28,22 +26,6 @@ if TYPE_CHECKING:
     from uniti.ui.main_window import UNITIMainWindow
     from uniti.ui.panes import PaneLeaf
     from uniti.ui.text_view import UNITITextView
-
-
-def ask_save_before_switch(parent, view: "UNITITextView", project_name: str) -> bool:
-    """Ask whether to save `view`'s unsaved changes before another book is
-    shown in its tab; True for Yes. Tests replace this."""
-
-    book = book_code(view) or view.document.path.name
-    answer = QMessageBox.question(
-        parent,
-        "Change Book",
-        f"Save changes to {book} ({project_name})?\n\n"
-        "No keeps the changes: the book stays open in the tab, unsaved.",
-        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        QMessageBox.StandardButton.Yes,
-    )
-    return answer == QMessageBox.StandardButton.Yes
 
 
 def book_code(view: "UNITITextView") -> str | None:
@@ -169,7 +151,7 @@ class ProjectTabs:
         project = self.project_of(view)
         name = project.name if project is not None else view.document.path.name
         books = books if books is not None else self.books_of(view)
-        lock = "🔒 " if view.document.read_only else ""  # a read-only folder (T7)
+        lock = "🔒 " if view.document.read_only or view.document.locked else ""  # read-only folder (T7), locked book
         return lock + name + ("*" if any(book.document.modified for book in books) else "")
 
     def group_color(self, view: "UNITITextView") -> str | None:
@@ -207,4 +189,4 @@ def _resolved(path: Path) -> Path:
         return Path(path)
 
 
-__all__ = ["ProjectTabs", "ask_save_before_switch", "book_code"]
+__all__ = ["ProjectTabs", "book_code"]

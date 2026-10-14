@@ -35,3 +35,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = [
+    "book_lock: the test exercises the USFM book lock (books open locked, Save/Discard, UTF-8 CRLF check)",
+]

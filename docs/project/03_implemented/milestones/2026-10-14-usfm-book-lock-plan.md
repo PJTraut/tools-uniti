@@ -1,8 +1,8 @@
 # USFM Book Lock — Plan
 
 Date: 2026-10-14
-Status: **Planned**, not started: L1–L5. Decisions D1–D7 taken 2026-10-14 (D1 revised the same day).
-Origin: the user, 2026-10-13/14 ("all paratext folders should start in READONLY mode" and the answers below); the [wishlist](../FEATURE_WISHLIST.md#paratext-books-open-locked) entry, which this plan replaces.
+Status: **Implemented** (2026-10-14): L1–L5. Decisions D1–D7 taken 2026-10-14 (D1 revised the same day). See [As built](#as-built) for where the code differs from the plan.
+Origin: the user, 2026-10-13/14 ("all paratext folders should start in READONLY mode" and the answers below); the [wishlist](../../FEATURE_WISHLIST.md) entry, which this plan replaced.
 
 ## The user's answers, 2026-10-13/14
 
@@ -15,7 +15,7 @@ Origin: the user, 2026-10-13/14 ("all paratext folders should start in READONLY 
 - **A locked book must be unlocked to save.** As Find/Replace steps through books it opens and closes them in the pane; a book leaving with changes asks "changes will be lost": unlock and save, or discard. No file is ever saved without changes; discarding drops the unsaved edits and their undo history.
 - **A USFM book is UTF-8 with CRLF line endings.** One that isn't is a clear error to correct: the user is asked **Close** or **Update**.
 - **In USFM, the group is the project.** The project is open, and all of its SFM files are part of Find/Replace, opened or not.
-- **USFM only** (except D5). A file/folder lock for the other environments is a separate [wishlist](../FEATURE_WISHLIST.md#lock-a-file-or-folder-plain-text-and-the-other-basic-environments) entry.
+- **USFM only** (except D5). A file/folder lock for the other environments is a separate [wishlist](../../FEATURE_WISHLIST.md#lock-a-file-or-folder-plain-text-and-the-other-basic-environments) entry.
 
 ## Today
 
@@ -85,7 +85,7 @@ Origin: the user, 2026-10-13/14 ("all paratext folders should start in READONLY 
 
 ## Order
 
-L1 → L2 → L3 → L4 → L5. Each is useful alone (D7: L2 brings the single-book Find/Replace dialog, so only multi-file Replace All waits). Documentation when L5 lands: the [USFM](../../environments/usfm.md) page, the user manual, the [live-app checklist](../LIVE_APP_CHECKLIST.md), [Current Status](../01_current/STATUS.md), the roadmap, and the wishlist entry removed. D5's "no write without changes" goes into the user manual with L1.
+L1 → L2 → L3 → L4 → L5. Each is useful alone (D7: L2 brings the single-book Find/Replace dialog, so only multi-file Replace All waits). Documentation when L5 landed: the [USFM](../../../environments/usfm.md) page, the user manual, the [live-app checklist](../../LIVE_APP_CHECKLIST.md), [Current Status](../../01_current/STATUS.md), the roadmap, and the wishlist entry removed. D5's "no write without changes" goes into the user manual with L1.
 
 ## Decisions
 
@@ -97,3 +97,13 @@ Decided 2026-10-14:
 - **D5: no file is written without changes, in all of UNITI.**
 - **D6: Update leaves the book locked.** Its conversion is saved only with Unlock and Save.
 - **D7: before L4, the single-book dialog ships with L2;** multi-file Replace All skips locked books with a count until the opt-in list replaces it.
+
+## As built
+
+Implemented 2026-10-14, L1–L5 in order. Where the code differs from the plan above:
+- **Unlock Book / Lock Book isn't a checkable action.** Its text swaps ("Unlock Book" while locked, "Lock Book" while not). On the toolbar the lock (🔒/🔓) takes the place of the word "Book" before the Book list, because a separate button pushed the toolbar past its 1,000 px limit; its tooltip carries the full name.
+- **There is no Save All in UNITI,** so the "3 locked books have changes" prompt isn't built. Save, closing a tab or window, and Quit each offer Unlock and Save.
+- **Update's Undo takes back the text only.** Converting LF or mixed lines is one undoable edit; the output-encoding change (Windows-1252 → UTF-8) isn't part of the text history, so a book that needs only the encoding change has nothing to undo.
+- **A book that was closed lately** (the registry keeps it for a while) is locked again when its view is added: the lock is applied on a document's first view, not on a first-ever open.
+- **Find Next / Replace stepping** searches the project's other books in a background job, then shows the book through the Book list's own path (`EnvironmentBar.open_book`), so its Save / Discard question is the one the Book list asks. Wrapping asks only when the next match is in another book; if this book holds the only matches, Find wraps within it as before.
+- **Tests:** a test of the lock is marked `book_lock`. The other tests run with books opening unlocked, unchecked for format, and leaving their tab keeping their changes (`tests/conftest.py`), and with a multi-file Replace All ticking every file its list allows.

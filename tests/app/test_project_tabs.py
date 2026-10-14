@@ -90,43 +90,6 @@ def test_changing_the_book_changes_it_in_the_tab_and_keeps_each_books_state(desk
     assert leaf.index_of(genesis.view_id) == 0
 
 
-def test_unsaved_changes_ask_before_the_book_changes(desktop, tmp_path: Path, monkeypatch):
-    from uniti.ui import project_tabs
-
-    app, service = desktop
-    niv = _project(tmp_path / "niv", "NIV")
-    window, genesis = _usfm_window(service, niv)
-    bar = window._environment_bar
-    asked = []
-    answer = {"save": False}
-    monkeypatch.setattr(
-        project_tabs,
-        "ask_save_before_switch",
-        lambda parent, view, name: asked.append((view.document.path.name, name)) or answer["save"],
-    )
-    genesis.document.insert(genesis.document.total_chars(), "\\v 3 Added.\n")
-
-    # No: the book keeps its changes, open but hidden, and is marked.
-    exodus = bar.open_book(niv / "02EXO.usfm")
-    assert asked == [("01GEN.usfm", "NIV")]
-    assert window.current_view is exodus
-    assert genesis.document.modified and genesis.document.can_undo
-    assert service.documents.find_path(niv / "01GEN.usfm") is not None
-    labels = [bar.book.itemText(i) for i in range(bar.book.count())]
-    assert "GEN Genesis •" in labels
-    assert visible_tab_texts(_leaf(window, exodus)) == ["NIV*"]  # unsaved work in the tab
-
-    # Yes: saved, then changed.
-    assert bar.open_book(niv / "01GEN.usfm") is genesis  # exodus is clean: no question
-    assert len(asked) == 1
-    answer["save"] = True
-    bar.open_book(niv / "02EXO.usfm")
-    assert asked[-1] == ("01GEN.usfm", "NIV")
-    assert not genesis.document.modified
-    assert "Added." in (niv / "01GEN.usfm").read_text(encoding="utf-8")
-    assert visible_tab_texts(_leaf(window, exodus)) == ["NIV"]
-
-
 def test_closing_a_project_tab_closes_all_its_books(desktop, tmp_path: Path, monkeypatch):
     app, service = desktop
     niv = _project(tmp_path / "niv", "NIV")

@@ -67,6 +67,33 @@ Click **Chapter** (the word before the Chapter selector), or choose **USFM → S
 - **Preview's notes frame** lists only the chapter's notes; a kind of note with none in the chapter is hidden.
 - A tab opened as Plain Text (no USFM features), a book without `\c`, and a file above 1 MiB always show whole.
 
+## Locked books
+
+**Every book opens locked.** A project's book can't be edited until you unlock it; the tab shows 🔒 ("🔒 NIV") and the title says "(locked)". The lock belongs to the open file, not to a view: every split, window and mode (Plain Text, Standard, Preview) showing the book is locked or unlocked together. It's never remembered: closing the book and opening it again (or restoring the session) locks it again, and unsaved edits recovered after a crash open locked too. A file opened as Plain Text isn't locked.
+
+- **Unlock Book / Lock Book:** the lock button before the Book list on the toolbar, **USFM → Unlock Book**, right-click the Book list, and right-click a tab or the text. It acts on the shown book. Locking a book with unsaved changes is allowed.
+- **Typing, paste, Undo/Redo, Format and Replace** are refused with "GEN (NIV) is locked: right-click the Book list › Unlock to edit". **Reload** keeps the lock.
+- **A book in a read-only folder** (**View → Read-Only Folders…**) can't be unlocked: that setting is stronger, and the Unlock entries are off.
+
+### Saving a locked book
+
+A locked book is unlocked to save. **Save** asks "GEN (NIV) is locked" with **Unlock and Save** or **Cancel**; closing the tab or window, or quitting, offers **Unlock and Save**, **Discard** or **Cancel**. No file is written without changes, in any environment.
+
+### Leaving a book with changes
+
+When another book replaces a book that has unsaved changes in its tab (the Book list, Find/Replace stepping), UNITI asks "Changes to GEN (NIV) will be lost." with **Save** (**Unlock and Save** when locked), **Discard** (the book closes without saving; reopening reads the file) or **Cancel**. It asks only when that tab is the book's last view: another split or window still showing it keeps the changes.
+
+### UTF-8 with CRLF
+
+A USFM book is UTF-8 with CRLF line endings. A book that isn't (LF, CR or mixed lines, or another encoding such as Windows-1252) asks "GEN (NIV) isn't UTF-8 with CRLF line endings (found: LF)" with **Update** or **Close**. **Close** closes the book and writes nothing. **Update** converts the text and the output encoding as one change (Undo takes the text back once the book is unlocked); the book stays locked, so the change is saved only with **Unlock and Save**. A BOM is kept as found. While a book is locked, the Format menu's encoding and line-ending choices are off.
+
+## Find and Replace across a project
+
+With **Current Group** as the Replace scope, **the group is the project**: every SFM book of the current project, open or not.
+- **Replace All** first lists every file with matches (name, folder, match count, 🔒 for locked books), each with a checkbox, **all unticked**. Only the ticked files change; a ticked locked book is unlocked first (the dialog says "2 locked books will be unlocked"), and one that wasn't open opens, changed and unsaved, in the project's tab. Unticked books that weren't open are closed again. Cancel changes nothing. Files in read-only folders are listed greyed out and never changed. **All Open Documents** uses the same list, across every environment.
+- **Find Next / Replace** step through the project's books: past the last match in a book, the next book with a match is shown in the pane (as the Book list shows it, with the Save or Discard question for the book you leave). A book with no match is passed over. Wrapping past the last book asks before carrying on from the first.
+- **Replace in a locked book** (the current one, or one reached by stepping) asks **Unlock and Replace** or **Skip**; Skip changes nothing and the next Replace asks again.
+
 ## Groups and side-by-side sync
 
 **A project belongs to a group**, not each book: give any of its books a group (the toolbar's **Group**, or right-click the tab or the text → **Project Group**) and every book of the project is in it, including books you open later. The project's tab is tinted with the group's colour. UNITI keeps the assignment in `projects.json` in your USFM configuration folder; it writes nothing into the project.

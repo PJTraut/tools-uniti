@@ -50,7 +50,7 @@ Use **File → Open Folder by Type…** to open every file of one chosen extensi
 
 | Action | What it does |
 |---|---|
-| **Save** | Writes edits and any pending output-format conversion to the current file. |
+| **Save** | Writes edits and any pending output-format conversion to the current file. A file with no changes isn't written at all: the status bar says "has no changes: nothing saved" and the file, its modification time included, stays as it is. (**Save As…** to another path always writes the copy.) A locked USFM book asks to be unlocked first (see [Locked books](environments/usfm.md#locked-books)). |
 | **Save As…** | Choose a folder, filename, encoding, and line endings. Saving to a different path creates a copy and opens that copy; the original document keeps its own path, edits, and save state. |
 | **Reload/Revert from Disk** | Reopens the disk version, with confirmation when necessary. Use it when you intend to replace the current editing state with the saved file. |
 | **Close** | Closes the current tab, with unsaved-change choices when applicable. |

@@ -26,6 +26,7 @@ from PySide6.QtGui import QAction, QActionGroup, QColor
 from PySide6.QtWidgets import (
     QComboBox,
     QLabel,
+    QMenu,
     QSizePolicy,
     QStyle,
     QStyleOptionComboBox,
@@ -564,7 +565,16 @@ class EnvironmentBar(QToolBar):
             self.addAction(window._reference_sync.action)
             self.addSeparator()
             for text, combo in (("Book", self.book), ("Chapter", self.chapter), ("Verse", self.verse)):
-                if combo is self.chapter:
+                if combo is self.book:
+                    # The lock before the Book list stands for "Book" and is
+                    # Unlock Book / Lock Book: no extra button on a toolbar
+                    # that must stay short.
+                    self.lock_toggle = QToolButton(self)
+                    self.lock_toggle.setDefaultAction(window._book_lock.action)
+                    self.lock_toggle.setAutoRaise(True)
+                    self.lock_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+                    self.addWidget(self.lock_toggle)
+                elif combo is self.chapter:
                     # "Chapter" is also the Show One Chapter toggle: no
                     # extra button on a toolbar that must stay short.
                     self.chapter_toggle = QToolButton(self)
@@ -858,10 +868,34 @@ class EnvironmentBar(QToolBar):
 
         In a USFM window the tab is the project's (round 3 T4): the book is
         shown in the same tab, its own hidden tab or a newly opened one.
-        When the current book has unsaved changes it asks first (D1): Yes
-        saves; No keeps them, with the book open but hidden in the tab.
+        When the current book has unsaved changes and this is its last view
+        it asks first (book-lock plan D4): Save, or Discard (the book closes
+        without saving). A book another split or window shows keeps them.
         """
 
+        window = self._window
+        previous = window.current_view
+        discard = None
+        if (
+            previous is not None
+            and window._project_tabs.active
+            and not _same_path(previous.document.path, path)
+            and previous.document.modified
+        ):
+            decision = self._leave_book(previous)
+            if decision is None:
+                self._refresh_books()
+                return None
+            if decision == "discard":
+                discard = previous
+        opened = self._show_book(path)
+        if discard is not None and opened is not None and opened is not discard:
+            window.close_view_discarding(discard)
+            window._project_tabs.refresh_all()
+            self.refresh()
+        return opened
+
+    def _show_book(self, path: Path) -> "UNITITextView | None":
         window = self._window
         previous = window.current_view
         mode = window._rich_views.key_for(previous)
@@ -872,9 +906,6 @@ class EnvironmentBar(QToolBar):
         if previous is not None and _same_path(previous.document.path, path):
             return previous
         if previous is not None and tabs.active:
-            if previous.document.modified and not self._leave_book(previous):
-                self._refresh_books()
-                return None
             existing = tabs.book_in_tab(previous, path)
             if existing is not None:
                 window._select_view(existing)
@@ -919,18 +950,34 @@ class EnvironmentBar(QToolBar):
             window._reference_sync.sync_from(opened)
         return opened
 
-    def _leave_book(self, view: "UNITITextView") -> bool:
-        """Before another book replaces `view` in its tab: Yes saves (False
-        when saving fails); No keeps the unsaved changes (D1)."""
+    def _leave_book(self, view: "UNITITextView") -> str | None:
+        """Before another book replaces `view` in its tab: "keep" (saved, or
+        another view still shows it), "discard", or None to stay (D4)."""
 
-        from uniti.ui import project_tabs
+        from uniti.ui import book_lock
 
-        project = project_for_file(view.document.path)
-        name = project.name if project is not None else view.document.path.name
-        if not project_tabs.ask_save_before_switch(self._window, view, name):
-            return True
-        self._window._select_view(view)
-        return self._window.save_current() is not None
+        window = self._window
+        service = window._service
+        entry = None if service is None else service.documents.entry_for_view(view.view_id)
+        if entry is not None and len(entry.view_ids) > 1:
+            return "keep"
+        document = view.document
+        if document.read_only:
+            return "keep"  # a read-only file can't be saved: it stays open, unsaved
+        answer = book_lock.ask_save_or_discard(
+            window, book_lock.document_title(document), locked=document.locked
+        )
+        if answer is None:
+            return None
+        if not answer:
+            return "discard"
+        was_locked = document.locked
+        document.set_locked(False)  # the prompt offered Unlock and Save
+        window._select_view(view)
+        if window.save_current() is None:
+            document.set_locked(was_locked)
+            return None
+        return "keep"
 
 
 BOOK_EMS = 10
@@ -959,6 +1006,19 @@ class _BookCombo(QComboBox):
     def showPopup(self) -> None:  # noqa: N802 - Qt override
         self._bar._refresh_books(rescan=True)
         super().showPopup()
+
+    def lock_menu(self) -> QMenu:
+        """Right-click menu: Unlock Book / Lock Book, for the shown book."""
+
+        window = self._bar._window
+        window._book_lock.refresh()
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        menu.addAction(window._book_lock.action)
+        return menu
+
+    def contextMenuEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self.lock_menu().popup(event.globalPos())
 
 
 def _same_path(first: Path, second: Path) -> bool:

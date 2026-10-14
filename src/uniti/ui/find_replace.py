@@ -9,6 +9,7 @@ from enum import Enum
 import time
 import uuid
 import weakref
+from pathlib import Path
 
 from PySide6.QtCore import QEvent, QPoint, QPointF, QTimer, Qt, Signal
 from PySide6.QtGui import (
@@ -268,6 +269,14 @@ class FindReplaceWindow(QDockWidget):
         self._view_provider = view_provider
         self._document_provider = document_provider
         self._group_provider = group_provider
+        # Documents a group provider opened only for the search (a project's
+        # books that weren't open), and how to keep or drop one (plan L4).
+        self._group_document_adopt: Callable[[object], None] | None = None
+        self._group_document_release: Callable[[object], None] | None = None
+        self._replace_documents: list = []
+        # Stepping through a project's books (plan L5): (available(view),
+        # open_book(view, path) -> the book's view, or None to stay).
+        self._book_stepping: tuple[Callable[[object], bool], Callable[[object, Path], object]] | None = None
         self._recipe_store = recipe_store
         self._recipes: tuple = tuple(recipe_store.load()) if recipe_store is not None else ()
         self._dogfood_observer = dogfood_observer
@@ -1258,6 +1267,29 @@ class FindReplaceWindow(QDockWidget):
         self._document_provider = provider
         self._update_actions()
 
+    def set_book_stepping(
+        self,
+        available: Callable[[object], bool] | None,
+        open_book: Callable[[object, Path], object] | None,
+    ) -> None:
+        """Find Next / Replace with Current Group step through a project's
+        books: `available(view)` says whether `view` is in one, `open_book(
+        view, path)` shows the book at `path` in its place and returns its
+        view (None: stay)."""
+
+        self._book_stepping = None if available is None or open_book is None else (available, open_book)
+
+    def set_group_document_hooks(
+        self,
+        adopt: Callable[[object], None] | None,
+        release: Callable[[object], None] | None,
+    ) -> None:
+        """`adopt(document)` opens a book the group provider opened for the
+        search, once it's chosen; `release(document)` drops one that isn't."""
+
+        self._group_document_adopt = adopt
+        self._group_document_release = release
+
     def set_group_provider(self, provider: Callable[[object], object] | None) -> None:
         if provider is not None and not callable(provider):
             raise TypeError("group provider must be callable or None")
@@ -1628,8 +1660,10 @@ class FindReplaceWindow(QDockWidget):
             return "regex requires more bounded context than allowed"
         if isinstance(error, TaskAdmissionError):
             return "operation refused by current resource limits"
-        from uniti.core.document import DocumentReadOnlyError
+        from uniti.core.document import DocumentLockedError, DocumentReadOnlyError
 
+        if isinstance(error, DocumentLockedError):
+            return "the book is locked"
         if isinstance(error, DocumentReadOnlyError):
             return "the file is read-only"
         return "regex operation failed"
@@ -1663,7 +1697,7 @@ class FindReplaceWindow(QDockWidget):
         self._target_view = view
         self.cancel_button.setEnabled(True)
         self.status_label.setText(
-            "Searching…" if kind == "find" else "Replacing…"
+            "Searching…" if kind in ("find", "find_book") else "Replacing…"
         )
         spec = TaskSpec.create(
             task_kind,
@@ -1989,6 +2023,8 @@ class FindReplaceWindow(QDockWidget):
             return
         self._cancel_capture_report(clear=True)
         replacement_text = self._replacement_expression()
+        self._release_replace_documents()  # an earlier search's, if any
+        self._replace_documents = documents
 
         def work(context: TaskContext):
             results: list[tuple[object, ReplacementPlan]] = []
@@ -2038,6 +2074,9 @@ class FindReplaceWindow(QDockWidget):
         started_at = self._job_started_at
         view = self._target_view
         task_handle = self._task_handle
+        pending_documents = self._replace_documents if kind in ("replace_all_documents", "find_book") else []
+        if kind in ("replace_all_documents", "find_book"):
+            self._replace_documents = []
         self._future = None
         self._task_handle = None
         self._job_kind = None
@@ -2053,6 +2092,7 @@ class FindReplaceWindow(QDockWidget):
         try:
             payload = future.result()
         except Exception as exc:
+            self._release_group_documents(pending_documents)
             if task_handle is not None and task_handle.token.cancelled:
                 if self.status_label.text() != "text changed — search again":
                     self.status_label.setText("cancelled")
@@ -2077,6 +2117,7 @@ class FindReplaceWindow(QDockWidget):
             return
 
         if task_handle is not None and task_handle.token.cancelled:
+            self._release_group_documents(pending_documents)
             if isinstance(payload, (MatchStore, ReplacementPlan)):
                 payload.close()
             elif kind == "replace_all_documents" and isinstance(payload, list):
@@ -2118,7 +2159,9 @@ class FindReplaceWindow(QDockWidget):
             elif kind == "replace_all":
                 operation_outcome = self._apply_replace_all(view, payload, context)
             elif kind == "replace_all_documents":
-                operation_outcome = self._apply_replace_all_documents(payload)
+                operation_outcome = self._apply_replace_all_documents(payload, pending_documents)
+            elif kind == "find_book":
+                operation_outcome = self._apply_book_step(view, payload, context, pending_documents)
             else:
                 operation_outcome = Outcome.FAILED
         except Exception:
@@ -2130,6 +2173,118 @@ class FindReplaceWindow(QDockWidget):
                 operation_outcome,
                 started_at=started_at,
             )
+
+    # --- stepping through a project's books (book-lock plan L5) --------------------
+
+    def _stepping_active(self, view) -> bool:
+        return (
+            self._book_stepping is not None
+            and self._group_provider is not None
+            and self.replace_scope() is ReplaceScope.CURRENT_GROUP
+            and not self.selection_only_checkbox.isChecked()
+            and self._book_stepping[0](view)
+        )
+
+    def _step_into_another_book(self, view, compiled, direction: int, origin: int, index: int | None) -> bool:
+        """With Current Group in a USFM project, a Find Next / Replace that
+        finds no match past the caret in this book (`index` is None, or it
+        wraps to the other end) looks for the next book with a match. True
+        when that search started: it takes over, and falls back to `index`
+        (staying in this book) when no other book has a match."""
+
+        if not self._stepping_active(view):
+            return False
+        if index is not None:
+            record = self._results.records[index]
+            wraps = record.start < origin if direction > 0 else record.end > origin
+            if not wraps:
+                return False
+        documents = list(self._group_provider(view.document))
+        position = next((n for n, document in enumerate(documents) if document is view.document), None)
+        if position is None or len(documents) < 2:
+            self._release_group_documents(documents)
+            return False
+        after, before = documents[position + 1 :], documents[:position]
+        if direction > 0:
+            order, forward_count = after + before, len(after)
+        else:
+            order, forward_count = before[::-1] + after[::-1], len(before)
+        self._release_replace_documents()
+        self._replace_documents = documents
+
+        def work(context: TaskContext):
+            for number, document in enumerate(order):
+                snapshot = document.snapshot()
+                try:
+                    with snapshot:
+                        found = next(
+                            iter(
+                                search_document(
+                                    snapshot,
+                                    compiled,
+                                    options=SearchOptions(timeout=0.5, include_captures=False),
+                                    cancelled=lambda: context.token.cancelled,
+                                )
+                            ),
+                            None,
+                        )
+                except RegexSearchTimeout:
+                    continue
+                if found is not None:
+                    return document, number >= forward_count
+            return None
+
+        context = (compiled, direction, index)
+        if not self._start_job(
+            "find_book",
+            view,
+            work,
+            task_kind=TaskKind.SEARCH,
+            dogfood_operation=Operation.FIND_NEXT if direction > 0 else Operation.FIND_PREVIOUS,
+            started_at=time.monotonic(),
+            context=context,
+        ):
+            self._release_replace_documents()
+            return False
+        return True
+
+    def _apply_book_step(self, view, payload, context, documents) -> Outcome:
+        """A book with a match was found (or none): show it, asking first
+        when the search wrapped past the project's last book."""
+
+        from uniti.ui import book_lock
+
+        compiled, direction, fallback_index = context
+        found = payload
+        target = None if found is None else found[0]
+        wrapped = bool(found is not None and found[1])
+        target_path = None if target is None else Path(target.path)
+        self._release_group_documents(documents)
+        if target_path is None:
+            if fallback_index is not None:
+                self._navigate_to(fallback_index)  # only this book has a match: wrap here
+                return Outcome.SUCCESS
+            self.status_label.setText("no matches")
+            self.capture_model.clear()
+            return Outcome.UNAVAILABLE
+        if wrapped and not book_lock.ask_wrap_project(self, forward=direction > 0):
+            self.status_label.setText("stopped at the end of the project")
+            return Outcome.CANCELLED
+        opened = self._book_stepping[1](view, target_path) if self._book_stepping is not None else None
+        if opened is None:
+            self.status_label.setText("stayed in this book")
+            return Outcome.CANCELLED
+        self._clear_results()
+        origin = 0 if direction > 0 else opened.document.total_chars()
+        self._start_find(
+            opened,
+            compiled,
+            direction=direction,
+            origin=origin,
+            dogfood_operation=Operation.FIND_NEXT if direction > 0 else Operation.FIND_PREVIOUS,
+            started_at=time.monotonic(),
+        )
+        return Outcome.SUCCESS
 
     def _apply_find_results(self, view, store: MatchStore, context) -> bool | None:
         if (
@@ -2156,6 +2311,11 @@ class FindReplaceWindow(QDockWidget):
             if context.direction < 0
             else self._results.next_index(context.origin)
         )
+        if self._step_into_another_book(
+            view, context.compiled, context.direction, context.origin, self._current_index
+        ):
+            self._update_actions()
+            return True
         if self._current_index is not None:
             self._navigate_to(self._current_index)
         else:
@@ -2198,6 +2358,8 @@ class FindReplaceWindow(QDockWidget):
         if getattr(view.document, "read_only", False):
             self.status_label.setText(f"{view.document.path.name} is read-only")
             return False
+        if not self._unlock_to_replace(view.document):
+            return False
         replacement = replacements[context[0]]
         view.document.replace(replacement.start, replacement.end, replacement.text)
         view.state.move_to(replacement.start + len(replacement.text))
@@ -2206,6 +2368,20 @@ class FindReplaceWindow(QDockWidget):
         self.status_label.setText("1 replaced")
         self._update_actions()
         return True
+
+    def _unlock_to_replace(self, document) -> bool:
+        """Replace in a locked book (book-lock plan L2): ask Unlock and
+        Replace, or Skip, which changes nothing."""
+
+        if not getattr(document, "locked", False):
+            return True
+        from uniti.ui import book_lock
+
+        if book_lock.ask_unlock_and_replace(self, book_lock.document_title(document)):
+            document.set_locked(False)
+            return True
+        self.status_label.setText(f"{book_lock.document_title(document)} is locked: skipped")
+        return False
 
     def _apply_replace_all(
         self,
@@ -2217,6 +2393,9 @@ class FindReplaceWindow(QDockWidget):
             plan.close()
             self.status_label.setText("text changed — search again")
             return Outcome.UNAVAILABLE
+        if not self._unlock_to_replace(view.document):
+            plan.close()
+            return Outcome.CANCELLED
         memory_limit = max(
             1 << 20,
             min(256 << 20, self._resource_manager.status.available_memory // 4),
@@ -2238,25 +2417,83 @@ class FindReplaceWindow(QDockWidget):
         self._update_actions()
         return Outcome.SUCCESS
 
+    def _release_group_documents(self, documents, keep=()) -> None:
+        """Drop the books a group search opened only to read, except `keep`."""
+
+        if self._group_document_release is None:
+            return
+        for document in documents:
+            if not any(document is kept for kept in keep):
+                self._group_document_release(document)
+
+    def _release_replace_documents(self) -> None:
+        pending, self._replace_documents = self._replace_documents, []
+        self._release_group_documents(pending)
+
     def _apply_replace_all_documents(
         self,
         results: list[tuple[object, ReplacementPlan]],
+        documents=(),
     ) -> Outcome:
+        """Replace All across files, opt-in (book-lock plan L4, D2): list
+        every file with matches, change only the ticked ones, and unlock a
+        ticked locked book first. `documents` are the files the search
+        covered; those not changed and not already open are dropped."""
+
+        from uniti.ui import book_lock, replace_files
+
         memory_limit = max(
             1 << 20,
             min(256 << 20, self._resource_manager.status.available_memory // 4),
         )
+        with_matches = []
+        for document, plan in results:
+            if len(plan):
+                with_matches.append((document, plan))
+            else:
+                plan.close()
+        rows = [
+            replace_files.FileRow(
+                name=book_lock.document_title(document),
+                detail=str(document.path.parent),
+                count=len(plan),
+                locked=bool(getattr(document, "locked", False)),
+                read_only=bool(getattr(document, "read_only", False)),
+            )
+            for document, plan in with_matches
+        ]
+        chosen = replace_files.choose(self, rows) if rows else set()
+        if chosen is None:
+            for _document, plan in with_matches:
+                plan.close()
+            self._release_group_documents(documents)
+            self._clear_results()
+            self.status_label.setText("cancelled: no file changed")
+            self._update_actions()
+            return Outcome.CANCELLED
         replaced_total = 0
         documents_changed = 0
         documents_skipped = 0
         documents_read_only = 0
-        for document, plan in results:
+        documents_unlocked = 0
+        applied = []
+        for index, (document, plan) in enumerate(with_matches):
             if getattr(document, "read_only", False):
                 # A file in a read-only folder (round 3 T7) is left alone.
                 documents_read_only += 1
                 plan.close()
                 continue
+            if index not in chosen:
+                plan.close()
+                continue
+            applied.append(document)
+            was_locked = False
             try:
+                if self._group_document_adopt is not None:
+                    self._group_document_adopt(document)
+                was_locked = bool(getattr(document, "locked", False))
+                if was_locked:
+                    document.set_locked(False)
                 count = document.apply_replacement_plan(
                     plan,
                     expected_revision=plan.document_revision,
@@ -2264,14 +2501,19 @@ class FindReplaceWindow(QDockWidget):
                 )
             except Exception:
                 documents_skipped += 1
+                if was_locked:
+                    document.set_locked(True)
                 continue
             finally:
                 plan.close()
+            documents_unlocked += was_locked
             replaced_total += count
             if count:
                 documents_changed += 1
+        self._release_group_documents(documents, keep=applied)
         self._clear_results()
         read_only_note = f"; {documents_read_only:,} read-only" if documents_read_only else ""
+        read_only_note += f"; {documents_unlocked:,} unlocked" if documents_unlocked else ""
         if documents_skipped:
             self.status_label.setText(
                 f"{replaced_total:,} replaced across {documents_changed:,} "
@@ -2338,6 +2580,10 @@ class FindReplaceWindow(QDockWidget):
             and self._results_region == self._search_region(view)
         ):
             index = self._navigation_index(view, direction)
+            if index is not None and self._step_into_another_book(
+                view, compiled, direction, self._navigation_origin(view, direction), index
+            ):
+                return
             if index is not None:
                 self._navigate_to(index)
             self._record_dogfood(

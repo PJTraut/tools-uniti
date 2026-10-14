@@ -337,7 +337,7 @@ def test_save_warns_once_for_encoding_change_but_not_for_later_unchanged_save(
     calls = _warning_responses(monkeypatch, [QMessageBox.StandardButton.Yes])
 
     assert window.save_current() == view.document.path
-    assert window.save_current() == view.document.path
+    assert window.save_current() is None  # no changes since: nothing is written
 
     assert [title for title, _text in calls] == ["Change Text Encoding"]
     assert "UTF-8 -> UTF-8 BOM" in calls[0][1]

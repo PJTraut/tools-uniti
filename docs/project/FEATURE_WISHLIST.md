@@ -53,22 +53,6 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
   - Words not in the file: no breaks, or an automatic hyphenation rule for the language?
   - A toggle (per project tab, like Check Spelling), or always on in Preview?
 
-## Paratext books open locked
-
-- **Planned 2026-10-14:** the [book-lock plan](02_plans/2026-10-14-usfm-book-lock-plan.md) (L1–L5, roadmap row 19). This entry goes when it lands.
-
-- Noted: 2026-10-13 ("all paratext folders should start in READONLY mode"). To plan.
-- **The user's answers, 2026-10-13:**
-  - **The lock is on the book, not the folder.** The USFM environment lists only a project folder's SFM books, to open in the active panel. The folder isn't read-only; a book's content editing is disabled (read-only) unless the user unlocks it.
-  - **Every time a book is opened in a panel, it's locked.** That includes changing to it with the Book selector or sync. Unlocking is never remembered.
-  - **Unlocking is per instance:** right-click the **Book** selector on the toolbar (menu bar) › Unlock, for that open book only.
-  - **Find/Replace across a group or all open files** first shows a popup listing the files it would change, and changes only those the user explicitly opts in, locked books included.
-- Relation to round 3 T7: **Read-Only Folders…** stays a separate, stronger setting (files there can't be saved at all); the book lock only blocks editing until unlocked.
-- **Replace in a locked book** (answer 2026-10-13): a dialog asks **Skip** or **Unlock and Replace**.
-- **Scope:** the USFM environment only. Locking for other environments is its own entry below.
-- **The lock belongs to the book's file, not to a view** (2026-10-14): it's a USFM environment setting on the open document, so every view of that book (other splits, other windows, Plain Text/Standard/Preview) is locked or unlocked together. It's set to locked whenever the file is opened (loaded), and unlocking lasts until the file is closed.
-- Open question: does an edit attempt in Standard on a locked book say why (a status message), as read-only folders do?
-
 ## Lock a file or folder (Plain Text and the other basic environments)
 
 - Noted: 2026-10-14, alongside the USFM book lock ("add to wishlist LOCK FILE / FOLDER for UNITI basic env").

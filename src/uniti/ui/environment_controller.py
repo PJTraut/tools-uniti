@@ -176,6 +176,8 @@ class EnvironmentController:
         else:
             self._standalone_overrides[document] = environment_key
         key = self.environment_key_for(document)
+        if key in PROJECT_ENVIRONMENTS and previous not in PROJECT_ENVIRONMENTS:
+            self._window._lock_book_on_becoming_usfm(view)
         if entry is not None and key != previous and entry.group_id is not None:
             # Groups belong to an environment (round 3 T2): another
             # environment's group of the same id is a different group.
@@ -476,6 +478,7 @@ class EnvironmentController:
             self.rename_window_action = rename
         if environment_key in REFERENCE_ENVIRONMENTS:
             menu.addAction(window._chapter_view.action)
+            menu.addAction(window._book_lock.action)
             menu.addAction(window._reference_sync.action)
             menu.addMenu(self._versification_menu(view))
         configuration = QAction("Configuration Files…", window)
@@ -706,8 +709,8 @@ class EnvironmentController:
         if isinstance(result, ReplaceDocumentText):
             if document.revision != revision or not view.isEnabled():
                 return
-            if self._window._refuse_read_only(view):
-                return  # Format/Minify can't change a read-only file (T7)
+            if self._window._refuse_edit(view):
+                return  # Format/Minify can't change a read-only file (T7) or a locked book
             document.replace(0, document.total_chars(), result.text)
         elif isinstance(result, NavigateTo):
             offset = max(0, min(result.offset, document.total_chars()))

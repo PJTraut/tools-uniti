@@ -113,13 +113,13 @@ def test_a_group_syncs_its_projects_across_windows(desktop, tmp_path: Path):
 
 
 def test_sync_changes_a_tabs_book_without_asking_and_keeps_its_edits(desktop, tmp_path: Path, monkeypatch):
-    from uniti.ui import project_tabs
+    from uniti.ui import book_lock
 
     app, service = desktop
     niv, cars, window_a, window_b, left, right = _two_windows(service, tmp_path)
     exodus = window_b._environment_bar.open_book(cars / "02EXO.usfm")
     exodus.document.insert(exodus.document.total_chars(), "\\v 2 Edited.\n")
-    monkeypatch.setattr(project_tabs, "ask_save_before_switch", lambda *args: pytest.fail("sync must not ask (D2)"))
+    monkeypatch.setattr(book_lock, "ask_save_or_discard", lambda *args, **kwargs: pytest.fail("sync must not ask (D2)"))
 
     _caret_at(left, _GEN, "\\v 3")
     window_a._reference_sync.sync_from(left)

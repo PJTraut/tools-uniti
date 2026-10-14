@@ -792,3 +792,78 @@ def test_export_rejects_destination_replaced_after_staging(
 
     assert target.read_text(encoding="utf-8") == "external replacement"
     assert list(tmp_path.glob(".target.txt.*.uniti-tmp")) == []
+
+
+def _locked_document(tmp_path: Path, text: bytes = b"hello\r\nworld\r\n") -> Document:
+    path = tmp_path / "book.sfm"
+    path.write_bytes(text)
+    document = Document.open(path)
+    document.set_locked(True)
+    return document
+
+
+def test_a_locked_document_refuses_every_edit_and_saving(tmp_path: Path):
+    from uniti.core.document import DocumentLockedError, DocumentReadOnlyError
+
+    with _locked_document(tmp_path) as document:
+        assert document.locked
+        for action in (
+            lambda: document.insert(0, "x"),
+            lambda: document.delete(0, 1),
+            lambda: document.replace(0, 1, "x"),
+            lambda: document.replace_many([(0, 1, "x")]),
+            lambda: document.save(),
+        ):
+            with pytest.raises(DocumentLockedError):
+                action()
+        assert issubclass(DocumentLockedError, DocumentReadOnlyError)
+        assert (tmp_path / "book.sfm").read_bytes() == b"hello\r\nworld\r\n"
+
+
+def test_a_locked_document_refuses_undo_and_redo_and_unlocking_allows_them(tmp_path: Path):
+    from uniti.core.document import DocumentLockedError
+
+    with _locked_document(tmp_path) as document:
+        document.set_locked(False)
+        document.insert(0, "x")
+        document.set_locked(True)
+        with pytest.raises(DocumentLockedError):
+            document.undo()
+        document.set_locked(False)
+        document.undo()
+        with pytest.raises(DocumentLockedError):
+            document.set_locked(True) or document.redo()
+        document.set_locked(False)
+        document.redo()
+        document.insert(0, "y")
+        document.save()
+        assert (tmp_path / "book.sfm").read_bytes().startswith(b"yxhello")
+
+
+def test_locking_notifies_the_metadata_listeners_once_per_change(tmp_path: Path):
+    path = tmp_path / "book.sfm"
+    path.write_bytes(b"a\r\n")
+    with Document.open(path) as document:
+        calls: list[object] = []
+        document.add_metadata_listener(lambda encoding, eol: calls.append(document.locked))
+        document.set_locked(True)
+        document.set_locked(True)
+        document.set_locked(False)
+        assert calls == [True, False]
+
+
+def test_a_locked_read_only_document_reports_read_only_first(tmp_path: Path):
+    from uniti.core.document import DocumentLockedError
+
+    with _locked_document(tmp_path) as document:
+        document.set_read_only(True)
+        with pytest.raises(PermissionError) as raised:
+            document.insert(0, "x")
+        assert not isinstance(raised.value, DocumentLockedError)
+        assert "read-only" in str(raised.value)
+
+
+def test_recovery_replay_is_not_an_edit_and_works_while_locked(tmp_path: Path):
+    with _locked_document(tmp_path) as document:
+        document.replay_save_point()
+        assert document.locked

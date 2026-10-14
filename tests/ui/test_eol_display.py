@@ -147,7 +147,7 @@ def test_keep_source_before_any_conversion_leaves_the_document_untouched(
     for owner, candidate in pairs:
         assert owner._status.format_label.text() == "UTF-8, LF"
         assert not candidate.document.modified
-    assert window.save_current() == path
+    assert window.save_current() is None  # no changes: nothing is written
     assert path.read_bytes() == b"one\ntwo\n"
 
 
@@ -201,7 +201,7 @@ def test_keep_source_on_a_mixed_document_preserves_its_original_bytes(
     pairs = _shared_views(service, path)
     window, _ = pairs[0]
     window.set_output_eol(None)
-    assert window.save_current() == path
+    assert window.save_current() is None  # no changes: nothing is written
     app.processEvents()
     assert path.read_bytes() == original
     for owner, candidate in pairs:
