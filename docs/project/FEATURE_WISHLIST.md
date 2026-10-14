@@ -38,7 +38,7 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
 ## Spellcheck from Paratext word lists
 
 - Noted: 2026-10-08, from USFM field-test feedback ("toggle spellchecking using hyphenatedwords.txt data; plan this").
-- Plan: the [spellcheck plan](02_plans/2026-10-13-usfm-spellcheck-plan.md) (2026-10-13), queued as row 19 of the [roadmap](02_plans/ROADMAP.md#environment-track-queue): `SpellingStatus.xml` first, then `hyphenatedWords.txt`; wrong and unknown words underlined in two colours; **Check Spelling** per project tab. This entry goes when it lands.
+- Plan: the [spellcheck plan](02_plans/2026-10-13-usfm-spellcheck-plan.md) (2026-10-13), queued as row 20 of the [roadmap](02_plans/ROADMAP.md#environment-track-queue): `SpellingStatus.xml` first, then `hyphenatedWords.txt`; wrong and unknown words underlined in two colours; **Check Spelling** per project tab. This entry goes when it lands.
 
 ## Hyphenation in Preview
 
@@ -54,6 +54,8 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
   - A toggle (per project tab, like Check Spelling), or always on in Preview?
 
 ## Paratext books open locked
+
+- **Planned 2026-10-14:** the [book-lock plan](02_plans/2026-10-14-usfm-book-lock-plan.md) (L1–L4, roadmap row 19). This entry goes when it lands.
 
 - Noted: 2026-10-13 ("all paratext folders should start in READONLY mode"). To plan.
 - **The user's answers, 2026-10-13:**
