@@ -35,8 +35,9 @@ def test_lists_only_fixed_pitch_fonts(app):
         listed.discard(None)  # the "Default (...)" entry
         for family in listed:
             assert QFontDatabase.isFixedPitch(family)
-        # Sanity: at least the well-known fixed-pitch macOS fonts made it in.
-        assert "Courier New" in listed or "Menlo" in listed
+        # Sanity: a well-known fixed-pitch font of this platform made it in
+        # (macOS, Windows, or a Linux runner's DejaVu/Liberation).
+        assert listed & {"Menlo", "Courier New", "Consolas", "DejaVu Sans Mono", "Liberation Mono"}
         # And a widely-installed proportional font must be excluded.
         assert "Arial" not in listed
     finally:

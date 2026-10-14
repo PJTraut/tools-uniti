@@ -42,7 +42,7 @@ def desktop(tmp_path: Path):
 def _write(folder: Path, name: str, text: str) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = in_project(folder / name)
-    path.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8", newline="\n")  # offsets below count LF, also on Windows
     return path
 
 

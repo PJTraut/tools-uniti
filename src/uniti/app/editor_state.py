@@ -67,6 +67,15 @@ class EditorState:
             self.document.read(offset, offset)
         except ValueError:
             return self.document.total_chars()
+        # Never inside a line break: a position between CR and LF (an
+        # offset counted on LF text, in a CRLF file) is the line's end.
+        # Two characters read, so it stays cheap on huge documents.
+        if offset > 0:
+            try:
+                if self.document.read(offset - 1, offset + 1) == "\r\n":
+                    return offset - 1
+            except ValueError:
+                pass  # at the document's end
         return offset
 
     def _set_cursor(

@@ -537,3 +537,15 @@ def test_toggle_unicode_hex_falls_back_to_reversal_for_out_of_range_run(tmp_path
         # direction applies instead: the single character before the
         # cursor ("0") is converted to its own hex notation.
         assert document.read(0, document.total_chars()) == "D80U+0030"
+
+
+def test_a_position_inside_a_crlf_line_break_is_the_lines_end(tmp_path: Path):
+    """An offset counted on LF text can land between CR and LF in a CRLF
+    file (Windows CI, 2026-10-14): it means the line's end."""
+
+    with _open(tmp_path, "ab\r\ncd\r\n") as document:
+        state = EditorState(document)
+        state.move_to(3)  # between "\r" and "\n"
+        assert state.cursor == 2
+        state.move_to(4)  # the next line's start stays
+        assert state.cursor == 4
