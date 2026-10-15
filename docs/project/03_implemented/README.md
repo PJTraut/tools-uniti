@@ -15,7 +15,7 @@ Historical plans may contain unchecked task boxes because they are retained as o
 
 An implemented workstream is complete in its own right but does not imply that its parent product milestone is complete. a16's startup/bootstrap foundation and a21's Editor Layout and Visibility workstream were retained here before their parent gates closed; the complete a16 through a21 product milestones are now implemented.
 
-## Environment track records (2026-09-29 → 2026-10-09)
+## Environment track records (2026-09-29 → 2026-10-14)
 
 The file-type environment and USFM track, run alongside B4 ([ADR-0013](../05_decisions/ADR-0013-environment-framework-ownership-boundary.md)–[ADR-0019](../05_decisions/ADR-0019-named-environment-windows-groups-and-project-tabs.md)). Moved here 2026-10-13; every phase is implemented. Live-app checks still open are tracked in [Current Status](../01_current/STATUS.md#environment-track-2026-09-29--2026-10-09), not here.
 
@@ -24,6 +24,7 @@ The file-type environment and USFM track, run alongside B4 ([ADR-0013](../05_dec
 - [USFM field test](milestones/2026-10-07-usfm-field-test-plan.md), [round 2](milestones/2026-10-08-usfm-field-test-round-2-plan.md) (R1–R8) and [round 3](milestones/2026-10-08-usfm-field-test-round-3-plan.md) (T1–T7, plus the 2026-10-13 spec-check fixes)
 - [USFM projects and versification](milestones/2026-10-07-usfm-projects-and-versification-plan.md) (P1–P5)
 - [Show One Chapter](milestones/2026-10-09-usfm-per-chapter-view-plan.md) (C1–C4)
+- [USFM book lock](milestones/2026-10-14-usfm-book-lock-plan.md) (L1–L5), [Check Spelling](milestones/2026-10-13-usfm-spellcheck-plan.md) (S1–S5) and the [footnote category filter](milestones/2026-10-14-footnote-category-filter-plan.md)
 
 ## v0.001b4 workstream records
 
