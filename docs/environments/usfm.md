@@ -25,6 +25,7 @@ What Standard and Preview show:
   - Clicking a note moves the caret to it.
   - Putting the caret on a caller highlights its note.
   - A note's category (`\cat People\cat*`) shows as "[People]".
+- **Justification and hyphenation.** A paragraph's `\Justification` (including `Both` for justified text, and UNITI's direction-aware `Start` and `End`) applies in Standard and Preview. Preview can also break words at the end of a line: see [Hyphenating Preview](#hyphenating-preview). Both are set in the stylesheets; see [USFM Stylesheet Rules](../usfm-stylesheet-rules.md#justification).
 
 **Find and Replace always search the source text**, in every mode. A pattern like `\\v (\d+)` finds verse markers even in Preview. The current match is shown as the selection.
 
@@ -93,6 +94,17 @@ A note's categories are the words inside its `\cat … \cat*` (`\cat People Plac
 - **Per project tab,** like Check Spelling: it applies to every book of the tab and the books you open into it, and is saved with the session.
 - **Preview only.** Standard and Plain Text keep every note, since they show the source you edit.
 
+## Hyphenating Preview
+
+**Hyphenate Preview** breaks long words at the end of a line, at the points in the project's `hyphenatedWords.txt`, the list Paratext's Publishing Assistant keeps (`a=ro=se`: break after `a` or after `aro`). It's **per project tab** and off by default, like Check Spelling: turn it on from **USFM → Hyphenate Preview** or the tab's right-click menu. It then applies to every book of the tab, including books you open into it later, and is saved with the session. A project with no `hyphenatedWords.txt` shows it greyed out ("NIV has no hyphenation list (hyphenatedWords.txt)").
+
+- **Preview only.** Standard and Plain Text show the source you edit, so they never hyphenate; Preview's notes frame doesn't either.
+- **Only listed words break,** and only where the list says. A hyphenated word (`well-watered`) breaks at its hyphen and inside any part the list has. A word not in the list never breaks: there is no automatic rule for your language.
+- **Which paragraphs:** a stylesheet's `\Hyphenate` field on the paragraph's style decides first (`\Hyphenate -` turns it off for poetry, `\Hyphenate` turns it on for a heading); otherwise the list's own `HyphenatedMarkers` line (`p m pi1 …`); otherwise every paragraph of verse text. See [USFM Stylesheet Rules](../usfm-stylesheet-rules.md#hyphenation).
+- **Justified text** (`\Justification Both`) shows the point best: the space between words is spread, and the hyphen appears only where a word is split at a line end.
+- **Nothing else changes.** The caret, Find, sync and spelling underlines keep their source offsets, and copying from Preview gives the text without the break points.
+- **A list changed on disk** (Paratext's Send/Receive) is read again when you switch back to the window.
+
 ## Check Spelling
 
 **Check Spelling** underlines wrong and unknown words, from the project's Paratext word lists. It is **per project tab** and off by default: turn it on from **USFM → Check Spelling** or the tab's right-click menu. It then applies to every book of the tab, including books you open into it later (the Book list, sync), and is saved with the session. A tab moved to another split or window keeps it; a book merged into a tab that has checking off takes that tab's setting. A project with neither list shows it greyed out ("NIV has no spelling list (SpellingStatus.xml or hyphenatedWords.txt)").
@@ -101,7 +113,20 @@ A note's categories are the words inside its `\cat … \cat*` (`\cat People Plac
 - **Two colours:** a wavy underline in **wrong** (Paratext marks it wrong, or its capitalization) and **unknown** (in neither list). Both are editor theme colours (`spelling_wrong`, `spelling_unknown`) in every built-in theme; older saved themes get them by their background. Hover a flagged word: "Paratext marks this wrong: use ayʼifyufyu", "Paratext spells it: Paul", or "Not in NIV's spelling list".
 - **What is checked:** the text of every marker except `nonvernacular` ones in the project's stylesheets (`\id`, `\rem`, `\ide`, … and any your `custom.sty` marks), and not markers, `\c`/`\v` numbers, `\ca`/`\va`/`\vp`, or attributes after `|`. A word is letters and combining marks, joined by an apostrophe, U+02BC, a hyphen or a zero-width joiner only when a letter follows.
 - **All three modes.** Plain Text underlines the lines it paints; Standard and Preview underline the words on screen. Preview's notes frame isn't underlined. Only the active window and its splits update their Standard and Preview underlines as you type; the others catch up when activated.
-- **No suggestions, and no adding words:** only Paratext's own correction is shown.
+- **Word pairs.** Paratext keeps two-word entries too (`grain field` marked wrong). Two words separated by a single space on one line are underlined together as a wrong pair, with Paratext's correction when it has one. A pair is only found within a line.
+- **Word endings and beginnings.** A word that isn't listed is correct when it's a listed word plus one of the project's `WordPrefixes` or `WordSuffixes` (`Settings.xml`): `Paul` with `ʼs`, `walk` with `ing`.
+
+### Fixing a word: the right-click menu
+
+Right-click a flagged word, in Plain Text, Standard or Preview. At the top of the menu:
+- **Use “correction”**, when Paratext gives one, and **Change to “word”** for the nearest correct words in the project's lists (up to five: one edit away for a word of up to seven letters, two for longer ones; keeps the word's capitals). They replace the word as one edit that Undo takes back, in Plain Text and Standard. A locked or read-only book refuses, as for any edit. Preview, which can't be edited, offers none.
+- **Approve “word”** counts the word as correct from now on. **Mark “word” Wrong** counts it as wrong. **Remove “word” from Your Spelling List** undoes either.
+
+Approved and rejected words are kept in **your own spelling list**, never in Paratext's: `…/Environments/USFM/Spelling/<project short name>.json`, with `approved` and `rejected` words as you typed them. It sits above Paratext's lists, applies to every book and window of the project at once, and is read again when you switch back to the window. UNITI never writes `SpellingStatus.xml`, so Paratext's Send/Receive can't be disturbed. A word you reject is underlined in the "wrong" colour; hovering says "Marked wrong in your spelling list".
+
+### Next and previous issue
+
+**USFM → Next Spelling Issue** and **Previous Spelling Issue** (on while Check Spelling is on) select the next or previous flagged word from the caret, wrapping round the book, in every mode; sync follows. The status bar says "Spelling issue 3 of 18: wrong “word”". Turning Check Spelling on, or showing another book of the tab, shows the book's count in the status bar: "GEN: 2 wrong, 14 unknown words".
 
 ## Find and Replace across a project
 
@@ -154,6 +179,8 @@ When a mapping lands on a verse the text doesn't have, sync uses the same refere
 | Validate USFM | Ctrl+Alt+V | unmatched end markers, plus the `usfmtc` reference grammar check |
 | Check Marker Placement | — | each marker's `OccursUnder` against the loaded stylesheets |
 | Check Undefined Markers | — | markers no loaded stylesheet defines (see [Undefined markers](#undefined-markers)) |
+| Next / Previous Spelling Issue | — | select the next or previous flagged word (see [Check Spelling](#check-spelling)) |
+| Hyphenate Preview | — | break words at their listed points in Preview (see [Hyphenating Preview](#hyphenating-preview)) |
 | Inspect Marker at Cursor | Ctrl+Alt+S | the Style Inspector at the marker under the caret |
 | Style Inspector… | — | every marker's effective style, with the layer each value comes from |
 | Load Stylesheet… | — | layer another `.sty` on top, for this session |
@@ -179,12 +206,14 @@ These apply from top to bottom, later ones winning. **Configuration Files…** l
 
 Other files:
 - `Settings.xml`, `BookNames.xml` and `custom.vrs` in the project folder.
+- `SpellingStatus.xml` and `hyphenatedWords.txt` in the project folder: Paratext's word lists, read-only (see [Check Spelling](#check-spelling) and [Hyphenating Preview](#hyphenating-preview)).
+- **Your spelling lists**, `…/Environments/USFM/Spelling/<project>.json`: the words you approved or marked wrong.
 - **Your versification files**, `…/Environments/USFM/Versification/*.vrs`. Copy Septuagint, Vulgate or Russian versification files there from a Paratext installation; English and Original are built in.
 
 The two `uniti.sty` files can hold **rules** that a plain `.sty` can't express:
 - a paragraph straight after another, e.g. a blank line between prose and poetry (`\Marker p+q1`);
 - a note's caller (`\Marker f::caller`).
 
-They can also hold ordinary marker records, such as the built-in `\Marker nd` with `\SmallCaps`. See [USFM Stylesheet Rules](../usfm-stylesheet-rules.md) for the syntax.
+They can also hold ordinary marker records, such as the built-in `\Marker nd` with `\SmallCaps`, and every presentation field, including `\Justification` (`Left`, `Center`, `Right`, `Both`, `Start`, `End`) and `\Hyphenate`. [USFM Stylesheet Rules](../usfm-stylesheet-rules.md) is the full reference: the file format, every field, selectors, justification, hyphenation, the built-in rules and recipes.
 
 Creating your rules or a project `uniti.sty` starts from a template that explains the syntax and lists UNITI's built-in rules, commented out, to copy and change. Saving any of these files reloads the stylesheets, and Standard and Preview update straight away.

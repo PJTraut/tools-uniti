@@ -135,11 +135,13 @@ Budgets, checked with the real code when each phase lands:
 
 ## Later (not in this plan)
 
+All of this was implemented on 2026-10-15 in the [hyphenation and spelling follow-ups plan](2026-10-15-usfm-hyphenation-and-spelling-followups-plan.md), except an approved or rejected word *pair*:
+
 - Approving or rejecting a word, into a UNITI-side list in `Environments/USFM/` (writing `SpellingStatus.xml` needs an ADR change).
 - Word-pair entries (`grain field` W): flag the pair.
 - Next/Previous spelling issue, and a count in the status bar.
 - Suggestions beyond Paratext's Correction.
-- Hyphenation in Preview from the same `hyphenatedWords.txt` break points ([wishlist](../../FEATURE_WISHLIST.md#hyphenation-in-preview)): S1's loader should keep them rather than discard them.
+- Hyphenation in Preview from the same `hyphenatedWords.txt` break points.
 - `WordPrefixes`/`WordSuffixes` from `Settings.xml` (`usNIVv3` lists `ʼs` and `ing`) for words that are only listed without them.
 
 ## As built

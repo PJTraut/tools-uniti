@@ -80,7 +80,25 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] Uncheck **None**: notes without `\cat` go. **Show All** brings everything back.
 - [ ] Change the book from the Book list: the filter stays on for the tab; another project's tab is unaffected. Restart: it's restored.
 
-## 12. Grouped Tabs (BF-082, ordinary windows)
+## 12. Hyphenate Preview (H1–H3)
+- [ ] On a project with `hyphenatedWords.txt` (`usNIVv3`): **USFM → Hyphenate Preview** is on offer; for a project without one it's greyed with the reason.
+- [ ] Turn it on from the USFM menu and from a tab's right-click menu; in Preview, long listed words break at a line end with a hyphen, and nowhere else. Standard and Plain Text are unchanged.
+- [ ] Narrow and widen the window: the breaks move; with `\Justification Both` on `\p` (project `uniti.sty`) the lines fill the width.
+- [ ] Click and select across a broken word; Find a word that Preview breaks; copy from Preview and paste: no stray hyphens. Sync and Check Spelling underlines still land on the right words.
+- [ ] `\Hyphenate -` on `\p` stops it for that style; change the book, restart: the setting stays.
+
+## 13. Justification (J1)
+- [ ] `\Justification Start`, `End`, `Left`, `Right`, `Center` and `Both` on a paragraph style: each sits where the stylesheet reference says. In a right-to-left book `Start` is the right edge and `Left` stays left.
+
+## 14. Spelling follow-ups (F1–F5)
+- [ ] Right-click a flagged word in Plain Text, Standard and Preview: the suggestions and Paratext's correction (editable modes only), **Approve**, **Mark Wrong**.
+- [ ] Choose a suggestion: the word is replaced, Undo takes it back; in a locked book the status bar says it's locked.
+- [ ] Approve a word: it stops being underlined in every split and window of the project; quit and restart: still approved. Mark a correct word wrong: it's underlined, and **Remove … from Your Spelling List** undoes it. `SpellingStatus.xml` is untouched.
+- [ ] A project with `WordSuffixes` in `Settings.xml` (`usNIVv3`): `Paulʼs`-style words aren't flagged when `Paul` is correct.
+- [ ] `rnBKCv1`: a word pair Paratext marks wrong (`ata wuzoba`) is underlined as one.
+- [ ] **Next / Previous Spelling Issue** walk the book, wrap round, and the status bar counts them.
+
+## 15. Grouped Tabs (BF-082, ordinary windows)
 - [ ] **View › Grouped Tabs** on, in an ordinary window: files stack per group in each split; it feels right to use.
 
 ## Results

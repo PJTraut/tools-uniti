@@ -30,20 +30,7 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
 ## Spellcheck from Paratext word lists
 
 - Noted: 2026-10-08, from USFM field-test feedback ("toggle spellchecking using hyphenatedwords.txt data; plan this").
-- Implemented 2026-10-14: the [spellcheck plan](03_implemented/milestones/2026-10-13-usfm-spellcheck-plan.md) (S1–S5). What's left is its "Later" list: approving or rejecting words, word pairs, Next/Previous issue, suggestions and `WordPrefixes`/`WordSuffixes`.
-
-## Hyphenation in Preview
-
-- Noted: 2026-10-13 ("wishlist: use hyphenation in PREVIEw mode").
-- Idea: Preview breaks long words at the line end where the project's `hyphenatedWords.txt` allows it, as Paratext's Publishing Assistant does.
-- What the file gives (read in `usNIVv3`, see the [spellcheck plan](03_implemented/milestones/2026-10-13-usfm-spellcheck-plan.md#what-paratext-keeps)): one word per line with `=` at its break points (`a=ro=se`), `SoftHyphenOut = "­"` (U+00AD) as the character to print there, and `HyphenatedMarkers` listing the paragraph markers whose text is hyphenated (`p`, `m`, `pi1`, `ip` …; not poetry or headings).
-- Current state: Preview wraps only at spaces. The spellcheck plan's S1 reads `hyphenatedWords.txt` already, so its loader can keep the break points too.
-- Open questions:
-  - Does Qt's text layout break at a U+00AD in Preview's text and show a hyphen there? If so, Preview's projection would put U+00AD at the break points, and the source map would have to skip them so the caret, sync and editing keep their offsets.
-  - Only `HyphenatedMarkers`, or every paragraph?
-  - Starred (user-fixed) lines: in `usNIVv3` they look damaged (`*a =ro=se`). Use them, or only unstarred lines?
-  - Words not in the file: no breaks, or an automatic hyphenation rule for the language?
-  - A toggle (per project tab, like Check Spelling), or always on in Preview?
+- Implemented 2026-10-14: the [spellcheck plan](03_implemented/milestones/2026-10-13-usfm-spellcheck-plan.md) (S1–S5), and its "Later" list on 2026-10-15: the [follow-ups plan](03_implemented/milestones/2026-10-15-usfm-hyphenation-and-spelling-followups-plan.md) (approving and rejecting words, word pairs, Next/Previous issue, suggestions, `WordPrefixes`/`WordSuffixes`). Hyphenation in Preview was implemented in the same plan. What's left: approving or rejecting a word pair, and a shortcut for Next/Previous Spelling Issue.
 
 ## Lock a file or folder (Plain Text and the other basic environments)
 

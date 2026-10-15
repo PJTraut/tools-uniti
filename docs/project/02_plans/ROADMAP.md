@@ -51,8 +51,12 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 | 19 | L1–L5 — USFM book lock: every Paratext book opens locked and is unlocked to save; Unlock per open book from the Book selector, USFM menu, toolbar and right-click menus; books must be UTF-8 CRLF; the project is the Find/Replace group, stepped through book by book; multi-file Replace All asks which files, opt-in; no file is written without changes | implemented 2026-10-14 | [Book lock](../03_implemented/milestones/2026-10-14-usfm-book-lock-plan.md) |
 | 20 | S1–S5 — Check Spelling: Paratext's `SpellingStatus.xml` and `hyphenatedWords.txt`, wrong and unknown words underlined in all three modes, per project tab | implemented 2026-10-14 | [Spellcheck](../03_implemented/milestones/2026-10-13-usfm-spellcheck-plan.md) |
 | 21 | Footnote category filter: choose which `\cat` categories (and "None") Preview's notes frame shows, per project tab | implemented 2026-10-14 | [Footnote category filter](../03_implemented/milestones/2026-10-14-footnote-category-filter-plan.md) |
+| 22 | H1–H3 — Hyphenate Preview: break words at the points in `hyphenatedWords.txt` (soft hyphens in Preview's projection), per project tab, with `\Hyphenate` per paragraph style | implemented 2026-10-15 | [Hyphenation and spelling follow-ups](../03_implemented/milestones/2026-10-15-usfm-hyphenation-and-spelling-followups-plan.md) |
+| 23 | J1 — `\Justification Start` and `End` (direction-aware); `Left` and `Right` physical in right-to-left paragraphs | implemented 2026-10-15 | [Hyphenation and spelling follow-ups](../03_implemented/milestones/2026-10-15-usfm-hyphenation-and-spelling-followups-plan.md) |
+| 24 | F1–F5 — Spelling follow-ups: approve and reject words (your own list), suggestions, wrong word pairs, Next/Previous Spelling Issue with a count, `WordPrefixes`/`WordSuffixes` | implemented 2026-10-15 | [Hyphenation and spelling follow-ups](../03_implemented/milestones/2026-10-15-usfm-hyphenation-and-spelling-followups-plan.md) |
+| 25 | D1 — USFM stylesheet rules reference: every `uniti.sty` selector, field, layer and built-in rule documented | implemented 2026-10-15 | [USFM Stylesheet Rules](../../usfm-stylesheet-rules.md) |
 
-Wishlist, not queued: USFM files outside a project, and hyphenation in Preview ([wishlist](../FEATURE_WISHLIST.md)).
+Wishlist, not queued: USFM files outside a project, and a file/folder lock for the basic environments ([wishlist](../FEATURE_WISHLIST.md)).
 
 A21 Cross-Platform Alpha and earlier completed milestones remain in [Implemented](../03_implemented/README.md). A22 source infrastructure and the beta feedback code are implemented, but unfinished milestone acceptance records remain here.
 
