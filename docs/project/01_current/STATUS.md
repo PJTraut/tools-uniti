@@ -52,6 +52,7 @@ Local verification after round 3, 2026-10-09 → 2026-10-13:
 - **Typing speed** on a 300 KB Psalms: a keystroke went from about 170 ms to 16 ms (19 ms with one chapter shown). Re-reading the book after an edit no longer builds per-character byte boundaries (60 ms → under 1 ms, `95e6a07`), and the reference map looks only at `\c`/`\v` candidates (20 ms → 4 ms, `bb06aab`), checked identical to the tokenizer on 3,000 random strings and every book of `ruCARSv3` and `usNIVv2`.
 - **Full suite at `bb06aab`, 2026-10-13: 2,653 passed, 6 platform skips**, offscreen, nothing deselected, no crash.
 - **With the spec-check fixes and live/frozen windows, 2026-10-13: 2,661 passed, 6 platform skips** (8 new tests), offscreen, no crash.
+- **With the book lock, Check Spelling and the footnote category filter, at `282d612`, 2026-10-15: 2,770 passed, 6 platform skips**, offscreen, nothing deselected. `282d612` is pushed to `origin/main`. The live-app checks of those three ([checklist](../LIVE_APP_CHECKLIST.md) sections 9–11) are not yet done.
 
 
 Spec check of round 3 and Show One Chapter, 2026-10-13, against the field-test feedback, the user's answers and the round 3 plan (code read, phase tests run, the app driven offscreen with throwaway projects). T1–T3, T5's group colours and sync, T6's menu and moves, T7's edit paths and C1–C4 conform; the full project name appears nowhere. Five deviations, **all fixed the same day**, each with a regression test that fails on the old code:
