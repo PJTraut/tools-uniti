@@ -88,6 +88,14 @@ class RichViewController:
             return None
         return pane.provider.key
 
+    def _context_entries(self, menu, view, pane) -> None:
+        """What the host adds to a pane's right-click menu: the spelling
+        entries for the word under the click (at the top), then the
+        document's own."""
+
+        self._window._spelling.add_context_entries(menu, view, pane.context_source_offset, editable=pane.editable)
+        self._window.add_view_context_entries(menu, view)
+
     def providers_for(self, view: "UNITITextView | None") -> tuple[EditorViewProvider, ...]:
         environment = self._window._environment
         if view is None or environment.is_plain_mode(view):
@@ -194,7 +202,7 @@ class RichViewController:
         pane.can_edit = view.isEnabled
         # The window the pane is in now (a tab can move between windows).
         pane.is_live = lambda: getattr(pane.window(), "is_live_window", True)
-        pane.context_menu_hook = lambda menu: self._window.add_view_context_entries(menu, view)
+        pane.context_menu_hook = lambda menu: self._context_entries(menu, view, pane)
         slot = lambda: self._sync_appearance(view)  # noqa: E731
         view.appearanceChanged.connect(slot)
         self._appearance_slots[view.view_id] = slot

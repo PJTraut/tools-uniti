@@ -17,14 +17,17 @@ from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAction
 
 from uniti.core.environments.sfm.paratext_project import project_for_file
-from uniti.core.environments.sfm.spellcheck import CheckContext, SpellingCache
+from uniti.core.environments.sfm.spellcheck import CheckContext, Span, SpellingCache
 from uniti.core.environments.sfm.spelling import (
     HYPHENATED_WORDS_FILE,
     SPELLING_STATUS_FILE,
     SpellingList,
+    SpellingState,
+    effective_spelling_list,
     lists_changed,
     spelling_list_for,
 )
+from uniti.core.environments.sfm.user_words import user_words_for
 from uniti.resources import TaskKind, TaskSpec
 from uniti.ui.task_bridge import TaskBridge
 
@@ -61,6 +64,10 @@ class SpellingController(QObject):
         self.action = QAction("Check Spelling", window)
         self.action.setCheckable(True)
         self.action.triggered.connect(lambda checked: self.set_tab(window.current_view, checked))
+        self.next_action = QAction("Next Spelling Issue", window)
+        self.next_action.triggered.connect(lambda _checked=False: self.go_to_issue(window.current_view, True))
+        self.previous_action = QAction("Previous Spelling Issue", window)
+        self.previous_action.triggered.connect(lambda _checked=False: self.go_to_issue(window.current_view, False))
 
     # --- what a view can do --------------------------------------------------------
 
@@ -85,6 +92,9 @@ class SpellingController(QObject):
         self.action.setChecked(checked)
         self.action.blockSignals(False)
         self.action.setToolTip(tooltip)
+        for action in (self.next_action, self.previous_action):
+            action.setEnabled(enabled and checked)
+            action.setToolTip("Move to the next or previous wrong or unknown word of the shown book")
 
     def make_action(self, view: "UNITITextView", parent) -> QAction:
         enabled, checked, tooltip = self.describe(view)
@@ -117,11 +127,10 @@ class SpellingController(QObject):
             self._attach(view, None)
             return
         project = self.project_of(view)
-        folder = str(project.folder)
         if lists_changed(project.folder):
             self._load(project.folder, view)
             return
-        self._attach(view, self._cache_for(view.document, spelling_list_for(project.folder), project))
+        self._attach(view, self._cache_for(view.document, effective_spelling_list(project), project))
 
     def _attach(self, view: "UNITITextView", cache: SpellingCache | None) -> None:
         if view.spelling is cache:
@@ -130,6 +139,8 @@ class SpellingController(QObject):
         pane = self._window._rich_views.pane_for(view)
         if pane is not None:
             pane.set_spelling(cache)
+        if cache is not None and view is self._window.current_view:
+            self._window.statusBar().showMessage(self.summary(view), 6000)
 
     def _cache_for(self, document, words: SpellingList, project) -> SpellingCache:
         cache = _CACHES.get(document)
@@ -177,6 +188,177 @@ class SpellingController(QObject):
             return [self._window]
         return [window for _window_id, window in service.windows.items]
 
+    # --- what is flagged: counts, Next and Previous (F4) ------------------------------
+
+    @staticmethod
+    def issues(view: "UNITITextView") -> list[Span]:
+        """The shown book's flagged words, in order (none while checking is off)."""
+
+        cache = view.spelling
+        return [] if cache is None else list(cache.book_spans())
+
+    def summary(self, view: "UNITITextView") -> str:
+        """"GEN: 2 wrong, 14 unknown words" for the status bar."""
+
+        spans = self.issues(view)
+        code = view.document.path.stem
+        project = self.project_of(view)
+        if not spans:
+            return f"{code}: no spelling issues" if project is None else f"{code} ({project.name}): no spelling issues"
+        unknown = sum(1 for span in spans if span.spelling.state is SpellingState.UNKNOWN)
+        wrong = len(spans) - unknown
+        return f"{code}: {wrong} wrong, {unknown} unknown word{'' if unknown == 1 else 's'}"
+
+    def go_to_issue(self, view: "UNITITextView | None", forward: bool) -> bool:
+        """Select the next (or previous) flagged word after (before) the
+        caret, wrapping round the book; every mode and synced window
+        follows the caret."""
+
+        if view is None or view.spelling is None:
+            return False
+        spans = self.issues(view)
+        bar = self._window.statusBar()
+        if not spans:
+            bar.showMessage(self.summary(view), 6000)
+            return False
+        state = view.state
+        low, high = min(state.cursor, state.anchor), max(state.cursor, state.anchor)
+        wrapped = False
+        if forward:
+            index = next((i for i, span in enumerate(spans) if span.start >= high), None)
+            if index is None:
+                index, wrapped = 0, True
+        else:
+            index = next((i for i in range(len(spans) - 1, -1, -1) if spans[i].start < low), None)
+            if index is None:
+                index, wrapped = len(spans) - 1, True
+        span = spans[index]
+        view._select_range(span.start, span.end)
+        kind = "unknown" if span.spelling.state is SpellingState.UNKNOWN else "wrong"
+        word = view.document.read(span.start, span.end)
+        note = " (wrapped round the book)" if wrapped else ""
+        bar.showMessage(f"Spelling issue {index + 1} of {len(spans)}: {kind} “{word}”{note}", 6000)
+        return True
+
+    # --- the right-click entries (F1, F2) ---------------------------------------------
+
+    def span_at(self, view: "UNITITextView", offset: int | None) -> Span | None:
+        """The flagged word at a document offset (or just before it: the
+        caret lands after a word's last letter)."""
+
+        if offset is None or view.spelling is None:
+            return None
+        spans = view.spelling.book_spans()
+        for position in (offset, offset - 1):
+            found = spans.overlapping(position, position + 1) if position >= 0 else []
+            if found:
+                return found[0]
+        return None
+
+    def add_context_entries(
+        self, menu, view: "UNITITextView", offset: int | None, *, editable: bool
+    ) -> None:
+        """At the top of `menu`, for a flagged word at `offset`: Paratext's
+        correction and the suggestions (when `editable`), then Approve, Mark
+        Wrong and Remove, for your own spelling list."""
+
+        span = self.span_at(view, offset)
+        project = self.project_of(view)
+        if span is None or project is None:
+            return
+        document = view.document
+        word = document.read(span.start, span.end)
+        spelling = span.spelling
+        words = view.spelling.context.words
+        user = user_words_for(project.name)
+        actions: list[QAction] = []
+        if editable:
+            offered: list[str] = []
+            if spelling.correction:
+                offered.append(spelling.correction)
+            if not spelling.pair:
+                offered.extend(item for item in words.suggestions(word) if item not in offered)
+            for item in offered:
+                label = f"Use “{item}”" if item == spelling.correction else f"Change to “{item}”"
+                action = QAction(label, menu)
+                action.triggered.connect(
+                    lambda _checked=False, item=item: self.replace_word(view, span, item)
+                )
+                actions.append(action)
+            if actions:
+                actions.append(None)
+        if not spelling.pair:
+            if not user.is_approved(word):
+                approve = QAction(f"Approve “{word}”", menu)
+                approve.setToolTip("Count this word as correct from now on, in your own spelling list")
+                approve.triggered.connect(lambda _checked=False: self.approve(view, word))
+                actions.append(approve)
+            if not user.is_rejected(word):
+                reject = QAction(f"Mark “{word}” Wrong", menu)
+                reject.setToolTip("Count this word as wrong from now on, in your own spelling list")
+                reject.triggered.connect(lambda _checked=False: self.reject(view, word))
+                actions.append(reject)
+            if word in user:
+                forget = QAction(f"Remove “{word}” from Your Spelling List", menu)
+                forget.triggered.connect(lambda _checked=False: self.forget(view, word))
+                actions.append(forget)
+        while actions and actions[-1] is None:
+            actions.pop()
+        if not actions:
+            return
+        existing = menu.actions()
+        first = existing[0] if existing else None
+        for action in actions:
+            if action is None:
+                menu.insertSeparator(first) if first is not None else menu.addSeparator()
+                continue
+            if first is not None:
+                menu.insertAction(first, action)
+            else:
+                menu.addAction(action)
+        if first is not None:
+            menu.insertSeparator(first)
+
+    def replace_word(self, view: "UNITITextView", span: Span, text: str) -> bool:
+        """Replace a flagged word with `text`, unless its book is read-only
+        or locked."""
+
+        if self._window._refuse_edit(view):
+            return False
+        return view.replace_range(span.start, span.end, text)
+
+    def approve(self, view: "UNITITextView", word: str) -> None:
+        self._change_user_list(view, lambda words: words.approve(word), f"Approved “{word}”")
+
+    def reject(self, view: "UNITITextView", word: str) -> None:
+        self._change_user_list(view, lambda words: words.reject(word), f"Marked “{word}” wrong")
+
+    def forget(self, view: "UNITITextView", word: str) -> None:
+        self._change_user_list(view, lambda words: words.forget(word), f"Removed “{word}” from your spelling list")
+
+    def _change_user_list(self, view: "UNITITextView", change, message: str) -> None:
+        project = self.project_of(view)
+        if project is None:
+            return
+        change(user_words_for(project.name))
+        self.refresh_project(project)
+        self._window.statusBar().showMessage(f"{message} in {project.name}'s list of your own words", 6000)
+
+    def refresh_project(self, project) -> None:
+        """The project's word lists changed: every view of it, in every
+        window, checks again and repaints."""
+
+        for window in self._windows():
+            for view in window.views:
+                other = project_for_file(view.document.path)
+                if other is None or Path(other.folder) != Path(project.folder) or not view.check_spelling:
+                    continue
+                window._spelling.apply(view)
+                view.viewport().update()
+                pane = window._rich_views.pane_for(view)
+                if pane is not None:
+                    pane._apply_highlights()
+
     def shutdown(self) -> None:
         """The window is closing: stop listening to the task coordinator."""
 
@@ -190,6 +372,9 @@ class SpellingController(QObject):
         for view in self._window.views:
             if not view.check_spelling:
                 continue
+            project = self.project_of(view)
+            if project is not None:
+                user_words_for(project.name).reload_if_changed()  # another UNITI may have changed it
             self.apply(view)
             pane = self._window._rich_views.pane_for(view)
             if pane is not None:

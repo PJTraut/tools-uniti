@@ -953,6 +953,20 @@ class UNITITextView(QAbstractScrollArea):
     def set_progressive_navigation(self, enabled: bool) -> None:
         self._progressive_navigation = bool(enabled)
 
+    def replace_range(self, start: int, end: int, text: str) -> bool:
+        """Replace [start, end) of the document with `text`, as one edit
+        that Undo takes back, and put the caret after it. False (and
+        `editRefused`) on a read-only view."""
+
+        if self._read_only:
+            self.editRefused.emit()
+            return False
+        self.state.move_to(start)
+        self.state.move_to(end, selecting=True)
+        self.state.insert_text(text)
+        self._state_changed()
+        return True
+
     # --- spelling (spellcheck plan S3) ---------------------------------------------
 
     def set_spelling(self, cache) -> None:

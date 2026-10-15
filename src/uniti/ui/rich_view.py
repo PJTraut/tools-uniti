@@ -564,6 +564,7 @@ class _RichEditor(QTextEdit):
         return source.hasText()
 
     def contextMenuEvent(self, event) -> None:  # noqa: N802
+        self._owner.context_source_offset = self._owner.source_offset_at(event.pos())
         self.context_menu().exec(event.globalPos())
 
     def context_menu(self) -> QMenu:
@@ -698,6 +699,8 @@ class RichViewPane(QWidget):
         self.is_live: Callable[[], bool] = lambda: True
         # Adds the host's entries to the right-click menu.
         self.context_menu_hook: Callable[[QMenu], None] | None = None
+        # The source offset under the right-click, for the entries about the word there.
+        self.context_source_offset: int | None = None
         self._providers: tuple[EditorViewProvider, ...] = ()
         self._remove_listener: Callable[[], None] | None = None
         self._applying = False
@@ -1193,6 +1196,16 @@ class RichViewPane(QWidget):
         cursor.setPosition(self._offsets.to_qt(min(anchor, length)))
         cursor.setPosition(self._offsets.to_qt(min(caret, length)), QTextCursor.MoveMode.KeepAnchor)
         self.editor.setTextCursor(cursor)
+
+    def source_offset_at(self, position: QPoint) -> int | None:
+        """The source offset of the character nearest a point of the editor
+        (a position in the view maps back through the source map); None
+        before anything is shown."""
+
+        if self.projection is None:
+            return None
+        cursor = self.editor.cursorForPosition(position)
+        return self.projection.source_map.view_to_source(self._offsets.from_qt(cursor.position()))
 
     def show_source_caret(self, cursor_source: int, anchor_source: int) -> None:
         """Follow the Source editor's caret (no echo back)."""

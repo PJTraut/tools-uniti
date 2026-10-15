@@ -1984,9 +1984,14 @@ class UNITIMainWindow(QMainWindow):
     ) -> None:
         if not view.isEnabled():
             return
-        self._editor_context_menu(view).popup(global_position)
+        local = view.viewport().mapFromGlobal(global_position)
+        offset = view._char_for_point(local.x(), local.y())
+        self._editor_context_menu(view, offset).popup(global_position)
 
-    def _editor_context_menu(self, view: UNITITextView) -> QMenu:
+    def _editor_context_menu(self, view: UNITITextView, offset: int | None = None) -> QMenu:
+        """`offset` is the document offset under the right-click: a flagged
+        word there gets the spelling entries at the top."""
+
         menu = QMenu(self)
         menu.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         for group in self._EDITOR_CONTEXT_MENU_GROUPS:
@@ -1994,6 +1999,7 @@ class UNITIMainWindow(QMainWindow):
                 menu.addSeparator()
             for command_id in group:
                 menu.addAction(self._command_actions[command_id])
+        self._spelling.add_context_entries(menu, view, offset, editable=True)
         self.add_view_context_entries(menu, view)
         return menu
 

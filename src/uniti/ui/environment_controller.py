@@ -480,6 +480,8 @@ class EnvironmentController:
             menu.addAction(window._chapter_view.action)
             menu.addAction(window._book_lock.action)
             menu.addAction(window._spelling.action)
+            menu.addAction(window._spelling.next_action)
+            menu.addAction(window._spelling.previous_action)
             menu.addAction(window._hyphenation.action)
             menu.addMenu(window._note_categories.menu)
             menu.addAction(window._reference_sync.action)
