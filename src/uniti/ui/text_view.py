@@ -225,6 +225,7 @@ class UNITITextView(QAbstractScrollArea):
         self._match_index = MatchIndex(())
         self._spelling = None  # a SpellingCache while Check Spelling is on (plan S3)
         self.check_spelling = False  # the tab's Check Spelling setting, saved with the session (D3)
+        self.hyphenate_preview = False  # the tab's Hyphenate Preview setting, saved with the session (H-D2)
         # The footnote categories Preview leaves out (the tab's setting too).
         self.hidden_note_categories: frozenset[str] = frozenset()
         self._spelling_memo: dict[int, tuple] = {}
@@ -767,6 +768,8 @@ class UNITITextView(QAbstractScrollArea):
             extra["rich_view"] = self.rich_view_key
         if self.check_spelling:
             extra["check_spelling"] = True
+        if self.hyphenate_preview:
+            extra["hyphenate_preview"] = True
         if self.hidden_note_categories:
             extra["hidden_note_categories"] = sorted(self.hidden_note_categories)
         return ViewRecord(
@@ -847,6 +850,7 @@ class UNITITextView(QAbstractScrollArea):
         # after this call (the profile depends on the document's environment).
         self.environment_plain_mode = record.extra.get("environment_plain_mode") is True
         self.check_spelling = record.extra.get("check_spelling") is True
+        self.hyphenate_preview = record.extra.get("hyphenate_preview") is True
         hidden_categories = record.extra.get("hidden_note_categories")
         self.hidden_note_categories = (
             frozenset(item for item in hidden_categories if isinstance(item, str))

@@ -106,6 +106,7 @@ class RichViewController:
         try:
             pane = self._ensure_pane(view)
             pane.set_hidden_categories(view.hidden_note_categories, refresh=False)
+            pane.set_hyphenation(self._window._hyphenation.rules_for(view), refresh=False)
             pane.bind(view.document, providers, provider_key, *self._appearance(view, provider_key, providers))
             pane.set_spelling(view.spelling)
             pane.show_source_caret(view.state.cursor, view.state.anchor)

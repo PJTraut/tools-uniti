@@ -71,6 +71,7 @@ class HyphenatedWordsData:
 
     words: dict[str, str] = field(default_factory=dict)
     settings: dict[str, str] = field(default_factory=dict)
+    rules: object | None = field(default=None, repr=False)  # `HyphenationRules`, made on first use
 
     @property
     def hard_hyphen(self) -> str:

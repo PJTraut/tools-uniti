@@ -44,6 +44,7 @@ from uniti.core.rich_views.editing import EditPlan
 from uniti.core.rich_views.projection import NoteSection, Projection, ProjectionBuilder
 from uniti.core.rich_views.provider import ViewCommand
 
+from .hyphenation import SOFT_HYPHEN, HyphenationRules
 from .markers import NOTE_MARKERS, is_closing, is_milestone, is_milestone_close, is_nested, marker_name
 from .nodes import SfmNode, SfmNodeKind
 from .parser import parse_sfm
@@ -75,6 +76,7 @@ _FLAG_ATTRS = {
 # contents and tooling, never body text — Preview leaves them out. (The STY
 # calls \\h and \\toc* "publishable" because they do print, elsewhere.)
 _METADATA_MARKERS = re.compile(r"(?:id|ide|sts|rem|usfm|h\d?|toca?\d)")
+_OFF_VALUES = ("-", "no", "false", "0")
 _ALIGN = {"left": "left", "center": "center", "right": "right", "both": "justify", "justify": "justify"}
 
 
@@ -209,7 +211,7 @@ def formatting_attrs(styles: LayeredStyleRegistry, formatting: dict[str, str], *
 
     attrs: dict[str, str] = {}
     for key, attr in _FLAG_ATTRS.items():
-        if key in formatting and formatting[key].lower() not in ("-", "no", "false", "0"):
+        if key in formatting and formatting[key].lower() not in _OFF_VALUES:
             attrs[attr] = "yes"
     size = formatting.get("fontsize")
     if size:
@@ -226,6 +228,9 @@ def formatting_attrs(styles: LayeredStyleRegistry, formatting: dict[str, str], *
         align = _ALIGN.get(formatting.get("justification", "").lower())
         if align:
             attrs["align"] = align
+        hyphenate = formatting.get("hyphenate")
+        if hyphenate is not None:
+            attrs["hyphenate"] = "no" if hyphenate.lower() in _OFF_VALUES else "yes"
         for key, attr in (
             ("leftmargin", "left_margin"),
             ("rightmargin", "right_margin"),
@@ -389,6 +394,7 @@ def layout_projection(
     *,
     show_markers: bool,
     hidden_categories: frozenset[str] = frozenset(),
+    hyphenation: "HyphenationRules | None" = None,
 ) -> Projection:
     """Paragraph blocks with each marker's effective STY formatting.
 
@@ -396,7 +402,10 @@ def layout_projection(
     View); otherwise markers are hidden and closed notes leave only their
     caller in the text, their bodies going to `Projection.notes`
     (Preview). In Preview, a note whose categories are all in
-    `hidden_categories` leaves neither its caller nor its body. In both, source line breaks inside a paragraph flow as
+    `hidden_categories` leaves neither its caller nor its body, and
+    `hyphenation` puts a soft hyphen (U+00AD, a generated segment the
+    source map skips) at the listed break points of the words in
+    hyphenating paragraphs. In both, source line breaks inside a paragraph flow as
     spaces — in USFM a line break is just whitespace — and a new block
     starts at each paragraph or chapter marker.
     """
@@ -452,9 +461,32 @@ def layout_projection(
             elif text.endswith(("\n", "\r")):
                 trailing = 1
         if trailing < len(text):
-            builder.text(end - trailing, text[: len(text) - trailing], line_break=" ")
+            body = text[: len(text) - trailing]
+            cuts = hyphen_points(body) if hyphenation is not None else ()
+            last = 0
+            for cut in cuts:
+                builder.text(start + cut, body[last:cut], line_break=" ")
+                builder.generated(SOFT_HYPHEN, "hyphen")
+                last = cut
+            builder.text(end - trailing, body[last:], line_break=" ")
         if trailing:
             builder.text(end, text[len(text) - trailing :])
+
+    def hyphen_points(body: str) -> list[int]:
+        """Where a soft hyphen goes in `body`: only in the main text of a
+        hyphenating paragraph (H-D3), never in a note."""
+
+        if show_markers or block is None or note_openers or unclosed_note or implicit is not None:
+            return []
+        marker, attrs = block[1], block[2]
+        wanted = attrs.get("hyphenate")
+        if wanted is None:
+            style = registry.style_for(marker)
+            if not hyphenation.marker_hyphenates(marker, style.text_type if style else None):
+                return []
+        elif wanted != "yes":
+            return []
+        return hyphenation.points(body)
 
     def close_implicit() -> None:
         nonlocal implicit
@@ -844,11 +876,22 @@ class SfmPreviewView(_SfmViewBase):
     def project(self, source: str) -> Projection:
         return layout_projection(source, self._styles(), self.key, show_markers=False)
 
-    def project_filtered(self, source: str, hidden_categories: frozenset[str]) -> Projection:
-        """Preview without the notes of the hidden categories."""
+    def project_filtered(
+        self,
+        source: str,
+        hidden_categories: frozenset[str] = frozenset(),
+        hyphenation: "HyphenationRules | None" = None,
+    ) -> Projection:
+        """Preview without the notes of the hidden categories, and with
+        soft hyphens at `hyphenation`'s break points."""
 
         return layout_projection(
-            source, self._styles(), self.key, show_markers=False, hidden_categories=hidden_categories
+            source,
+            self._styles(),
+            self.key,
+            show_markers=False,
+            hidden_categories=hidden_categories,
+            hyphenation=hyphenation,
         )
 
     def view_commands(self) -> tuple[ViewCommand, ...]:

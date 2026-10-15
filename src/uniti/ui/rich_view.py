@@ -386,7 +386,7 @@ class ProjectionCache:
     (R1). Held weakly by document; a closed document drops out."""
 
     def __init__(self) -> None:
-        self._entries: weakref.WeakKeyDictionary[Document, dict[str, tuple[int, tuple, Projection]]] = (
+        self._entries: weakref.WeakKeyDictionary[Document, dict[str, tuple[int, tuple, Projection, object]]] = (
             weakref.WeakKeyDictionary()
         )
 
@@ -401,18 +401,33 @@ class ProjectionCache:
         provider: EditorViewProvider,
         source: Callable[[], str],
         variant: frozenset[str] | None = None,
+        hyphenation: object | None = None,
     ) -> Projection:
-        """`variant` (the hidden footnote categories, Preview) is part of the
-        cache key: a filtered projection is kept beside the unfiltered one."""
+        """`variant` (the hidden footnote categories, Preview) and
+        `hyphenation` (a project's hyphenation rules, Preview) are part of
+        the cache key: a filtered or hyphenated projection is kept beside
+        the plain one. Rules are compared by identity, so a re-read list
+        projects again."""
 
         token = self._token(provider)
         per_document = self._entries.setdefault(document, {})
         slot = provider.key if not variant else f"{provider.key}|{'|'.join(sorted(variant))}"
+        if hyphenation is not None:
+            slot += "|hyphen"
         cached = per_document.get(slot)
-        if cached is not None and cached[0] == document.revision and cached[1][0] is token[0] and cached[1][1] is token[1]:
+        if (
+            cached is not None
+            and cached[0] == document.revision
+            and cached[1][0] is token[0]
+            and cached[1][1] is token[1]
+            and cached[3] is hyphenation
+        ):
             return cached[2]
-        projection = provider.project(source()) if not variant else provider.project_filtered(source(), variant)
-        per_document[slot] = (document.revision, token, projection)
+        if not variant and hyphenation is None:
+            projection = provider.project(source())
+        else:
+            projection = provider.project_filtered(source(), variant or frozenset(), hyphenation)
+        per_document[slot] = (document.revision, token, projection, hyphenation)
         return projection
 
 
@@ -519,6 +534,17 @@ class _RichEditor(QTextEdit):
         if event.commitString():
             self._owner.type_text(event.commitString())
         event.accept()
+
+    def createMimeDataFromSelection(self) -> QMimeData:  # noqa: N802
+        """Copy the selection as text; Hyphenate Preview's soft hyphens are
+        the view's, not the document's, so they never reach the clipboard
+        (H-D5)."""
+
+        data = super().createMimeDataFromSelection()
+        if self._owner._hyphenation is not None:
+            data = QMimeData()
+            data.setText(self.textCursor().selection().toPlainText().replace("\u00ad", ""))
+        return data
 
     def insertFromMimeData(self, source: QMimeData) -> None:  # noqa: N802
         if source.hasText():
@@ -673,6 +699,7 @@ class RichViewPane(QWidget):
         # underlined, as (view start, view end, span).
         # Preview: the footnote categories left out (filter, plan 2026-10-14).
         self._hidden_categories: frozenset[str] = frozenset()
+        self._hyphenation = None  # a project's `HyphenationRules` while Hyphenate Preview is on
         self._spelling = None
         self._spelling_book: tuple[tuple, object] | None = None
         self._spelling_shown: list[tuple[int, int, object]] = []
@@ -856,12 +883,13 @@ class RichViewPane(QWidget):
             caret_source = self.projection.source_map.view_to_source(self._offsets.from_qt(cursor.position()))
             anchor_source = self.projection.source_map.view_to_source(self._offsets.from_qt(cursor.anchor()))
         try:
-            filtered = bool(self._hidden_categories) and hasattr(self.provider, "project_filtered")
+            variant = hasattr(self.provider, "project_filtered")
             projection = PROJECTIONS.project(
                 self.document,
                 self.provider,
                 self.source_text,
-                self._hidden_categories if filtered else None,
+                self._hidden_categories if variant and self._hidden_categories else None,
+                self._hyphenation if variant else None,
             )
         except Exception:
             logger.exception("rich view %r failed to project", self.provider.key)
@@ -1029,6 +1057,17 @@ class RichViewPane(QWidget):
         if hidden == self._hidden_categories:
             return
         self._hidden_categories = hidden
+        if refresh and hasattr(self.provider, "project_filtered"):
+            self.refresh()
+
+    def set_hyphenation(self, rules, *, refresh: bool = True) -> None:
+        """Hyphenate Preview's paragraphs with these `HyphenationRules`
+        (None: don't); a provider without `project_filtered` ignores it.
+        Re-renders when it changed."""
+
+        if rules is self._hyphenation:
+            return
+        self._hyphenation = rules
         if refresh and hasattr(self.provider, "project_filtered"):
             self.refresh()
 

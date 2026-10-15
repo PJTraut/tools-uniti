@@ -50,6 +50,8 @@ class ProjectTabs:
         self._spelling: dict[tuple[str, str], bool] = {}
         # The same for the footnote categories Preview leaves out.
         self._note_filters: dict[tuple[str, str], frozenset[str]] = {}
+        # And whether Preview hyphenates (H-D2).
+        self._hyphenation: dict[tuple[str, str], bool] = {}
 
     @property
     def active(self) -> bool:
@@ -123,7 +125,7 @@ class ProjectTabs:
             tab_bar = leaf.tabBar()
             selected = leaf.selected_view_id
             members = self.members(leaf)
-            for settings in (self._spelling, self._note_filters):
+            for settings in (self._spelling, self._note_filters, self._hyphenation):
                 for tab in [tab for tab in settings if tab[0] == leaf.pane_id and tab[1] not in members]:
                     del settings[tab]  # a closed tab forgets its setting
             for key, books in members.items():
@@ -138,6 +140,7 @@ class ProjectTabs:
                 self._current[(leaf.pane_id, key)] = shown
                 self._sync_spelling((leaf.pane_id, key), books)
                 self._sync_note_filter((leaf.pane_id, key), books)
+                self._sync_hyphenation((leaf.pane_id, key), books)
                 first = min(leaf.index_of(view_id) for view_id in ids)
                 index = leaf.index_of(shown)
                 if index != first:
@@ -181,9 +184,32 @@ class ProjectTabs:
             self._window._spelling.apply(book)
 
     def forget_spelling(self, pane_id: str) -> None:
-        for settings in (self._spelling, self._note_filters):
+        for settings in (self._spelling, self._note_filters, self._hyphenation):
             for key in [key for key in settings if key[0] == pane_id]:
                 del settings[key]
+
+    def _sync_hyphenation(self, tab: tuple[str, str], books: list["UNITITextView"]) -> None:
+        """Every book of a tab has the tab's Hyphenate Preview setting, as
+        for Check Spelling."""
+
+        setting = self._hyphenation.get(tab)
+        if setting is None:
+            setting = self._hyphenation[tab] = any(book.hyphenate_preview for book in books)
+        for book in books:
+            if book.hyphenate_preview != setting:
+                book.hyphenate_preview = setting
+            self._window._hyphenation.apply(book)
+
+    def set_hyphenation(self, view: "UNITITextView", enabled: bool) -> None:
+        """Hyphenate Preview for `view`'s whole tab."""
+
+        leaf = self._window._panes.leaf_for_view(view.view_id)
+        if leaf is None:
+            return
+        self._hyphenation[(leaf.pane_id, self._key(view))] = enabled
+        for book in self.books_of(view):
+            book.hyphenate_preview = enabled
+            self._window._hyphenation.apply(book)
 
     def _sync_note_filter(self, tab: tuple[str, str], books: list["UNITITextView"]) -> None:
         """Every book of a tab leaves out the tab's footnote categories:

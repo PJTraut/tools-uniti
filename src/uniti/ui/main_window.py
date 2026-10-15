@@ -336,6 +336,9 @@ class UNITIMainWindow(QMainWindow):
         from uniti.ui.note_categories import NoteCategories
 
         self._note_categories = NoteCategories(self)
+        from uniti.ui.hyphenation import HyphenationController
+
+        self._hyphenation = HyphenationController(self)
         self._file_operations = FileOperationController(
             self._resources,
             self,
@@ -1763,6 +1766,7 @@ class UNITIMainWindow(QMainWindow):
             menu.addAction(self._book_lock.make_action(view, menu))
         if self._spelling.project_of(view) is not None:
             menu.addAction(self._spelling.make_action(view, menu))
+            menu.addAction(self._hyphenation.make_action(view, menu))
             menu.addMenu(self._note_categories.make_menu(view, menu))
         split = menu.addMenu("Split")
         full = self._split_limit_reached()
@@ -3299,6 +3303,7 @@ class UNITIMainWindow(QMainWindow):
         self._environment.refresh()
         self._book_lock.refresh()
         self._spelling.refresh()
+        self._hyphenation.refresh()
         if self._environment_bar is not None:
             self._environment_bar.refresh()
         if self._markdown_preview is not None:
@@ -5440,6 +5445,7 @@ class UNITIMainWindow(QMainWindow):
             # Frozen while inactive: catch up on edits made in other windows.
             self._rich_views.catch_up()
             self._spelling.window_activated()
+            self._hyphenation.window_activated()
 
     @property
     def is_live_window(self) -> bool:
