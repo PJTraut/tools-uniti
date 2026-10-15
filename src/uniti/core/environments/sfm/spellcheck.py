@@ -17,7 +17,7 @@ from typing import Protocol
 import regex
 
 from .markers import is_closing, is_milestone, is_milestone_close, marker_name
-from .spelling import Spelling, SpellingList, SpellingState
+from .spelling import Spelling, SpellingList, SpellingState, normalize
 from .tokenizer import tokenize_sfm
 from .tokens import SfmTokenKind
 
@@ -147,16 +147,37 @@ def check_line(line: str, state: LineState, context: CheckContext) -> tuple[tupl
             in_attributes = True
         elif in_attributes:
             continue
-        for match in _WORD_RE.finditer(body):
+        matches = list(_WORD_RE.finditer(body))
+        pairs = context.words.wrong_pairs
+        index = 0
+        while index < len(matches):
+            match = matches[index]
+            if pairs and index + 1 < len(matches):
+                following = matches[index + 1]
+                if body[match.end() : following.start()] == " ":
+                    pair = (normalize(match.group()), normalize(following.group()))
+                    if pair in pairs:
+                        # Paratext marks the two words wrong together (F-D3).
+                        spelling = Spelling(SpellingState.WRONG, correction=pairs[pair], pair=True)
+                        spans.append(Span(offset + match.start(), offset + following.end(), spelling))
+                        index += 2
+                        continue
             spelling = context.words.status(match.group())
             if spelling.state is not SpellingState.CORRECT:
                 spans.append(Span(offset + match.start(), offset + match.end(), spelling))
+            index += 1
     return tuple(spans), LineState(paragraph, tuple(stack), milestone)
 
 
 def describe(spelling: Spelling, project_name: str) -> str:
     """What hovering a flagged word says (plan D6)."""
 
+    if spelling.user:
+        return "Marked wrong in your spelling list"
+    if spelling.pair:
+        if spelling.correction:
+            return f"Paratext marks these two words wrong together: use {spelling.correction}"
+        return "Paratext marks these two words wrong together"
     if spelling.state is SpellingState.WRONG:
         if spelling.correction:
             return f"Paratext marks this wrong: use {spelling.correction}"

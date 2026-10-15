@@ -128,6 +128,10 @@ class ParatextProject:
     guid: str | None = None
     naming: BookNaming = BookNaming()
     books_present: tuple[str, ...] = ()
+    # `WordPrefixes` / `WordSuffixes`: affixes a word may carry and still be
+    # spelt correctly when what's left is (spellcheck follow-up F5).
+    word_prefixes: tuple[str, ...] = ()
+    word_suffixes: tuple[str, ...] = ()
 
     @classmethod
     def load(cls, folder: Path) -> "ParatextProject | None":
@@ -169,6 +173,8 @@ class ParatextProject:
             books_present=tuple(
                 code for code, flag in zip(PARATEXT_BOOKS, present) if flag == "1"
             ),
+            word_prefixes=_word_lines(root, "WordPrefixes"),
+            word_suffixes=_word_lines(root, "WordSuffixes"),
         )
 
     @property
@@ -366,6 +372,20 @@ def _text(root, tag: str) -> str | None:
     if element is None or element.text is None:
         return None
     return element.text.strip() or None
+
+
+def _word_lines(root, tag: str) -> tuple[str, ...]:
+    """A Settings.xml list of words, one per line (`WordSuffixes`)."""
+
+    element = root.find(tag)
+    if element is None or not element.text:
+        return ()
+    seen: dict[str, None] = {}
+    for line in element.text.splitlines():
+        line = line.strip()
+        if line:
+            seen.setdefault(line)
+    return tuple(seen)
 
 
 def _int(value: str | None) -> int | None:
