@@ -77,7 +77,19 @@ _FLAG_ATTRS = {
 # calls \\h and \\toc* "publishable" because they do print, elsewhere.)
 _METADATA_MARKERS = re.compile(r"(?:id|ide|sts|rem|usfm|h\d?|toca?\d)")
 _OFF_VALUES = ("-", "no", "false", "0")
-_ALIGN = {"left": "left", "center": "center", "right": "right", "both": "justify", "justify": "justify"}
+# `\Justification` values. `Left` and `Right` are the physical edges.
+# `Start` and `End` are UNITI's: the edge a line starts or ends on in the
+# paragraph's reading direction, so one rule serves left-to-right and
+# right-to-left books.
+_ALIGN = {
+    "left": "left",
+    "center": "center",
+    "right": "right",
+    "both": "justify",
+    "justify": "justify",
+    "start": "start",
+    "end": "end",
+}
 
 
 # Markers whose content Preview shows between generated brackets: a

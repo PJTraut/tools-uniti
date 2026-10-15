@@ -221,12 +221,22 @@ def char_format(attrs, base: QFont, palette: RichPalette) -> QTextCharFormat:
 def block_format(attrs) -> QTextBlockFormat:
     fmt = QTextBlockFormat()
     align = attrs.get("align")
+    flags = Qt.AlignmentFlag
+    # Qt turns a plain left or right around in a right-to-left paragraph;
+    # `AlignAbsolute` keeps it physical. `Left` and `Right` are physical,
+    # `Start` and `End` follow the reading direction (J-D1).
     if align == "center":
-        fmt.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        fmt.setAlignment(flags.AlignHCenter)
     elif align == "right":
-        fmt.setAlignment(Qt.AlignmentFlag.AlignRight)
+        fmt.setAlignment(flags.AlignRight | flags.AlignAbsolute)
+    elif align == "left":
+        fmt.setAlignment(flags.AlignLeft | flags.AlignAbsolute)
     elif align == "justify":
-        fmt.setAlignment(Qt.AlignmentFlag.AlignJustify)
+        fmt.setAlignment(flags.AlignJustify)
+    elif align == "start":
+        fmt.setAlignment(flags.AlignLeft)
+    elif align == "end":
+        fmt.setAlignment(flags.AlignRight)
     if "left_margin" in attrs:
         fmt.setLeftMargin(_float(attrs["left_margin"]) * _INCH_PX)
     if "right_margin" in attrs:

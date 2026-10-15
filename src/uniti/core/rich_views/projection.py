@@ -18,7 +18,8 @@ from .source_map import EOL_MARKER, Segment, SegmentRole, SourceMap
 #   marker_token  -> "yes"
 #   font_scale    -> float as text, relative to the base font (1.0 = base)
 #   color         -> "#rrggbb"
-#   align         -> left | center | right | justify
+#   align         -> left | center | right | justify | start | end (start and end follow the reading direction)
+#   hyphenate     -> yes | no (Preview: break this paragraph's words at their listed points)
 #   left_margin, right_margin, first_indent -> inches as text
 #   space_before, space_after               -> points as text
 #   heading_level -> "1".."6"

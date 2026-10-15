@@ -147,3 +147,28 @@ def test_without_rules_nothing_changes(tmp_path):
     assert view.project(SOURCE).text == plain.text
     assert view.project_filtered(SOURCE, frozenset({"x"}), None).text.count(SHY) == 0
     assert SfmStandardView(lambda: STYLES).project(SOURCE).text.count(SHY) == 0
+
+
+def test_justification_values_including_start_and_end():
+    from uniti.core.environments.sfm.views import formatting_attrs
+
+    for written, expected in (
+        ("Both", "justify"),
+        ("justify", "justify"),
+        ("Center", "center"),
+        ("Right", "right"),
+        ("Start", "start"),
+        ("END", "end"),
+    ):
+        assert formatting_attrs(STYLES, {"justification": written}, block=True)["align"] == expected
+    assert "align" not in formatting_attrs(STYLES, {"justification": "Sideways"}, block=True)
+    assert "align" not in formatting_attrs(STYLES, {"justification": "Start"}, block=False)
+
+
+def test_the_hyphenate_field_reads_as_a_flag():
+    from uniti.core.environments.sfm.views import formatting_attrs
+
+    assert formatting_attrs(STYLES, {"hyphenate": "yes"}, block=True)["hyphenate"] == "yes"
+    assert formatting_attrs(STYLES, {"hyphenate": "No"}, block=True)["hyphenate"] == "no"
+    assert formatting_attrs(STYLES, {"hyphenate": "-"}, block=True)["hyphenate"] == "no"
+    assert "hyphenate" not in formatting_attrs(STYLES, {}, block=True)
