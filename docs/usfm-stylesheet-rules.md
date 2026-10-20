@@ -8,6 +8,7 @@ UNITI's **Standard** and **Preview** views take every look from the stylesheets:
 - [Marker records](#marker-records) — change a marker's own style
 - [Rules and selectors](#rules-and-selectors) — `a+b`, `marker::caller`, lists
 - [Justification](#justification) — `Left`, `Right`, `Center`, `Both`, `Start`, `End`
+- [Text direction](#text-direction) — `\Direction`, and where a paragraph's direction comes from
 - [Hyphenation](#hyphenation) — `\Hyphenate` and the Hyphenate Preview toggle
 - [Built-in rules](#built-in-rules)
 - [How a style is worked out](#how-a-style-is-worked-out)
@@ -50,7 +51,7 @@ A `.sty` file is a list of **records**. A record starts with `\Marker` and holds
 
 ## Fields
 
-These fields change how Standard and Preview look. Paratext and PTXprint read the same fields in their own way; `\Hyphenate` is UNITI's own.
+These fields change how Standard and Preview look. Paratext and PTXprint read the same fields in their own way; `\Hyphenate` and `\Direction` are UNITI's own.
 
 | Field | Value | Applies to | What it does |
 |---|---|---|---|
@@ -63,6 +64,7 @@ These fields change how Standard and Preview look. Paratext and PTXprint read th
 | `\Color` | number | any style | Paratext's `0xBBGGRR` colour as a decimal integer (red is `255`, blue is `16711680`). Black (`0`) means no colour. The colour is adjusted to stay readable on the editor theme's background. |
 | `\Justification` | `Left` `Center` `Right` `Both` `Justify` `Start` `End` | paragraph | which edge the lines sit against; see [Justification](#justification) |
 | `\Hyphenate` | flag | paragraph | whether Preview breaks this paragraph's words at their hyphenation points; see [Hyphenation](#hyphenation) |
+| `\Direction` | `LTR` `RTL` `Auto` | paragraph | the paragraph's reading direction, over the tab's and the project's; see [Text direction](#text-direction) |
 | `\LeftMargin` | inches | paragraph | indent of every line from the start edge (the right edge in a right-to-left paragraph) |
 | `\RightMargin` | inches | paragraph | indent from the end edge |
 | `\FirstLineIndent` | inches | paragraph | extra indent of the first line on the start side (negative for a hanging indent) |
@@ -155,7 +157,7 @@ So a project's `uniti.sty` rule beats the built-in rule for the same selector, a
 
 `Left` and `Right` follow the paragraph's reading direction, as they do in PTXprint, so a stock `usfm.sty` gives a right-to-left book what its authors meant: `\qr` sits on the left edge, and `\s3` and `\sp` on the right. The margins and the first-line indent turn round with them. In a right-to-left paragraph, `\LeftMargin` is the right-hand margin and a hanging `\q1` hangs from the right. `Start` and `End` are UNITI's synonyms; they read more clearly in a rule meant for books of both directions. A paragraph with no `\Justification` sits on its start edge. Anything else written there is ignored.
 
-A paragraph's direction is the project's (Paratext's `LeftToRight` setting), or the tab's View → Text Direction choice when it is not Auto. A file outside a project with Auto lets each paragraph's first letter decide.
+How a paragraph's direction is decided is under [Text direction](#text-direction).
 
 ```
 # Justify the body text of every book
@@ -168,6 +170,25 @@ A paragraph's direction is the project's (Paratext's `LeftToRight` setting), or 
 ```
 
 Justified text looks best with [hyphenation](#hyphenation).
+
+## Text direction
+
+Each paragraph in Standard and Preview reads left to right or right to left. Its direction decides which edge is the start for `\Justification`, the margins and the first-line indent. The first of these that gives a direction wins:
+
+1. **`\Direction`** on the paragraph's style or on a rule: `LTR` or `RTL` (any case). `Auto` gives none, nor does anything else written there.
+2. The tab's **View → Text Direction** choice, when it isn't Auto.
+3. The Paratext project's own setting (`LeftToRight` in its `Settings.xml`), read again whenever the window is activated.
+4. The paragraph's first letter, when none of the above gives a direction (a file outside a project, with Auto).
+
+`\Direction` is UNITI's. Paratext and PTXprint ignore it, so it belongs in a `uniti.sty`. It's for exceptions, such as English front matter in an Arabic project:
+
+```
+# Front matter in English, in a right-to-left project
+\Marker ip, is1, imt1
+\Direction LTR
+```
+
+It works on paragraph styles, the `\c` chapter heading, note styles (the notes below Preview's text) and rules that target them. On a character style it does nothing. For a Latin word inside an Arabic paragraph, put the Unicode marks in the text (LRM, or LRE … PDF), as for Paratext and PTXprint.
 
 ## Hyphenation
 

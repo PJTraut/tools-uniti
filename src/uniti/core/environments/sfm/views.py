@@ -243,6 +243,11 @@ def formatting_attrs(styles: LayeredStyleRegistry, formatting: dict[str, str], *
         hyphenate = formatting.get("hyphenate")
         if hyphenate is not None:
             attrs["hyphenate"] = "no" if hyphenate.lower() in _OFF_VALUES else "yes"
+        # UNITI's `\Direction` (text direction plan W-D4): beats the view's
+        # and the project's direction; `Auto` (or anything else) leaves them.
+        direction = formatting.get("direction", "").strip().lower()
+        if direction in ("ltr", "rtl"):
+            attrs["direction"] = direction
         for key, attr in (
             ("leftmargin", "left_margin"),
             ("rightmargin", "right_margin"),

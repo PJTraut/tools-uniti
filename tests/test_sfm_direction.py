@@ -1,8 +1,9 @@
-"""Block direction in the SFM projections (text direction plan W2)."""
+"""Block direction in the SFM projections (text direction plan W2, W5)."""
 
 from __future__ import annotations
 
-from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
+from uniti.core.environments.sfm.sty import parse_raw_stylesheet
+from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, StyleLayer, StyleOrigin, build_layers
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
 from uniti.core.environments.sfm.views import SfmPreviewView, SfmStandardView, layout_projection
 
@@ -62,3 +63,71 @@ def test_the_views_project_with_a_direction():
     # The categories and hyphenation are Preview's: Standard ignores them.
     assert standard.project_with(BOOK, frozenset({"x"}), None, "rtl").text == standard.project(BOOK).text
     assert preview.project_with(BOOK).text == preview.project(BOOK).text
+
+
+# --- `\Direction` on paragraph styles and rules (W5) ------------------------------
+
+FRONT = "\\id FRT\n\\mt1 Title\n\\p English front matter\n\\q1 שלום\n\\q1 עולם\n\\p back\n"
+
+
+def _styles(*sheets: tuple[str, StyleOrigin]) -> LayeredStyleRegistry:
+    """The stock layers with `sheets` (text, origin) on top, lowest first."""
+
+    layers = [StyleLayer(f"layer{index}.sty", origin, parse_raw_stylesheet(text)) for index, (text, origin) in enumerate(sheets)]
+    return LayeredStyleRegistry(build_layers(load_usfm_baseline(), None, layers))
+
+
+def _by_marker(projection) -> dict[str, list[str | None]]:
+    result: dict[str, list[str | None]] = {}
+    for block in projection.blocks:
+        result.setdefault(block.marker, []).append(block.attrs.get("direction"))
+    return result
+
+
+def test_a_style_direction_beats_the_project_direction():
+    styles = _styles(("\\Marker p\n\\Direction LTR\n", StyleOrigin.UNITI_PROJECT))
+    directions = _by_marker(layout_projection(FRONT, styles, "k", show_markers=False, direction="rtl"))
+
+    assert directions["p"] == ["ltr", "ltr"]
+    assert directions["q1"] == ["rtl", "rtl"] and directions["mt1"] == ["rtl"]
+
+
+def test_a_style_direction_applies_with_no_project_direction():
+    styles = _styles(("\\Marker q1\n\\Direction rtl\n", StyleOrigin.UNITI_PROJECT))
+    directions = _by_marker(layout_projection(FRONT, styles, "k", show_markers=True))
+
+    assert directions["q1"] == ["rtl", "rtl"]
+    assert directions["p"] == [None, None]
+
+
+def test_auto_and_unknown_values_leave_the_lower_sources():
+    for value in ("Auto", "sideways", ""):
+        styles = _styles((f"\\Marker p\n\\Direction {value}\n", StyleOrigin.UNITI_PROJECT))
+        directions = _by_marker(layout_projection(FRONT, styles, "k", show_markers=False, direction="rtl"))
+        assert directions["p"] == ["rtl", "rtl"]
+
+
+def test_a_rule_beats_the_marker_and_the_later_layer_wins():
+    styles = _styles(
+        ("\\Marker q1\n\\Direction LTR\n", StyleOrigin.PROJECT),
+        ("\\Marker q1\n\\Direction RTL\n\n\\Marker p+q1\n\\Direction LTR\n", StyleOrigin.UNITI_PROJECT),
+    )
+    directions = _by_marker(layout_projection(FRONT, styles, "k", show_markers=False))
+
+    # The first \q1 follows a \p (the rule); the second follows a \q1.
+    assert directions["q1"] == ["ltr", "rtl"]
+
+
+def test_a_character_style_direction_is_not_a_block_direction():
+    styles = _styles(("\\Marker nd\n\\Direction RTL\n", StyleOrigin.UNITI_PROJECT))
+    projection = layout_projection("\\p the \\nd Lord\\nd* says\n", styles, "k", show_markers=False)
+
+    assert [block.attrs.get("direction") for block in projection.blocks] == [None]
+    assert all("direction" not in span.attrs for span in projection.spans)
+
+
+def test_the_style_inspector_lists_the_field():
+    styles = _styles(("\\Marker p\n\\Direction LTR\n", StyleOrigin.UNITI_PROJECT))
+
+    fields = dict(styles.presentation("p"))
+    assert fields["Direction"].value == "LTR" and fields["Direction"].origin_layer == "layer0.sty"
