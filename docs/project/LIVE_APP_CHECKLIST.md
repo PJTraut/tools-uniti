@@ -87,9 +87,10 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] Click and select across a broken word; Find a word that Preview breaks; copy from Preview and paste: no stray hyphens. Sync and Check Spelling underlines still land on the right words.
 - [ ] `\Hyphenate -` on `\p` stops it for that style; change the book, restart: the setting stays.
 
-## 13. Justification and text direction (J1, W1–W3)
+## 13. Justification and text direction (J1, W1–W5, W8)
 - [ ] `\Justification Start`, `End`, `Left`, `Right`, `Center` and `Both` on a paragraph style: each sits where the stylesheet reference says. In a right-to-left book `Start` and `Left` are the right edge.
 - [ ] An Arabic or Hebrew project (`arNAV12`), Standard and Preview, with the stock stylesheet: `\qr` lines sit on the left, `\s3`/`\sp` headings on the right, and a `\q1` passage hangs from the right (first line ¼" in, the rest ¾"). View → Text Direction → Left-to-Right turns all of it round.
+- [ ] In `arNAV12`, a `\p` that starts with a Latin word or a digit still lays out right to left (its lines sit on the right), and the chapter heading `\c 1` sits on the right. A Hebrew or Arabic `.sfm` opened outside any project, with Text Direction Auto, takes each paragraph's direction from its first letter.
 - [ ] Standard in `arNAV12`: tags read `\p`, `\v 1`, `\f +` (not `p\`), from the right. Arrow keys move through a tag without a dead press, typing just after a tag goes into the text after it, Backspace there steps into the tag, and a copied passage pastes into Plain Text without invisible characters (Character Inspector shows no U+2066/U+2069).
 - [ ] `\Direction LTR` on `\ip` in the project's `uniti.sty`: the introduction paragraphs read left to right in that project, everything else stays right to left, and the Style Inspector shows the field under `\ip` with its layer. Reload Project Stylesheets after saving.
 - [ ] **USFM → Export Preview as HTML…** on an `arNAV12` book with Show One Chapter on: the save dialog offers `<book>.html` next to the book; the page opens in a browser right to left in the project's font, with every chapter, `\qr` on the left and `\q1` hanging from the right as in Preview; a caller jumps to its note and back; hidden footnote categories stay out. The same entry is on Preview's right-click menu, not Standard's.
