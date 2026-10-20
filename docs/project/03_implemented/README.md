@@ -26,6 +26,7 @@ The file-type environment and USFM track, run alongside B4 ([ADR-0013](../05_dec
 - [Show One Chapter](milestones/2026-10-09-usfm-per-chapter-view-plan.md) (C1–C4)
 - [USFM book lock](milestones/2026-10-14-usfm-book-lock-plan.md) (L1–L5), [Check Spelling](milestones/2026-10-13-usfm-spellcheck-plan.md) (S1–S5) and the [footnote category filter](milestones/2026-10-14-footnote-category-filter-plan.md)
 - [Hyphenation, justification and spelling follow-ups](milestones/2026-10-15-usfm-hyphenation-and-spelling-followups-plan.md) (H1–H3, J1, F1–F5)
+- [USFM text direction](milestones/2026-10-15-usfm-text-direction-plan.md) (W1–W8)
 
 ## v0.001b4 workstream records
 

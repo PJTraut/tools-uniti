@@ -1,4 +1,4 @@
-"""Export Preview as HTML (text direction plan W8)."""
+"""Export Preview as HTML (text direction plan W8, and W6's `<bdi>`)."""
 
 from __future__ import annotations
 
@@ -170,3 +170,38 @@ def test_an_undefined_marker_stays_a_visible_tag():
 
     assert "\\zz" in "".join(parsed.text)
     assert "font-family: monospace" in page
+
+
+def _with(sheet: str) -> LayeredStyleRegistry:
+    return LayeredStyleRegistry(
+        build_layers(load_usfm_baseline(), None, [StyleLayer("u.sty", StyleOrigin.UNITI_PROJECT, parse_raw_stylesheet(sheet))])
+    )
+
+
+def test_a_character_direction_is_a_bdi():
+    styles = _with("\\Marker tl\n\\Direction LTR\n\n\\Marker nd\n\\Direction RTL\n")
+    source = "\\c 1\n\\p سلام \\tl Paul, \\+nd رب\\+nd*\\tl* عليكم\\f + \\ft حاشية \\tl Silas\\tl*\\f*\n"
+    page = _export(source, styles=styles, direction="rtl")
+    parsed = _parse(page)
+
+    assert '<bdi dir="ltr">' in page and '<bdi dir="rtl">' in page
+    assert page.count("<bdi ") == page.count("</bdi>") == 3
+    assert "&#x2066;" not in page and "&#x2067;" not in page and "&#x2069;" not in page
+    text = "".join(parsed.text)
+    assert "Paul, رب" in text
+    assert 'data-marker="tl">Silas</span></bdi></p>' in page  # in the note
+    # The name and its comma are inside the element, the Arabic outside.
+    assert page.index('<bdi dir="ltr">') < page.index("Paul,") < page.index("</bdi>") < page.index("عليكم")
+
+
+def test_the_sources_own_isolates_stay_references():
+    page = _export("\\c 1\n\\p سلام \u2066Paul\u2069 عليكم\n", direction="rtl")
+
+    assert "<bdi" not in page
+    assert "&#x2066;Paul&#x2069;" in page
+
+
+def test_a_visible_tag_in_a_right_to_left_paragraph_is_a_bdi():
+    page = _export("\\c 1\n\\p نص \\zz المزيد\n", direction="rtl")
+
+    assert '<bdi dir="ltr">' in page and "&#x2066;" not in page

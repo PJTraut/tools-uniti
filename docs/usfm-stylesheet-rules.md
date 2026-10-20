@@ -64,7 +64,7 @@ These fields change how Standard and Preview look. Paratext and PTXprint read th
 | `\Color` | number | any style | Paratext's `0xBBGGRR` colour as a decimal integer (red is `255`, blue is `16711680`). Black (`0`) means no colour. The colour is adjusted to stay readable on the editor theme's background. |
 | `\Justification` | `Left` `Center` `Right` `Both` `Justify` `Start` `End` | paragraph | which edge the lines sit against; see [Justification](#justification) |
 | `\Hyphenate` | flag | paragraph | whether Preview breaks this paragraph's words at their hyphenation points; see [Hyphenation](#hyphenation) |
-| `\Direction` | `LTR` `RTL` `Auto` | paragraph | the paragraph's reading direction, over the tab's and the project's; see [Text direction](#text-direction) |
+| `\Direction` | `LTR` `RTL` `Auto` | paragraph, character | a paragraph's reading direction, over the tab's and the project's; on a character style, the direction its text reads in, inside any paragraph; see [Text direction](#text-direction) |
 | `\LeftMargin` | inches | paragraph | indent of every line from the start edge (the right edge in a right-to-left paragraph) |
 | `\RightMargin` | inches | paragraph | indent from the end edge |
 | `\FirstLineIndent` | inches | paragraph | extra indent of the first line on the start side (negative for a hanging indent) |
@@ -188,7 +188,17 @@ Each paragraph in Standard and Preview reads left to right or right to left. Its
 \Direction LTR
 ```
 
-It works on paragraph styles, the `\c` chapter heading, note styles (the notes below Preview's text) and rules that target them. On a character style it does nothing. For a Latin word inside an Arabic paragraph, put the Unicode marks in the text (LRM, or LRE … PDF), as for Paratext and PTXprint.
+It works on paragraph styles, the `\c` chapter heading, note styles (the notes below Preview's text) and rules that target them.
+
+On a **character style**, `\Direction LTR` or `RTL` makes its text read in that direction inside any paragraph, without changing the paragraph's. UNITI shows the text in an isolate, as if the span were a paragraph of its own: a Latin name keeps its comma on the right of it (`Paul,`, not `,Paul`) in an Arabic line. Spans inside spans nest, and a span still open at the end of its paragraph ends there. The isolates are the view's: Find, spelling, copy and the file see only the text, and Export Preview as HTML writes them as `<bdi>`.
+
+```
+# Transliterated words read left to right, in a right-to-left project
+\Marker tl
+\Direction LTR
+```
+
+Paratext and PTXprint don't read a character style's `\Direction`. For a book that has to look the same there, put the Unicode marks in the text instead (LRM, or LRE … PDF): all three read them.
 
 ## Hyphenation
 

@@ -1,4 +1,4 @@
-"""The reading direction in the rich views (text direction plan W2, W4)."""
+"""The reading direction in the rich views (text direction plan W2, W4, W6)."""
 
 from __future__ import annotations
 
@@ -140,7 +140,9 @@ from PySide6.QtTest import QTest  # noqa: E402
 
 from usfm_project_fixture import in_project  # noqa: E402
 from uniti.app.settings import SettingsStore  # noqa: E402
-from uniti.core.rich_views.source_map import LRI, PDI  # noqa: E402
+from uniti.core.environments.sfm.sty import parse_raw_stylesheet  # noqa: E402
+from uniti.core.environments.sfm.style_layers import StyleLayer, StyleOrigin  # noqa: E402
+from uniti.core.rich_views.source_map import LRI, PDI, RLI  # noqa: E402
 from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
 
 TAGGED = "\\p \\v 1 שלום \\nd יהוה\\nd* עולם\n"
@@ -269,3 +271,92 @@ def test_copy_leaves_the_isolates_out(window, tmp_path: Path):
 
     assert LRI not in copied and PDI not in copied
     assert copied == pane.projection.text.replace(LRI, "").replace(PDI, "")
+
+
+# --- `\Direction` on character styles (W6) ----------------------------------------
+
+LATIN = "\\p سلام \\tl Paul,\\tl* عليكم\n"
+TL_RULE = "\\Marker tl\n\\Direction LTR\n"
+
+
+def _x(document: QTextDocument, position: int) -> float:
+    """Where the glyph of the character at `position` is painted."""
+
+    document.setTextWidth(600)
+    document.size()  # lays the document out
+    layout = document.begin().layout()
+    assert layout.lineCount() == 1
+    runs = layout.glyphRuns(position, 1)
+    return min(point.x() for run in runs for point in run.positions())
+
+
+@pytest.mark.parametrize("view", [SfmStandardView, SfmPreviewView])
+def test_a_latin_span_reads_as_written_in_an_arabic_line(view):
+    """`Paul,` keeps its comma on the right; without the isolate the comma
+    jumps to the left of the name."""
+
+    rule = StyleLayer("uniti.sty", StyleOrigin.UNITI_PROJECT, parse_raw_stylesheet(TL_RULE))
+    isolated = LayeredStyleRegistry(build_layers(load_usfm_baseline(), None, [rule]))
+    for styles, comma_on_the_right in ((isolated, True), (STYLES, False)):
+        projection = view(lambda styles=styles: styles).project_with(LATIN, direction="rtl")
+        document = _render(projection)
+        comma = projection.text.index(",")
+        assert (_x(document, comma) > _x(document, comma - 1)) is comma_on_the_right
+        assert _x(document, comma - 4) < _x(document, comma - 3)  # "P" left of "a"
+
+
+def _with_rule(window, tmp_path: Path, view_key: str, rule: str = TL_RULE, direction: str = "rtl"):
+    path = in_project(tmp_path / "book.usfm")
+    (tmp_path / "uniti.sty").write_text(rule, encoding="utf-8")
+    path.write_text(LATIN, encoding="utf-8")
+    view = window.open_path(path)
+    view.set_text_direction_override(direction)
+    window._rich_views.show(view_key)
+    pane = window._rich_views.pane
+    opener = LRI if "LTR" in rule else RLI
+    assert f"{opener}Paul,{PDI}" in pane.projection.text
+    return view, pane
+
+
+@pytest.mark.parametrize(("rule", "direction"), [(TL_RULE, "rtl"), (TL_RULE.replace("LTR", "RTL"), "ltr")])
+def test_the_arrow_keys_step_past_a_spans_isolates(window, tmp_path: Path, rule: str, direction: str):
+    _view, pane = _with_rule(window, tmp_path, "sfm.standard", rule, direction)
+    text = pane.projection.text
+    stops = pane._isolate_stops
+    span_start = text.index("Paul") - 1
+    assert {span_start + 1, text.index("Paul,") + len("Paul,")} <= stops
+    end = len(text)
+    _put_caret(pane, 0)
+    pane.editor.setFocus()
+
+    visited = [0]
+    for _ in range(end + 2):
+        QTest.keyClick(pane.editor, Qt.Key.Key_Left if direction == "rtl" else Qt.Key.Key_Right)
+        visited.append(pane.editor.textCursor().position())
+
+    assert not stops & set(visited)
+    assert set(visited) == set(range(end + 1)) - stops
+
+
+def test_typing_beside_a_span_lands_in_it_as_without_isolates(window, tmp_path: Path):
+    view, pane = _with_rule(window, tmp_path, "sfm.standard")
+    text = pane.projection.text
+    _put_caret(pane, text.index(f"{LRI}Paul"))  # past the tag, before the span's LRI
+    assert pane.type_text("x")
+    assert "\\tl xPaul,\\tl*" in _source(view)
+
+    text = pane.projection.text
+    _put_caret(pane, text.index(f"Paul,{PDI}") + len(f"Paul,{PDI}"))  # past the span's PDI
+    assert pane.type_text("y")
+    assert "\\tl xPaul,y\\tl*" in _source(view)
+
+
+@pytest.mark.parametrize("view_key", ["sfm.standard", "sfm.preview"])
+def test_copy_leaves_a_spans_isolates_out(window, tmp_path: Path, view_key: str):
+    _view, pane = _with_rule(window, tmp_path, view_key)
+    pane.editor.selectAll()
+
+    copied = pane.editor.createMimeDataFromSelection().text()
+
+    assert not set(copied) & {LRI, RLI, PDI}
+    assert "Paul," in copied

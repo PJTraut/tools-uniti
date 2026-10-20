@@ -14,8 +14,11 @@ justification, hyphenation and bidi differ from Qt's in small ways.
 - A footnote caller links to its note and back. A caller sits at its note's
   opener in the source and its note's body follows it, so the n-th note
   after a caller's source offset is its own.
-- Generated soft hyphens are written as `&shy;`, and directional control
-  characters (LRM, RLE, isolates …) as numeric references, never raw.
+- Generated soft hyphens are written as `&shy;`, and the generated isolates
+  (around a character style with a `\\Direction`, W6, or a tag Preview
+  keeps visible) as `<bdi dir>` elements. The source's own directional
+  control characters (LRM, RLE, isolates …) go out as numeric references,
+  never raw.
 """
 
 from __future__ import annotations
@@ -26,7 +29,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from uniti.core.rich_views.projection import Projection
-from uniti.core.rich_views.source_map import SegmentRole
+from uniti.core.rich_views.source_map import ISOLATE, LRI, PDI, RLI, SegmentRole
 
 from .hyphenation import SOFT_HYPHEN
 
@@ -43,6 +46,7 @@ _ALIGN_CSS = {
     "justify": "justify",
 }
 _PARAGRAPH_ONLY = ("direction", "table_row")
+_BDI = {LRI: '<bdi dir="ltr">', RLI: '<bdi dir="rtl">'}
 
 
 def _number(value: str, default: float = 0.0) -> float:
@@ -200,6 +204,7 @@ class _Writer:
         self.paragraphs = _Classes("p", _paragraph_css)
         self.runs = _Classes("r", _char_css)
         self._text = ""
+        self._isolates: frozenset[int] = frozenset()
 
     def render(
         self,
@@ -214,9 +219,15 @@ class _Writer:
         of a paragraph no block describes (a note entry)."""
 
         text = self._text = projection.text
+        self._isolates = frozenset(
+            segment.view_start
+            for segment in projection.source_map.segments
+            if segment.role is SegmentRole.GENERATED and segment.marker == ISOLATE and segment.view_end > segment.view_start
+        )
         blocks = sorted(projection.blocks, key=lambda block: block.view_start)
         block_starts = [block.view_start for block in blocks]
-        runs = _runs(projection, (*links, *self._caller_ends(projection, links)))
+        isolate_edges = (edge for position in self._isolates for edge in (position, position + 1))
+        runs = _runs(projection, (*links, *self._caller_ends(projection, links), *isolate_edges))
         lines: list[str] = []
         table: list[str] | None = None
         paragraph: list[_Run] = []
@@ -296,7 +307,17 @@ class _Writer:
 
     def _inline(self, runs: Iterable[_Run], links: Mapping[int, tuple[str, str]]) -> str:
         out = []
+        depth = 0  # open <bdi> elements
         for run in runs:
+            if run.start in self._isolates:
+                char = self._text[run.start]
+                if char in _BDI:
+                    out.append(_BDI[char])
+                    depth += 1
+                elif char == PDI and depth:
+                    out.append("</bdi>")
+                    depth -= 1
+                continue
             content = _escape(self._text[run.start : run.end])
             if not content:
                 continue
@@ -311,6 +332,7 @@ class _Writer:
                 anchor_id = f' id="{_attribute(element_id)}"' if element_id else ""
                 content = f'<a class="caller" href="#{_attribute(href)}"{anchor_id}>{content}</a>'
             out.append(content)
+        out.extend("</bdi>" for _ in range(depth))
         return "".join(out)
 
 

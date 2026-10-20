@@ -141,6 +141,7 @@ def uniti_rules_template(purpose: str) -> str:
         "# Paragraph fields: \\Justification (Left, Center, Right, Both, Start, End), \\Hyphenate,",
         "# \\Direction (LTR, RTL, Auto), \\LeftMargin, \\RightMargin, \\FirstLineIndent, \\SpaceBefore,",
         "# \\SpaceAfter. Left, Right and the margins follow the paragraph's reading direction.",
+        "# A character style's \\Direction (LTR, RTL) makes its text read that way in any paragraph.",
         "# See docs/usfm-stylesheet-rules.md for every field and selector.",
         "#",
         "# UNITI's built-in rules, for reference - remove the '# ' to use one:",

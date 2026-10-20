@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from uniti.core.rich_views.editing import EditPlan
 from uniti.core.rich_views.projection import NoteSection, Projection, ProjectionBuilder
 from uniti.core.rich_views.provider import ViewCommand
-from uniti.core.rich_views.source_map import HYPHEN, ISOLATE, LRI, PDI
+from uniti.core.rich_views.source_map import HYPHEN, ISOLATE, LRI, PDI, RLI
 
 from .hyphenation import SOFT_HYPHEN, HyphenationRules
 from .markers import NOTE_MARKERS, is_closing, is_milestone, is_milestone_close, is_nested, marker_name
@@ -403,6 +403,46 @@ def _with_direction(attrs: dict[str, str], direction: str | None) -> dict[str, s
     return attrs if direction is None else {"direction": direction, **attrs}
 
 
+class _SpanIsolates:
+    """The generated isolates around character styles with a `\\Direction`
+    (text direction plan W6, W-D5): LRI or RLI after the opening tag, PDI
+    before the closing one. A span closed while spans opened inside it are
+    still open closes those too, so the isolates always nest, and
+    `close_all` ends whatever is left where the paragraph ends."""
+
+    def __init__(self, builder: ProjectionBuilder, styles: LayeredStyleRegistry) -> None:
+        self._builder = builder
+        self._styles = styles
+        self._directions: dict[str, str | None] = {}
+        self._open: list[int] = []  # keys, innermost last
+
+    def open(self, key: int, marker: str) -> None:
+        direction = self._directions.get(marker, "")
+        if direction == "":
+            value = self._styles.formatting(marker).get("direction", "").strip().lower()
+            direction = self._directions[marker] = value if value in ("ltr", "rtl") else None
+        if direction is not None:
+            self._builder.generated(LRI if direction == "ltr" else RLI, ISOLATE)
+            self._open.append(key)
+
+    def close(self, key: int) -> None:
+        if key not in self._open:
+            return
+        while True:
+            self._builder.generated(PDI, ISOLATE)
+            if self._open.pop() == key:
+                return
+
+    def close_all(self) -> None:
+        while self._open:
+            self._open.pop()
+            self._builder.generated(PDI, ISOLATE)
+
+
+# `_SpanIsolates` key of the open note-internal style (\ft, \fq …), which
+# has no closer of its own.
+_IMPLICIT = -1
+
 _NOTE_ORDER = ("f", "fe", "ef", "x", "ex")
 
 
@@ -480,6 +520,7 @@ def layout_projection(
     previous_paragraph: str | None = None  # last paragraph-level marker, in source order
     caller_counts: dict[str, int] = {}  # generated callers per note kind, this chapter
     notes: list[_Note] = []
+    isolates = _SpanIsolates(builder, styles)
 
     def add_span(start: int, end: int, attrs: dict[str, str], marker: str | None) -> None:
         if end > start and attrs:
@@ -509,6 +550,8 @@ def layout_projection(
                 last = cut
             builder.text(end - trailing, body[last:], line_break=" ")
         if trailing:
+            # A paragraph's isolates end on its own line.
+            isolates.close_all()
             builder.text(end, text[len(text) - trailing :])
 
     def hyphen_points(body: str) -> list[int]:
@@ -531,6 +574,7 @@ def layout_projection(
         nonlocal implicit
         if implicit is not None:
             add_span(implicit[0], builder.view_position, presentation_attrs(styles, implicit[1], block=False), implicit[1])
+            isolates.close(_IMPLICIT)
             implicit = None
 
     def close_cell() -> None:
@@ -548,6 +592,7 @@ def layout_projection(
         nonlocal block, unclosed_note
         close_implicit()
         close_cell()
+        isolates.close_all()
         unclosed_note = False
         if block is not None:
             builder.block(block[0], builder.view_position, _with_direction(block[2], direction), block[1])
@@ -712,6 +757,7 @@ def layout_projection(
                         span_marker,
                     )
                     break
+            isolates.close(opener)
             tag(token.end, token.text, marker, separator=False)
             continue
 
@@ -777,12 +823,15 @@ def layout_projection(
         elif style_type == "note":
             unclosed_note = True
         tag(token.end, token.text, marker)
+        if style_type == "character" and token.start in pairs:
+            isolates.open(token.start, marker)
         if not show_markers and marker in _BRACKETED and token.start in pairs:
             builder.generated("[", marker)
         if in_note and style_type == "character" and token.start not in pairs:
             # Note-internal markers (\fr, \ft, \xo …) style the text up to
             # the next marker; USFM leaves them unclosed.
             implicit = (builder.view_position, marker)
+            isolates.open(_IMPLICIT, marker)
     close_block()
     for start, end, attrs, marker in sorted(spans, key=lambda span: (span[0], -span[1])):
         # Outer spans first, so a nested style is merged over its parent's.
@@ -841,6 +890,7 @@ def _note_body(builder: ProjectionBuilder, source: str, tokens, styles, pairs, c
     registry = styles.registry
     implicit: tuple[int, str] | None = None
     open_spans: list[tuple[int, int, str]] = []
+    isolates = _SpanIsolates(builder, styles)
 
     def close_implicit() -> None:
         nonlocal implicit
@@ -848,6 +898,7 @@ def _note_body(builder: ProjectionBuilder, source: str, tokens, styles, pairs, c
             attrs = presentation_attrs(styles, implicit[1], block=False)
             if builder.view_position > implicit[0] and attrs:
                 spans.append((implicit[0], builder.view_position, attrs, implicit[1]))
+            isolates.close(_IMPLICIT)
             implicit = None
 
     for index, token in enumerate(tokens):
@@ -882,6 +933,8 @@ def _note_body(builder: ProjectionBuilder, source: str, tokens, styles, pairs, c
                     if builder.view_position > view_start and attrs:
                         spans.append((view_start, builder.view_position, attrs, span_marker))
                     break
+            if opener is not None:
+                isolates.close(opener)
             if opener is None:
                 view_start = builder.view_position
                 builder.marker(token.end, token.text, marker)
@@ -896,13 +949,18 @@ def _note_body(builder: ProjectionBuilder, source: str, tokens, styles, pairs, c
             spans.append((view_start, builder.view_position, {"marker_token": "yes"}, marker))
             continue
         builder.hidden(min(_separator_end(source, token.end), note.closer_start), marker)
+        character = (style.style_type or "").lower() == "character"
         if token.start in pairs:
             open_spans.append((token.start, builder.view_position, marker))
+            if character:
+                isolates.open(token.start, marker)
             if marker in _BRACKETED:
                 builder.generated("[", marker)
-        elif (style.style_type or "").lower() == "character":
+        elif character:
             implicit = (builder.view_position, marker)
+            isolates.open(_IMPLICIT, marker)
     close_implicit()
+    isolates.close_all()
 
 
 class SfmStandardView(_SfmViewBase):

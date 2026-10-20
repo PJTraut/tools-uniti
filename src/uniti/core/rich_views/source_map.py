@@ -24,11 +24,12 @@ from enum import StrEnum
 EOL_MARKER = "eol"
 
 # View-only characters, by their GENERATED segment's marker: the soft
-# hyphens Preview breaks at (H-D5) and the isolates around Standard's tags in
-# a right-to-left paragraph (text direction plan W-D3). Copy leaves them out.
+# hyphens Preview breaks at (H-D5), the isolates around Standard's tags in
+# a right-to-left paragraph (text direction plan W-D3) and around a character
+# style with a `\Direction` (W6). Copy leaves them out.
 HYPHEN = "hyphen"
 ISOLATE = "isolate"
-LRI, PDI = "\u2066", "\u2069"
+LRI, RLI, PDI = "\u2066", "\u2067", "\u2069"
 VIEW_ONLY_MARKERS = frozenset({HYPHEN, ISOLATE})
 
 
@@ -92,6 +93,9 @@ class SourceMap:
 
         offset = max(0, min(offset, self.source_length))
         index = bisect.bisect_right(self._source_starts, offset) - 1
+        behind = self._text_behind_isolates(index, offset)
+        if behind is not None:
+            return behind.view_end
         for candidate in (index - 1, index, index + 1):
             if 0 <= candidate < len(self.segments):
                 segment = self.segments[candidate]
@@ -114,6 +118,26 @@ class SourceMap:
                     return segment.view_start if offset == segment.source_start else segment.view_end
         return len(self.view_text)
 
+    def _text_behind_isolates(self, index: int, offset: int) -> Segment | None:
+        """The text ending at `offset` with only isolates generated there
+        (and whatever starts there) after it: a styled word's end maps to
+        before its span's PDI (W6), not past it."""
+
+        probe = index
+        crossed = False
+        while probe >= 0:
+            segment = self.segments[probe]
+            if segment.role is SegmentRole.GENERATED and segment.marker == ISOLATE and segment.source_start == offset:
+                crossed = True
+            elif segment.source_start != offset or segment.role is SegmentRole.GENERATED:
+                break
+            probe -= 1
+        if crossed and probe >= 0:
+            segment = self.segments[probe]
+            if segment.editable and segment.source_end == offset:
+                return segment
+        return None
+
     def _opens_isolate_at(self, segment: Segment, offset: int) -> bool:
         return (
             segment.role is SegmentRole.GENERATED
@@ -135,15 +159,18 @@ class SourceMap:
         index = max(index, 0)
         if prefer_left:
             # Walk back over zero-width/ending segments to the editable one
-            # that ends exactly here.
+            # that ends exactly here, and over a span's closing isolate (W6).
             probe = index
-            while probe > 0 and self.segments[probe].view_start == position:
+            edge = position
+            while probe > 0 and self.segments[probe].view_start == edge:
                 previous = self.segments[probe - 1]
-                if previous.view_end != position:
+                if previous.view_end != edge:
                     break
                 probe -= 1
                 if previous.editable:
                     return previous.source_end
+                if previous.marker == ISOLATE and self.view_text[previous.view_start : previous.view_end] == PDI:
+                    edge = previous.view_start
         segment = self.segments[index] if self.segments else None
         if segment is None:
             return 0

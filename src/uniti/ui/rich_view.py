@@ -58,7 +58,7 @@ from uniti.core.resource_profile import ResourceProfile
 from uniti.core.rich_views.editing import EditPlan, EditRejected, plan_view_edit
 from uniti.core.rich_views.projection import Projection
 from uniti.core.rich_views.provider import EditorViewProvider, ViewCommand
-from uniti.core.rich_views.source_map import LRI, PDI, SegmentRole
+from uniti.core.rich_views.source_map import LRI, PDI, RLI, SegmentRole
 from uniti.ui.theme import EditorThemeTokens
 
 logger = logging.getLogger("uniti.ui.rich_view")
@@ -584,10 +584,11 @@ class _RichEditor(QTextEdit):
         event.accept()
 
     def createMimeDataFromSelection(self) -> QMimeData:  # noqa: N802
-        """Copy the selection as text; Hyphenate Preview's soft hyphens and
-        the isolates around Standard's tags in a right-to-left paragraph are
-        the view's, not the document's, so they never reach the clipboard
-        (H-D5, text direction plan W4)."""
+        """Copy the selection as text; Hyphenate Preview's soft hyphens, the
+        isolates around Standard's tags in a right-to-left paragraph and those
+        around a character style's `\\Direction` are the view's, not the
+        document's, so they never reach the clipboard (H-D5, text direction
+        plan W4, W6)."""
 
         data = super().createMimeDataFromSelection()
         owner = self._owner
@@ -967,12 +968,12 @@ class RichViewPane(QWidget):
             self._offsets = Utf16Offsets(projection.text)
             self._view_only = frozenset(projection.source_map.view_only_positions(0, len(projection.text)))
             # Just inside an isolate, the caret sits where it does just
-            # outside it: arrow keys step past (text direction plan W4).
+            # outside it: arrow keys step past (text direction plan W4, W6).
             text = projection.text
             self._isolate_stops = frozenset(
-                self._offsets.to_qt(position + 1 if text[position] == LRI else position)
+                self._offsets.to_qt(position + 1 if text[position] in (LRI, RLI) else position)
                 for position in self._view_only
-                if text[position] in (LRI, PDI)
+                if text[position] in (LRI, RLI, PDI)
             )
             assert self._palette is not None
             render_into(self.editor, projection, self.editor.font(), self._palette)
