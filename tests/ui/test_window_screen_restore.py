@@ -134,3 +134,66 @@ def test_toggle_window_on_screen_reopens_exactly_where_it_was_closed(window):
     finally:
         window.show_whitespace_legend()
         _APP.processEvents()
+
+
+def test_apply_window_placement_moves_a_live_window_onto_the_screen(window):
+    window.show()
+    _APP.processEvents()
+    window.apply_window_placement((9000, 400, 700, 500), "normal")
+    assert _inside_screen(window.geometry())
+    assert not window.isMaximized()
+
+
+def test_apply_window_placement_returns_a_maximized_window_to_normal_first(window):
+    screen_x, screen_y, _, _ = _screen()
+    window.show()
+    window.showMaximized()
+    _APP.processEvents()
+    assert window.isMaximized()
+    geometry = (screen_x + 60, screen_y + 80, 500, 400)
+    window.apply_window_placement(geometry, "normal")
+    _APP.processEvents()
+    assert not window.isMaximized()
+    rect = window.geometry()
+    assert (rect.x(), rect.y(), rect.width(), rect.height()) == geometry
+
+
+def test_apply_window_placement_can_maximize(window):
+    window.show()
+    _APP.processEvents()
+    screen_x, screen_y, _, _ = _screen()
+    window.apply_window_placement((screen_x + 60, screen_y + 80, 500, 400), "maximized")
+    _APP.processEvents()
+    assert window.isMaximized()
+    # The rectangle it returns to is what gets saved.
+    assert window.export_window_placement()[0] == (screen_x + 60, screen_y + 80, 500, 400)
+
+
+def test_toggle_window_reopens_where_the_layout_manager_says(window):
+    from types import SimpleNamespace
+
+    screen_x, screen_y, _, _ = _screen()
+    wanted = (screen_x + 150, screen_y + 110, 340, 460)
+    closed = []
+
+    class Layouts:
+        def toggle_geometry(self, key, fallback):
+            return wanted if key == "whitespace_legend" else fallback
+
+        def note_toggle_closed(self, key, geometry):
+            closed.append((key, geometry))
+
+    window._service = SimpleNamespace(screen_layouts=Layouts())
+    try:
+        window.show_whitespace_legend()
+        _APP.processEvents()
+        legend = window._whitespace_legend_window
+        try:
+            rect = legend.geometry()
+            assert (rect.x(), rect.y(), rect.width(), rect.height()) == wanted
+        finally:
+            window.show_whitespace_legend()
+            _APP.processEvents()
+    finally:
+        window._service = None  # the fixture closes the window as a standalone one
+    assert closed and closed[0][0] == "whitespace_legend"

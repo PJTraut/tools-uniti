@@ -1,4 +1,4 @@
-from uniti.ui.screen_geometry import clamp_geometry_to_screens
+from uniti.ui.screen_geometry import adapt_geometry, clamp_geometry_to_screens
 
 
 def test_geometry_overlapping_a_screen_is_left_unchanged():
@@ -127,3 +127,71 @@ def test_framed_window_is_capped_so_its_title_bar_and_body_fit_the_screen():
     assert (x, width) == (0, 1440)
     assert y == 25 + 32
     assert y + height <= 25 + 875
+
+
+LAPTOP = ("laptop", (0, 0, 1440, 900))
+BIG = ("big", (0, 0, 2560, 1440))
+LEFT = ("left", (0, 0, 1920, 1080))
+RIGHT = ("right", (1920, 0, 1920, 1080))
+
+
+def test_adapt_to_an_identical_screen_changes_nothing():
+    geometry = (300, 200, 800, 600)
+    assert adapt_geometry(geometry, (BIG,), (BIG,), scale_size=True) == geometry
+    assert adapt_geometry(geometry, (BIG,), (BIG,), scale_size=False) == geometry
+
+
+def test_adapt_scales_a_main_window_to_a_smaller_screen_in_proportion():
+    # The left half of a 2560x1440 display becomes the left half of 1440x900.
+    assert adapt_geometry((0, 0, 1280, 1440), (BIG,), (LAPTOP,), scale_size=True) == (0, 0, 720, 900)
+
+
+def test_adapt_keeps_a_tool_window_size_and_moves_its_centre_proportionally():
+    # Centre at (1900, 1100) of 2560x1440 -> (1900/2560, 1100/1440) of 1440x900.
+    x, y, width, height = adapt_geometry((1700, 1000, 400, 200), (BIG,), (LAPTOP,), scale_size=False)
+    assert (width, height) == (400, 200)
+    assert abs((x + width / 2) - 1900 / 2560 * 1440) <= 1
+    assert abs((y + height / 2) - 1100 / 1440 * 900) <= 1
+
+
+def test_adapt_caps_a_tool_window_larger_than_the_new_screen():
+    _, _, width, height = adapt_geometry((0, 0, 3000, 2000), (BIG,), (LAPTOP,), scale_size=False)
+    assert (width, height) == (1440, 900)
+
+
+def test_adapt_follows_the_same_monitor_when_the_arrangement_changes():
+    # "right" used to sit at x=1920; now it is on the left of the primary.
+    target = (("left", (0, 0, 1920, 1080)), ("right", (-1920, 0, 1920, 1080)))
+    x, y, width, height = adapt_geometry((2400, 100, 800, 600), (LEFT, RIGHT), target, scale_size=True)
+    assert -1920 <= x and x + width <= 0
+    assert (width, height) == (800, 600)
+
+
+def test_adapt_sends_a_window_from_a_removed_monitor_to_the_screen_in_its_list_position():
+    # Only "left" remains; a window that lived on "right" lands on the primary.
+    x, y, width, height = adapt_geometry((2400, 100, 800, 600), (LEFT, RIGHT), (LEFT,), scale_size=True)
+    assert 0 <= x and x + width <= 1920
+    assert 0 <= y and y + height <= 1080
+
+
+def test_adapt_pairs_identically_named_monitors_by_their_order():
+    first = ("same", (0, 0, 1920, 1080))
+    second = ("same", (1920, 0, 1920, 1080))
+    moved = (("same", (0, 0, 1920, 1080)), ("same", (2000, 0, 1920, 1080)))
+    x, _, width, _ = adapt_geometry((2000, 100, 800, 600), (first, second), moved, scale_size=True)
+    assert 2000 <= x and x + width <= 3920
+
+
+def test_adapt_without_source_screens_is_just_a_clamp():
+    assert adapt_geometry((9000, 100, 400, 300), (), (LEFT,), scale_size=True) == clamp_geometry_to_screens(
+        (9000, 100, 400, 300), ((0, 0, 1920, 1080),)
+    )
+
+
+def test_adapt_clamps_against_the_available_area_when_given():
+    # The target's full rectangle includes a 25px menu bar the window must avoid.
+    result = adapt_geometry(
+        (0, 0, 1000, 700), (BIG,), (LAPTOP,), scale_size=False,
+        target_available=((0, 25, 1440, 875),), frame_top=32,
+    )
+    assert result[1] >= 25 + 32

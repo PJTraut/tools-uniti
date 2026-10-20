@@ -295,6 +295,9 @@ class UNITIService:
         self._last_quit_error: str | None = None
         self._quitting = False
         self._find_replace: FindReplaceWindow | None = None
+        # Per-screen-configuration window layouts (`ui.screen_layout_manager`),
+        # started by the desktop application once its windows exist.
+        self.screen_layouts = None
         self._transient_documents: list = []  # books opened only to be searched (book-lock plan L4)
         self._find_replace_placement = "detached"
         self._publication_queue: _PublicationQueue | None = None
@@ -576,10 +579,11 @@ class UNITIService:
                 self._find_replace.set_report_location(
                     settings.find_replace_report_location
                 )
-                if settings.find_replace_geometry is not None:
-                    self._find_replace.set_detached_geometry(
-                        settings.find_replace_geometry
-                    )
+                find_geometry = settings.find_replace_geometry
+                if self.screen_layouts is not None:
+                    find_geometry = self.screen_layouts.find_geometry(find_geometry)
+                if find_geometry is not None:
+                    self._find_replace.set_detached_geometry(find_geometry)
                 if settings.find_replace_attached_height is not None:
                     self._find_replace.set_attached_height(
                         settings.find_replace_attached_height
@@ -1747,6 +1751,8 @@ class UNITIService:
                     durability=durability,
                 )
 
+        if self.screen_layouts is not None:
+            self.screen_layouts.shutdown()  # records where the windows were left
         discarded_ids = frozenset(
             decision.document_id
             for decision in plan.decisions

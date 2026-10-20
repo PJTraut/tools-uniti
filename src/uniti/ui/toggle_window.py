@@ -60,6 +60,10 @@ class ToggleWindowManager:
             return None
         zoom_percent = owner._settings.toggle_window_zoom_percent.get(key, 100)
         geometry = owner._settings.toggle_window_geometry.get(key)
+        layouts = self._layouts()
+        if layouts is not None:
+            # Where this window was left on the current screen configuration.
+            geometry = layouts.toggle_geometry(key, geometry)
         if geometry is not None:
             # These windows are frameless with a custom title bar as the only
             # drag handle, so a position saved on a since-removed or
@@ -113,7 +117,15 @@ class ToggleWindowManager:
             updates["toggle_window_splitter_sizes"] = splitter_sizes_by_key
         owner._settings = dataclass_replace(owner._settings, **updates)
         owner._save_settings()
+        layouts = self._layouts()
+        if layouts is not None:
+            layouts.note_toggle_closed(key, geometries[key])
         window.deleteLater()
+
+    def _layouts(self):
+        """The service's per-screen-configuration layout manager, if any."""
+
+        return getattr(getattr(self._owner, "_service", None), "screen_layouts", None)
 
 
 __all__ = ["ToggleWindowManager"]

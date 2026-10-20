@@ -164,6 +164,89 @@ def clamp_geometry_to_screens(
     return (new_x, new_y, clamped_width, clamped_height)
 
 
+NamedScreen = tuple[str, Geometry]
+
+
+def _overlap_area(a: Geometry, b: Geometry) -> int:
+    shared = _intersection(a, b)
+    return 0 if shared is None else shared[2] * shared[3]
+
+
+def _source_screen_index(geometry: Geometry, screens: tuple[NamedScreen, ...]) -> int:
+    """The screen `geometry` mostly sat on: the largest overlap, else the
+    nearest one."""
+
+    areas = [_overlap_area(geometry, rect) for _, rect in screens]
+    if max(areas) > 0:
+        return areas.index(max(areas))
+    rects = [rect for _, rect in screens]
+    return rects.index(nearest_screen(geometry, tuple(rects)))
+
+
+def _paired_target(
+    index: int, source: tuple[NamedScreen, ...], target: tuple[NamedScreen, ...]
+) -> Geometry:
+    """The new screen that stands in for the old screen `source[index]`: the
+    same monitor (by identity) if it is still connected, else the screen in
+    the same position in the list (the primary stands in for the primary),
+    else the primary."""
+
+    name = source[index][0]
+    same_name_in_source = [i for i, (item, _) in enumerate(source) if item == name]
+    same_name_in_target = [rect for item, rect in target if item == name]
+    if same_name_in_target:
+        ordinal = same_name_in_source.index(index)
+        return same_name_in_target[min(ordinal, len(same_name_in_target) - 1)]
+    return target[index][1] if index < len(target) else target[0][1]
+
+
+def adapt_geometry(
+    geometry: Geometry,
+    source: tuple[NamedScreen, ...],
+    target: tuple[NamedScreen, ...],
+    *,
+    scale_size: bool,
+    target_available: tuple[Geometry, ...] | None = None,
+    frame_top: int = 0,
+) -> Geometry:
+    """Carry a `geometry` saved under the `source` screens over to the
+    `target` screens (each a `(identity, rectangle)` pair, primary first).
+
+    The window moves to the screen standing in for the one it was on and
+    keeps its relative position there: the centre stays at the same
+    fraction of that screen. With `scale_size` its size scales by the
+    screens' size ratio too (a main window covering the left half of a
+    2560x1440 display covers the left half of a 1440x900 one); without, it
+    keeps its size so a small tool window stays readable. The result is run
+    through `clamp_geometry_to_screens` against `target_available` (the
+    targets' own rectangles by default).
+    """
+
+    if not target:
+        return geometry
+    available = target_available or tuple(rect for _, rect in target)
+    if not source:
+        return clamp_geometry_to_screens(geometry, available, frame_top=frame_top)
+    index = _source_screen_index(geometry, source)
+    source_x, source_y, source_width, source_height = source[index][1]
+    target_x, target_y, target_width, target_height = _paired_target(index, source, target)
+    x, y, width, height = geometry
+    if scale_size:
+        width = round(width * target_width / source_width)
+        height = round(height * target_height / source_height)
+    width = max(1, min(width, target_width))
+    height = max(1, min(height, target_height - frame_top))
+    centre_x = min(max((x + geometry[2] / 2 - source_x) / source_width, 0.0), 1.0)
+    centre_y = min(max((y + geometry[3] / 2 - source_y) / source_height, 0.0), 1.0)
+    adapted = (
+        round(target_x + centre_x * target_width - width / 2),
+        round(target_y + centre_y * target_height - height / 2),
+        width,
+        height,
+    )
+    return clamp_geometry_to_screens(adapted, available, frame_top=frame_top)
+
+
 def current_screen_geometries() -> tuple[Geometry, ...]:
     """The available (menu-bar/dock/taskbar-excluded) geometry of every
     currently connected screen, as plain tuples."""

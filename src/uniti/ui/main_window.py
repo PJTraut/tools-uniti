@@ -2434,10 +2434,10 @@ class UNITIMainWindow(QMainWindow):
             raise ValueError("cannot discard a restored live view as a placeholder")
         self._panes.remove_shell_view(view_id)
 
-    def export_window_record(self):
-        """Return this window's immutable geometry and pane-tree state."""
-
-        from uniti.app.session import WindowRecord
+    def export_window_placement(self) -> tuple[tuple[int, int, int, int], str]:
+        """The window's rectangle and state as they are saved: the rectangle
+        a maximized/fullscreen/minimized window returns to, not the
+        screen-sized one `geometry()` reports for it."""
 
         geometry = self.geometry()
         if self.isFullScreen():
@@ -2449,16 +2449,47 @@ class UNITIMainWindow(QMainWindow):
         else:
             state = "normal"
         if state != "normal":
-            # `geometry()` of a maximized/fullscreen window is the screen-sized
-            # rectangle; saving that would make "un-maximize" after a restart
-            # (possibly on a smaller monitor) restore a screen-sized window.
-            # Save the rectangle the window returns to instead.
+            # Saving the screen-sized rectangle would make "un-maximize" after
+            # a restart (possibly on a smaller monitor) restore a screen-sized
+            # window.
             normal = self.normalGeometry()
             if normal.isValid():
                 geometry = normal
+        return (geometry.x(), geometry.y(), geometry.width(), geometry.height()), state
+
+    def apply_window_placement(
+        self, geometry: tuple[int, int, int, int], state: str
+    ) -> None:
+        """Move this window to `geometry` (clamped onto a connected screen)
+        and `state` without showing or hiding it -- used when the screen
+        configuration changes under a live window. A maximized or fullscreen
+        window is returned to normal first so it can change screens, then
+        maximized again where it now sits."""
+
+        rect = clamp_geometry_to_screens(
+            geometry, current_screen_geometries(), frame_top=NATIVE_TITLE_BAR_HEIGHT
+        )
+        if self.export_window_placement() == (rect, state):
+            return
+        full_states = (
+            Qt.WindowState.WindowMaximized | Qt.WindowState.WindowFullScreen
+        )
+        self.setWindowState(self.windowState() & ~full_states)
+        self.setGeometry(*rect)
+        if state == "maximized":
+            self.setWindowState(self.windowState() | Qt.WindowState.WindowMaximized)
+        elif state == "fullscreen":
+            self.setWindowState(self.windowState() | Qt.WindowState.WindowFullScreen)
+
+    def export_window_record(self):
+        """Return this window's immutable geometry and pane-tree state."""
+
+        from uniti.app.session import WindowRecord
+
+        geometry, state = self.export_window_placement()
         return WindowRecord(
             self.window_id,
-            (geometry.x(), geometry.y(), geometry.width(), geometry.height()),
+            geometry,
             state,
             self._panes.export_state(),
         )

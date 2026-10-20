@@ -626,6 +626,14 @@ class FindReplaceWindow(QDockWidget):
         geometry = widget.geometry()
         return geometry.x(), geometry.y(), geometry.width(), geometry.height()
 
+    @property
+    def detached_geometry(self) -> tuple[int, int, int, int]:
+        """The floating window's last known rectangle (kept while attached)."""
+
+        if self._placement == "detached":
+            return self._geometry_tuple(self)
+        return self._detached_geometry
+
     def set_detached_geometry(self, geometry: tuple[int, int, int, int]) -> None:
         """Set this window's geometry to `geometry`, first clamping it back
         onto a currently connected screen if it no longer overlaps any

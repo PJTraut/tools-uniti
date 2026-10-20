@@ -593,6 +593,7 @@ def _startup_callbacks(
                 window = service.new_window()
         else:
             window = service.new_window()
+        _start_screen_layouts(service, context)
         window.set_startup_snapshot(context.snapshot())
         service.run_recovery_center(
             window,
@@ -633,6 +634,23 @@ def _startup_callbacks(
         StartupPhase.SESSION_RESTORE: session,
         StartupPhase.READY: ready,
     }
+
+
+def _start_screen_layouts(service, context: StartupContext) -> None:
+    """Remember window layouts per screen configuration, and put the
+    restored windows where the current configuration last had them."""
+
+    settings_path = getattr(context.data["settings_store"], "path", None)
+    if settings_path is None:
+        return  # no settings directory to keep layouts in
+    from uniti.app.window_layouts import WindowLayoutStore
+    from uniti.ui.screen_layout_manager import ScreenLayoutManager
+
+    store = WindowLayoutStore(Path(settings_path).with_name("window-layouts.json"))
+    manager = ScreenLayoutManager(service, store)
+    service.screen_layouts = manager
+    manager.start()
+    context.register_cleanup(manager.shutdown)
 
 
 def run_desktop(
