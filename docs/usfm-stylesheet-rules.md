@@ -63,9 +63,9 @@ These fields change how Standard and Preview look. Paratext and PTXprint read th
 | `\Color` | number | any style | Paratext's `0xBBGGRR` colour as a decimal integer (red is `255`, blue is `16711680`). Black (`0`) means no colour. The colour is adjusted to stay readable on the editor theme's background. |
 | `\Justification` | `Left` `Center` `Right` `Both` `Justify` `Start` `End` | paragraph | which edge the lines sit against; see [Justification](#justification) |
 | `\Hyphenate` | flag | paragraph | whether Preview breaks this paragraph's words at their hyphenation points; see [Hyphenation](#hyphenation) |
-| `\LeftMargin` | inches | paragraph | indent of every line from the left edge |
-| `\RightMargin` | inches | paragraph | indent from the right edge |
-| `\FirstLineIndent` | inches | paragraph | extra indent of the first line (negative for a hanging indent) |
+| `\LeftMargin` | inches | paragraph | indent of every line from the start edge (the right edge in a right-to-left paragraph) |
+| `\RightMargin` | inches | paragraph | indent from the end edge |
+| `\FirstLineIndent` | inches | paragraph | extra indent of the first line on the start side (negative for a hanging indent) |
 | `\SpaceBefore` | points | paragraph | space above the paragraph |
 | `\SpaceAfter` | points | paragraph | space below it |
 
@@ -146,14 +146,16 @@ So a project's `uniti.sty` rule beats the built-in rule for the same selector, a
 
 | Value | Result |
 |---|---|
-| `Left` | against the left edge, in any text direction |
-| `Right` | against the right edge, in any text direction |
+| `Left` | against the edge the paragraph starts on: left in a left-to-right paragraph, right in a right-to-left one (Arabic, Hebrew) |
+| `Right` | the opposite edge: right in a left-to-right paragraph, left in a right-to-left one |
 | `Center` | centred (the headings in `usfm.sty` use it) |
 | `Both` or `Justify` | both edges: the space between words is spread so every line but the last fills the width |
-| `Start` | against the edge the paragraph starts on: left in a left-to-right paragraph, right in a right-to-left one (Arabic, Hebrew) |
-| `End` | the opposite edge: right in a left-to-right paragraph, left in a right-to-left one |
+| `Start` | the same as `Left` |
+| `End` | the same as `Right` |
 
-`Start` and `End` are UNITI's. Use them in a rule meant for books of both directions. `Left` and `Right` are the physical edges: `Left` stays left even in a right-to-left paragraph. A paragraph with no `\Justification` sits on its start edge. Anything else written there is ignored.
+`Left` and `Right` follow the paragraph's reading direction, as they do in PTXprint, so a stock `usfm.sty` gives a right-to-left book what its authors meant: `\qr` sits on the left edge, and `\s3` and `\sp` on the right. The margins and the first-line indent turn round with them. In a right-to-left paragraph, `\LeftMargin` is the right-hand margin and a hanging `\q1` hangs from the right. `Start` and `End` are UNITI's synonyms; they read more clearly in a rule meant for books of both directions. A paragraph with no `\Justification` sits on its start edge. Anything else written there is ignored.
+
+A paragraph's direction is the project's (Paratext's `LeftToRight` setting), or the tab's View → Text Direction choice when it is not Auto. A file outside a project with Auto lets each paragraph's first letter decide.
 
 ```
 # Justify the body text of every book

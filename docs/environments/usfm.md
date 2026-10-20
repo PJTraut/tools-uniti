@@ -25,7 +25,7 @@ What Standard and Preview show:
   - Clicking a note moves the caret to it.
   - Putting the caret on a caller highlights its note.
   - A note's category (`\cat People\cat*`) shows as "[People]".
-- **Justification and hyphenation.** A paragraph's `\Justification` (including `Both` for justified text, and UNITI's direction-aware `Start` and `End`) applies in Standard and Preview. Preview can also break words at the end of a line: see [Hyphenating Preview](#hyphenating-preview). Both are set in the stylesheets; see [USFM Stylesheet Rules](../usfm-stylesheet-rules.md#justification).
+- **Justification and hyphenation.** A paragraph's `\Justification` (including `Both` for justified text) applies in Standard and Preview. As in PTXprint, `Left`, `Right` and the margins follow the paragraph's reading direction, so a right-to-left project's `\qr` sits on the left and a hanging `\q1` hangs from the right. Preview can also break words at the end of a line: see [Hyphenating Preview](#hyphenating-preview). Both are set in the stylesheets; see [USFM Stylesheet Rules](../usfm-stylesheet-rules.md#justification).
 
 **Find and Replace always search the source text**, in every mode. A pattern like `\\v (\d+)` finds verse markers even in Preview. The current match is shown as the selection.
 

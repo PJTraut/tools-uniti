@@ -87,8 +87,10 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] Click and select across a broken word; Find a word that Preview breaks; copy from Preview and paste: no stray hyphens. Sync and Check Spelling underlines still land on the right words.
 - [ ] `\Hyphenate -` on `\p` stops it for that style; change the book, restart: the setting stays.
 
-## 13. Justification (J1)
-- [ ] `\Justification Start`, `End`, `Left`, `Right`, `Center` and `Both` on a paragraph style: each sits where the stylesheet reference says. In a right-to-left book `Start` is the right edge and `Left` stays left.
+## 13. Justification and text direction (J1, W1–W3)
+- [ ] `\Justification Start`, `End`, `Left`, `Right`, `Center` and `Both` on a paragraph style: each sits where the stylesheet reference says. In a right-to-left book `Start` and `Left` are the right edge.
+- [ ] An Arabic or Hebrew project (`arNAV12`), Standard and Preview, with the stock stylesheet: `\qr` lines sit on the left, `\s3`/`\sp` headings on the right, and a `\q1` passage hangs from the right (first line ¼" in, the rest ¾"). View → Text Direction → Left-to-Right turns all of it round.
+- [ ] Optional, against PTXprint: a PDF from one of `arNAV12`'s right-to-left configurations (`Mark`, `John`) shows the same `\q1` and `\qr` geometry.
 
 ## 14. Spelling follow-ups (F1–F5)
 - [ ] Right-click a flagged word in Plain Text, Standard and Preview: the suggestions and Paratext's correction (editable modes only), **Approve**, **Mark Wrong**.

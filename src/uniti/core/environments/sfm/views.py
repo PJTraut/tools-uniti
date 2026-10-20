@@ -77,10 +77,10 @@ _FLAG_ATTRS = {
 # calls \\h and \\toc* "publishable" because they do print, elsewhere.)
 _METADATA_MARKERS = re.compile(r"(?:id|ide|sts|rem|usfm|h\d?|toca?\d)")
 _OFF_VALUES = ("-", "no", "false", "0")
-# `\Justification` values. `Left` and `Right` are the physical edges.
-# `Start` and `End` are UNITI's: the edge a line starts or ends on in the
-# paragraph's reading direction, so one rule serves left-to-right and
-# right-to-left books.
+# `\Justification` values. As in PTXprint, `Left` and `Right` are the edges
+# a line starts and ends on in the paragraph's reading direction (text
+# direction plan W-D1); UNITI's `Start` and `End` are synonyms, kept apart
+# so an export can write what the author did.
 _ALIGN = {
     "left": "left",
     "center": "center",

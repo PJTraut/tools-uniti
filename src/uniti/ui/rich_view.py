@@ -221,29 +221,34 @@ def char_format(attrs, base: QFont, palette: RichPalette) -> QTextCharFormat:
 _LAYOUT_DIRECTIONS = {"ltr": Qt.LayoutDirection.LeftToRight, "rtl": Qt.LayoutDirection.RightToLeft}
 
 
-def block_format(attrs) -> QTextBlockFormat:
+def block_format(attrs, *, right_to_left: bool = False) -> QTextBlockFormat:
+    """`attrs` as a Qt block format. The stylesheet's directional values
+    are logical, as in PTXprint (text direction plan W-D1): `Left`/`Start`
+    is the start edge, `\\LeftMargin` the start-side margin. `right_to_left`
+    is the direction Qt gave a block with no ``direction`` attribute."""
+
     fmt = QTextBlockFormat()
     align = attrs.get("align")
     flags = Qt.AlignmentFlag
-    # Qt turns a plain left or right around in a right-to-left paragraph;
-    # `AlignAbsolute` keeps it physical. `Left` and `Right` are physical,
-    # `Start` and `End` follow the reading direction (J-D1).
+    # Qt turns a plain left or right around in a right-to-left paragraph,
+    # which is the start and end edges.
     if align == "center":
         fmt.setAlignment(flags.AlignHCenter)
-    elif align == "right":
-        fmt.setAlignment(flags.AlignRight | flags.AlignAbsolute)
-    elif align == "left":
-        fmt.setAlignment(flags.AlignLeft | flags.AlignAbsolute)
+    elif align in ("left", "start"):
+        fmt.setAlignment(flags.AlignLeft)
+    elif align in ("right", "end"):
+        fmt.setAlignment(flags.AlignRight)
     elif align == "justify":
         fmt.setAlignment(flags.AlignJustify)
-    elif align == "start":
-        fmt.setAlignment(flags.AlignLeft)
-    elif align == "end":
-        fmt.setAlignment(flags.AlignRight)
-    if "left_margin" in attrs:
-        fmt.setLeftMargin(_float(attrs["left_margin"]) * _INCH_PX)
-    if "right_margin" in attrs:
-        fmt.setRightMargin(_float(attrs["right_margin"]) * _INCH_PX)
+    # Qt's margins are physical, so a right-to-left block takes them the
+    # other way round. Both are set, so a re-merge never leaves one behind.
+    if "left_margin" in attrs or "right_margin" in attrs:
+        start = _float(attrs.get("left_margin", "0")) * _INCH_PX
+        end = _float(attrs.get("right_margin", "0")) * _INCH_PX
+        if attrs.get("direction", "rtl" if right_to_left else "ltr") == "rtl":
+            start, end = end, start
+        fmt.setLeftMargin(start)
+        fmt.setRightMargin(end)
     if "first_indent" in attrs:
         fmt.setTextIndent(_float(attrs["first_indent"]) * _INCH_PX)
     if "space_before" in attrs:
@@ -352,6 +357,16 @@ def render_projection(document: QTextDocument, projection: Projection, base: QFo
             cursor.setPosition(offsets.to_qt(start))
             cursor.setPosition(offsets.to_qt(max(start, end - 1 if end > start else end)), QTextCursor.MoveMode.KeepAnchor)
             cursor.mergeBlockFormat(block_format(block.attrs))
+            if "direction" not in block.attrs and ("left_margin" in block.attrs or "right_margin" in block.attrs):
+                # No direction given: Qt decided from the text, so its
+                # right-to-left lines take the margins the other way round.
+                swapped = block_format(block.attrs, right_to_left=True)
+                last = document.findBlock(cursor.position()).position()
+                qt_block = document.findBlock(cursor.anchor())
+                while qt_block.isValid() and qt_block.position() <= last:
+                    if qt_block.textDirection() == Qt.LayoutDirection.RightToLeft:
+                        QTextCursor(qt_block).mergeBlockFormat(swapped)
+                    qt_block = qt_block.next()
         # The empty line after the text's final line break (where the caret
         # rests at the end of Standard) belongs to no block: it reads the
         # way the last block does.
