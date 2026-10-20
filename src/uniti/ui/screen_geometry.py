@@ -30,6 +30,10 @@ TITLE_STRIP_HEIGHT = 28
 # sit a pixel or two under a menu bar, so the height need not be complete.
 MIN_VISIBLE_STRIP_WIDTH = 64
 MIN_VISIBLE_STRIP_HEIGHT = 16
+# A window brought back from a screen that is gone (or a much larger one) is
+# shrunk, keeping its proportions, to at most this fraction of the screen it
+# lands on, so it neither fills the screen nor hides the menu bar behind it.
+RELOCATED_MAX_FRACTION = 0.8
 # Nominal height of a framed window's native title bar. `QWidget.geometry()`
 # excludes it, and it is not measurable before the window is first shown.
 NATIVE_TITLE_BAR_HEIGHT = 32
@@ -100,6 +104,18 @@ def nearest_screen(geometry: Geometry, screens: tuple[Geometry, ...]) -> Geometr
     return min(screens, key=lambda screen: _distance_to(screen, geometry))
 
 
+def _relocated_size(
+    width: int, height: int, screen_width: int, screen_height: int, frame_top: int
+) -> tuple[int, int]:
+    """`width` x `height` shrunk proportionally so it fits within
+    `RELOCATED_MAX_FRACTION` of the screen (never enlarged)."""
+
+    room_width = screen_width * RELOCATED_MAX_FRACTION
+    room_height = (screen_height - frame_top) * RELOCATED_MAX_FRACTION
+    factor = min(1.0, room_width / width, room_height / height)
+    return max(1, int(width * factor)), max(1, int(height * factor))
+
+
 def _fit_within(geometry: Geometry, area: Geometry, frame_top: int) -> Geometry:
     """Cap `geometry`'s size to `area` and shift it fully inside, leaving
     room above it for a framed window's native title bar."""
@@ -131,8 +147,9 @@ def clamp_geometry_to_screens(
       smaller one but the origin still overlaps): capped to the combined
       screen area and shifted inside it.
     - Title strip not visible (the saved screen is gone, or the window sits
-      mostly off-screen): kept at its saved width/height, capped to fit, and
-      centered on the *nearest* available screen.
+      mostly off-screen): kept at its saved width/height, shrunk in
+      proportion to at most 80% of the screen if bigger, and centered on the
+      *nearest* available screen.
 
     `frame_top` is the height of a framed window's native title bar above
     its client geometry; leave it 0 for the frameless toggle windows. An
@@ -153,8 +170,9 @@ def clamp_geometry_to_screens(
         return _fit_within(geometry, bounds, frame_top)
     screen = nearest_screen(geometry, available_screens)
     screen_x, screen_y, screen_width, screen_height = screen
-    clamped_width = max(1, min(width, screen_width))
-    clamped_height = max(1, min(height, screen_height - frame_top))
+    clamped_width, clamped_height = _relocated_size(
+        width, height, screen_width, screen_height, frame_top
+    )
     new_x = screen_x + max(0, (screen_width - clamped_width) // 2)
     new_y = (
         screen_y
@@ -217,7 +235,9 @@ def adapt_geometry(
     fraction of that screen. With `scale_size` its size scales by the
     screens' size ratio too (a main window covering the left half of a
     2560x1440 display covers the left half of a 1440x900 one); without, it
-    keeps its size so a small tool window stays readable. The result is run
+    keeps its size so a small tool window stays readable, shrunk in
+    proportion only if it would take more than 80% of the new screen (a
+    window left at 3260x1720 on a 4K display must not fill a laptop). The result is run
     through `clamp_geometry_to_screens` against `target_available` (the
     targets' own rectangles by default).
     """
@@ -234,8 +254,10 @@ def adapt_geometry(
     if scale_size:
         width = round(width * target_width / source_width)
         height = round(height * target_height / source_height)
-    width = max(1, min(width, target_width))
-    height = max(1, min(height, target_height - frame_top))
+        width = max(1, min(width, target_width))
+        height = max(1, min(height, target_height - frame_top))
+    else:
+        width, height = _relocated_size(width, height, target_width, target_height, frame_top)
     centre_x = min(max((x + geometry[2] / 2 - source_x) / source_width, 0.0), 1.0)
     centre_y = min(max((y + geometry[3] / 2 - source_y) / source_height, 0.0), 1.0)
     adapted = (

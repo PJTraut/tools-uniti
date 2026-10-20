@@ -20,12 +20,20 @@ def test_geometry_on_a_since_removed_screen_is_recentered_on_the_first_available
     assert 0 <= y <= 1080 - height
 
 
-def test_geometry_larger_than_the_available_screen_is_capped_to_fit():
+def test_unreachable_geometry_larger_than_the_screen_shrinks_in_proportion_below_the_full_screen():
     geometry = (5000, 5000, 3000, 2000)
     screens = ((0, 0, 1920, 1080),)
+    x, y, width, height = clamp_geometry_to_screens(geometry, screens)
+    assert width <= 1920 * 0.8 and height <= 1080 * 0.8
+    assert abs(width / height - 3000 / 2000) < 0.01  # proportions kept
+    assert 0 <= x and x + width <= 1920 and 0 <= y and y + height <= 1080
+
+
+def test_unreachable_geometry_that_already_fits_comfortably_keeps_its_size():
+    geometry = (5000, 5000, 900, 600)
+    screens = ((0, 0, 1920, 1080),)
     _, _, width, height = clamp_geometry_to_screens(geometry, screens)
-    assert width == 1920
-    assert height == 1080
+    assert (width, height) == (900, 600)
 
 
 def test_geometry_overlapping_any_one_of_several_screens_is_left_unchanged():
@@ -154,9 +162,15 @@ def test_adapt_keeps_a_tool_window_size_and_moves_its_centre_proportionally():
     assert abs((y + height / 2) - 1100 / 1440 * 900) <= 1
 
 
-def test_adapt_caps_a_tool_window_larger_than_the_new_screen():
+def test_adapt_shrinks_a_tool_window_larger_than_the_new_screen_in_proportion():
     _, _, width, height = adapt_geometry((0, 0, 3000, 2000), (BIG,), (LAPTOP,), scale_size=False)
-    assert (width, height) == (1440, 900)
+    assert width <= 1440 * 0.8 and height <= 900 * 0.8
+    assert abs(width / height - 1.5) < 0.01
+
+
+def test_adapt_leaves_a_tool_window_that_fits_comfortably_at_its_size():
+    _, _, width, height = adapt_geometry((100, 100, 900, 600), (BIG,), (LAPTOP,), scale_size=False)
+    assert (width, height) == (900, 600)
 
 
 def test_adapt_follows_the_same_monitor_when_the_arrangement_changes():

@@ -54,9 +54,17 @@ def _record(window, geometry, state="normal") -> WindowRecord:
 
 
 def test_restoring_a_window_saved_on_a_removed_monitor_lands_on_a_connected_screen(window):
-    window.restore_window_record(_record(window, (9000, 400, 700, 500)))
+    window.restore_window_record(_record(window, (9000, 400, 500, 400)))
     assert _inside_screen(window.geometry())
-    assert (window.width(), window.height()) == (700, 500)
+    assert (window.width(), window.height()) == (500, 400)
+
+
+def test_restoring_a_big_window_from_a_removed_monitor_shrinks_it_below_the_full_screen(window):
+    _, _, screen_width, screen_height = _screen()
+    window.restore_window_record(_record(window, (9000, 400, screen_width * 2, screen_height * 2)))
+    assert _inside_screen(window.geometry())
+    assert window.width() <= screen_width * 0.8
+    assert window.height() <= screen_height * 0.8
 
 
 def test_restoring_a_window_larger_than_the_screen_caps_it(window):
