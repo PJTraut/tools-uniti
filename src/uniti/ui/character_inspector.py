@@ -1,8 +1,9 @@
 """Character-level Unicode and encoding inspection for UNITI (BF-003/004),
-extended to a whole-selection per-character list+detail view (BF-073,
-replacing BF-065's table, in the style of r12a's Uniview:
-https://r12a.github.io/uniview/) and zoomable, with a dedicated large
-glyph-preview area (2026-09-20 follow-up)."""
+as a per-character list+detail view (BF-073, replacing BF-065's table, in
+the style of r12a's Uniview: https://r12a.github.io/uniview/) -- always,
+even for a single character (a one-row list), so there is one shape, one
+saved size and one splitter position -- and zoomable, with a dedicated
+large glyph-preview area (2026-09-20 follow-up)."""
 
 from __future__ import annotations
 
@@ -58,6 +59,7 @@ _GLYPH_FONT_SCALE = 4.0
 # proportional to the glyph itself as zoom changes rather than clipping a
 # tall glyph or leaving a small one lost in too much empty space.
 _GLYPH_BOX_EM = 3.0
+_DEFAULT_SIZE = (720, 520)
 
 
 def _encoded_hex(character: str, encoding: str) -> str:
@@ -71,8 +73,7 @@ def _encoded_hex(character: str, encoding: str) -> str:
 def _display_glyph(character: str) -> str:
     # A control/format character (category Cc/Cf, e.g. tab, newline, ZWJ)
     # renders as nothing or corrupts the row's line height — show its
-    # code point notation instead, matching how the single-character form
-    # already only ever shows a real, printable character.
+    # code point notation instead.
     if not character:
         return ""
     if unicodedata.category(character) in ("Cc", "Cf") or character in "\r\n":
@@ -111,7 +112,7 @@ def _decomposition_or_dash(character: str) -> str:
 
 class CharacterListModel(QAbstractListModel):
     """One row per character: code point, display glyph, and name — the
-    left-hand list of the multi-character Inspect Selection view."""
+    left-hand list of the Character Inspector's list+detail view."""
 
     CharRole = int(Qt.ItemDataRole.UserRole) + 1
     CodePointRole = int(Qt.ItemDataRole.UserRole) + 2
@@ -284,8 +285,9 @@ class _CharacterInspectorTitleBar(QWidget):
 
 
 class CharacterInspectorDialog(QDialog):
-    """A single character's Unicode/encoding properties, or (BF-073) a
-    list+detail view for a whole multi-character selection. Zoomable via
+    """A list+detail view of the Unicode/encoding properties of one
+    character or a whole selection (BF-073) -- one shape either way, so
+    the window keeps one saved size. Zoomable via
     Ctrl/Cmd+scroll or the standard zoom hotkeys (2026-09-20): the whole
     dialog's text scales together, including the large glyph-preview area
     and the list+detail view's column widths/row heights."""
@@ -399,12 +401,12 @@ class CharacterInspectorDialog(QDialog):
         output_encoding: str,
         invalid_bytes: bytes | None,
     ) -> tuple[int, int]:
-        """(Re-)builds the dialog's content for `text`, either the
-        single-character form or the list+detail selection view. Returns
-        the default window size for this shape -- used at construction
-        only; `refresh()` deliberately keeps whatever size/position the
-        window already has."""
+        """(Re-)builds the dialog's list+detail content for `text`. Returns
+        the default window size -- used at construction only; `refresh()`
+        deliberately keeps whatever size/position the window already has."""
 
+        self._output_encoding = output_encoding
+        self._invalid_bytes = invalid_bytes
         self._clear_layout(self._content_layout)
         self._glyph_labels = []
         self._character_list = None
@@ -413,23 +415,14 @@ class CharacterInspectorDialog(QDialog):
         title = "Character Inspector" if len(text) == 1 else "Inspect Selection"
         self.setWindowTitle(f"UNITI — {title}")
         self._title_bar.set_title(title)
-        if len(text) == 1:
-            self._content_layout.addLayout(
-                self._single_character_form(text, output_encoding, invalid_bytes)
+        truncated = text[:MAX_INSPECT_SELECTION_CHARACTERS]
+        if len(truncated) < len(text):
+            self._content_layout.addWidget(
+                QLabel(f"Showing the first {len(truncated)} of {len(text)} characters.")
             )
-            default_size = (420, 480)
-        else:
-            truncated = text[:MAX_INSPECT_SELECTION_CHARACTERS]
-            if len(truncated) < len(text):
-                self._content_layout.addWidget(
-                    QLabel(
-                        f"Showing the first {len(truncated)} of {len(text)} characters."
-                    )
-                )
-            self._content_layout.addWidget(self._selection_list_and_detail(truncated), 1)
-            default_size = (720, 480)
+        self._content_layout.addWidget(self._selection_list_and_detail(truncated), 1)
         self._apply_zoom_fonts()
-        return default_size
+        return _DEFAULT_SIZE
 
     def _request_refresh(self) -> None:
         if self._on_refresh is not None:
@@ -444,8 +437,7 @@ class CharacterInspectorDialog(QDialog):
     ) -> None:
         """Re-inspects `text` in place (BF-076), keeping the window's
         current size, position, and zoom -- only the content rebuilds,
-        even when switching between the single-character and
-        list+detail shapes."""
+        however many characters the new text has."""
 
         if not text:
             raise ValueError("character inspector requires at least one character")
@@ -532,47 +524,6 @@ class CharacterInspectorDialog(QDialog):
             return True
         return super().eventFilter(watched, event)
 
-    def _single_character_form(
-        self,
-        character: str,
-        output_encoding: str,
-        invalid_bytes: bytes | None,
-    ) -> QVBoxLayout:
-        codepoint = f"U+{ord(character):04X}"
-        name = unicodedata.name(character, "<unknown>")
-        container = QVBoxLayout()
-        glyph_label = self._make_glyph_label(character, self)
-        container.addWidget(glyph_label)
-        form = QFormLayout()
-        # Titles left-aligned at a fixed column (2026-09-20 request):
-        # unset, `QFormLayout`'s label alignment falls back to the
-        # platform style hint (right-aligned/ragged on macOS), which
-        # reads inconsistently against titles of very different lengths
-        # ("Unicode" vs. "Character decomposition mapping"). The field
-        # (content) column already starts at one fixed x regardless --
-        # `QFormLayout` sizes that column to the widest label in the
-        # form -- left-aligning the titles just makes that boundary
-        # legible as a consistent left-hand column instead of a ragged
-        # right/centered one.
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        form.addRow("Unicode", QLabel(codepoint))
-        form.addRow("Name", QLabel(name))
-        if invalid_bytes is not None:
-            raw = " ".join(f"{byte:02X}" for byte in invalid_bytes)
-            form.addRow("Decode error bytes", QLabel(raw))
-        form.addRow("UTF-8", QLabel(_encoded_hex(character, "utf-8")))
-        form.addRow("Windows-1252", QLabel(_encoded_hex(character, "windows-1252")))
-        form.addRow("UTF-16LE", QLabel(_encoded_hex(character, "utf-16-le")))
-        form.addRow("UTF-16BE", QLabel(_encoded_hex(character, "utf-16-be")))
-        form.addRow(output_encoding, QLabel(_encoded_hex(character, output_encoding)))
-        container.addLayout(form)
-        # Anchor content to the top of the window (2026-09-20 request)
-        # rather than letting `QVBoxLayout` spread it across any extra
-        # vertical space the dialog is resized to.
-        container.addStretch(1)
-        return container
-
     def _selection_list_and_detail(self, text: str) -> QSplitter:
         self._character_model = CharacterListModel(text, self)
         self._character_list = QListView(self)
@@ -598,7 +549,16 @@ class CharacterInspectorDialog(QDialog):
         self._detail_glyph_label = self._make_glyph_label("", self._detail_widget)
         detail_container.addWidget(self._detail_glyph_label)
         self._detail_layout = QFormLayout()
-        # See `_single_character_form` for why these are set explicitly.
+        # Titles left-aligned at a fixed column (2026-09-20 request):
+        # unset, `QFormLayout`'s label alignment falls back to the
+        # platform style hint (right-aligned/ragged on macOS), which
+        # reads inconsistently against titles of very different lengths
+        # ("Unicode" vs. "Character decomposition mapping"). The field
+        # (content) column already starts at one fixed x regardless --
+        # `QFormLayout` sizes that column to the widest label in the
+        # form -- left-aligning the titles just makes that boundary
+        # legible as a consistent left-hand column instead of a ragged
+        # right/centered one.
         self._detail_layout.setLabelAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
@@ -640,9 +600,7 @@ class CharacterInspectorDialog(QDialog):
         """BF-087: the list/detail splitter's current position, for
         `ToggleWindowManager._on_closed` (`uniti.ui.toggle_window`) to
         persist across reopens (mirrors the existing `zoom_percent`
-        property) -- `None`
-        for a single-character dialog, which never builds a splitter.
-        Reads the live splitter directly (not just `self._splitter_sizes`,
+        property). Reads the live splitter directly (not just `self._splitter_sizes`,
         which only updates once the user actually drags it or an initial
         value was supplied) so closing without ever dragging still
         persists whatever position it actually opened at."""
@@ -671,6 +629,16 @@ class CharacterInspectorDialog(QDialog):
             ("Uppercase mapping", _mapping_or_dash(character, str.upper)),
             ("Titlecase mapping", _mapping_or_dash(character, str.title)),
             ("Unicode version", unicodedata.age(character) or "—"),
+        )
+        if self._invalid_bytes is not None:
+            raw = " ".join(f"{byte:02X}" for byte in self._invalid_bytes)
+            rows += (("Decode error bytes", raw),)
+        rows += (
+            ("UTF-8", _encoded_hex(character, "utf-8")),
+            ("Windows-1252", _encoded_hex(character, "windows-1252")),
+            ("UTF-16LE", _encoded_hex(character, "utf-16-le")),
+            ("UTF-16BE", _encoded_hex(character, "utf-16-be")),
+            (self._output_encoding, _encoded_hex(character, self._output_encoding)),
         )
         for label, value in rows:
             self._detail_layout.addRow(label, QLabel(value, self._detail_widget))

@@ -24,13 +24,57 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-def test_single_character_shows_the_character_inspector_form(qapp):
-    dialog = CharacterInspectorDialog("A", output_encoding="utf-8")
+def test_single_character_is_a_one_row_list_with_detail_and_encodings(qapp):
+    """One shape for any number of characters: a single character is a
+    one-row list, and its detail panel carries the byte encodings too."""
+
+    dialog = CharacterInspectorDialog("é", output_encoding="utf-8")
     try:
         assert dialog.windowTitle() == "UNITI — Character Inspector"
-        assert dialog.findChildren(QListView) == []
+        assert dialog._character_model.rowCount() == 1
+        assert len(dialog.findChildren(QListView)) == 1
+        layout = dialog._detail_layout
+        fields = {}
+        for row in range(layout.rowCount()):
+            label = layout.itemAt(row, layout.ItemRole.LabelRole).widget().text()
+            value = layout.itemAt(row, layout.ItemRole.FieldRole).widget().text()
+            fields[label] = value
+        assert fields["Unicode"] == "U+00E9"
+        assert fields["General category"] == "Ll"
+        assert fields["UTF-8"] == "C3 A9"
+        assert fields["Windows-1252"] == "E9"
+        assert fields["UTF-16LE"] == "E9 00"
+        assert fields["UTF-16BE"] == "00 E9"
+        assert "Decode error bytes" not in fields
     finally:
         dialog.close()
+
+
+def test_invalid_bytes_show_as_a_decode_error_row(qapp):
+    dialog = CharacterInspectorDialog(
+        "\ufffd", output_encoding="utf-8", invalid_bytes=b"\xff\xfe"
+    )
+    try:
+        layout = dialog._detail_layout
+        labels = [
+            layout.itemAt(row, layout.ItemRole.LabelRole).widget().text()
+            for row in range(layout.rowCount())
+        ]
+        row = labels.index("Decode error bytes")
+        assert layout.itemAt(row, layout.ItemRole.FieldRole).widget().text() == "FF FE"
+    finally:
+        dialog.close()
+
+
+def test_every_character_count_opens_at_the_same_default_size(qapp):
+    sizes = set()
+    for text in ("A", "AB", "ABC1"):
+        dialog = CharacterInspectorDialog(text, output_encoding="utf-8")
+        try:
+            sizes.add((dialog.width(), dialog.height()))
+        finally:
+            dialog.close()
+    assert len(sizes) == 1
 
 
 def test_selection_list_has_one_row_per_character(qapp):
@@ -256,16 +300,13 @@ def test_mapping_and_decomposition_fields_show_codepoints_not_just_glyphs(qapp):
 
 def test_detail_form_titles_are_left_aligned_at_a_fixed_column(qapp):
     """2026-09-20 request: title column left-aligned, not centered or the
-    platform-default ragged-right alignment -- both the single-character
-    form and the multi-character detail panel."""
+    platform-default ragged-right alignment -- for one character and for
+    several alike."""
 
     from PySide6.QtCore import Qt
-    from PySide6.QtWidgets import QFormLayout
-
     single = CharacterInspectorDialog("A", output_encoding="utf-8")
     try:
-        form = single.findChild(QFormLayout)
-        alignment = form.labelAlignment()
+        alignment = single._detail_layout.labelAlignment()
         assert alignment & Qt.AlignmentFlag.AlignLeft
         assert not alignment & Qt.AlignmentFlag.AlignRight
         assert not alignment & Qt.AlignmentFlag.AlignHCenter
@@ -379,16 +420,17 @@ def test_refresh_rebuilds_content_in_place_keeping_window_geometry_and_zoom(qapp
         dialog.close()
 
 
-def test_refresh_switches_between_single_character_and_selection_shapes(qapp):
-    """A refresh triggered while the dialog is open must be able to
-    switch shapes entirely -- e.g. a single-character selection grows
-    into a multi-character one, or vice versa -- not just update values
-    within the shape it opened with."""
+def test_refresh_between_one_and_many_characters_keeps_the_same_view(qapp):
+    """A refresh while the dialog is open -- a single-character selection
+    growing into a multi-character one, or back -- only changes the
+    list's rows; the window, its size and the list+detail view stay."""
 
     dialog = CharacterInspectorDialog("A", output_encoding="utf-8", on_refresh=lambda: None)
     try:
+        dialog.setGeometry(50, 60, 500, 400)
+        geometry = dialog.geometry()
         assert dialog.windowTitle() == "UNITI — Character Inspector"
-        assert dialog.findChildren(QListView) == []
+        assert dialog._character_model.rowCount() == 1
 
         dialog.refresh("AB1", output_encoding="utf-8")
         assert dialog.windowTitle() == "UNITI — Inspect Selection"
@@ -398,7 +440,9 @@ def test_refresh_switches_between_single_character_and_selection_shapes(qapp):
 
         dialog.refresh("Z", output_encoding="utf-8")
         assert dialog.windowTitle() == "UNITI — Character Inspector"
-        assert dialog.findChildren(QListView) == []
+        assert dialog._character_model.rowCount() == 1
+        assert len(dialog.findChildren(QListView)) == 1
+        assert dialog.geometry() == geometry
     finally:
         dialog.close()
 

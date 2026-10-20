@@ -4194,22 +4194,40 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is None or not view.isEnabled():
             return None
-        selection = view.state.selection
-        if selection is not None and selection[1] - selection[0] > 1:
-            return self._build_inspect_selection(view, selection, zoom_percent, geometry)
-        payload = self._character_inspector_single_payload(view, selection)
+        payload, message = self._character_inspector_payload(view)
         if payload is None:
-            QMessageBox.information(self, "Character Inspector", "No character at cursor.")
+            QMessageBox.information(self, "Character Inspector", message)
             return None
-        character, output_encoding, invalid_bytes = payload
+        text, output_encoding, invalid_bytes = payload
         return CharacterInspectorDialog(
-            character,
+            text,
             output_encoding=output_encoding,
             invalid_bytes=invalid_bytes,
             initial_zoom_percent=zoom_percent,
             initial_geometry=geometry,
+            initial_splitter_sizes=self._settings.toggle_window_splitter_sizes.get(
+                "character_inspector"
+            ),
             on_refresh=self._refresh_character_inspector,
             parent=self,
+        )
+
+    def _character_inspector_payload(
+        self, view: UNITITextView
+    ) -> tuple[tuple[str, str, bytes | None] | None, str]:
+        """What to inspect for `view`: the selection if it spans more than
+        one character, else the character at the cursor -- plus the
+        message to show when there is nothing to inspect."""
+
+        selection = view.state.selection
+        if selection is not None and selection[1] - selection[0] > 1:
+            return (
+                self._character_inspector_selection_payload(view, selection),
+                "No characters in selection.",
+            )
+        return (
+            self._character_inspector_single_payload(view, selection),
+            "No character at cursor.",
         )
 
     def show_whitespace_legend(self) -> None:
@@ -4267,36 +4285,6 @@ class UNITIMainWindow(QMainWindow):
             return None
         return text, view.document.output_encoding, None
 
-    def _build_inspect_selection(
-        self,
-        view: UNITITextView,
-        selection: tuple[int, int],
-        zoom_percent: int,
-        geometry: tuple[int, int, int, int] | None,
-    ) -> CharacterInspectorDialog | None:
-        """BF-065: the whole-selection counterpart to the single-character
-        inspector above — same dialog class, a per-character list+detail
-        view instead of one character's form."""
-
-        payload = self._character_inspector_selection_payload(view, selection)
-        if payload is None:
-            QMessageBox.information(
-                self, "Character Inspector", "No characters in selection."
-            )
-            return None
-        text, output_encoding, _ = payload
-        return CharacterInspectorDialog(
-            text,
-            output_encoding=output_encoding,
-            initial_zoom_percent=zoom_percent,
-            initial_geometry=geometry,
-            initial_splitter_sizes=self._settings.toggle_window_splitter_sizes.get(
-                "character_inspector"
-            ),
-            on_refresh=self._refresh_character_inspector,
-            parent=self,
-        )
-
     def _refresh_character_inspector(self) -> None:
         """BF-076: re-reads the current view's selection/cursor and
         repaints the already-open Character Inspector in place, rather
@@ -4309,13 +4297,7 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is None or not view.isEnabled():
             return
-        selection = view.state.selection
-        if selection is not None and selection[1] - selection[0] > 1:
-            payload = self._character_inspector_selection_payload(view, selection)
-            message = "No characters in selection."
-        else:
-            payload = self._character_inspector_single_payload(view, selection)
-            message = "No character at cursor."
+        payload, message = self._character_inspector_payload(view)
         if payload is None:
             QMessageBox.information(self, "Character Inspector", message)
             return

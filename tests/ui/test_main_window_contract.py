@@ -2410,7 +2410,7 @@ def test_character_inspector_remembers_size_and_zoom_across_reopens(tmp_path: Pa
         window.show_character_inspector()
         app.processEvents()
         dialog = window._character_inspector_dialog
-        dialog.setGeometry(50, 60, 500, 550)
+        dialog.setGeometry(50, 60, 700, 620)
         dialog.zoom_in()
         dialog.zoom_in()
         expected_zoom = dialog.zoom_percent
@@ -2424,8 +2424,8 @@ def test_character_inspector_remembers_size_and_zoom_across_reopens(tmp_path: Pa
         assert window._settings.toggle_window_geometry["character_inspector"] == (
             50,
             60,
-            500,
-            550,
+            700,
+            620,
         )
 
         # A fresh window sharing the same settings store, as a real
@@ -2440,7 +2440,7 @@ def test_character_inspector_remembers_size_and_zoom_across_reopens(tmp_path: Pa
             assert reopened.zoom_percent == expected_zoom
             geometry = reopened.geometry()
             assert (geometry.x(), geometry.y()) == (50, 60)
-            assert (geometry.width(), geometry.height()) == (500, 550)
+            assert (geometry.width(), geometry.height()) == (700, 620)
         finally:
             second_window.close_all_documents(force=True)
             second_window.close()
@@ -2455,8 +2455,8 @@ def test_character_inspector_selection_view_remembers_splitter_sizes_across_reop
     """BF-087: the list/detail splitter's position persists across reopens
     the same generic way geometry/zoom already do (`toggle_window_splitter_sizes`,
     mirroring `toggle_window_geometry`/`toggle_window_zoom_percent` above).
-    Single-character mode has no splitter at all -- `splitter_sizes` must
-    stay `None` there and never write an entry."""
+    A single character uses the same list+detail view, so it shares this
+    splitter position (see the single-character test below)."""
 
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
@@ -2511,12 +2511,12 @@ def test_character_inspector_selection_view_remembers_splitter_sizes_across_reop
         window.close()
 
 
-def test_character_inspector_single_character_mode_has_no_splitter_sizes(
+def test_character_inspector_single_character_and_selection_share_one_saved_layout(
     tmp_path: Path,
 ):
-    """BF-087: a single-character dialog never builds a splitter, so its
-    `splitter_sizes` must stay `None` and closing it must not write a
-    stale/irrelevant entry."""
+    """A single character is a one-row list in the same list+detail view
+    as a selection, so a window size and splitter position set for one
+    carry to the other -- there is one saved layout, not two."""
 
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
@@ -2538,11 +2538,28 @@ def test_character_inspector_single_character_mode_has_no_splitter_sizes(
         window.show_character_inspector()
         app.processEvents()
         dialog = window._character_inspector_dialog
-        assert dialog.splitter_sizes is None
+        assert dialog.splitter_sizes is not None
+        dialog.setGeometry(40, 60, 640, 420)
+        dialog._selection_splitter.setSizes([200, 400])
+        dialog._on_selection_splitter_moved(0, 1)
+        expected_sizes = dialog.splitter_sizes
+        geometry = dialog.geometry()
 
         window.show_character_inspector()  # toggle closed -- saves state
         app.processEvents()
-        assert "character_inspector" not in window._settings.toggle_window_splitter_sizes
+        assert (
+            window._settings.toggle_window_splitter_sizes["character_inspector"]
+            == expected_sizes
+        )
+
+        view.state.move_to(0)
+        view.state.move_to(5, selecting=True)
+        window.show_character_inspector()
+        app.processEvents()
+        reopened = window._character_inspector_dialog
+        assert reopened._character_model.rowCount() == 5
+        assert reopened.geometry() == geometry
+        assert reopened.splitter_sizes == expected_sizes
     finally:
         window.close_all_documents(force=True)
         window.close()

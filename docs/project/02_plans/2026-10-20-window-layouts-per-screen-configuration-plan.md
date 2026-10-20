@@ -66,7 +66,7 @@ Built 2026-10-20.
 - Nothing runs `_start_screen_layouts` or the quit-time `shutdown()` through a real service in a test; the full suite covers them only indirectly.
 - Find's first-run default `(0, 0, 820, 320)` still sits under the macOS menu bar.
 - `find_replace_geometry` and `toggle_window_geometry` in `settings.json` are validated only for positive width and height; the layout store bounds its values.
-- A tool window shared by two shapes (the Character Inspector's single-character form and its selection list) keeps one saved size, so a size set in one shape carries to the other.
+- Resolved 2026-10-20: the Character Inspector no longer has two shapes. It always shows the list+detail view (a single character is a one-row list), so it has one saved size and one splitter position.
 
 ## Live checks (not yet done)
 
