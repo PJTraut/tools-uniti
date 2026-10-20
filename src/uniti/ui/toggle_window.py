@@ -20,6 +20,8 @@ from dataclasses import replace as dataclass_replace
 
 from PySide6.QtWidgets import QWidget
 
+from uniti.ui.screen_geometry import clamp_geometry_to_screens, current_screen_geometries
+
 
 class ToggleWindowManager:
     """Owns the open/close/persist logic for `owner._toggle_windows`.
@@ -47,7 +49,9 @@ class ToggleWindowManager:
         signal if it has one (`ComparePane`), else `QDialog`'s own
         `finished` (`CharacterInspectorDialog`, `WhitespaceLegendWindow`),
         and persists its final geometry (always) and `zoom_percent` (if
-        the window exposes that property) back to `Settings`."""
+        the window exposes that property) back to `Settings`. The persisted
+        geometry is clamped onto a currently connected screen before it is
+        handed to `factory`."""
 
         owner = self._owner
         existing = owner._toggle_windows.get(key)
@@ -56,6 +60,11 @@ class ToggleWindowManager:
             return None
         zoom_percent = owner._settings.toggle_window_zoom_percent.get(key, 100)
         geometry = owner._settings.toggle_window_geometry.get(key)
+        if geometry is not None:
+            # These windows are frameless with a custom title bar as the only
+            # drag handle, so a position saved on a since-removed or
+            # since-shrunk monitor must be pulled back on-screen first.
+            geometry = clamp_geometry_to_screens(geometry, current_screen_geometries())
         window = factory(zoom_percent, geometry)
         if window is None:
             return None

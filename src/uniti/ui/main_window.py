@@ -124,6 +124,11 @@ from uniti.ui import open_mode as open_mode_dialog
 from uniti.ui.open_mode import OpenMode
 from uniti.ui.hotkeys import HotkeysPopup
 from uniti.ui.panes import EditorPaneTree
+from uniti.ui.screen_geometry import (
+    NATIVE_TITLE_BAR_HEIGHT,
+    clamp_geometry_to_screens,
+    current_screen_geometries,
+)
 from uniti.ui.shortcut_policy import build_shortcut_policy
 from uniti.ui.status_bar import UNITIStatusBar
 from uniti.ui.text_view import UNITITextView
@@ -2385,7 +2390,17 @@ class UNITIMainWindow(QMainWindow):
             raise TypeError("record must be a WindowRecord")
         if record.window_id != self.window_id:
             raise ValueError("window record ID does not match the window")
-        self.setGeometry(*record.geometry)
+        # The saved rectangle may name a monitor that is gone or a display
+        # that has since shrunk; pull it onto a connected screen first. The
+        # maximized/fullscreen/minimized state is applied afterwards, so it
+        # lands on the screen the clamped window sits on.
+        self.setGeometry(
+            *clamp_geometry_to_screens(
+                record.geometry,
+                current_screen_geometries(),
+                frame_top=NATIVE_TITLE_BAR_HEIGHT,
+            )
+        )
         self._panes.restore_shell(record.root)
         self._tabs = self._panes.active_leaf.tabs
         if record.window_state == "maximized":
@@ -2433,6 +2448,14 @@ class UNITIMainWindow(QMainWindow):
             state = "minimized"
         else:
             state = "normal"
+        if state != "normal":
+            # `geometry()` of a maximized/fullscreen window is the screen-sized
+            # rectangle; saving that would make "un-maximize" after a restart
+            # (possibly on a smaller monitor) restore a screen-sized window.
+            # Save the rectangle the window returns to instead.
+            normal = self.normalGeometry()
+            if normal.isValid():
+                geometry = normal
         return WindowRecord(
             self.window_id,
             (geometry.x(), geometry.y(), geometry.width(), geometry.height()),

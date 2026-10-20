@@ -2557,6 +2557,9 @@ def test_find_replace_wrap_state_persists_through_restore():
     panel = FindReplacePanel(lambda: None)
     restored = FindReplacePanel(lambda: None)
     try:
+        # An on-screen geometry: the default detached one is wider than the
+        # 800px offscreen test screen, which a restore now caps to fit.
+        panel.setGeometry(20, 30, 640, 280)
         panel.find_wrap_button.setChecked(True)
         record = panel.export_state("view-target")
         assert record.find_wrap is True

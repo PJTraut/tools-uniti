@@ -78,6 +78,9 @@ def test_complete_clean_session_round_trips_two_windows_nested_splits_and_histor
     original = _service(tmp_path, store, "original")
 
     first_window = original.new_window()
+    # On-screen placements: a never-shown window's default (0, 0, 1100, 760)
+    # does not fit the 800px offscreen test screen, which a restore now caps.
+    first_window.setGeometry(40, 60, 700, 500)
     shared_first = first_window.open_path(paths[0])
     assert shared_first is not None
     shared_second = first_window.split_right()
@@ -91,6 +94,7 @@ def test_complete_clean_session_round_trips_two_windows_nested_splits_and_histor
     assert first_window.panes.export_state().children[1].orientation == "vertical"
 
     second_window = original.new_window()
+    second_window.setGeometry(80, 90, 640, 480)
     third_document_view = second_window.open_path(paths[2])
     assert third_document_view is not None
     _wait(
