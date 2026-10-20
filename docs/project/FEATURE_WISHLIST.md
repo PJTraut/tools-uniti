@@ -30,7 +30,7 @@ An idea moves out of this list when it is either promoted to a dated `BF-NNN` en
 ## Spellcheck from Paratext word lists
 
 - Noted: 2026-10-08, from USFM field-test feedback ("toggle spellchecking using hyphenatedwords.txt data; plan this").
-- Implemented 2026-10-14: the [spellcheck plan](03_implemented/milestones/2026-10-13-usfm-spellcheck-plan.md) (S1–S5), and its "Later" list on 2026-10-15: the [follow-ups plan](03_implemented/milestones/2026-10-15-usfm-hyphenation-and-spelling-followups-plan.md) (approving and rejecting words, word pairs, Next/Previous issue, suggestions, `WordPrefixes`/`WordSuffixes`). Hyphenation in Preview was implemented in the same plan. What's left: approving or rejecting a word pair, and a shortcut for Next/Previous Spelling Issue.
+- Implemented 2026-10-14: the [spellcheck plan](03_implemented/milestones/2026-10-13-usfm-spellcheck-plan.md) (S1–S5), and its "Later" list on 2026-10-15: the [follow-ups plan](03_implemented/milestones/2026-10-15-usfm-hyphenation-and-spelling-followups-plan.md) (approving and rejecting words, word pairs, Next/Previous issue, suggestions, `WordPrefixes`/`WordSuffixes`). Hyphenation in Preview was implemented in the same plan. Implemented 2026-10-20: approving or rejecting a word pair, and shortcuts for Next/Previous Spelling Issue (Ctrl+Alt+. and Ctrl+Alt+,, rebindable). What's left: ranking suggestions by frequency, hyphenating Preview's notes frame, an automatic hyphenation rule, and marking a pair wrong from a selection in Standard and Preview (Plain Text only for now).
 
 ## Lock a file or folder (Plain Text and the other basic environments)
 

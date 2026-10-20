@@ -17,7 +17,7 @@ from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAction
 
 from uniti.core.environments.sfm.paratext_project import project_for_file
-from uniti.core.environments.sfm.spellcheck import CheckContext, Span, SpellingCache
+from uniti.core.environments.sfm.spellcheck import WORD_RE, CheckContext, Span, SpellingCache
 from uniti.core.environments.sfm.spelling import (
     HYPHENATED_WORDS_FILE,
     SPELLING_STATUS_FILE,
@@ -64,10 +64,17 @@ class SpellingController(QObject):
         self.action = QAction("Check Spelling", window)
         self.action.setCheckable(True)
         self.action.triggered.connect(lambda checked: self.set_tab(window.current_view, checked))
-        self.next_action = QAction("Next Spelling Issue", window)
-        self.next_action.triggered.connect(lambda _checked=False: self.go_to_issue(window.current_view, True))
-        self.previous_action = QAction("Previous Spelling Issue", window)
-        self.previous_action.triggered.connect(lambda _checked=False: self.go_to_issue(window.current_view, False))
+        self.next_action = window._command_action(
+            "spelling.next_issue", lambda: self.go_to_issue(window.current_view, True)
+        )
+        self.previous_action = window._command_action(
+            "spelling.previous_issue", lambda: self.go_to_issue(window.current_view, False)
+        )
+        # Attached to the window, like the environment slots, so the shortcuts
+        # resolve whichever menu the entries are in; they're off unless
+        # checking is on (`refresh`).
+        window.addAction(self.next_action)
+        window.addAction(self.previous_action)
 
     # --- what a view can do --------------------------------------------------------
 
@@ -264,14 +271,25 @@ class SpellingController(QObject):
 
         span = self.span_at(view, offset)
         project = self.project_of(view)
-        if span is None or project is None:
+        if project is None or view.spelling is None:
             return
         document = view.document
-        word = document.read(span.start, span.end)
-        spelling = span.spelling
         words = view.spelling.context.words
         user = user_words_for(project.name)
         actions: list[QAction] = []
+        if span is None:
+            pair = self.selected_pair(view)
+            if pair is not None:
+                text = f"{pair[0]} {pair[1]}"
+                if not user.is_rejected(text):
+                    reject = QAction(f"Mark “{text}” Wrong Together", menu)
+                    reject.setToolTip("Flag these two words whenever they stand together, in your own spelling list")
+                    reject.triggered.connect(lambda _checked=False: self.reject(view, text))
+                    actions.append(reject)
+            self._insert_actions(menu, actions)
+            return
+        word = document.read(span.start, span.end)
+        spelling = span.spelling
         if editable:
             offered: list[str] = []
             if spelling.correction:
@@ -298,10 +316,33 @@ class SpellingController(QObject):
                 reject.setToolTip("Count this word as wrong from now on, in your own spelling list")
                 reject.triggered.connect(lambda _checked=False: self.reject(view, word))
                 actions.append(reject)
-            if word in user:
-                forget = QAction(f"Remove “{word}” from Your Spelling List", menu)
-                forget.triggered.connect(lambda _checked=False: self.forget(view, word))
-                actions.append(forget)
+        elif not user.is_rejected(word):
+            approve = QAction(f"Approve “{word}”", menu)
+            approve.setToolTip("Count these two words as correct together from now on, in your own spelling list")
+            approve.triggered.connect(lambda _checked=False: self.approve(view, word))
+            actions.append(approve)
+        if word in user:
+            forget = QAction(f"Remove “{word}” from Your Spelling List", menu)
+            forget.triggered.connect(lambda _checked=False: self.forget(view, word))
+            actions.append(forget)
+        self._insert_actions(menu, actions)
+
+    @staticmethod
+    def selected_pair(view: "UNITITextView") -> tuple[str, str] | None:
+        """The two words of a selection that is exactly two words separated
+        by one space, in Standard (F3)."""
+
+        state = view.state
+        low, high = min(state.cursor, state.anchor), max(state.cursor, state.anchor)
+        if low == high or high - low > 200:
+            return None
+        parts = view.document.read(low, high).split(" ")
+        if len(parts) != 2 or not all(WORD_RE.fullmatch(part) for part in parts):
+            return None
+        return parts[0], parts[1]
+
+    @staticmethod
+    def _insert_actions(menu, actions: list) -> None:
         while actions and actions[-1] is None:
             actions.pop()
         if not actions:

@@ -57,6 +57,11 @@ _UNITI_FALLBACKS = {
     "environment.preview": "Ctrl+Alt+P",
     "environment.plain_mode": "Ctrl+Alt+T",
     "environment.inspect": "Ctrl+Alt+S",
+    # Check Spelling's walk through a book's flagged words. Ctrl+Alt+<key>
+    # again; the period and comma are the "next" and "previous" keys of
+    # Qt's own tab and find conventions.
+    "spelling.next_issue": "Ctrl+Alt+.",
+    "spelling.previous_issue": "Ctrl+Alt+,",
 }
 
 
@@ -321,6 +326,14 @@ def _definitions() -> tuple[CommandDefinition, ...]:
         ("environment.preview", "Preview", category.ENVIRONMENT, scope.WINDOW, "environment.preview"),
         ("environment.plain_mode", "Plain Text Mode", category.ENVIRONMENT, scope.WINDOW, "environment.plain_mode"),
         ("environment.inspect", "Inspect at Cursor", category.ENVIRONMENT, scope.WINDOW, "environment.inspect"),
+        ("spelling.next_issue", "Next Spelling Issue", category.ENVIRONMENT, scope.WINDOW, "spelling.next_issue"),
+        (
+            "spelling.previous_issue",
+            "Previous Spelling Issue",
+            category.ENVIRONMENT,
+            scope.WINDOW,
+            "spelling.previous_issue",
+        ),
     )
 
     def resolve(specification: object) -> str:

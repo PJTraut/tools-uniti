@@ -156,6 +156,9 @@ class SpellingList:
     rejected: frozenset[str] = frozenset()
     prefixes: tuple[str, ...] = ()  # normalized, longest first
     suffixes: tuple[str, ...] = ()
+    approved_pairs: frozenset[tuple[str, str]] = frozenset()  # the user's word pairs, normalized
+    rejected_pairs: frozenset[tuple[str, str]] = frozenset()
+    _pairs: dict[tuple[str, str], str | None] | None = field(default=None, repr=False)
     _cache: dict[str, Spelling] = field(default_factory=dict, repr=False)
     _vocabulary: dict[int, list[tuple[str, int]]] | None = field(default=None, repr=False)
 
@@ -165,7 +168,16 @@ class SpellingList:
 
     @property
     def wrong_pairs(self) -> dict[tuple[str, str], str | None]:
-        return self.status_data.wrong_pairs if self.status_data is not None else {}
+        """The pairs flagged as wrong together: Paratext's `W` pairs the user
+        hasn't approved, and the pairs the user marked wrong."""
+
+        if self._pairs is None:
+            pairs = dict(self.status_data.wrong_pairs) if self.status_data is not None else {}
+            for pair in self.approved_pairs:
+                pairs.pop(pair, None)
+            pairs.update({pair: None for pair in self.rejected_pairs})
+            self._pairs = pairs
+        return self._pairs
 
     def derive(
         self,
@@ -181,13 +193,30 @@ class SpellingList:
             kept = {normalize(item) for item in items if item.strip()}
             return tuple(sorted(kept, key=lambda item: (-len(item), item)))
 
+        def split(items: Iterable[str]) -> tuple[frozenset[str], frozenset[tuple[str, str]]]:
+            """Single words, and the entries of two words (`go at`), apart."""
+
+            words: set[str] = set()
+            pairs: set[tuple[str, str]] = set()
+            for item in items:
+                parts = normalize(item).split(" ")
+                if len(parts) == 1:
+                    words.add(parts[0])
+                elif len(parts) == 2 and all(parts):
+                    pairs.add((parts[0], parts[1]))
+            return frozenset(words), frozenset(pairs)
+
+        approved_words, approved_pairs = split(approved)
+        rejected_words, rejected_pairs = split(rejected)
         return SpellingList(
             self.status_data,
             self.hyphenated,
-            frozenset(normalize(word) for word in approved),
-            frozenset(normalize(word) for word in rejected),
+            approved_words,
+            rejected_words,
             affixes(prefixes),
             affixes(suffixes),
+            approved_pairs,
+            rejected_pairs,
             _vocabulary=self._vocabulary,
         )
 

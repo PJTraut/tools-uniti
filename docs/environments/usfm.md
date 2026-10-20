@@ -121,12 +121,13 @@ A note's categories are the words inside its `\cat … \cat*` (`\cat People Plac
 Right-click a flagged word, in Plain Text, Standard or Preview. At the top of the menu:
 - **Use “correction”**, when Paratext gives one, and **Change to “word”** for the nearest correct words in the project's lists (up to five: one edit away for a word of up to seven letters, two for longer ones; keeps the word's capitals). They replace the word as one edit that Undo takes back, in Plain Text and Standard. A locked or read-only book refuses, as for any edit. Preview, which can't be edited, offers none.
 - **Approve “word”** counts the word as correct from now on. **Mark “word” Wrong** counts it as wrong. **Remove “word” from Your Spelling List** undoes either.
+- **A word pair.** On a pair Paratext marks wrong together (`grain field`, underlined as one), **Approve “grain field”** counts the two words as correct together, and their words are judged singly again. To flag a pair yourself, select exactly two words separated by one space in Plain Text and choose **Mark “go at” Wrong Together**; the pair is underlined in the "wrong" colour wherever the two words stand together. **Remove “go at” from Your Spelling List** undoes either.
 
-Approved and rejected words are kept in **your own spelling list**, never in Paratext's: `…/Environments/USFM/Spelling/<project short name>.json`, with `approved` and `rejected` words as you typed them. It sits above Paratext's lists, applies to every book and window of the project at once, and is read again when you switch back to the window. UNITI never writes `SpellingStatus.xml`, so Paratext's Send/Receive can't be disturbed. A word you reject is underlined in the "wrong" colour; hovering says "Marked wrong in your spelling list".
+Approved and rejected words are kept in **your own spelling list**, never in Paratext's: `…/Environments/USFM/Spelling/<project short name>.json`, with `approved` and `rejected` words (and pairs, written `go at`) as you typed them. It sits above Paratext's lists, applies to every book and window of the project at once, and is read again when you switch back to the window. UNITI never writes `SpellingStatus.xml`, so Paratext's Send/Receive can't be disturbed. A word you reject is underlined in the "wrong" colour; hovering says "Marked wrong in your spelling list".
 
 ### Next and previous issue
 
-**USFM → Next Spelling Issue** and **Previous Spelling Issue** (on while Check Spelling is on) select the next or previous flagged word from the caret, wrapping round the book, in every mode; sync follows. The status bar says "Spelling issue 3 of 18: wrong “word”". Turning Check Spelling on, or showing another book of the tab, shows the book's count in the status bar: "GEN: 2 wrong, 14 unknown words".
+**USFM → Next Spelling Issue** (Ctrl+Alt+.) and **Previous Spelling Issue** (Ctrl+Alt+,), on while Check Spelling is on, select the next or previous flagged word from the caret, wrapping round the book, in every mode; sync follows. The status bar says "Spelling issue 3 of 18: wrong “word”". Turning Check Spelling on, or showing another book of the tab, shows the book's count in the status bar: "GEN: 2 wrong, 14 unknown words".
 
 ## Find and Replace across a project
 
@@ -179,7 +180,7 @@ When a mapping lands on a verse the text doesn't have, sync uses the same refere
 | Validate USFM | Ctrl+Alt+V | unmatched end markers, plus the `usfmtc` reference grammar check |
 | Check Marker Placement | — | each marker's `OccursUnder` against the loaded stylesheets |
 | Check Undefined Markers | — | markers no loaded stylesheet defines (see [Undefined markers](#undefined-markers)) |
-| Next / Previous Spelling Issue | — | select the next or previous flagged word (see [Check Spelling](#check-spelling)) |
+| Next / Previous Spelling Issue | Ctrl+Alt+. / Ctrl+Alt+, | select the next or previous flagged word (see [Check Spelling](#check-spelling)) |
 | Hyphenate Preview | — | break words at their listed points in Preview (see [Hyphenating Preview](#hyphenating-preview)) |
 | Inspect Marker at Cursor | Ctrl+Alt+S | the Style Inspector at the marker under the caret |
 | Style Inspector… | — | every marker's effective style, with the layer each value comes from |

@@ -116,6 +116,8 @@ def test_standard_commands_use_qt_resolved_portable_sequences(qapp):
         "environment.preview",
         "environment.plain_mode",
         "environment.inspect",
+        "spelling.next_issue",
+        "spelling.previous_issue",
     }
     # "New" (Ctrl/Cmd+N) is claimed by file.new (new plain-text file); New
     # Window keeps its own dedicated shortcut so the two never collide.

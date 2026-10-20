@@ -82,7 +82,7 @@ def test_menu_bar_uses_compact_coteditor_reference_structure():
     environment_slots = {
         action
         for command_id, action in window._command_actions.items()
-        if command_id.startswith("environment.")
+        if command_id.startswith(("environment.", "spelling."))
     }
     assert environment_slots <= set(window.actions())
     assert set(window._command_actions.values()) - environment_slots <= reachable

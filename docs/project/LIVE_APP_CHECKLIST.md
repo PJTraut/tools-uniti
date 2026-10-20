@@ -96,7 +96,8 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] Approve a word: it stops being underlined in every split and window of the project; quit and restart: still approved. Mark a correct word wrong: it's underlined, and **Remove … from Your Spelling List** undoes it. `SpellingStatus.xml` is untouched.
 - [ ] A project with `WordSuffixes` in `Settings.xml` (`usNIVv3`): `Paulʼs`-style words aren't flagged when `Paul` is correct.
 - [ ] `rnBKCv1`: a word pair Paratext marks wrong (`ata wuzoba`) is underlined as one.
-- [ ] **Next / Previous Spelling Issue** walk the book, wrap round, and the status bar counts them.
+- [ ] **Next / Previous Spelling Issue** walk the book, wrap round, and the status bar counts them; Ctrl+Alt+. and Ctrl+Alt+, do the same, and both can be rebound in Hotkeys.
+- [ ] Right-click a pair Paratext marks wrong (`ata wuzoba` in `rnBKCv1`): **Approve** stops it being underlined. In Plain Text select two words and choose **Mark … Wrong Together**: the pair is underlined wherever it stands; **Remove … from Your Spelling List** undoes it.
 
 ## 15. Grouped Tabs (BF-082, ordinary windows)
 - [ ] **View › Grouped Tabs** on, in an ordinary window: files stack per group in each split; it feels right to use.

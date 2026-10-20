@@ -217,3 +217,48 @@ def test_a_word_is_correct_when_a_listed_affix_leaves_a_correct_word():
     assert words.status("Pauls").state is SpellingState.UNKNOWN  # `s` isn't one of the affixes
     assert words.status("ʼs").state is SpellingState.UNKNOWN  # nothing left of it
     assert words.status("talking").state is SpellingState.UNKNOWN  # `talk` isn't a word here
+
+
+# --- F3 (later): approving and rejecting a word pair --------------------------------
+
+
+def test_an_approved_pair_is_no_longer_flagged_and_its_words_are_judged_singly():
+    words = _pair_list().derive(approved=["Grain Field"])
+
+    assert words.wrong_pairs == {}
+    assert _flagged("\\p the grain field", words) == []
+    assert words.status("grain").state is SpellingState.CORRECT
+
+
+def test_a_rejected_pair_flags_both_words_as_the_users_own():
+    base = _list("go", "at", "the")
+    words = base.derive(rejected=["go at"])
+
+    found = _flagged("\\p the go at the go", words)
+
+    assert [(text, spelling.pair, spelling.user) for text, spelling in found] == [("go at", True, True)]
+    assert describe(found[0][1], "NIV") == "Marked wrong in your spelling list"
+    assert words.status("go").state is SpellingState.CORRECT  # the words alone are untouched
+
+
+def test_a_rejected_pair_overrides_the_list_and_removing_it_brings_paratexts_back():
+    words = _pair_list().derive(rejected=["grain field"])
+    assert words.wrong_pairs == {("grain", "field"): None}  # the user's, without Paratext's correction
+
+    assert _pair_list().derive(rejected=[]).wrong_pairs == {("grain", "field"): "grainfield"}
+
+
+def test_entries_of_more_than_two_words_are_ignored():
+    words = _list("a", "b", "c").derive(rejected=["a b c", " ", "a  b"])
+
+    assert words.wrong_pairs == {} and words.rejected == frozenset()
+
+
+def test_pairs_ride_in_the_user_file_beside_the_words(tmp_path: Path):
+    set_user_config_root(tmp_path)
+    user = user_words_for("NIV")
+    user.reject("go at")
+    user.approve("Zerubbabel")
+
+    saved = json.loads(user_words_path("NIV").read_text(encoding="utf-8"))
+    assert saved == {"approved": ["Zerubbabel"], "rejected": ["go at"]}

@@ -24,7 +24,7 @@ from .tokens import SfmTokenKind
 # A word: letters and combining marks, joined by an apostrophe, a hyphen or
 # ZWJ/ZWNJ only when the run goes on with a letter. Digits and punctuation
 # split words.
-_WORD_RE = regex.compile(
+WORD_RE = regex.compile(
     r"[\p{L}\p{M}]+(?:['’\-‑‌‍](?=[\p{L}\p{M}])[\p{L}\p{M}]*)*"
 )
 # After these, the first word of the text is the number (`\c 1`, `\v 2-3`).
@@ -147,7 +147,7 @@ def check_line(line: str, state: LineState, context: CheckContext) -> tuple[tupl
             in_attributes = True
         elif in_attributes:
             continue
-        matches = list(_WORD_RE.finditer(body))
+        matches = list(WORD_RE.finditer(body))
         pairs = context.words.wrong_pairs
         index = 0
         while index < len(matches):
@@ -158,7 +158,12 @@ def check_line(line: str, state: LineState, context: CheckContext) -> tuple[tupl
                     pair = (normalize(match.group()), normalize(following.group()))
                     if pair in pairs:
                         # Paratext marks the two words wrong together (F-D3).
-                        spelling = Spelling(SpellingState.WRONG, correction=pairs[pair], pair=True)
+                        spelling = Spelling(
+                            SpellingState.WRONG,
+                            correction=pairs[pair],
+                            pair=True,
+                            user=pair in context.words.rejected_pairs,
+                        )
                         spans.append(Span(offset + match.start(), offset + following.end(), spelling))
                         index += 2
                         continue
@@ -306,6 +311,7 @@ __all__ = [
     "CheckContext",
     "LineState",
     "START",
+    "WORD_RE",
     "Span",
     "SpellingCache",
     "check_line",

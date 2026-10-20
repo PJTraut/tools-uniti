@@ -229,3 +229,77 @@ def test_the_rich_views_right_click_finds_the_word_under_it(desktop, tmp_path: P
     window._spelling.add_context_entries(menu, view, source_offset, editable=pane.editable)
 
     assert [a.text() for a in menu.actions() if a.text()][:1] == ["Change to “beginning”"]
+
+
+_PAIRS = (
+    "\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 The grain field and go at it.\r\n"
+)
+
+
+def _pair_project(folder: Path) -> Path:
+    _project(folder)
+    (folder / "01GEN.usfm").write_bytes(_PAIRS.encode())
+    (folder / "SpellingStatus.xml").write_text(
+        _LIST.replace(
+            "</SpellingStatus>",
+            '<Status Word="grain" State="R"/><Status Word="field" State="R"/>'
+            '<Status Word="go" State="R"/><Status Word="at" State="R"/><Status Word="it" State="R"/>'
+            '<Status Word="grain field" State="W"/></SpellingStatus>',
+        ),
+        encoding="utf-8",
+    )
+    return folder
+
+
+def test_a_flagged_pair_can_be_approved_and_removed_again(desktop, tmp_path: Path):
+    _app, service = desktop
+    window, view = _checking(service, _pair_project(tmp_path / "niv"))
+    assert _flagged(view) == ["grain field"]
+
+    entries, _menu = _entries(window, view, "grain")
+    assert "Approve “grain field”" in entries and "Mark “grain field” Wrong" not in entries
+    entries["Approve “grain field”"].trigger()
+
+    assert _flagged(view) == []
+    assert user_words_for("NIV").is_approved("grain field")
+
+
+def test_two_selected_words_can_be_marked_wrong_together_and_removed(desktop, tmp_path: Path):
+    _app, service = desktop
+    window, view = _checking(service, _pair_project(tmp_path / "niv"))
+    text = view.document.read(0, view.document.total_chars())
+    start = text.index("go at")
+    view._select_range(start, start + len("go at"))
+    menu = QMenu()
+
+    window._spelling.add_context_entries(menu, view, start + 1, editable=True)
+    entries = {action.text(): action for action in menu.actions() if action.text()}
+    assert "Mark “go at” Wrong Together" in entries
+    entries["Mark “go at” Wrong Together"].trigger()
+
+    assert _flagged(view) == ["grain field", "go at"]
+    again, _menu = _entries(window, view, "go")
+    assert "Remove “go at” from Your Spelling List" in again and not any(t.startswith("Approve") for t in again)
+    again["Remove “go at” from Your Spelling List"].trigger()
+    assert _flagged(view) == ["grain field"]
+
+
+def test_one_word_or_three_selected_words_offer_no_pair(desktop, tmp_path: Path):
+    _app, service = desktop
+    window, view = _checking(service, _pair_project(tmp_path / "niv"))
+    text = view.document.read(0, view.document.total_chars())
+    for selection in ("go", "go at it", "go  at"):
+        start = text.index(selection.split()[0])
+        view._select_range(start, start + len(selection))
+        menu = QMenu()
+        window._spelling.add_context_entries(menu, view, start + 1, editable=True)
+        assert not [a for a in menu.actions() if "Wrong Together" in a.text()]
+
+
+def test_next_and_previous_issue_have_rebindable_shortcuts(desktop, tmp_path: Path):
+    _app, service = desktop
+    window, _view = _checking(service, _project(tmp_path / "niv"))
+
+    assert window._command_actions["spelling.next_issue"] is window._spelling.next_action
+    assert window._spelling.next_action.shortcut().toString() != ""
+    assert window._spelling.next_action.shortcut() != window._spelling.previous_action.shortcut()

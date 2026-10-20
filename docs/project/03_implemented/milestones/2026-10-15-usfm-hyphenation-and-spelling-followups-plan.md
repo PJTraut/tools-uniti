@@ -71,4 +71,6 @@ Implemented 2026-10-15. Core: `sfm/hyphenation.py`, `sfm/user_words.py`, and add
 - `rnBKCv1` pairs found in Genesis and Exodus: `ata wuzoba`, `intege nke`, `ku bwʼubuzima`.
 - Qt's soft hyphen needs no layout code: a justified `QTextEdit` broke `understand` as "under-" / "stand" and drew the hyphen only there.
 
-**Left for later:** approving or rejecting a word pair; suggestions ranked by frequency; a shortcut for Next/Previous Spelling Issue; hyphenating Preview's notes frame; an automatic hyphenation rule for words not in the list.
+**Added 2026-10-20:** approving a pair Paratext marks wrong (`Approve “grain field”`), marking two selected words wrong together (`Mark “go at” Wrong Together`, Plain Text), and rebindable shortcuts for Next/Previous Spelling Issue (`spelling.next_issue` Ctrl+Alt+., `spelling.previous_issue` Ctrl+Alt+,). Pairs are entries of two words in the user list's `approved` and `rejected` arrays, so the file format is unchanged; `SpellingList.derive` splits them off and `wrong_pairs` is Paratext's pairs minus the approved plus the rejected.
+
+**Left for later:** suggestions ranked by frequency; hyphenating Preview's notes frame; an automatic hyphenation rule for words not in the list; marking a pair wrong from a selection in Standard and Preview.
