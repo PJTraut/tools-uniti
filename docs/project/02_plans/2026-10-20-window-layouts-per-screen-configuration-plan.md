@@ -59,6 +59,15 @@ Built 2026-10-20.
 - No UI to forget a layout; the store is bounded instead.
 - Other dialogs (Hotkeys, Theme Editor, Recovery Center, …) are modal or short-lived and use default sizes; none persists a position.
 
+## Open items (2026-10-20)
+
+- [BF-097](../BETA_FEEDBACK.md) — keyboard font zoom in a floating window changes the editor behind it (new field-test feedback, not investigated).
+- [BF-098](../BETA_FEEDBACK.md) — Character Inspector reported opening full screen; not reproduced, partly addressed by the 80% shrink (`5bf877d`); needs the reporter's steps.
+- Nothing runs `_start_screen_layouts` or the quit-time `shutdown()` through a real service in a test; the full suite covers them only indirectly.
+- Find's first-run default `(0, 0, 820, 320)` still sits under the macOS menu bar.
+- `find_replace_geometry` and `toggle_window_geometry` in `settings.json` are validated only for positive width and height; the layout store bounds its values.
+- A tool window shared by two shapes (the Character Inspector's single-character form and its selection list) keeps one saved size, so a size set in one shape carries to the other.
+
 ## Live checks (not yet done)
 
 With a laptop and an external monitor:

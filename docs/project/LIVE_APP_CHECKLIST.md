@@ -101,6 +101,17 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 ## 15. Grouped Tabs (BF-082, ordinary windows)
 - [ ] **View › Grouped Tabs** on, in an ordinary window: files stack per group in each split; it feels right to use.
 
+## 16. Floating windows across screen changes (P1–P2)
+Needs a laptop and an external monitor. [Plan](02_plans/2026-10-20-window-layouts-per-screen-configuration-plan.md).
+- [ ] Open Find (detached), Character Inspector and Compare on the external monitor and maximize the main window there. Quit, unplug the monitor, launch: every window is on the laptop, the main window is scaled, and un-maximizing gives a laptop-sized window, not a screen-sized one.
+- [ ] Windows that were large on the external monitor (Compare, Whitespace Legend at a high zoom) come back smaller than the laptop screen, proportions kept, with their title bars visible.
+- [ ] Replug with UNITI running: the windows jump back to where they were on the external monitor.
+- [ ] Change the external monitor's scaled resolution: the windows adapt (the main window scales with the screen, tool windows keep their size); change it back: the first layout returns exactly.
+- [ ] Sleep and wake with the monitor attached: no window moves.
+- [ ] Unplug the monitor while a toggle window is open on it: it moves onto the laptop, and its hotkey still closes it.
+- [ ] `window-layouts.json` appears next to `settings.json`; it keeps at most eight layouts.
+- [ ] Character Inspector with a word selected (Opt+Cmd+I): opens at a sensible size, on the screen the main window is on ([BF-098](BETA_FEEDBACK.md#bf-098--character-inspector-opened-full-screen-and-did-not-resize)).
+
 ## Results
 
 Report anything wrong here, or tell Claude; each failure becomes a fix or a BF entry.
