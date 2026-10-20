@@ -8,7 +8,8 @@ an unreadable or invalid project reads as "not a project".
 
 `Settings.xml` varies across Paratext versions, so only these fields are
 read: `Name`, `FullName`, `LanguageIsoCode`, `Encoding`, `Versification`,
-`StyleSheet`, `Guid`, `BooksPresent`, and the file naming — Paratext 8+
+`StyleSheet`, `Guid`, `BooksPresent`, `LeftToRight` (the project's text
+direction) and `DefaultFont`, and the file naming — Paratext 8+
 `<Naming PrePart PostPart BookNameForm>` or the older `FileNamePrePart` /
 `FileNamePostPart` / `FileNameBookNameForm` elements.
 """
@@ -132,6 +133,11 @@ class ParatextProject:
     # spelt correctly when what's left is (spellcheck follow-up F5).
     word_prefixes: tuple[str, ...] = ()
     word_suffixes: tuple[str, ...] = ()
+    # `LeftToRight` (`F`: right-to-left, `T`: left-to-right); None when it is
+    # missing or unreadable (text direction plan W1).
+    right_to_left: bool | None = None
+    # `DefaultFont`: the family the project's text is meant to be read in.
+    default_font: str | None = None
 
     @classmethod
     def load(cls, folder: Path) -> "ParatextProject | None":
@@ -175,6 +181,8 @@ class ParatextProject:
             ),
             word_prefixes=_word_lines(root, "WordPrefixes"),
             word_suffixes=_word_lines(root, "WordSuffixes"),
+            right_to_left=_right_to_left(_text(root, "LeftToRight")),
+            default_font=_text(root, "DefaultFont"),
         )
 
     @property
@@ -386,6 +394,19 @@ def _word_lines(root, tag: str) -> tuple[str, ...]:
         if line:
             seen.setdefault(line)
     return tuple(seen)
+
+
+def _right_to_left(value: str | None) -> bool | None:
+    """`LeftToRight`'s `F` is right-to-left and `T` left-to-right (Paratext
+    writes `T`/`F`; `true`/`false` are accepted too); anything else is
+    unknown."""
+
+    flag = (value or "").lower()
+    if flag in ("f", "false"):
+        return True
+    if flag in ("t", "true"):
+        return False
+    return None
 
 
 def _int(value: str | None) -> int | None:

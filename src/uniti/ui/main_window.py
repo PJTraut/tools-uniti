@@ -3287,6 +3287,7 @@ class UNITIMainWindow(QMainWindow):
         view = self.current_view
         if view is not None and view.isEnabled():
             view.set_text_direction_override(value)
+            self._rich_views.apply_direction(view)
         self._sync_text_direction_action(view)
 
     def _sync_text_direction_action(self, view: UNITITextView | None) -> None:
@@ -5475,6 +5476,9 @@ class UNITIMainWindow(QMainWindow):
             self._rich_views.catch_up()
             self._spelling.window_activated()
             self._hyphenation.window_activated()
+            # A project's `LeftToRight` may have been changed in Paratext.
+            for view in self.views:
+                self._rich_views.apply_direction(view)
 
     @property
     def is_live_window(self) -> bool:

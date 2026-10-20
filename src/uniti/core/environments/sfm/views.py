@@ -384,6 +384,13 @@ def _caller_bounds(source: str, opener_end: int, closer_start: int) -> tuple[int
     return start, end, body
 
 
+def _with_direction(attrs: dict[str, str], direction: str | None) -> dict[str, str]:
+    """`attrs` with the view's `direction` as a default for the block (an
+    attribute the block already has is kept)."""
+
+    return attrs if direction is None else {"direction": direction, **attrs}
+
+
 _NOTE_ORDER = ("f", "fe", "ef", "x", "ex")
 
 
@@ -407,6 +414,7 @@ def layout_projection(
     show_markers: bool,
     hidden_categories: frozenset[str] = frozenset(),
     hyphenation: "HyphenationRules | None" = None,
+    direction: str | None = None,
 ) -> Projection:
     """Paragraph blocks with each marker's effective STY formatting.
 
@@ -420,8 +428,15 @@ def layout_projection(
     hyphenating paragraphs. In both, source line breaks inside a paragraph flow as
     spaces — in USFM a line break is just whitespace — and a new block
     starts at each paragraph or chapter marker.
+
+    `direction` (``"ltr"`` or ``"rtl"``; the view's choice, else the
+    project's) is put on every block, the notes frame's too, as the
+    ``direction`` attribute; a block's own ``direction`` (a style's) wins.
+    None leaves it off, so the UI decides from the text as before.
     """
 
+    if direction not in ("ltr", "rtl"):
+        direction = None
     registry = styles.registry
     tokens = tokenize_sfm(source)
     pairs: dict[int, tuple[int, str]] = {}
@@ -523,7 +538,7 @@ def layout_projection(
         close_cell()
         unclosed_note = False
         if block is not None:
-            builder.block(block[0], builder.view_position, block[2], block[1])
+            builder.block(block[0], builder.view_position, _with_direction(block[2], direction), block[1])
             block = None
 
     def tag(token_end: int, token_text: str, marker: str, *, separator: bool = True) -> None:
@@ -745,7 +760,7 @@ def layout_projection(
     for start, end, attrs, marker in sorted(spans, key=lambda span: (span[0], -span[1])):
         # Outer spans first, so a nested style is merged over its parent's.
         builder.span(start, end, attrs, marker)
-    sections = _note_sections(source, tokens, styles, pairs, closers, notes, key) if notes else ()
+    sections = _note_sections(source, tokens, styles, pairs, closers, notes, key, direction) if notes else ()
     return builder.build(len(source), notes=sections)
 
 
@@ -757,6 +772,7 @@ def _note_sections(
     closers: dict[int, int],
     notes: list[_Note],
     key: str,
+    direction: str | None = None,
 ) -> tuple[NoteSection, ...]:
     """One `NoteSection` per note kind: every note body of that kind on
     its own line, after its caller."""
@@ -770,7 +786,7 @@ def _note_sections(
     for kind in order:
         builder = ProjectionBuilder(f"{key}.notes.{kind}")
         spans: list[tuple[int, int, dict[str, str], str | None]] = []
-        block_attrs = presentation_attrs(styles, kind, block=True)
+        block_attrs = _with_direction(presentation_attrs(styles, kind, block=True), direction)
         first = True
         for note in (note for note in notes if note.marker == kind):
             builder.hidden(note.body_start, kind)
@@ -876,6 +892,18 @@ class SfmStandardView(_SfmViewBase):
     def project(self, source: str) -> Projection:
         return layout_projection(source, self._styles(), self.key, show_markers=True)
 
+    def project_with(
+        self,
+        source: str,
+        hidden_categories: frozenset[str] = frozenset(),
+        hyphenation: "HyphenationRules | None" = None,
+        direction: str | None = None,
+    ) -> Projection:
+        """Standard with the reading `direction` of its blocks (the
+        categories and hyphenation are Preview's, and ignored here)."""
+
+        return layout_projection(source, self._styles(), self.key, show_markers=True, direction=direction)
+
 
 class SfmPreviewView(_SfmViewBase):
     """Best-effort print-like rendering: no markup, read-only."""
@@ -897,6 +925,18 @@ class SfmPreviewView(_SfmViewBase):
         """Preview without the notes of the hidden categories, and with
         soft hyphens at `hyphenation`'s break points."""
 
+        return self.project_with(source, hidden_categories, hyphenation)
+
+    def project_with(
+        self,
+        source: str,
+        hidden_categories: frozenset[str] = frozenset(),
+        hyphenation: "HyphenationRules | None" = None,
+        direction: str | None = None,
+    ) -> Projection:
+        """Preview with everything a tab can ask of it: the hidden
+        categories, hyphenation and the reading `direction` of its blocks."""
+
         return layout_projection(
             source,
             self._styles(),
@@ -904,6 +944,7 @@ class SfmPreviewView(_SfmViewBase):
             show_markers=False,
             hidden_categories=hidden_categories,
             hyphenation=hyphenation,
+            direction=direction,
         )
 
     def view_commands(self) -> tuple[ViewCommand, ...]:

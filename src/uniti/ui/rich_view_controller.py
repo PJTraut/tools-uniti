@@ -23,6 +23,7 @@ from PySide6.QtCore import QEvent, QObject
 from PySide6.QtWidgets import QApplication
 
 from uniti.app.editor_state import EditorStateSnapshot
+from uniti.core.environments.sfm.paratext_project import project_for_file
 from uniti.core.rich_views.provider import EditorViewProvider, environment_view_providers
 
 if TYPE_CHECKING:
@@ -115,6 +116,7 @@ class RichViewController:
             pane = self._ensure_pane(view)
             pane.set_hidden_categories(view.hidden_note_categories, refresh=False)
             pane.set_hyphenation(self._window._hyphenation.rules_for(view), refresh=False)
+            pane.set_direction(self.direction_for(view), refresh=False)
             pane.bind(view.document, providers, provider_key, *self._appearance(view, provider_key, providers))
             pane.set_spelling(view.spelling)
             pane.show_source_caret(view.state.cursor, view.state.anchor)
@@ -133,6 +135,31 @@ class RichViewController:
             self._showing.discard(view.view_id)
         self._refresh_window_actions()
         return True
+
+    @staticmethod
+    def direction_for(view: "UNITITextView | None") -> str | None:
+        """The reading direction a rich view gives `view`'s paragraphs
+        (text direction plan W-D2): the tab's Auto / Left-to-Right /
+        Right-to-Left choice, else its Paratext project's `LeftToRight`
+        setting, else None (the text decides)."""
+
+        if view is None:
+            return None
+        choice = view.text_direction_override
+        if choice in ("ltr", "rtl"):
+            return choice
+        project = project_for_file(view.document.path)
+        if project is None or project.right_to_left is None:
+            return None
+        return "rtl" if project.right_to_left else "ltr"
+
+    def apply_direction(self, view: "UNITITextView | None") -> None:
+        """Make `view`'s pane lay out with its current direction;
+        idempotent (the pane re-renders only when it changed)."""
+
+        pane = self.pane_for(view)
+        if pane is not None:
+            pane.set_direction(self.direction_for(view))
 
     def close(self, view: "UNITITextView | None" = None) -> None:
         """Plain Text for `view` (default: the current tab): forget its choice."""

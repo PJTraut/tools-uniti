@@ -218,6 +218,9 @@ def char_format(attrs, base: QFont, palette: RichPalette) -> QTextCharFormat:
     return fmt
 
 
+_LAYOUT_DIRECTIONS = {"ltr": Qt.LayoutDirection.LeftToRight, "rtl": Qt.LayoutDirection.RightToLeft}
+
+
 def block_format(attrs) -> QTextBlockFormat:
     fmt = QTextBlockFormat()
     align = attrs.get("align")
@@ -247,6 +250,9 @@ def block_format(attrs) -> QTextBlockFormat:
         fmt.setTopMargin(_float(attrs["space_before"]))
     if "space_after" in attrs:
         fmt.setBottomMargin(_float(attrs["space_after"]))
+    direction = _LAYOUT_DIRECTIONS.get(attrs.get("direction", ""))
+    if direction is not None:
+        fmt.setLayoutDirection(direction)
     if attrs.get("table_row") == "yes":
         tab = QTextOption.Tab
         fmt.setTabPositions([tab(index * 1.6 * _INCH_PX, QTextOption.TabType.LeftTab) for index in range(1, 9)])
@@ -346,6 +352,15 @@ def render_projection(document: QTextDocument, projection: Projection, base: QFo
             cursor.setPosition(offsets.to_qt(start))
             cursor.setPosition(offsets.to_qt(max(start, end - 1 if end > start else end)), QTextCursor.MoveMode.KeepAnchor)
             cursor.mergeBlockFormat(block_format(block.attrs))
+        # The empty line after the text's final line break (where the caret
+        # rests at the end of Standard) belongs to no block: it reads the
+        # way the last block does.
+        direction = _LAYOUT_DIRECTIONS.get(projection.blocks[-1].attrs.get("direction", ""))
+        if direction is not None and text.endswith("\n"):
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            format_ = QTextBlockFormat()
+            format_.setLayoutDirection(direction)
+            cursor.mergeBlockFormat(format_)
 
 
 def render_into(editor: QTextEdit, projection: Projection, base: QFont, palette: RichPalette) -> None:
@@ -412,18 +427,22 @@ class ProjectionCache:
         source: Callable[[], str],
         variant: frozenset[str] | None = None,
         hyphenation: object | None = None,
+        direction: str | None = None,
     ) -> Projection:
-        """`variant` (the hidden footnote categories, Preview) and
-        `hyphenation` (a project's hyphenation rules, Preview) are part of
-        the cache key: a filtered or hyphenated projection is kept beside
-        the plain one. Rules are compared by identity, so a re-read list
-        projects again."""
+        """`variant` (the hidden footnote categories, Preview), `hyphenation`
+        (a project's hyphenation rules, Preview) and `direction` (``"ltr"``
+        or ``"rtl"``, for a provider with `project_with`) are part of the
+        cache key: a filtered, hyphenated or directed projection is kept
+        beside the plain one. Rules are compared by identity, so a re-read
+        list projects again."""
 
         token = self._token(provider)
         per_document = self._entries.setdefault(document, {})
         slot = provider.key if not variant else f"{provider.key}|{'|'.join(sorted(variant))}"
         if hyphenation is not None:
             slot += "|hyphen"
+        if direction is not None:
+            slot += f"|{direction}"
         cached = per_document.get(slot)
         if (
             cached is not None
@@ -433,8 +452,10 @@ class ProjectionCache:
             and cached[3] is hyphenation
         ):
             return cached[2]
-        if not variant and hyphenation is None:
+        if not variant and hyphenation is None and direction is None:
             projection = provider.project(source())
+        elif hasattr(provider, "project_with"):
+            projection = provider.project_with(source(), variant or frozenset(), hyphenation, direction)
         else:
             projection = provider.project_filtered(source(), variant or frozenset(), hyphenation)
         per_document[slot] = (document.revision, token, projection, hyphenation)
@@ -713,6 +734,7 @@ class RichViewPane(QWidget):
         # Preview: the footnote categories left out (filter, plan 2026-10-14).
         self._hidden_categories: frozenset[str] = frozenset()
         self._hyphenation = None  # a project's `HyphenationRules` while Hyphenate Preview is on
+        self._direction: str | None = None  # "ltr" | "rtl": the tab's reading direction (None: from the text)
         self._spelling = None
         self._spelling_book: tuple[tuple, object] | None = None
         self._spelling_shown: list[tuple[int, int, object]] = []
@@ -903,6 +925,7 @@ class RichViewPane(QWidget):
                 self.source_text,
                 self._hidden_categories if variant and self._hidden_categories else None,
                 self._hyphenation if variant else None,
+                self._direction if hasattr(self.provider, "project_with") else None,
             )
         except Exception:
             logger.exception("rich view %r failed to project", self.provider.key)
@@ -1082,6 +1105,20 @@ class RichViewPane(QWidget):
             return
         self._hyphenation = rules
         if refresh and hasattr(self.provider, "project_filtered"):
+            self.refresh()
+
+    def set_direction(self, direction: str | None, *, refresh: bool = True) -> None:
+        """The reading direction of every paragraph (``"ltr"``, ``"rtl"``;
+        None: Qt decides from each paragraph's first strong character); a
+        provider without `project_with` ignores it. Re-renders when it
+        changed."""
+
+        if direction not in ("ltr", "rtl"):
+            direction = None
+        if direction == self._direction:
+            return
+        self._direction = direction
+        if refresh and hasattr(self.provider, "project_with"):
             self.refresh()
 
     # --- spelling (spellcheck plan S4) ---------------------------------------------

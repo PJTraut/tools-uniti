@@ -19,6 +19,7 @@ from .source_map import EOL_MARKER, Segment, SegmentRole, SourceMap
 #   font_scale    -> float as text, relative to the base font (1.0 = base)
 #   color         -> "#rrggbb"
 #   align         -> left | center | right | justify | start | end (start and end follow the reading direction)
+#   direction     -> ltr | rtl (the paragraph's reading direction; absent: the UI decides from the text)
 #   hyphenate     -> yes | no (Preview: break this paragraph's words at their listed points)
 #   left_margin, right_margin, first_indent -> inches as text
 #   space_before, space_after               -> points as text

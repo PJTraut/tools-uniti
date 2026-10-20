@@ -256,3 +256,49 @@ def test_find_file_matches_without_regard_to_case(tmp_path: Path):
     assert found is not None and found.name.lower() == "custom.vrs"
     assert find_file(tmp_path, "missing.vrs") is None
     assert find_file(tmp_path / "nowhere", "custom.vrs") is None
+
+
+def test_text_direction_comes_from_left_to_right(tmp_path: Path):
+    naming = '<Naming PrePart="" PostPart=".SFM" BookNameForm="41MAT" />'
+    cases = {"F": True, "f": True, "T": False, "true": False, "false": True, "": None, "maybe": None}
+    for index, (flag, expected) in enumerate(cases.items()):
+        folder = tmp_path / f"p{index}"
+        _settings(folder, naming=naming, extra=f"<LeftToRight>{flag}</LeftToRight>")
+        project = ParatextProject.load(folder)
+        assert project is not None and project.right_to_left is expected, flag
+
+
+def test_text_direction_is_unknown_when_the_setting_is_missing(tmp_path: Path):
+    _settings(tmp_path, naming='<Naming PrePart="" PostPart=".SFM" BookNameForm="41MAT" />')
+    project = ParatextProject.load(tmp_path)
+
+    assert project is not None
+    assert project.right_to_left is None and project.default_font is None
+
+
+def test_default_font_and_direction_are_read_with_either_naming_layout(tmp_path: Path):
+    extra = "<DefaultFont> Adobe Arabic </DefaultFont><LeftToRight>F</LeftToRight>"
+    newer = tmp_path / "newer"
+    _settings(newer, naming='<Naming PrePart="" PostPart=".SFM" BookNameForm="41MAT" />', extra=extra)
+    older = tmp_path / "older"
+    _settings(
+        older,
+        naming="<FileNamePrePart></FileNamePrePart><FileNamePostPart>.SFM</FileNamePostPart>"
+        "<FileNameBookNameForm>41MAT</FileNameBookNameForm>",
+        extra=extra,
+    )
+    for folder in (newer, older):
+        project = ParatextProject.load(folder)
+        assert project is not None
+        assert (project.right_to_left, project.default_font) == (True, "Adobe Arabic")
+
+
+def test_a_blank_default_font_is_unknown(tmp_path: Path):
+    _settings(
+        tmp_path,
+        naming='<Naming PrePart="" PostPart=".SFM" BookNameForm="41MAT" />',
+        extra="<DefaultFont>  </DefaultFont>",
+    )
+    project = ParatextProject.load(tmp_path)
+
+    assert project is not None and project.default_font is None
