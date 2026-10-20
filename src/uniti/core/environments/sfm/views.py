@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from uniti.core.rich_views.editing import EditPlan
 from uniti.core.rich_views.projection import NoteSection, Projection, ProjectionBuilder
 from uniti.core.rich_views.provider import ViewCommand
+from uniti.core.rich_views.source_map import HYPHEN, ISOLATE, LRI, PDI
 
 from .hyphenation import SOFT_HYPHEN, HyphenationRules
 from .markers import NOTE_MARKERS, is_closing, is_milestone, is_milestone_close, is_nested, marker_name
@@ -498,7 +499,7 @@ def layout_projection(
             last = 0
             for cut in cuts:
                 builder.text(start + cut, body[last:cut], line_break=" ")
-                builder.generated(SOFT_HYPHEN, "hyphen")
+                builder.generated(SOFT_HYPHEN, HYPHEN)
                 last = cut
             builder.text(end - trailing, body[last:], line_break=" ")
         if trailing:
@@ -546,6 +547,26 @@ def layout_projection(
             builder.block(block[0], builder.view_position, _with_direction(block[2], direction), block[1])
             block = None
 
+    def isolated() -> bool:
+        """Whether a tag shown now goes in an LRI…PDI isolate (W-D3): in a
+        right-to-left paragraph, so `\\p \\v 1` still reads as written."""
+
+        own = block[2].get("direction") if block is not None else None
+        return (own or direction) == "rtl"
+
+    def shown_tag(source_end: int, label: str, marker: str, token_length: int, span_marker: str | None = None) -> None:
+        """A protected tag; the first `token_length` characters of `label`
+        are the marker token."""
+
+        isolate = isolated()
+        if isolate:
+            builder.generated(LRI, ISOLATE)
+        view_start = builder.view_position
+        builder.marker(source_end, label, marker)
+        add_span(view_start, view_start + token_length, {"marker_token": "yes"}, span_marker or marker)
+        if isolate:
+            builder.generated(PDI, ISOLATE)
+
     def tag(token_end: int, token_text: str, marker: str, *, separator: bool = True) -> None:
         """Hide the marker (and its separating whitespace) or, with
         `show_markers`, show it as a protected tag."""
@@ -554,16 +575,12 @@ def layout_projection(
         if not show_markers:
             builder.hidden(end, marker)
             return
-        view_start = builder.view_position
-        builder.marker(end, token_text + (" " if end > token_end else ""), marker)
-        add_span(view_start, view_start + len(token_text), {"marker_token": "yes"}, marker)
+        shown_tag(end, token_text + (" " if end > token_end else ""), marker, len(token_text))
 
     def visible_token(token_end: int, token_text: str, marker: str) -> None:
         """A marker shown as a protected token in every mode."""
 
-        view_start = builder.view_position
-        builder.marker(token_end, token_text, marker)
-        add_span(view_start, builder.view_position, {"marker_token": "yes"}, marker)
+        shown_tag(token_end, token_text, marker, len(token_text))
 
     def new_block_line(marker: str) -> None:
         if builder.view_position and not builder_ends_with_newline(builder, source):
@@ -659,9 +676,8 @@ def layout_projection(
             # attributes and all, in Standard; nothing in Preview.
             unit_end = _milestone_end(tokens, index)
             if show_markers:
-                view_start = builder.view_position
-                builder.marker(unit_end, source[token.start : unit_end], _bare(token.text) or "milestone")
-                add_span(view_start, builder.view_position, {"marker_token": "yes"}, "milestone")
+                label = source[token.start : unit_end]
+                shown_tag(unit_end, label, _bare(token.text) or "milestone", len(label), "milestone")
             else:
                 builder.hidden(unit_end, "milestone")
             skip_until = unit_end

@@ -90,6 +90,7 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 ## 13. Justification and text direction (J1, W1–W3)
 - [ ] `\Justification Start`, `End`, `Left`, `Right`, `Center` and `Both` on a paragraph style: each sits where the stylesheet reference says. In a right-to-left book `Start` and `Left` are the right edge.
 - [ ] An Arabic or Hebrew project (`arNAV12`), Standard and Preview, with the stock stylesheet: `\qr` lines sit on the left, `\s3`/`\sp` headings on the right, and a `\q1` passage hangs from the right (first line ¼" in, the rest ¾"). View → Text Direction → Left-to-Right turns all of it round.
+- [ ] Standard in `arNAV12`: tags read `\p`, `\v 1`, `\f +` (not `p\`), from the right. Arrow keys move through a tag without a dead press, typing just after a tag goes into the text after it, Backspace there steps into the tag, and a copied passage pastes into Plain Text without invisible characters (Character Inspector shows no U+2066/U+2069).
 - [ ] `\Direction LTR` on `\ip` in the project's `uniti.sty`: the introduction paragraphs read left to right in that project, everything else stays right to left, and the Style Inspector shows the field under `\ip` with its layer. Reload Project Stylesheets after saving.
 - [ ] Optional, against PTXprint: a PDF from one of `arNAV12`'s right-to-left configurations (`Mark`, `John`) shows the same `\q1` and `\qr` geometry.
 

@@ -1,8 +1,9 @@
-"""Block direction in the SFM projections (text direction plan W2, W5)."""
+"""Block direction in the SFM projections (text direction plan W2, W4, W5)."""
 
 from __future__ import annotations
 
 from uniti.core.environments.sfm.sty import parse_raw_stylesheet
+from uniti.core.rich_views.source_map import ISOLATE, LRI, PDI, SegmentRole
 from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, StyleLayer, StyleOrigin, build_layers
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
 from uniti.core.environments.sfm.views import SfmPreviewView, SfmStandardView, layout_projection
@@ -61,7 +62,8 @@ def test_the_views_project_with_a_direction():
     assert set(_directions(preview.project_with(BOOK, direction="ltr"))) == {"ltr"}
     assert set(_directions(standard.project_with(BOOK))) == {None}
     # The categories and hyphenation are Preview's: Standard ignores them.
-    assert standard.project_with(BOOK, frozenset({"x"}), None, "rtl").text == standard.project(BOOK).text
+    rtl_text = standard.project_with(BOOK, frozenset({"x"}), None, "rtl").text
+    assert rtl_text.replace(LRI, "").replace(PDI, "") == standard.project(BOOK).text
     assert preview.project_with(BOOK).text == preview.project(BOOK).text
 
 
@@ -131,3 +133,103 @@ def test_the_style_inspector_lists_the_field():
 
     fields = dict(styles.presentation("p"))
     assert fields["Direction"].value == "LTR" and fields["Direction"].origin_layer == "layer0.sty"
+
+
+# --- Standard's tags in a right-to-left paragraph (W4) ---------------------------
+
+TAGGED = (
+    "\\id JHN\n\\c 1\n\\p\n\\v 1 שלום \\nd יהוה\\nd* עולם\\f + \\ft הערה\\f*\n"
+    "\\q1 \\v 2 \\qt-s |who=\"x\"\\* אור\\qt-e\\*\n\\zz unknown\n"
+)
+
+
+def _isolates_around_every_tag(projection) -> bool:
+    text = projection.text
+    tags = [span for span in projection.spans if span.attrs.get("marker_token") == "yes"]
+    markers = [segment for segment in projection.source_map.segments if segment.role is SegmentRole.MARKER]
+    return bool(tags) and all(
+        text[segment.view_start - 1] == LRI and text[segment.view_end] == PDI for segment in markers
+    )
+
+
+def test_every_tag_of_a_right_to_left_paragraph_is_isolated():
+    projection = layout_projection(TAGGED, STYLES, "k", show_markers=True, direction="rtl")
+
+    assert _isolates_around_every_tag(projection)
+    isolates = [s for s in projection.source_map.segments if s.role is SegmentRole.GENERATED and s.marker == ISOLATE]
+    markers = [s for s in projection.source_map.segments if s.role is SegmentRole.MARKER]
+    assert len(isolates) == 2 * len(markers)
+    # The tag's own colour covers its label, never the isolates.
+    for span in projection.spans:
+        if span.attrs.get("marker_token") == "yes":
+            assert LRI not in projection.text[span.view_start : span.view_end]
+            assert PDI not in projection.text[span.view_start : span.view_end]
+
+
+def test_left_to_right_and_undirected_paragraphs_get_none():
+    for direction in ("ltr", None):
+        projection = layout_projection(TAGGED, STYLES, "k", show_markers=True, direction=direction)
+        assert LRI not in projection.text and PDI not in projection.text
+
+
+def test_a_style_direction_decides_per_paragraph():
+    styles = _styles(("\\Marker q1\n\\Direction LTR\n", StyleOrigin.UNITI_PROJECT))
+    projection = layout_projection(TAGGED, styles, "k", show_markers=True, direction="rtl")
+    q1 = next(block for block in projection.blocks if block.marker == "q1")
+    p = next(block for block in projection.blocks if block.marker == "p")
+
+    assert LRI not in projection.text[q1.view_start : q1.view_end]
+    assert LRI in projection.text[p.view_start : p.view_end]
+
+
+def test_isolates_change_no_source_mapping():
+    plain = layout_projection(TAGGED, STYLES, "k", show_markers=True, direction="ltr")
+    rtl = layout_projection(TAGGED, STYLES, "k", show_markers=True, direction="rtl")
+    rtl.source_map.check()
+
+    assert rtl.text.replace(LRI, "").replace(PDI, "") == plain.text
+    # Every source offset goes to the view and back as it does without them.
+    for offset in range(len(TAGGED) + 1):
+        for prefer_left in (True, False):
+            assert rtl.source_map.view_to_source(
+                rtl.source_map.source_to_view(offset), prefer_left=prefer_left
+            ) == plain.source_map.view_to_source(plain.source_map.source_to_view(offset), prefer_left=prefer_left)
+
+
+def test_preview_isolates_only_the_markers_it_shows():
+    projection = layout_projection(TAGGED, STYLES, "k", show_markers=False, direction="rtl")
+
+    # Only the undefined \\zz stays visible in Preview, and it is isolated.
+    assert projection.text.count(LRI) == projection.text.count(PDI) == 1
+    assert _isolates_around_every_tag(projection)
+
+
+def test_the_view_only_positions_are_the_isolates():
+    projection = layout_projection(TAGGED, STYLES, "k", show_markers=True, direction="rtl")
+    positions = projection.source_map.view_only_positions(0, len(projection.text))
+
+    assert {projection.text[position] for position in positions} == {LRI, PDI}
+    assert len(positions) == projection.text.count(LRI) + projection.text.count(PDI)
+
+
+def test_a_word_beside_a_tag_maps_onto_that_word_alone():
+    """What spelling underlines and Find highlights see: a word's source
+    range, mapped to the view, holds the word and no isolate."""
+
+    projection = layout_projection(TAGGED, STYLES, "k", show_markers=True, direction="rtl")
+    source_map = projection.source_map
+    for word in ("שלום", "יהוה", "עולם", "הערה", "אור"):
+        start = TAGGED.index(word)
+        view_start, view_end = source_map.source_to_view(start), source_map.source_to_view(start + len(word))
+        assert projection.text[view_start:view_end] == word
+
+
+def test_an_offset_at_a_tag_maps_outside_its_isolate():
+    """Two tags in a row: the second's offset is between the isolates."""
+
+    source = "\\p שלום \\nd יהוה\\nd*\\f + \\ft הערה\\f*\n"
+    projection = layout_projection(source, STYLES, "k", show_markers=True, direction="rtl")
+    text = projection.text
+    view = projection.source_map.source_to_view(source.index("\\f "))
+
+    assert text[view - 1] == PDI and text[view] == LRI

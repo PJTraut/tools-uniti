@@ -23,6 +23,14 @@ from enum import StrEnum
 # Marker of the zero-width HIDDEN segment holding the `\r` of a CRLF.
 EOL_MARKER = "eol"
 
+# View-only characters, by their GENERATED segment's marker: the soft
+# hyphens Preview breaks at (H-D5) and the isolates around Standard's tags in
+# a right-to-left paragraph (text direction plan W-D3). Copy leaves them out.
+HYPHEN = "hyphen"
+ISOLATE = "isolate"
+LRI, PDI = "\u2066", "\u2069"
+VIEW_ONLY_MARKERS = frozenset({HYPHEN, ISOLATE})
+
 
 class SegmentRole(StrEnum):
     TEXT = "text"
@@ -89,12 +97,30 @@ class SourceMap:
                 segment = self.segments[candidate]
                 if segment.editable and segment.source_start <= offset <= segment.source_end:
                     return segment.view_start + (offset - segment.source_start)
+        # A tag's opening isolate (W4) sits at the tag's offset: the offset
+        # is the end of the text before it, or else just outside it.
+        lead = index
+        while lead > 0 and self._opens_isolate_at(self.segments[lead - 1], offset):
+            lead -= 1
+        if lead < index:
+            before = self.segments[lead - 1] if lead > 0 else None
+            if before is not None and before.editable and before.source_end == offset:
+                return before.view_end
+            return self.segments[lead].view_start
         for candidate in (index, index - 1):
             if 0 <= candidate < len(self.segments):
                 segment = self.segments[candidate]
                 if segment.source_start <= offset < segment.source_end:
                     return segment.view_start if offset == segment.source_start else segment.view_end
         return len(self.view_text)
+
+    def _opens_isolate_at(self, segment: Segment, offset: int) -> bool:
+        return (
+            segment.role is SegmentRole.GENERATED
+            and segment.marker == ISOLATE
+            and segment.source_start == offset
+            and self.view_text[segment.view_start : segment.view_end] == LRI
+        )
 
     def view_to_source(self, position: int, *, prefer_left: bool = True) -> int:
         """The source offset for view caret `position`.
@@ -163,6 +189,17 @@ class SourceMap:
             if segment.view_start <= position < segment.view_end:
                 return segment
         return None
+
+    def view_only_positions(self, start: int, end: int) -> tuple[int, ...]:
+        """The view positions in [start, end) that hold view-only
+        characters (`VIEW_ONLY_MARKERS`)."""
+
+        return tuple(
+            position
+            for segment in self.segments_in_view(start, end)
+            if segment.role is SegmentRole.GENERATED and segment.marker in VIEW_ONLY_MARKERS
+            for position in range(max(start, segment.view_start), min(end, segment.view_end))
+        )
 
     def view_selection_to_source(self, start: int, end: int) -> tuple[int, int]:
         if start > end:

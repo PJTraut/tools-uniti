@@ -58,7 +58,7 @@ from uniti.core.resource_profile import ResourceProfile
 from uniti.core.rich_views.editing import EditPlan, EditRejected, plan_view_edit
 from uniti.core.rich_views.projection import Projection
 from uniti.core.rich_views.provider import EditorViewProvider, ViewCommand
-from uniti.core.rich_views.source_map import SegmentRole
+from uniti.core.rich_views.source_map import LRI, PDI, SegmentRole
 from uniti.ui.theme import EditorThemeTokens
 
 logger = logging.getLogger("uniti.ui.rich_view")
@@ -574,7 +574,9 @@ class _RichEditor(QTextEdit):
         if (text and text.isprintable() and chord == Qt.KeyboardModifier.NoModifier) or text == "\t":
             owner.type_text(text)
             return
+        before = self.textCursor().position()
         super().keyPressEvent(event)  # navigation, selection
+        owner.step_past_isolates(before)
 
     def inputMethodEvent(self, event) -> None:  # noqa: N802
         if event.commitString():
@@ -582,14 +584,22 @@ class _RichEditor(QTextEdit):
         event.accept()
 
     def createMimeDataFromSelection(self) -> QMimeData:  # noqa: N802
-        """Copy the selection as text; Hyphenate Preview's soft hyphens are
+        """Copy the selection as text; Hyphenate Preview's soft hyphens and
+        the isolates around Standard's tags in a right-to-left paragraph are
         the view's, not the document's, so they never reach the clipboard
-        (H-D5)."""
+        (H-D5, text direction plan W4)."""
 
         data = super().createMimeDataFromSelection()
-        if self._owner._hyphenation is not None:
+        owner = self._owner
+        start, end = owner._selection()
+        skip = [position - start for position in owner._view_only if start <= position < end]
+        if skip:
+            text = self.textCursor().selection().toPlainText()
+            if len(text) == end - start:
+                dropped = set(skip)
+                text = "".join(char for index, char in enumerate(text) if index not in dropped)
             data = QMimeData()
-            data.setText(self.textCursor().selection().toPlainText().replace("\u00ad", ""))
+            data.setText(text)
         return data
 
     def insertFromMimeData(self, source: QMimeData) -> None:  # noqa: N802
@@ -762,6 +772,8 @@ class RichViewPane(QWidget):
         self._window: tuple[int, int] | None = None
         self._window_positions: tuple[int, int] | None = None
         self._offsets = Utf16Offsets("")
+        self._view_only: frozenset[int] = frozenset()  # view positions of generated soft hyphens and isolates
+        self._isolate_stops: frozenset[int] = frozenset()  # Qt positions the arrow keys step past
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.setInterval(0)
@@ -953,6 +965,15 @@ class RichViewPane(QWidget):
         try:
             self.projection = projection
             self._offsets = Utf16Offsets(projection.text)
+            self._view_only = frozenset(projection.source_map.view_only_positions(0, len(projection.text)))
+            # Just inside an isolate, the caret sits where it does just
+            # outside it: arrow keys step past (text direction plan W4).
+            text = projection.text
+            self._isolate_stops = frozenset(
+                self._offsets.to_qt(position + 1 if text[position] == LRI else position)
+                for position in self._view_only
+                if text[position] in (LRI, PDI)
+            )
             assert self._palette is not None
             render_into(self.editor, projection, self.editor.font(), self._palette)
             self._render_notes(projection)
@@ -1307,6 +1328,22 @@ class RichViewPane(QWidget):
 
     # --- editing --------------------------------------------------------------
 
+    def step_past_isolates(self, before: int) -> None:
+        """After a caret move from Qt position `before`: on to the far side
+        of an isolate's edge, in the direction it moved, keeping the anchor
+        of a selection."""
+
+        cursor = self.editor.textCursor()
+        position = cursor.position()
+        if position == before or position not in self._isolate_stops:
+            return
+        step = 1 if position > before else -1
+        while position in self._isolate_stops:
+            position += step
+        selecting = cursor.anchor() != cursor.position()
+        cursor.setPosition(position, QTextCursor.MoveMode.KeepAnchor if selecting else QTextCursor.MoveMode.MoveAnchor)
+        self.editor.setTextCursor(cursor)
+
     def _selection(self) -> tuple[int, int]:
         cursor = self.editor.textCursor()
         position = self._offsets.from_qt(cursor.position())
@@ -1403,14 +1440,21 @@ class RichViewPane(QWidget):
             # The shown chapter's edges, like the document's: never joined
             # to the hidden chapter beside them.
             shown = self._window_positions
+            length = len(self.projection.text)
             if backwards:
                 if start == 0 or (shown is not None and self._offsets.to_qt(start) <= shown[0]):
                     return False
                 start -= 1
+                # A view-only character takes the one before it along, so one
+                # key press never just steps over an isolate.
+                while start > 0 and start in self._view_only:
+                    start -= 1
             else:
-                if end >= len(self.projection.text) or (shown is not None and self._offsets.to_qt(end) >= shown[1]):
+                if end >= length or (shown is not None and self._offsets.to_qt(end) >= shown[1]):
                     return False
                 end += 1
+                while end < length and end - 1 in self._view_only:
+                    end += 1
         if self._replace_view_range(start, end, ""):
             return True
         # Stepping over protected syntax instead of deleting it.

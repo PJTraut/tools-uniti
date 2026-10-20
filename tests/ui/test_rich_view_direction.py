@@ -1,4 +1,4 @@
-"""The reading direction in the rich views (text direction plan W2)."""
+"""The reading direction in the rich views (text direction plan W2, W4)."""
 
 from __future__ import annotations
 
@@ -130,3 +130,142 @@ def test_no_project_or_no_setting_leaves_the_direction_to_the_text(tmp_path):
     _project(unset, None)
     assert direction_for(_view(unset)) is None
     assert direction_for(_view(unset, "rtl")) == "rtl"
+
+
+# --- Standard's tags in a right-to-left paragraph (W4) ---------------------------
+
+from pathlib import Path  # noqa: E402
+
+from PySide6.QtTest import QTest  # noqa: E402
+
+from usfm_project_fixture import in_project  # noqa: E402
+from uniti.app.settings import SettingsStore  # noqa: E402
+from uniti.core.rich_views.source_map import LRI, PDI  # noqa: E402
+from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
+
+TAGGED = "\\p \\v 1 שלום \\nd יהוה\\nd* עולם\n"
+
+
+def test_tags_read_as_written_from_the_right():
+    """`\\p \\v 1` reads from the right, each tag left to right inside."""
+
+    projection = SfmStandardView(lambda: STYLES).project_with(TAGGED, direction="rtl")
+    document = _render(projection)
+    document.setTextWidth(600)
+    document.size()  # lays the document out
+    text = projection.text
+    block = document.begin()
+    layout = block.layout()
+    assert layout.lineCount() == 1
+
+    def x(position: int) -> float:
+        """Where the glyph of the character at `position` is painted."""
+
+        runs = layout.glyphRuns(position, 1)
+        return min(point.x() for run in runs for point in run.positions())
+
+    p, v = text.index("\\p"), text.index("\\v")
+    assert x(p) < x(p + 1)  # "\\" left of "p"
+    assert x(v) < x(v + 1)
+    assert x(p) > x(v)  # the first tag is the rightmost
+
+
+@pytest.fixture
+def window(tmp_path: Path):
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow(settings_store=SettingsStore(tmp_path / "settings.json"))
+    window.resize(1000, 600)
+    window.show()
+    yield window
+    window.close_all_documents(force=True)
+    window.close()
+    app.processEvents()
+
+
+def _standard(window, tmp_path: Path, direction: str = "rtl"):
+    path = in_project(tmp_path / "book.usfm")
+    path.write_text(TAGGED, encoding="utf-8")
+    view = window.open_path(path)
+    view.set_text_direction_override(direction)
+    window._rich_views.show("sfm.standard")
+    return view, window._rich_views.pane
+
+
+def _source(view) -> str:
+    return view.document.read(0, view.document.total_chars())
+
+
+def _put_caret(pane, position: int) -> None:
+    cursor = pane.editor.textCursor()
+    cursor.setPosition(position)
+    pane.editor.setTextCursor(cursor)
+
+
+def test_the_arrow_keys_step_past_the_isolates(window, tmp_path: Path):
+    _view, pane = _standard(window, tmp_path)
+    stops = pane._isolate_stops
+    assert stops
+    end = len(pane.projection.text)
+    _put_caret(pane, 0)
+    pane.editor.setFocus()
+
+    visited = [0]
+    for _ in range(end + 2):
+        QTest.keyClick(pane.editor, Qt.Key.Key_Left)  # logical next in a right-to-left line
+        visited.append(pane.editor.textCursor().position())
+    forward = sorted(set(visited))
+    for _ in range(end + 2):
+        QTest.keyClick(pane.editor, Qt.Key.Key_Right)
+        visited.append(pane.editor.textCursor().position())
+
+    assert not stops & set(visited)
+    assert set(forward) == set(range(end + 1)) - stops  # every other position, in one pass
+
+
+def test_typing_beside_a_tag_lands_where_it_did_without_isolates(window, tmp_path: Path):
+    view, pane = _standard(window, tmp_path)
+    text = pane.projection.text
+    after_tag = text.index("\\nd ") + len("\\nd ") + 1  # past the PDI
+    _put_caret(pane, after_tag)
+    assert pane.type_text("א")
+    assert "\\nd איהוה\\nd*" in _source(view)
+
+    text = pane.projection.text
+    before_closer = text.index("\\nd*") - 1  # before the LRI
+    _put_caret(pane, before_closer)
+    assert pane.type_text("ב")
+    assert "\\nd איהוהב\\nd*" in _source(view)
+
+    # A click can put the caret just inside an isolate: still beside the tag.
+    text = pane.projection.text
+    inside = text.index("\\nd*") + len("\\nd*")  # before its PDI
+    assert text[inside] == PDI
+    _put_caret(pane, inside)
+    assert pane.type_text("ג")
+    assert "\\nd*ג עולם" in _source(view)
+
+
+def test_backspace_steps_into_the_tag_as_without_isolates(window, tmp_path: Path):
+    view, pane = _standard(window, tmp_path)
+    text = pane.projection.text
+    label_end = text.index("\\nd ") + len("\\nd ")
+    _put_caret(pane, label_end + 1)  # past the PDI, at the start of יהוה
+
+    assert pane.delete(backwards=True) is False
+    assert _source(view) == TAGGED
+    assert pane.editor.textCursor().position() == label_end - 1
+
+    _put_caret(pane, label_end + 2)  # after the י
+    assert pane.delete(backwards=True) is True
+    assert "\\nd הוה\\nd*" in _source(view)
+
+
+def test_copy_leaves_the_isolates_out(window, tmp_path: Path):
+    _view, pane = _standard(window, tmp_path)
+    assert LRI in pane.projection.text
+    pane.editor.selectAll()
+
+    copied = pane.editor.createMimeDataFromSelection().text()
+
+    assert LRI not in copied and PDI not in copied
+    assert copied == pane.projection.text.replace(LRI, "").replace(PDI, "")

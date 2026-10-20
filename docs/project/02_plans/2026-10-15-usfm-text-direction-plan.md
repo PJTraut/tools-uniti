@@ -1,7 +1,7 @@
 # USFM Text Direction (LTR / RTL) — Plan
 
 Date: 2026-10-15
-Status: **W1 and W2 built 2026-10-15, W3 and W5 built 2026-10-20; W4, W6, W7 (the remaining sweep) and W8 planned, not started.** 2026-10-20: question 1 (W3's gate) is answered from PTXprint's macro source (point 13), and W3, W4, W5 and W8 have implementation notes. Questions 2–4 are still open; the notes follow the proposed answers. Phases W1–W8 (W8 is the HTML export, added at the user's request on 2026-10-15).
+Status: **W1 and W2 built 2026-10-15, W3, W4 and W5 built 2026-10-20; W6, W7 (the remaining sweep) and W8 planned, not started.** 2026-10-20: question 1 (W3's gate) is answered from PTXprint's macro source (point 13), and W3, W4, W5 and W8 have implementation notes. Question 2 is answered (Standard right to left, tags readable); questions 3 and 4 are still open, and the notes follow their proposed answers. Phases W1–W8 (W8 is the HTML export, added at the user's request on 2026-10-15).
 Origin: the user, 2026-10-15: "review UNITI SFM ENV style sheet extension; focus on l2r/r2l and justification", then "explore more: should paragraph style have a global direction assigned; and character style explicit assigned direction to have inline roman text inside arabic paragraph", then "PTXPrint renders everything L2R and flips the image in xetex", then "write the plan and add to project docs", then (after asking whether UNITI renders through a browser engine, which it doesn't: Qt's own text layout) "can we "save to html"" and "add HTML export as phase W8 in the plan". 2026-10-20: "start planning", "Martin uses code that "flips" a l2r render to do r2l in PTXp", "this is a Xetex flip".
 Builds on: the [hyphenation, justification and spelling follow-ups plan](../03_implemented/milestones/2026-10-15-usfm-hyphenation-and-spelling-followups-plan.md) (J1 and its "As built" note), the [USFM Stylesheet Rules](../../usfm-stylesheet-rules.md) reference and [ADR-0015](../05_decisions/ADR-0015-stylesheet-layers-and-rich-views.md).
 
@@ -41,7 +41,7 @@ All measured 2026-10-15, PySide6 6.11.2 (Qt 6.11), offscreen, with the real `blo
 ## Questions for the user
 
 1. ~~**Confirm margins mirror in PTXprint** (W3's gate).~~ Answered 2026-10-20 from the macro source (point 13): they do, and so does the first-line indent. A PDF from `arNAV12`'s `Mark` or `John` configuration, with a `\q1` hanging indent and a `\qr` line, is still a useful by-hand check against W3, but nothing waits on it.
-2. **Standard view in RTL.** W-D3 lays Standard out right to left for an RTL project, with tags kept readable. The alternative is Standard always left-to-right (it is the source), where `Start` and `End` have no meaning in Standard. Proposed: right to left.
+2. ~~**Standard view in RTL.**~~ Answered 2026-10-20: right to left, "marker tags readable" (W4). The alternative, Standard always left to right, was not taken.
 3. **Character `\Direction` (W6):** build it now, or only on request? Proposed: on request.
 4. **HTML export scope (W8):** the text the Preview shows (the whole book, or the one chapter when Show One Chapter is on), with the tab's footnote category filter and Hyphenate Preview as they are now; or always the whole book; or every book of the project into a folder. Proposed: what the Preview shows. A project-wide export would be a later addition.
 
@@ -72,12 +72,19 @@ All measured 2026-10-15, PySide6 6.11.2 (Qt 6.11), offscreen, with the real `blo
 ### W4: Tags in Standard stay readable
 In a right-to-left Standard paragraph the marker tokens get a generated LRI before and PDI after. Tests: the source map round-trips every offset, Find and copy take source text only, the text with the isolates removed equals today's, an LTR paragraph gets none, and the caret reaches each marker (the arrow keys step over a zero-width character; if they stall, fix with the source map as H-D5 did).
 
-**Implementation notes (2026-10-20; assumes question 2's proposed answer. If Standard stays left-to-right, W4 is dropped).**
+**Implementation notes (2026-10-20; question 2 answered: Standard right to left).**
 - `layout_projection`: with `show_markers`, `tag()`, `visible_token()` and the milestone tag write `builder.generated("⁦", "isolate")` before `builder.marker(…)` and `builder.generated("⁩", "isolate")` after it, but only when the effective direction is RTL. That is the open block's `direction` attribute (W5's style value), else the view's `direction`; before the first block (`\id`) it is the view's. The `marker_token` span covers the label only, so the isolates take no tag background.
 - Isolates are generated segments, so `view_to_source` maps them to the tag's edge, as with soft hyphens. Typing just before and just after a tag must land in the same source offset as today. Test that directly; it's the riskiest part.
 - Copy: `_RichEditor.createMimeDataFromSelection` always strips view-only characters, not just when Hyphenate Preview is on. One constant in core (`VIEW_ONLY_CHARACTERS`: U+00AD, U+2066–U+2069) is shared by the strip and by W8's serializer.
 - Spelling and Find use source offsets through the map, so they need tests only: an underline next to a tag doesn't widen, and Find's highlight of a word next to a tag stays on the word.
 - Tests: `tests/test_sfm_direction.py` (projection: isolates only around RTL tags, text minus isolates equals the LTR projection, every source offset round-trips) and `tests/ui/test_rich_view_direction.py` (painted order `\p \v 1` read from the right, caret steps, copy).
+
+**As built (2026-10-20).**
+- `layout_projection` puts the isolates around every tag it shows (`shown_tag`): Standard's tags, milestones, and the undefined markers both views keep visible. A Preview of an RTL book therefore isolates `\zz`-style unknown markers too. Note bodies in Preview's notes frame are not isolated (their unknown markers are rare, and the notes' builder has no block direction to read). The direction is the open block's own `\Direction` (W5), else the view's.
+- `source_map.py` holds the shared names: `LRI`, `PDI`, `ISOLATE` and `HYPHEN` (Preview's soft hyphens now use the constant), `VIEW_ONLY_MARKERS`, and `SourceMap.view_only_positions(start, end)`.
+- **A mapping bug the tests found:** `source_to_view` looked only one segment back, so the end of the word before a tag mapped to just *inside* the tag's isolate (`יהוה⁦`). That would have widened spelling underlines and Find highlights by one. It now steps back over a tag's opening LRI, and only that, so soft hyphens and Preview's generated line breaks map as before. An offset at the second of two adjacent tags lands between their isolates.
+- The pane keeps `_view_only` (view positions of generated soft hyphens and isolates) and `_isolate_stops` (the Qt positions just inside an isolate). After any navigation key, `step_past_isolates` moves on past a stop in the direction the caret went, keeping a selection's anchor. Without it, each tag cost two extra presses that left the caret where it already was. Backspace and Delete take a view-only character together with the one beside it, so a press never only steps over an isolate. Copy drops the view-only characters by position, not by value, so soft hyphens and isolates written in the source itself are kept; it replaces Hyphenate Preview's strip-by-value.
+- Tests: in `tests/test_sfm_direction.py`, isolates around every RTL tag (not inside the tag's colour), none in LTR or undirected paragraphs, per paragraph by `\Direction`, every source offset round-tripping as without them, Preview's visible unknown marker, a word beside a tag mapping onto the word alone, and two adjacent tags. In `tests/ui/test_rich_view_direction.py`, glyph positions read `\p \v 1` from the right, the arrow keys step past every stop and reach every other position, typing beside a tag (and just inside an isolate) lands as before, Backspace, and copy. The painted, typing, Backspace and copy tests fail without the isolates; the arrow test fails without the step.
 
 ### W5: `\Direction` on paragraph styles
 Parse `\Direction` (`LTR`, `RTL`, `Auto`, any case, anything else ignored), carry it through `formatting_attrs`, register it with the Style Inspector, add it to the `uniti.sty` template and to W2's precedence. Tests: a marker record, an `a+b` rule, layer order, and a project `uniti.sty` beating the project setting.
@@ -136,7 +143,7 @@ Parse `\Direction` (`LTR`, `RTL`, `Auto`, any case, anything else ignored), carr
 
 ## Order
 
-W1 → W2 → W3 → W4 (after question 2) → W5 → (W6 on request, question 3) → W8 (scope: question 4) → W7. W3 and W5 need no answer and can go first; W5 doesn't depend on W4. Documentation for a phase lands with it; W7 is the sweep. W8 needs W1 (the font and language), W2 (the block directions) and W3 (logical margins), and is documented with itself; if W6 is built, W8 writes it as `<bdi>`. W1, W2 and W5 don't change how any left-to-right book looks.
+W1 → W2 → W3 → W4 → W5 → (W6 on request, question 3) → W8 (scope: question 4) → W7. W3 and W5 need no answer and can go first; W5 doesn't depend on W4. Documentation for a phase lands with it; W7 is the sweep. W8 needs W1 (the font and language), W2 (the block directions) and W3 (logical margins), and is documented with itself; if W6 is built, W8 writes it as `<bdi>`. W1, W2 and W5 don't change how any left-to-right book looks.
 
 ## Risks
 
