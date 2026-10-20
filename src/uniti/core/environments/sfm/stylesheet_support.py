@@ -30,6 +30,9 @@ from .sty import RawStyleSheet, StyleRegistry
 from .style_layers import LayeredStyleRegistry, StyleLayer, StyleOrigin, build_layers, load_stylesheet_file
 
 IMPORT_STYLESHEET_FEATURE = "sfm.import_stylesheet"
+# Export Preview as HTML (text direction plan W8): the window implements it,
+# since it exports the tab's Preview with the tab's own settings.
+EXPORT_PREVIEW_HTML_FEATURE = "sfm.export_preview_html"
 
 
 class StylesheetSupport:
@@ -148,6 +151,12 @@ class StylesheetSupport:
                 group="styles",
                 run=self._export(resolved=False),
             ),
+            EnvironmentCommand(
+                "export_preview_html",
+                "Export Preview as HTML…",
+                group="export",
+                host_feature=EXPORT_PREVIEW_HTML_FEATURE,
+            ),
         )
 
     def _export(self, *, resolved: bool):
@@ -223,4 +232,4 @@ class StylesheetSupport:
         return ShowMessage("Stylesheets", f"Loaded: {self._layer_summary()}")
 
 
-__all__ = ["IMPORT_STYLESHEET_FEATURE", "StylesheetSupport"]
+__all__ = ["EXPORT_PREVIEW_HTML_FEATURE", "IMPORT_STYLESHEET_FEATURE", "StylesheetSupport"]

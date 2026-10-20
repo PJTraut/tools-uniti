@@ -67,6 +67,7 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "Reload Project Stylesheets",
         "Export Resolved Stylesheet…",
         "Export Stylesheet Overrides…",
+        "Export Preview as HTML…",
         "Plain Text",
         "Standard",
         "Preview",

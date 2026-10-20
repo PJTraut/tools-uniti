@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QApplication
 
 from uniti.app.editor_state import EditorStateSnapshot
 from uniti.core.environments.sfm.paratext_project import project_for_file
+from uniti.core.environments.sfm.views import SfmPreviewView
 from uniti.core.rich_views.provider import EditorViewProvider, environment_view_providers
 
 if TYPE_CHECKING:
@@ -91,10 +92,14 @@ class RichViewController:
 
     def _context_entries(self, menu, view, pane) -> None:
         """What the host adds to a pane's right-click menu: the spelling
-        entries for the word under the click (at the top), then the
-        document's own."""
+        entries for the word under the click (at the top), Preview's HTML
+        export, then the document's own."""
 
         self._window._spelling.add_context_entries(menu, view, pane.context_source_offset, editable=pane.editable)
+        export = getattr(self._window, "_preview_export", None)
+        if export is not None and pane.provider is not None and pane.provider.key == SfmPreviewView.key:
+            menu.addSeparator()
+            menu.addAction(export.action)
         self._window.add_view_context_entries(menu, view)
 
     def providers_for(self, view: "UNITITextView | None") -> tuple[EditorViewProvider, ...]:

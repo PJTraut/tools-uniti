@@ -105,6 +105,17 @@ A note's categories are the words inside its `\cat … \cat*` (`\cat People Plac
 - **Nothing else changes.** The caret, Find, sync and spelling underlines keep their source offsets, and copying from Preview gives the text without the break points.
 - **A list changed on disk** (Paratext's Send/Receive) is read again when you switch back to the window.
 
+## Saving Preview as HTML
+
+**USFM → Export Preview as HTML…**, also on Preview's right-click menu, saves the book as a web page, next to the book (`43JHN.html`), for a browser, a reviewer or a web page of your own.
+- **The whole book,** even with Show One Chapter on.
+- **As the tab's Preview shows it:** the footnote categories you hid stay out, Hyphenate Preview's break points go in (as soft hyphens the browser may break at), and the text direction is the tab's.
+- **Styled from the stylesheets,** in the page's own CSS: one class per paragraph or character style combination, and every paragraph and run carries its marker (`data-marker="q1"`), so the page can be restyled. The stylesheet's colours are used as written, not adjusted to the editor theme.
+- **Right to left:** the page says `dir="rtl"` and `lang` from the project, and `Left`, `Right` and the margins are written as start and end (`text-align: end`, `margin-inline-start`), so a browser lays an Arabic or Hebrew book out as Preview does. The project's font (`DefaultFont` in `Settings.xml`) is asked for first; the page embeds no fonts.
+- **Notes** are listed after the text, one section per kind, as in Preview. A caller links to its note and the note's caller back.
+- **Tables** (`\tr`) are HTML tables, with `\th` cells as headers.
+- A browser's line breaking and justification differ a little from UNITI's, so the page follows the stylesheet rather than matching Preview pixel for pixel. Pages, printing and PDF are outside it. A book above 1 MiB, which Preview doesn't show, can't be exported.
+
 ## Check Spelling
 
 **Check Spelling** underlines wrong and unknown words, from the project's Paratext word lists. It is **per project tab** and off by default: turn it on from **USFM → Check Spelling** or the tab's right-click menu. It then applies to every book of the tab, including books you open into it later (the Book list, sync), and is saved with the session. A tab moved to another split or window keeps it; a book merged into a tab that has checking off takes that tab's setting. A project with neither list shows it greyed out ("NIV has no spelling list (SpellingStatus.xml or hyphenatedWords.txt)").
@@ -182,6 +193,7 @@ When a mapping lands on a verse the text doesn't have, sync uses the same refere
 | Check Undefined Markers | — | markers no loaded stylesheet defines (see [Undefined markers](#undefined-markers)) |
 | Next / Previous Spelling Issue | Ctrl+Alt+. / Ctrl+Alt+, | select the next or previous flagged word (see [Check Spelling](#check-spelling)) |
 | Hyphenate Preview | — | break words at their listed points in Preview (see [Hyphenating Preview](#hyphenating-preview)) |
+| Export Preview as HTML… | — | save the whole book as a web page, as Preview shows it (see [Saving Preview as HTML](#saving-preview-as-html)) |
 | Inspect Marker at Cursor | Ctrl+Alt+S | the Style Inspector at the marker under the caret |
 | Style Inspector… | — | every marker's effective style, with the layer each value comes from |
 | Load Stylesheet… | — | layer another `.sty` on top, for this session |

@@ -281,6 +281,12 @@ class _SfmViewBase:
     def __init__(self, styles: Callable[[], LayeredStyleRegistry]) -> None:
         self._styles = styles
 
+    @property
+    def styles(self) -> LayeredStyleRegistry:
+        """The stylesheets this view renders with now."""
+
+        return self._styles()
+
     def cache_token(self) -> LayeredStyleRegistry:
         """The stylesheets this view renders with: a new object whenever
         they reload, so a cached projection is reused only while they

@@ -344,6 +344,9 @@ class UNITIMainWindow(QMainWindow):
         from uniti.ui.hyphenation import HyphenationController
 
         self._hyphenation = HyphenationController(self)
+        from uniti.ui.preview_export import PreviewExport
+
+        self._preview_export = PreviewExport(self)
         self._file_operations = FileOperationController(
             self._resources,
             self,
