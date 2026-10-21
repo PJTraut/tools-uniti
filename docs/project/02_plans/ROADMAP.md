@@ -58,7 +58,7 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 | 26 | W1–W8 — USFM text direction: read the project's `LeftToRight`, one explicit direction per paragraph (style/rule `\Direction`, view choice, project), logical `\Justification Left`/`Right` and start/end margins as in PTXprint (reverses J1's physical edges), readable marker tags in right-to-left Standard, optional character `\Direction`, and Export Preview as HTML (logical CSS from the projection) | implemented (W1–W2 2026-10-15, W3–W8 2026-10-20); live-app checks (checklist section 13) not done | [USFM text direction](../03_implemented/milestones/2026-10-15-usfm-text-direction-plan.md) |
 | 27 | P1–P2 — Floating-window positions across screen changes: every restore path clamped onto a connected screen with a reachable title strip, a maximized window saves its normal rectangle (P1); one layout per screen configuration, known configurations restored exactly and new ones adapted and scaled from the last (P2) | **P1 built and pushed 2026-10-20; P2 built 2026-10-20, live multi-monitor checks not done** | [Window layouts per screen configuration](2026-10-20-window-layouts-per-screen-configuration-plan.md) |
 
-Row 26 is implemented; its live-app checks are still to do, and the status-bar note for the direction in effect (its plan's Risks) is not built.
+Row 26 is implemented, with the status-bar direction display from its plan's Risks (2026-10-21); its live-app checks are still to do.
 
 Wishlist, not queued: USFM files outside a project, and a file/folder lock for the basic environments ([wishlist](../FEATURE_WISHLIST.md)).
 

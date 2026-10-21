@@ -15,6 +15,7 @@ class UNITIStatusBar(QStatusBar):
         self._position = QLabel("Ln 1:1")
         self._zoom = QLabel("—")
         self._wrap = QLabel("—")
+        self._direction = QLabel("—")
         self._size = QLabel("0 B")
         self._task = QLabel("")
         self._resources = QLabel("Resources: Normal")
@@ -26,6 +27,7 @@ class UNITIStatusBar(QStatusBar):
             self._position,
             self._zoom,
             self._wrap,
+            self._direction,
         ):
             self.addWidget(label)
         self.addWidget(self._task, 1)
@@ -158,11 +160,23 @@ class UNITIStatusBar(QStatusBar):
         self._zoom.setText(f"{zoom_percent}%")
         self._wrap.setText("Wrap" if soft_wrap else "No Wrap")
 
+    @property
+    def direction_label(self) -> QLabel:
+        return self._direction
+
+    def update_direction(self, text: str, tooltip: str) -> None:
+        """The reading direction in effect for the current tab (text
+        direction plan, Risks)."""
+
+        self._direction.setText(text)
+        self._direction.setToolTip(tooltip)
+
     def clear_document(self) -> None:
         self._eol_report = None
         self._format.setText("—")
         self._position.setText("Ln 1:1")
         self._zoom.setText("—")
         self._wrap.setText("—")
+        self.update_direction("—", "")
         self._size.setText("0 B")
         self._match.setText("")

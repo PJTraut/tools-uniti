@@ -360,3 +360,64 @@ def test_copy_leaves_a_spans_isolates_out(window, tmp_path: Path, view_key: str)
 
     assert not set(copied) & {LRI, RLI, PDI}
     assert "Paul," in copied
+
+
+# --- The direction in effect, in the status bar (the plan's Risks) ---------------
+
+
+def _rtl_project_book(folder: Path, name: str = "NAV") -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "Settings.xml").write_text(
+        f'<ScriptureText><Name>{name}</Name><Naming PrePart="" PostPart=".usfm" BookNameForm="41MAT" />'
+        "<LeftToRight>F</LeftToRight></ScriptureText>",
+        encoding="utf-8",
+    )
+    path = folder / "43JHN.usfm"
+    path.write_text(TAGGED, encoding="utf-8")
+    return path
+
+
+def _status(window) -> tuple[str, str]:
+    label = window._status.direction_label
+    return label.text(), label.toolTip()
+
+
+def test_the_status_bar_shows_the_direction_in_effect(window, tmp_path: Path):
+    view = window.open_path(_rtl_project_book(tmp_path / "nav"))
+
+    # Plain Text follows only the tab's choice.
+    assert _status(window)[0] == "Auto"
+    window.set_editor_text_direction("rtl")
+    assert _status(window)[0] == "RTL"
+    window.set_editor_text_direction("auto")
+
+    # Standard and Preview take the project's.
+    window._rich_views.show("sfm.standard")
+    text, tooltip = _status(window)
+    assert text == "RTL" and "NAV" in tooltip and "Auto" in tooltip
+
+    # The tab's choice wins, and the status bar says what it overrides.
+    window.set_editor_text_direction("ltr")
+    text, tooltip = _status(window)
+    assert text == "LTR (project RTL)" and "this tab's" in tooltip
+    assert window._rich_views.pane.projection.blocks[0].attrs.get("direction") == "ltr"
+
+    window._rich_views.close(view)
+    assert _status(window)[0] == "LTR"
+
+
+def test_the_status_bar_follows_the_current_tab(window, tmp_path: Path):
+    hebrew = window.open_path(_rtl_project_book(tmp_path / "nav"))
+    window._rich_views.show("sfm.preview")
+    assert _status(window)[0] == "RTL"
+
+    plain = tmp_path / "notes.txt"
+    plain.write_text("plain\n", encoding="utf-8")
+    window.open_path(plain)
+    assert _status(window)[0] == "Auto"
+
+    window._tabs.setCurrentWidget(hebrew)
+    assert _status(window)[0] == "RTL"
+
+    window.close_all_documents(force=True)
+    assert _status(window) == ("—", "")

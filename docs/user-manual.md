@@ -36,7 +36,7 @@ For updates, save your work and use **Quit**. Update the source checkout through
 
 1. Choose **File → Open…** and select a text file.
 2. If an encoding confirmation appears, inspect its preview and choose the encoding that represents the file correctly.
-3. Edit the document. The status bar shows line/column, encoding and line-ending state, zoom, wrap mode, file size, and work/resource status.
+3. Edit the document. The status bar shows line/column, encoding and line-ending state, zoom, wrap mode, text direction (`Auto`, `LTR` or `RTL`; hover it for where the direction comes from), file size, and work/resource status.
 4. Choose **File → Save** to write changes to the current file.
 5. Choose **Quit** when finished. On macOS, Quit can appear in the native UNITI application menu.
 

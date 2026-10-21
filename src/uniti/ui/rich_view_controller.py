@@ -158,6 +158,42 @@ class RichViewController:
             return None
         return "rtl" if project.right_to_left else "ltr"
 
+    def direction_status(self, view: "UNITITextView | None") -> tuple[str, str]:
+        """What the status bar says about `view`'s reading direction: the
+        label (`RTL`, `LTR`, `Auto`; with the project's when the tab's
+        choice overrides a different one) and a tooltip naming its source.
+        Plain Text follows only the tab's choice; Standard and Preview also
+        the project's (`direction_for`)."""
+
+        if view is None:
+            return "—", ""
+        words = {"ltr": "left to right", "rtl": "right to left"}
+        choice = view.text_direction_override
+        menu = "View → Text Direction"
+        if self.key_for(view) is None:
+            if choice in words:
+                return choice.upper(), f"Text direction: {words[choice]}, every line ({menu})."
+            return "Auto", f"Text direction: each line's first letter decides ({menu} is Auto)."
+        project = project_for_file(view.document.path)
+        project_direction = None
+        if project is not None and project.right_to_left is not None:
+            project_direction = "rtl" if project.right_to_left else "ltr"
+        styles = " A style's \\Direction can change a paragraph or a span."
+        if choice in words:
+            label = choice.upper()
+            tooltip = f"Text direction: {words[choice]}, this tab's {menu} choice."
+            if project_direction is not None and project_direction != choice:
+                label += f" (project {project_direction.upper()})"
+                tooltip += f" The project {project.name} is {words[project_direction]}."
+            return label, tooltip + styles
+        if project_direction is not None:
+            return (
+                project_direction.upper(),
+                f"Text direction: {words[project_direction]}, from the project {project.name}'s settings ({menu} is Auto)."
+                + styles,
+            )
+        return "Auto", f"Text direction: each paragraph's first letter decides ({menu} is Auto, and no project sets one)." + styles
+
     def apply_direction(self, view: "UNITITextView | None") -> None:
         """Make `view`'s pane lay out with its current direction;
         idempotent (the pane re-renders only when it changed)."""
@@ -313,6 +349,7 @@ class RichViewController:
         # closable when the current tab isn't Markdown.
         self._window._environment.refresh()
         self._window._refresh_markdown_preview_action()
+        self._window._refresh_status_direction()
         environment_bar = getattr(self._window, "_environment_bar", None)
         if environment_bar is not None:
             environment_bar.refresh()

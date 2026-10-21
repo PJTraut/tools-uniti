@@ -3238,6 +3238,18 @@ class UNITIMainWindow(QMainWindow):
         self._status.update_eol_report(report)
         self._status.update_document(view.document, report)
         self._status.update_view(view.zoom_percent, soft_wrap=view.soft_wrap)
+        self._refresh_status_direction()
+
+    def _refresh_status_direction(self) -> None:
+        """The status bar's reading direction, for the current tab in its
+        current mode."""
+
+        view = self.current_view
+        if view is None:
+            if not self.views:
+                self._status.update_direction("—", "")
+            return
+        self._status.update_direction(*self._rich_views.direction_status(view))
 
     def _on_view_zoom_changed(self, view: UNITITextView, percent: int) -> None:
         if view is self.current_view:
@@ -3323,6 +3335,7 @@ class UNITIMainWindow(QMainWindow):
             view.set_text_direction_override(value)
             self._rich_views.apply_direction(view)
         self._sync_text_direction_action(view)
+        self._refresh_status_direction()
 
     def _sync_text_direction_action(self, view: UNITITextView | None) -> None:
         value = view.text_direction_override if view is not None else "auto"
@@ -5495,6 +5508,7 @@ class UNITIMainWindow(QMainWindow):
             # A project's `LeftToRight` may have been changed in Paratext.
             for view in self.views:
                 self._rich_views.apply_direction(view)
+            self._refresh_status_direction()
 
     @property
     def is_live_window(self) -> bool:

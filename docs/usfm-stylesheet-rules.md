@@ -180,6 +180,8 @@ Each paragraph in Standard and Preview reads left to right or right to left. Its
 3. The Paratext project's own setting (`LeftToRight` in its `Settings.xml`), read again whenever the window is activated.
 4. The paragraph's first letter, when none of the above gives a direction (a file outside a project, with Auto).
 
+The status bar shows what 2 and 3 give the tab (`RTL`, `LTR`, `Auto`, or `LTR (project RTL)` when the tab's choice overrides the project's), and its tooltip names the source. A style's own `\Direction` is per paragraph or span, so it isn't shown there.
+
 `\Direction` is UNITI's. Paratext and PTXprint ignore it, so it belongs in a `uniti.sty`. It's for exceptions, such as English front matter in an Arabic project:
 
 ```
