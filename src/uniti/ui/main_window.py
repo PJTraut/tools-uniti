@@ -1282,6 +1282,8 @@ class UNITIMainWindow(QMainWindow):
         view_menu.addAction(
             self._command_action("editor.zoom_in", self.zoom_in_editor)
         )
+        if sys.platform == "darwin":
+            view_menu.addAction(self._build_zoom_in_without_shift_action())
         view_menu.addAction(
             self._command_action("editor.zoom_out", self.zoom_out_editor)
         )
@@ -3286,6 +3288,25 @@ class UNITIMainWindow(QMainWindow):
                 self._wrap_action.setChecked(enabled)
         self._settings = dataclass_replace(self._settings, soft_wrap=enabled)
         self._save_settings()
+
+    def _build_zoom_in_without_shift_action(self) -> QAction:
+        """Cmd+= (macOS only): the usual Mac Zoom In key, without Shift.
+
+        The Zoom In item's key equivalent is Cmd++, which is Cmd+Shift+=. The
+        menu bar matches a key press against its items before any window
+        shortcut sees it, and it matches plain Cmd+= to the Increase Font
+        Weight item (Ctrl+Shift+=): so Cmd+= made the text bolder instead of
+        larger. An item for Cmd+= placed ahead of the weight items takes the
+        key first. It has to be a visible item: a hidden one swallows the key
+        and does nothing. Not a registry command, so it is not rebindable and
+        stays out of the Hotkeys dialog; Zoom In itself remains the command."""
+
+        action = QAction("Zoom In (Without Shift)", self)
+        action.setShortcut(QKeySequence("Ctrl+="))
+        action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        action.triggered.connect(lambda _checked=False: self.zoom_in_editor())
+        self._zoom_in_without_shift_action = action
+        return action
 
     def _active_floating_window(self) -> QWidget | None:
         """The floating (toggle) window that is the active window, if any.

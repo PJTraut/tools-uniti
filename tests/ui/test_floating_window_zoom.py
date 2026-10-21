@@ -2,6 +2,7 @@
 never the editor behind it."""
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -198,3 +199,27 @@ def test_view_menu_zoom_handlers_route_to_the_active_floating_window(
         assert window.current_view.zoom_percent > editor
         assert floating.zoom_percent == 100
     floating.close()
+
+
+@pytest.mark.skipif(sys.platform != "darwin", reason="macOS menu bar key matching")
+def test_macos_cmd_equals_zooms_in_and_sits_ahead_of_the_font_weight_items(qapp, window):
+    """The macOS menu bar matched plain Cmd+= to Increase Font Weight
+    (Ctrl+Shift+=), so the key made text bolder instead of larger. A Zoom In
+    item for Cmd+= has to come before the weight items in the View menu."""
+
+    from PySide6.QtGui import QKeySequence
+
+    action = window._zoom_in_without_shift_action
+    assert action.shortcut() == QKeySequence("Ctrl+=")
+    view_menu = next(
+        a.menu() for a in window.menuBar().actions() if a.text().replace("&", "") == "View"
+    )
+    entries = view_menu.actions()
+    weight = window._command_actions["editor.weight_increase"]
+    assert entries.index(action) < entries.index(weight)
+
+    before = window.current_view.zoom_percent
+    weight_before = window.current_view.font_weight
+    action.trigger()
+    assert window.current_view.zoom_percent > before
+    assert window.current_view.font_weight == weight_before
