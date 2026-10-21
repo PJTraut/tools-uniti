@@ -209,3 +209,16 @@ def test_adapt_clamps_against_the_available_area_when_given():
         target_available=((0, 25, 1440, 875),), frame_top=32,
     )
     assert result[1] >= 25 + 32
+
+
+def test_first_run_geometry_sits_inside_the_primary_available_area():
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.screen_geometry import first_run_geometry
+
+    app = QApplication.instance() or QApplication([])
+
+    x, y, width, height = first_run_geometry(820, 320)
+    area = app.primaryScreen().availableGeometry()
+    assert (width, height) == (820, 320)
+    assert x > area.x() and y > area.y()

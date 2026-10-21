@@ -64,7 +64,7 @@ Built 2026-10-20.
 - [BF-097](../BETA_FEEDBACK.md) — keyboard font zoom in a floating window changes the editor behind it (new field-test feedback, not investigated).
 - [BF-098](../BETA_FEEDBACK.md) — Character Inspector reported opening full screen; not reproduced, partly addressed by the 80% shrink (`5bf877d`); needs the reporter's steps.
 - Nothing runs `_start_screen_layouts` or the quit-time `shutdown()` through a real service in a test; the full suite covers them only indirectly.
-- Find's first-run default `(0, 0, 820, 320)` still sits under the macOS menu bar.
+- Resolved 2026-10-21: Find's first-run default is now 24 px inside the primary screen's available area (`first_run_geometry`), not `(0, 0)` under the macOS menu bar.
 - `find_replace_geometry` and `toggle_window_geometry` in `settings.json` are validated only for positive width and height; the layout store bounds its values.
 - Resolved 2026-10-20: the Character Inspector no longer has two shapes. It always shows the list+detail view (a single character is a one-row list), so it has one saved size and one splitter position.
 

@@ -90,7 +90,11 @@ from uniti.ui.capture_report import CaptureReportModel
 from uniti.ui.capture_report_delegate import CaptureReportDelegate
 from uniti.ui.icons import lucide_icon
 from uniti.ui.regex_input import RegexInput, ReplacementInput
-from uniti.ui.screen_geometry import clamp_geometry_to_screens, current_screen_geometries
+from uniti.ui.screen_geometry import (
+    clamp_geometry_to_screens,
+    current_screen_geometries,
+    first_run_geometry,
+)
 
 
 _FIND_RESULT_MEMORY_BYTES = 1 << 20
@@ -258,7 +262,7 @@ class FindReplaceWindow(QDockWidget):
         self._placement = "detached"
         self._changing_placement = False
         self._dock_host: QMainWindow | None = None
-        self._detached_geometry = (0, 0, 820, 320)
+        self._detached_geometry = first_run_geometry(820, 320)
         self._attached_height = DEFAULT_ATTACHED_HEIGHT
         self._attached_splitter: QSplitter | None = None
         self._restoring_state = False

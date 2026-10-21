@@ -279,3 +279,25 @@ def current_screen_geometries() -> tuple[Geometry, ...]:
         (rect.x(), rect.y(), rect.width(), rect.height())
         for rect in (screen.availableGeometry() for screen in QGuiApplication.screens())
     )
+
+
+FIRST_RUN_MARGIN = 24
+
+
+def first_run_geometry(width: int, height: int) -> Geometry:
+    """`width` x `height` at the top-left of the primary screen's available
+    area, so a window with no saved position never sits under the macOS
+    menu bar (or a top taskbar), which a literal (0, 0) would."""
+
+    from PySide6.QtGui import QGuiApplication
+
+    screen = QGuiApplication.primaryScreen()
+    if screen is None:
+        return (0, 0, width, height)
+    area = screen.availableGeometry()
+    return (
+        area.x() + FIRST_RUN_MARGIN,
+        area.y() + FIRST_RUN_MARGIN,
+        width,
+        height,
+    )
