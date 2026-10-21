@@ -370,13 +370,11 @@ class CharacterInspectorDialog(QDialog):
         else:
             self.resize(*default_size)
 
-        # BF-097: `WidgetWithChildrenShortcut`, not the default
-        # `WindowShortcut` -- a frameless `Tool` window doesn't reliably
-        # become the active top-level window on macOS, so a window-scoped
-        # shortcut lost the key to the main window's editor zoom action.
-        # Scoping to "this widget or a descendant has focus" ties it to
-        # the `setFocus()` claimed in `showEvent` instead (same approach
-        # as `WhitespaceLegendWindow`).
+        # BF-097: `WidgetWithChildrenShortcut`, scoped to this window's own
+        # focus, for keys that have no menu item (Ctrl+=). The View menu's
+        # Zoom In/Out/Reset keys never reach these on macOS -- the menu item
+        # takes them -- so `UNITIMainWindow.zoom_in_editor` and its siblings
+        # route to this window while it is the active one.
         for shortcut in (
             QShortcut(
                 QKeySequence(QKeySequence.StandardKey.ZoomIn), self, activated=self.zoom_in

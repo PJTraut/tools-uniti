@@ -151,3 +151,50 @@ def test_whitespace_legend_keyboard_zoom_zooms_itself_not_the_editor(qapp, windo
     _assert_shortcuts_follow_focus_not_window_activation(legend)
     _assert_zooms_itself_not_the_editor(qapp, window, legend, lambda w: w.zoom_percent)
     legend.close()
+
+
+def _activate(qapp, widget):
+    widget.show()
+    widget.raise_()
+    widget.activateWindow()
+    qapp.processEvents()
+
+
+@pytest.mark.parametrize("which", ["character_inspector", "whitespace_legend", "compare"])
+def test_view_menu_zoom_handlers_route_to_the_active_floating_window(
+    qapp, window, which
+):
+    """On macOS the View menu's Zoom In/Out/Reset items take the key before
+    any shortcut inside a floating window, so the handlers themselves must
+    zoom the window you are in -- and the editor again once you are not."""
+
+    window.current_view.select_all()
+    opener = {
+        "character_inspector": window.show_character_inspector,
+        "whitespace_legend": window.show_whitespace_legend,
+        "compare": window.show_compare,
+    }[which]
+    opener()
+    floating = window._toggle_windows[which]
+    _activate(qapp, floating)
+    if qapp.activeWindow() is not floating:
+        pytest.skip("this platform will not make the floating window active")
+
+    editor = window.current_view.zoom_percent
+    before = floating.zoom_percent
+    window.zoom_in_editor()
+    assert floating.zoom_percent > before
+    assert window.current_view.zoom_percent == editor
+    window.zoom_out_editor()
+    assert floating.zoom_percent == before
+    window.zoom_in_editor()
+    window.reset_editor_zoom()
+    assert floating.zoom_percent == 100
+    assert window.current_view.zoom_percent == editor
+
+    _activate(qapp, window)
+    if qapp.activeWindow() is window:
+        window.zoom_in_editor()
+        assert window.current_view.zoom_percent > editor
+        assert floating.zoom_percent == 100
+    floating.close()

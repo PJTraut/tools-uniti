@@ -1151,7 +1151,7 @@ BF-089 remains open, needing the user's own clarification before any scoping is 
 ## BF-097 — Floating windows: keyboard font zoom acts on the editor, not the floating window
 
 - Reported: 2026-10-20, field test, macOS (`@externalresources/field_test_feedback`): "floating windows font zoom works with mouse/trackpad; keyboard hotkeys affects the active text editor box".
-- Status: **fixed in source 2026-10-21; native macOS confirmation pending** (as with BF-017, offscreen Qt cannot certify real window-manager and menu-bar key delivery).
+- Status: **fixed 2026-10-21 and verified on native Cocoa by delivering real key events** (not yet by the reporter): see the second investigation below.
 - Environment: macOS, current `main`.
 - Observation: in a floating (toggle) window (Compare, Character Inspector, Whitespace Legend; Find/Replace too if it is detached), Ctrl/Cmd + mouse-wheel or trackpad zoom changes that window's own font, but the keyboard zoom in/out hotkeys change the font of the editor behind it.
 - Impact: keyboard zoom of a floating window is unavailable; the editor's zoom changes instead.
@@ -1164,6 +1164,13 @@ BF-089 remains open, needing the user's own clarification before any scoping is 
   - Detached Find/Replace is not affected by this path: its zoom actions are already `WidgetWithChildrenShortcut` (BF-017).
   - Fix applied 2026-10-21 (this was the proposal): give Compare the same four shortcuts (`ZoomIn`, `ZoomOut`, `Ctrl+0`, `Ctrl+=`) scoped `WidgetWithChildrenShortcut` and routed through `_left_view` (so `_sync_zoom` keeps both panes together); switch the Inspector's four shortcuts to `WidgetWithChildrenShortcut`; add `QTest.keySequence` regressions per window. Native confirmation on the reporter's Mac is still required, as with BF-017.
   - Also done: the Inspector and Compare set `StrongFocus` and claim focus in `showEvent` (the Legend's pattern), and the Inspector re-claims focus after `refresh()` if the rebuild deleted the focused child. Regressions: `tests/ui/test_floating_window_zoom.py` (Compare, Inspector, Legend, focus after refresh); the Compare and Inspector tests fail on the previous code. Full suite 2,976 passed, 6 platform skips. Not changed: the Inspector's Refresh shortcut still uses the default `WindowShortcut` context.
+- **Second investigation 2026-10-21, after the first fix did not work on the reporter's Mac** ("MAC does not zoom Inspector with keys"). The first round's cause was wrong: scoping the windows' own shortcuts to their focus changed nothing on macOS. Reproduced natively with `QT_QPA_PLATFORM=cocoa` by building real `NSEvent` key events and delivering them through `[NSApp sendEvent:]` (so they take the same path as a keystroke, including the menu bar; posting with `CGEventPostToPid` was silently dropped):
+  - Cmd++ in Compare, the Character Inspector and the Whitespace Legend zoomed the editor and left the window alone, even when the window was the key window with Qt focus inside it. The Legend, which already had focus-scoped shortcuts, failed the same way.
+  - Cause: on macOS the View menu's Zoom In/Out/Reset items (`editor.zoom_*`) take the key as a menu key equivalent before any `QShortcut` in the focused window; those handlers always zoomed `current_view`.
+  - Fix: `UNITIMainWindow.zoom_in_editor`/`zoom_out_editor`/`reset_editor_zoom` zoom the active floating window when one is active (`_active_floating_window`), else the editor. `ComparePane` gained public `zoom_in`/`zoom_out`/`reset_zoom`. The windows' own shortcuts remain for keys with no menu item.
+  - Native result after the fix: Cmd++ zooms the floating window and leaves the editor at 100 in all three; with only the editor active it zooms the editor. The floating window becomes key by itself on open.
+  - Not fixed, and older than this item: Cmd+= (no Shift) did nothing in the editor or in the floating windows in the same native run, although a control `QShortcut` on Cmd+K fired. Not investigated; the `Ctrl+=` shortcuts registered for it never fired natively.
+  - Regressions: `tests/ui/test_floating_window_zoom.py` (the routing test fails on the previous code). Full suite 2,979 passed, 6 platform skips.
 - Acceptance to define during implementation: the hotkeys zoom the floating window that has focus and leave the editor alone, in each floating window, and the editor still zooms when it has focus.
 
 ## BF-098 — Character Inspector opened full screen and did not resize

@@ -3287,17 +3287,46 @@ class UNITIMainWindow(QMainWindow):
         self._settings = dataclass_replace(self._settings, soft_wrap=enabled)
         self._save_settings()
 
+    def _active_floating_window(self) -> QWidget | None:
+        """The floating (toggle) window that is the active window, if any.
+
+        BF-097: on macOS the View > Zoom In/Out/Reset menu items get the key
+        before any shortcut inside a floating window can (even when that
+        window is the key window), so these handlers have to route to it
+        themselves: the hotkey zooms the window you are in, and the editor
+        only when the editor is."""
+
+        active = QApplication.activeWindow()
+        if active is None:
+            return None
+        for window in self._toggle_windows.values():
+            if window is active:
+                return window
+        return None
+
     def zoom_in_editor(self) -> None:
+        floating = self._active_floating_window()
+        if floating is not None:
+            floating.zoom_in()
+            return
         view = self.current_view
         if view is not None and view.isEnabled():
             view.zoom_in()
 
     def zoom_out_editor(self) -> None:
+        floating = self._active_floating_window()
+        if floating is not None:
+            floating.zoom_out()
+            return
         view = self.current_view
         if view is not None and view.isEnabled():
             view.zoom_out()
 
     def reset_editor_zoom(self) -> None:
+        floating = self._active_floating_window()
+        if floating is not None:
+            floating.reset_zoom()
+            return
         view = self.current_view
         if view is not None and view.isEnabled():
             view.reset_zoom()

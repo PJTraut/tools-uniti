@@ -452,28 +452,29 @@ class ComparePane(QWidget):
             self._recompute, Qt.ConnectionType.QueuedConnection
         )
 
-        # BF-097: keyboard zoom for the window itself. `WidgetWithChildren`
-        # rather than `WindowShortcut` because a frameless `Tool` window
-        # doesn't reliably become the active top-level window on macOS (see
-        # `WhitespaceLegendWindow`); without these the key reached the main
-        # window's editor zoom action and zoomed the editor behind. The left
-        # pane stands for both -- `_sync_zoom` keeps the right one level.
+        # BF-097: keyboard zoom for the window itself, scoped to this
+        # window's own focus. On macOS the View menu's Zoom In/Out/Reset keys
+        # never reach these (the menu item takes them), so
+        # `UNITIMainWindow.zoom_in_editor` and its siblings route to
+        # `zoom_in`/`zoom_out`/`reset_zoom` below while this window is the
+        # active one. The left pane stands for both: `_sync_zoom` keeps the
+        # right one level.
         for shortcut in (
             QShortcut(
                 QKeySequence(QKeySequence.StandardKey.ZoomIn),
                 self,
-                activated=self._left_view.zoom_in,
+                activated=self.zoom_in,
             ),
             QShortcut(
                 QKeySequence(QKeySequence.StandardKey.ZoomOut),
                 self,
-                activated=self._left_view.zoom_out,
+                activated=self.zoom_out,
             ),
             QShortcut(
-                QKeySequence("Ctrl+0"), self, activated=self._left_view.reset_zoom
+                QKeySequence("Ctrl+0"), self, activated=self.reset_zoom
             ),
             QShortcut(
-                QKeySequence("Ctrl+="), self, activated=self._left_view.zoom_in
+                QKeySequence("Ctrl+="), self, activated=self.zoom_in
             ),
         ):
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -618,6 +619,15 @@ class ComparePane(QWidget):
         persistence (2026-09-20 request) when this window closes."""
 
         return self._left_view.zoom_percent
+
+    def zoom_in(self) -> None:
+        self._left_view.zoom_in()
+
+    def zoom_out(self) -> None:
+        self._left_view.zoom_out()
+
+    def reset_zoom(self) -> None:
+        self._left_view.reset_zoom()
 
     def set_zoom_percent(self, percent: int) -> None:
         """Restores a previously-persisted zoom level on reopen. Setting
