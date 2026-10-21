@@ -119,6 +119,7 @@ Needs a laptop and an external monitor. [Plan](02_plans/2026-10-20-window-layout
 - [ ] Sleep and wake with the monitor attached: no window moves.
 - [ ] Unplug the monitor while a toggle window is open on it: it moves onto the laptop, and its hotkey still closes it.
 - [ ] `window-layouts.json` appears next to `settings.json`; it keeps at most eight layouts.
+- [ ] Keyboard zoom ([BF-097](BETA_FEEDBACK.md#bf-097--floating-windows-keyboard-font-zoom-acts-on-the-editor-not-the-floating-window)): with Compare, the Character Inspector and the Whitespace Legend open in turn, Cmd++, Cmd+- and Cmd+0 zoom that window and leave the editor behind it alone; back in the editor they zoom the editor.
 - [ ] Character Inspector with a word selected (Opt+Cmd+I): opens at a sensible size, on the screen the main window is on ([BF-098](BETA_FEEDBACK.md#bf-098--character-inspector-opened-full-screen-and-did-not-resize)).
 
 ## Results

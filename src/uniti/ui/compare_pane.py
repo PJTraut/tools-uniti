@@ -64,7 +64,7 @@ from collections.abc import Mapping, Sequence
 from difflib import SequenceMatcher
 
 from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QActionGroup, QColor
+from PySide6.QtGui import QActionGroup, QColor, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -343,6 +343,9 @@ class ComparePane(QWidget):
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
+        # BF-097: lets `showEvent` claim keyboard focus for the zoom
+        # shortcuts registered after the panes are built.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         title = f"{left_label}  vs.  {right_label}"
         self.setWindowTitle(f"Compare — {title}")
         self._left_document = left_document
@@ -448,6 +451,32 @@ class ComparePane(QWidget):
         self._recomputeRequested.connect(
             self._recompute, Qt.ConnectionType.QueuedConnection
         )
+
+        # BF-097: keyboard zoom for the window itself. `WidgetWithChildren`
+        # rather than `WindowShortcut` because a frameless `Tool` window
+        # doesn't reliably become the active top-level window on macOS (see
+        # `WhitespaceLegendWindow`); without these the key reached the main
+        # window's editor zoom action and zoomed the editor behind. The left
+        # pane stands for both -- `_sync_zoom` keeps the right one level.
+        for shortcut in (
+            QShortcut(
+                QKeySequence(QKeySequence.StandardKey.ZoomIn),
+                self,
+                activated=self._left_view.zoom_in,
+            ),
+            QShortcut(
+                QKeySequence(QKeySequence.StandardKey.ZoomOut),
+                self,
+                activated=self._left_view.zoom_out,
+            ),
+            QShortcut(
+                QKeySequence("Ctrl+0"), self, activated=self._left_view.reset_zoom
+            ),
+            QShortcut(
+                QKeySequence("Ctrl+="), self, activated=self._left_view.zoom_in
+            ),
+        ):
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
 
         self._remove_left_listener = left_document.add_history_listener(
             self._make_listener()
@@ -878,6 +907,14 @@ class ComparePane(QWidget):
         self._left_view.close()
         self._right_view.close()
         self.closeRequested.emit()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # BF-097: claim focus when the window appears so the zoom shortcuts
+        # above have a focused widget inside this window to fire on.
+        self.raise_()
+        self.activateWindow()
+        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def closeEvent(self, event) -> None:
         self.close_compare()

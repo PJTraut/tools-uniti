@@ -1,6 +1,6 @@
 # UNITI Ordered Roadmap
 
-Date: 2026-09-20
+Date: 2026-10-21
 
 B4 Compare, Character Inspector & Per-View Settings Beta is the active source-development milestone. The user-directed version move is recorded in [ADR-0012](../05_decisions/ADR-0012-b4-version-and-qualification.md), continuing [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md)'s B2→B3 pattern. All reviewed BF-019, BF-070, BF-072, BF-073, and BF-075 source changes are integrated; the version is `v0.001b4` / `0.1b4`. See the [B4 milestone plan](v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) for the full item-by-item table and the specific items still excluded from scope.
 
@@ -60,7 +60,9 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 
 Row 26 is implemented, with the status-bar direction display from its plan's Risks (2026-10-21); its live-app checks are still to do.
 
-Wishlist, not queued: USFM files outside a project, and a file/folder lock for the basic environments ([wishlist](../FEATURE_WISHLIST.md)).
+Open field-test items: [BF-097](../BETA_FEEDBACK.md) (keyboard zoom in a floating window changed the editor; fixed in source 2026-10-21, native confirmation pending) and [BF-098](../BETA_FEEDBACK.md) (Character Inspector opened full screen; not reproduced).
+
+Wishlist, not queued: USFM files outside a project, a file/folder lock for the basic environments, multi-cursor, SFM highlighting informed by `.sty`, and the spelling leftovers ([wishlist](../FEATURE_WISHLIST.md)).
 
 A21 Cross-Platform Alpha and earlier completed milestones remain in [Implemented](../03_implemented/README.md). A22 source infrastructure and the beta feedback code are implemented, but unfinished milestone acceptance records remain here.
 

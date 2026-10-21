@@ -348,6 +348,9 @@ class CharacterInspectorDialog(QDialog):
         self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, True)
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow, True)
+        # BF-097: lets `showEvent` claim keyboard focus for the zoom
+        # shortcuts below (see the note there).
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(0, 0, 0, 0)
@@ -367,14 +370,26 @@ class CharacterInspectorDialog(QDialog):
         else:
             self.resize(*default_size)
 
-        QShortcut(
-            QKeySequence(QKeySequence.StandardKey.ZoomIn), self, activated=self.zoom_in
-        )
-        QShortcut(
-            QKeySequence(QKeySequence.StandardKey.ZoomOut), self, activated=self.zoom_out
-        )
-        QShortcut(QKeySequence("Ctrl+0"), self, activated=self.reset_zoom)
-        QShortcut(QKeySequence("Ctrl+="), self, activated=self.zoom_in)
+        # BF-097: `WidgetWithChildrenShortcut`, not the default
+        # `WindowShortcut` -- a frameless `Tool` window doesn't reliably
+        # become the active top-level window on macOS, so a window-scoped
+        # shortcut lost the key to the main window's editor zoom action.
+        # Scoping to "this widget or a descendant has focus" ties it to
+        # the `setFocus()` claimed in `showEvent` instead (same approach
+        # as `WhitespaceLegendWindow`).
+        for shortcut in (
+            QShortcut(
+                QKeySequence(QKeySequence.StandardKey.ZoomIn), self, activated=self.zoom_in
+            ),
+            QShortcut(
+                QKeySequence(QKeySequence.StandardKey.ZoomOut),
+                self,
+                activated=self.zoom_out,
+            ),
+            QShortcut(QKeySequence("Ctrl+0"), self, activated=self.reset_zoom),
+            QShortcut(QKeySequence("Ctrl+="), self, activated=self.zoom_in),
+        ):
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         if on_refresh is not None:
             QShortcut(
                 QKeySequence(QKeySequence.StandardKey.Refresh),
@@ -442,6 +457,11 @@ class CharacterInspectorDialog(QDialog):
         if not text:
             raise ValueError("character inspector requires at least one character")
         self._populate_content(text, output_encoding, invalid_bytes)
+        # BF-097: the rebuild can delete whichever child held focus, which
+        # would leave the zoom shortcuts (scoped to this widget's tree)
+        # with nothing to fire on until the next click.
+        if self.focusWidget() is None:
+            self.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _make_glyph_label(self, character: str, parent: QWidget) -> QLabel:
         label = QLabel(_display_glyph(character), parent)
@@ -513,6 +533,17 @@ class CharacterInspectorDialog(QDialog):
             event.accept()
             return
         super().wheelEvent(event)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        # BF-097: claim focus every time this window becomes visible --
+        # nothing inside is guaranteed to, and macOS doesn't hand keyboard
+        # focus to a floating panel unless something does -- so the zoom
+        # shortcuts (scoped to this widget's tree) get the keys rather than
+        # the main window's editor zoom action underneath.
+        self.raise_()
+        self.activateWindow()
+        self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def eventFilter(self, watched, event) -> bool:
         if (
