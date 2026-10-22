@@ -86,6 +86,8 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] Narrow and widen the window: the breaks move; with `\Justification Both` on `\p` (project `uniti.sty`) the lines fill the width.
 - [ ] Click and select across a broken word; Find a word that Preview breaks; copy from Preview and paste: no stray hyphens. Sync and Check Spelling underlines still land on the right words.
 - [ ] `\Hyphenate -` on `\p` stops it for that style; change the book, restart: the setting stays.
+- [ ] Preview's notes frame breaks listed words in footnotes too (`\Hyphenate -` on `\Marker f` stops it); copy from the notes: no stray hyphens.
+- [ ] Right-click a misspelt word that has several equally near suggestions: the one the book uses most is first.
 
 ## 13. Justification and text direction (J1, W1–W6, W8)
 - [ ] `\Justification Start`, `End`, `Left`, `Right`, `Center` and `Both` on a paragraph style: each sits where the stylesheet reference says. In a right-to-left book `Start` and `Left` are the right edge.
@@ -105,7 +107,7 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] A project with `WordSuffixes` in `Settings.xml` (`usNIVv3`): `Paulʼs`-style words aren't flagged when `Paul` is correct.
 - [ ] `rnBKCv1`: a word pair Paratext marks wrong (`ata wuzoba`) is underlined as one.
 - [ ] **Next / Previous Spelling Issue** walk the book, wrap round, and the status bar counts them; Ctrl+Alt+. and Ctrl+Alt+, do the same, and both can be rebound in Hotkeys.
-- [ ] Right-click a pair Paratext marks wrong (`ata wuzoba` in `rnBKCv1`): **Approve** stops it being underlined. In Plain Text select two words and choose **Mark … Wrong Together**: the pair is underlined wherever it stands; **Remove … from Your Spelling List** undoes it.
+- [ ] Right-click a pair Paratext marks wrong (`ata wuzoba` in `rnBKCv1`): **Approve** stops it being underlined. In Plain Text, then in Standard and Preview, select two words and choose **Mark … Wrong Together**: the pair is underlined wherever it stands; **Remove … from Your Spelling List** undoes it.
 
 ## 15. Grouped Tabs (BF-082, ordinary windows)
 - [ ] **View › Grouped Tabs** on, in an ordinary window: files stack per group in each split; it feels right to use.
@@ -119,7 +121,7 @@ Needs a laptop and an external monitor. [Plan](02_plans/2026-10-20-window-layout
 - [ ] Sleep and wake with the monitor attached: no window moves.
 - [ ] Unplug the monitor while a toggle window is open on it: it moves onto the laptop, and its hotkey still closes it.
 - [ ] `window-layouts.json` appears next to `settings.json`; it keeps at most eight layouts.
-- [ ] Keyboard zoom ([BF-097](BETA_FEEDBACK.md#bf-097--floating-windows-keyboard-font-zoom-acts-on-the-editor-not-the-floating-window)): with Compare, the Character Inspector and the Whitespace Legend open in turn, Cmd++, Cmd+=, Cmd+- and Cmd+0 zoom that window and leave the editor behind it alone; back in the editor they zoom the editor.
+- [ ] Keyboard zoom ([BF-097](BETA_FEEDBACK.md#bf-097--floating-windows-keyboard-font-zoom-acts-on-the-editor-not-the-floating-window)): with Compare, the Character Inspector, the Whitespace Legend and a detached Find/Replace open in turn, Cmd++, Cmd+=, Cmd+- and Cmd+0 zoom that window and leave the editor behind it alone; back in the editor they zoom the editor.
 - [ ] Character Inspector with a word selected (Opt+Cmd+I): opens at a sensible size, on the screen the main window is on ([BF-098](BETA_FEEDBACK.md#bf-098--character-inspector-opened-full-screen-and-did-not-resize)).
 
 ## Results

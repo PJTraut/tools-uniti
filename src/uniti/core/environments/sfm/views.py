@@ -836,7 +836,11 @@ def layout_projection(
     for start, end, attrs, marker in sorted(spans, key=lambda span: (span[0], -span[1])):
         # Outer spans first, so a nested style is merged over its parent's.
         builder.span(start, end, attrs, marker)
-    sections = _note_sections(source, tokens, styles, pairs, closers, notes, key, direction) if notes else ()
+    sections = (
+        _note_sections(source, tokens, styles, pairs, closers, notes, key, direction, hyphenation)
+        if notes
+        else ()
+    )
     return builder.build(len(source), notes=sections)
 
 
@@ -849,9 +853,12 @@ def _note_sections(
     notes: list[_Note],
     key: str,
     direction: str | None = None,
+    hyphenation: "HyphenationRules | None" = None,
 ) -> tuple[NoteSection, ...]:
     """One `NoteSection` per note kind: every note body of that kind on
-    its own line, after its caller."""
+    its own line, after its caller. With `hyphenation`, a kind's bodies
+    break at the listed points unless its `\\Hyphenate` says no, or the
+    list names the hyphenated markers and leaves this one out."""
 
     kinds: list[str] = []
     for note in notes:
@@ -863,6 +870,7 @@ def _note_sections(
         builder = ProjectionBuilder(f"{key}.notes.{kind}")
         spans: list[tuple[int, int, dict[str, str], str | None]] = []
         block_attrs = _with_direction(presentation_attrs(styles, kind, block=True), direction)
+        rules = hyphenation if hyphenation is not None and _notes_hyphenate(hyphenation, block_attrs, kind) else None
         first = True
         for note in (note for note in notes if note.marker == kind):
             builder.hidden(note.body_start, kind)
@@ -874,7 +882,7 @@ def _note_sections(
                 builder.generated(note.caller, "caller")
                 spans.append((entry_start, builder.view_position, caller_attrs(styles, kind), "caller"))
                 builder.generated(" ", "caller")
-            _note_body(builder, source, tokens, styles, pairs, closers, spans, note)
+            _note_body(builder, source, tokens, styles, pairs, closers, spans, note, rules)
             builder.hidden(note.closer_end, kind)
             builder.block(entry_start, builder.view_position, block_attrs, kind)
         builder.hidden(len(source))
@@ -884,10 +892,42 @@ def _note_sections(
     return tuple(sections)
 
 
-def _note_body(builder: ProjectionBuilder, source: str, tokens, styles, pairs, closers, spans, note: _Note) -> None:
-    """A note's body as text, its markers hidden and their styles applied."""
+def _notes_hyphenate(hyphenation: "HyphenationRules", block_attrs: dict[str, str], kind: str) -> bool:
+    """Whether the bodies of note `kind` hyphenate: its stylesheet's
+    `\\Hyphenate` decides, else the file's marker list when it has one, else
+    they do (a note is narrow, and the file's default is for verse text)."""
+
+    wanted = block_attrs.get("hyphenate")
+    if wanted is not None:
+        return wanted == "yes"
+    return hyphenation.markers is None or kind in hyphenation.markers
+
+
+def _note_body(
+    builder: ProjectionBuilder,
+    source: str,
+    tokens,
+    styles,
+    pairs,
+    closers,
+    spans,
+    note: _Note,
+    hyphenation: "HyphenationRules | None" = None,
+) -> None:
+    """A note's body as text, its markers hidden and their styles applied;
+    `hyphenation` puts a soft hyphen at the listed break points."""
 
     registry = styles.registry
+
+    def emit(end: int) -> None:
+        start = builder.source_position
+        body = source[start:end]
+        last = 0
+        for cut in hyphenation.points(body) if hyphenation is not None else ():
+            builder.text(start + cut, body[last:cut], line_break=" ")
+            builder.generated(SOFT_HYPHEN, HYPHEN)
+            last = cut
+        builder.text(end, body[last:], line_break=" ")
     implicit: tuple[int, str] | None = None
     open_spans: list[tuple[int, int, str]] = []
     isolates = _SpanIsolates(builder, styles)
@@ -911,10 +951,10 @@ def _note_body(builder: ProjectionBuilder, source: str, tokens, styles, pairs, c
             attributes = _attribute_start(tokens, index, closers)
             if attributes is not None and attributes < end:
                 if attributes > builder.source_position:
-                    builder.text(attributes, source[builder.source_position : attributes], line_break=" ")
+                    emit(attributes)
                 builder.hidden(end, "attributes")
             elif end > builder.source_position:
-                builder.text(end, source[builder.source_position : end], line_break=" ")
+                emit(end)
             continue
         if is_milestone(token.text) or is_milestone_close(token.text):
             builder.hidden(min(_milestone_end(tokens, index), note.closer_start), "milestone")

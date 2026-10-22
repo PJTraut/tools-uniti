@@ -60,9 +60,9 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 
 Row 26 is implemented, with the status-bar direction display from its plan's Risks (2026-10-21); its live-app checks are still to do.
 
-Open field-test items: [BF-097](../BETA_FEEDBACK.md) (keyboard zoom in a floating window changed the editor; fixed 2026-10-21 and verified on native Cocoa; reporter's confirmation pending) and [BF-098](../BETA_FEEDBACK.md) (Character Inspector opened full screen; not reproduced).
+Open field-test items: [BF-097](../BETA_FEEDBACK.md) (keyboard zoom in a floating window changed the editor; fixed 2026-10-21, Find/Replace 2026-10-22; reporter confirmed the Inspector and Find/Replace, other floating windows still to confirm) and [BF-098](../BETA_FEEDBACK.md) (Character Inspector opened full screen; not reproduced; the Inspector works for the reporter now).
 
-Wishlist, not queued: USFM files outside a project, a file/folder lock for the basic environments, multi-cursor, SFM highlighting informed by `.sty`, and the spelling leftovers ([wishlist](../FEATURE_WISHLIST.md)).
+Wishlist, not queued: USFM files outside a project, a file/folder lock for the basic environments, multi-cursor, SFM highlighting informed by `.sty`, and an automatic hyphenation rule (the one spelling leftover; [wishlist](../FEATURE_WISHLIST.md)).
 
 A21 Cross-Platform Alpha and earlier completed milestones remain in [Implemented](../03_implemented/README.md). A22 source infrastructure and the beta feedback code are implemented, but unfinished milestone acceptance records remain here.
 

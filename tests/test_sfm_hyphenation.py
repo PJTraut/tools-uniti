@@ -101,12 +101,47 @@ def test_preview_puts_soft_hyphens_in_hyphenating_paragraphs(tmp_path):
     assert f"un{SHY}der{SHY}stand com{SHY}plete{SHY}ly" in projection.text
 
 
-def test_headings_and_notes_stay_unhyphenated(tmp_path):
+def test_headings_stay_unhyphenated_and_so_do_notes_the_list_leaves_out(tmp_path):
     projection, _rules_ = _preview(tmp_path)
     assert f"Understand heading" in projection.text
     assert projection.text.count(SHY) == 4
     note_text = projection.notes[0].projection.text
-    assert SHY not in note_text
+    assert SHY not in note_text  # the list names `p m q1`, not `f`
+
+
+def _note_text(rules, styles=STYLES) -> str:
+    projection = layout_projection(SOURCE, styles, "sfm.preview", show_markers=False, hyphenation=rules)
+    return projection.notes[0].projection.text
+
+
+def test_notes_hyphenate_when_the_list_names_their_marker_or_no_markers(tmp_path):
+    listed = _rules(tmp_path, LIST.replace('"p m q1"', '"p f"'))
+    assert f"on un{SHY}der{SHY}stand." in _note_text(listed)
+    unlisted = _rules(tmp_path, LIST.replace('HyphenatedMarkers = "p m q1"\r\n', ""))
+    assert f"on un{SHY}der{SHY}stand." in _note_text(unlisted)
+
+
+def test_a_notes_hyphenate_field_overrides_the_list(tmp_path):
+    def styled(text: str) -> LayeredStyleRegistry:
+        custom = parse_raw_stylesheet(text)
+        return LayeredStyleRegistry(
+            build_layers(load_usfm_baseline(), None) + (StyleLayer("custom.sty", StyleOrigin.PROJECT, custom),)
+        )
+
+    unlisted = _rules(tmp_path, LIST.replace('HyphenatedMarkers = "p m q1"\r\n', ""))
+    assert SHY not in _note_text(unlisted, styled("\\Marker f\n\\Hyphenate -\n"))
+    listed = _rules(tmp_path)
+    assert f"un{SHY}der{SHY}stand" in _note_text(listed, styled("\\Marker f\n\\Hyphenate\n"))
+
+
+def test_note_source_positions_skip_the_soft_hyphens(tmp_path):
+    rules = _rules(tmp_path, LIST.replace('"p m q1"', '"p f"'))
+    projection = layout_projection(SOURCE, STYLES, "sfm.preview", show_markers=False, hyphenation=rules)
+    note = projection.notes[0].projection
+    start = note.text.index(f"un{SHY}der")
+    source_start = SOURCE.index("understand.")
+    assert note.source_map.view_to_source(start) == source_start
+    assert note.source_map.view_to_source(start + 3) == source_start + 2
 
 
 def test_the_source_map_skips_the_soft_hyphens(tmp_path):

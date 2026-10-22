@@ -17,7 +17,7 @@ from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAction
 
 from uniti.core.environments.sfm.paratext_project import project_for_file
-from uniti.core.environments.sfm.spellcheck import WORD_RE, CheckContext, Span, SpellingCache
+from uniti.core.environments.sfm.spellcheck import WORD_RE, CheckContext, Span, SpellingCache, word_frequencies
 from uniti.core.environments.sfm.spelling import (
     HYPHENATED_WORDS_FILE,
     SPELLING_STATUS_FILE,
@@ -37,6 +37,20 @@ if TYPE_CHECKING:
 
 # One cache per document, shared by every view and window.
 _CACHES: "weakref.WeakKeyDictionary[object, SpellingCache]" = weakref.WeakKeyDictionary()
+# A document's word counts and the revision they were made at, for ranking suggestions.
+_FREQUENCIES: "weakref.WeakKeyDictionary[object, tuple[int, dict[str, int]]]" = weakref.WeakKeyDictionary()
+
+
+def frequencies_of(document) -> dict[str, int]:
+    """The document's word counts, made again only after it changed."""
+
+    cached = _FREQUENCIES.get(document)
+    if cached is None or cached[0] != document.revision:
+        cached = _FREQUENCIES[document] = (
+            document.revision,
+            word_frequencies(document.read(0, document.total_chars())),
+        )
+    return cached[1]
 
 
 def has_spelling_list(folder: Path) -> bool:
@@ -295,7 +309,7 @@ class SpellingController(QObject):
             if spelling.correction:
                 offered.append(spelling.correction)
             if not spelling.pair:
-                offered.extend(item for item in words.suggestions(word) if item not in offered)
+                offered.extend(item for item in words.suggestions(word, frequency=frequencies_of(document)) if item not in offered)
             for item in offered:
                 label = f"Use “{item}”" if item == spelling.correction else f"Change to “{item}”"
                 action = QAction(label, menu)

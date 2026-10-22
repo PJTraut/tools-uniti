@@ -16,7 +16,7 @@ import re
 import threading
 import unicodedata
 import xml.etree.ElementTree as ET
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
@@ -295,29 +295,30 @@ class SpellingList:
             self._vocabulary = vocabulary
         return self._vocabulary
 
-    def suggestions(self, word: str, limit: int = 5) -> list[str]:
-        """Correct words close to `word`, nearest first, then alphabetical:
-        one edit (a letter changed, added, left out, or two swapped) for a
-        word up to seven letters, two from eight. Taken from the lists only,
-        with the word's capitalization (F-D2)."""
+    def suggestions(self, word: str, limit: int = 5, frequency: Mapping[str, int] | None = None) -> list[str]:
+        """Correct words close to `word`, nearest first, then the more
+        frequent in `frequency` (normalized word → count, the text being
+        checked), then alphabetical: one edit (a letter changed, added, left
+        out, or two swapped) for a word up to seven letters, two from eight.
+        Taken from the lists only, with the word's capitalization (F-D2)."""
 
         word = unicodedata.normalize("NFC", word)
         key = normalize(word)
         reach = 1 if len(key) <= 7 else 2
         vocabulary = self._words_by_length()
         mask = _letter_mask(key)
-        scored: list[tuple[int, str]] = []
+        scored: list[tuple[int, int, str]] = []
         for length in range(max(1, len(key) - reach), len(key) + reach + 1):
             for candidate, candidate_mask in vocabulary.get(length, ()):
                 if candidate == key or (mask ^ candidate_mask).bit_count() > 2 * reach:
                     continue  # too many different letters for `reach` edits
                 distance = _edit_distance(key, candidate, reach)
                 if distance is not None:
-                    scored.append((distance, candidate))
+                    scored.append((distance, -frequency.get(candidate, 0) if frequency else 0, candidate))
         scored.sort()
         forms = self.status_data.forms if self.status_data is not None else {}
         result: list[str] = []
-        for _distance, candidate in scored:
+        for _distance, _used, candidate in scored:
             shown = forms[candidate][0] if candidate in forms else _match_case(candidate, word)
             if shown not in result and self.status(shown).state is SpellingState.CORRECT:
                 result.append(shown)

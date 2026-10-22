@@ -27,6 +27,7 @@ from .tokens import SfmTokenKind
 WORD_RE = regex.compile(
     r"[\p{L}\p{M}]+(?:['’\-‑‌‍](?=[\p{L}\p{M}])[\p{L}\p{M}]*)*"
 )
+_MARKER_RE = regex.compile(r"\\\+?[A-Za-z0-9]+\*?")
 # After these, the first word of the text is the number (`\c 1`, `\v 2-3`).
 _NUMBERED = frozenset({"c", "v", "cp"})
 _LINE_RE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n|$)")
@@ -174,6 +175,17 @@ def check_line(line: str, state: LineState, context: CheckContext) -> tuple[tupl
     return tuple(spans), LineState(paragraph, tuple(stack), milestone)
 
 
+def word_frequencies(text: str) -> dict[str, int]:
+    """How often each word (normalized) is used in `text`, markers left
+    out: what ranks the suggestions for a flagged word."""
+
+    counts: dict[str, int] = {}
+    for match in WORD_RE.finditer(_MARKER_RE.sub(" ", text)):
+        key = normalize(match.group())
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def describe(spelling: Spelling, project_name: str) -> str:
     """What hovering a flagged word says (plan D6)."""
 
@@ -316,4 +328,5 @@ __all__ = [
     "SpellingCache",
     "check_line",
     "describe",
+    "word_frequencies",
 ]

@@ -151,3 +151,23 @@ def test_copying_from_preview_leaves_the_soft_hyphens_out(desktop, tmp_path: Pat
     copied = editor.createMimeDataFromSelection().text()
 
     assert "understand completely" in copied and SHY not in copied
+
+
+def test_the_notes_frame_hyphenates_too_and_copying_from_it_leaves_the_soft_hyphens_out(desktop, tmp_path: Path):
+    _app, service = desktop
+    folder = _project(tmp_path / "niv", "NIV")
+    (folder / "01GEN.usfm").write_bytes(
+        "\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 We understand it.\\f + \\ft A note on completely.\\f*\r\n".encode()
+    )
+    window, genesis = _usfm_window(service, folder)
+    window._hyphenation.set_tab(genesis, True)
+    _preview_text(window)
+    (section,) = window._rich_views.pane.note_sections
+
+    assert f"com{SHY}plete{SHY}ly" in section.editor.toPlainText()
+    section.editor.selectAll()
+    copied = section.editor.createMimeDataFromSelection().text()
+
+    assert "A note on completely." in copied and SHY not in copied
+    window._hyphenation.set_tab(genesis, False)
+    assert SHY not in window._rich_views.pane.note_sections[0].editor.toPlainText()

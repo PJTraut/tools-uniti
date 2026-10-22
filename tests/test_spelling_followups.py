@@ -262,3 +262,30 @@ def test_pairs_ride_in_the_user_file_beside_the_words(tmp_path: Path):
 
     saved = json.loads(user_words_path("NIV").read_text(encoding="utf-8"))
     assert saved == {"approved": ["Zerubbabel"], "rejected": ["go at"]}
+
+
+def test_equally_near_suggestions_go_by_how_often_the_text_uses_them():
+    from uniti.core.environments.sfm.spellcheck import word_frequencies
+
+    words = _list("the", "tea", "ten")
+    frequency = word_frequencies("\\v 1 Ten men had ten sons and tea. \\v 2 The ten.")
+
+    assert words.suggestions("teh") == ["tea", "ten", "the"]  # alphabetical without counts
+    assert words.suggestions("teh", frequency=frequency) == ["ten", "tea", "the"]  # ten x3, tea x1, the x1
+    assert words.suggestions("teh", frequency={"the": 2}) == ["the", "tea", "ten"]
+
+
+def test_a_nearer_word_still_beats_a_more_frequent_one():
+    words = _list("hallelujah", "hallelujahs")
+
+    frequency = {"hallelujahs": 50, "hallelujah": 1}
+    assert words.suggestions("hallelujha", frequency=frequency) == ["hallelujah", "hallelujahs"]  # one edit, then two
+
+
+def test_word_counts_ignore_markers_and_case():
+    from uniti.core.environments.sfm.spellcheck import word_frequencies
+
+    counts = word_frequencies("\\p\n\\v 1 God said\\f + \\ft Note\\f* \\+nd Lord\\+nd* god.")
+
+    assert counts["god"] == 2 and counts["said"] == 1 and counts["note"] == 1
+    assert "p" not in counts and "v" not in counts and "ft" not in counts and "nd" not in counts

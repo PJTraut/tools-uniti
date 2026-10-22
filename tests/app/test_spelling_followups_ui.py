@@ -303,3 +303,43 @@ def test_next_and_previous_issue_have_rebindable_shortcuts(desktop, tmp_path: Pa
     assert window._command_actions["spelling.next_issue"] is window._spelling.next_action
     assert window._spelling.next_action.shortcut().toString() != ""
     assert window._spelling.next_action.shortcut() != window._spelling.previous_action.shortcut()
+
+
+@pytest.mark.parametrize("mode", ["sfm.standard", "sfm.preview"])
+def test_two_selected_words_can_be_marked_wrong_together_in_standard_and_preview(desktop, tmp_path: Path, mode: str):
+    _app, service = desktop
+    window, view = _checking(service, _pair_project(tmp_path / "niv"))
+    window._rich_views.show(mode)
+    pane = window._rich_views.pane
+    text = pane.editor.toPlainText()
+    start = pane._offsets.to_qt(text.index("go at"))
+    cursor = pane.editor.textCursor()
+    cursor.setPosition(start)
+    cursor.setPosition(start + len("go at"), cursor.MoveMode.KeepAnchor)
+    pane.editor.setTextCursor(cursor)
+    pane.context_source_offset = pane.source_offset_at(pane.editor.cursorRect(cursor).center())
+    menu = QMenu()
+
+    window._rich_views._context_entries(menu, view, pane)
+
+    entries = {action.text(): action for action in menu.actions() if action.text()}
+    assert "Mark “go at” Wrong Together" in entries
+    entries["Mark “go at” Wrong Together"].trigger()
+    assert user_words_for("NIV").is_rejected("go at")
+
+
+def test_suggestions_are_ranked_by_use_in_the_book(desktop, tmp_path: Path):
+    _app, service = desktop
+    folder = _project(tmp_path / "niv")
+    (folder / "SpellingStatus.xml").write_text(
+        _LIST.replace("</SpellingStatus>", '<Status Word="tea" State="R"/><Status Word="ten" State="R"/></SpellingStatus>'),
+        encoding="utf-8",
+    )
+    (folder / "01GEN.usfm").write_bytes(
+        "\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 Ten men had ten sons and teh tea.\r\n".encode()
+    )
+    window, view = _checking(service, folder)
+
+    entries, _menu = _entries(window, view, "teh")
+
+    assert list(entries)[:2] == ["Change to “ten”", "Change to “tea”"]

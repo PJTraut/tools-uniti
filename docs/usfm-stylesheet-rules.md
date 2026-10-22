@@ -220,7 +220,7 @@ Paratext and PTXprint don't read a character style's `\Direction`. For a book th
 \Hyphenate
 ```
 
-A word breaks only where the list gives a point (`a=ro=se`); a word not in the list never breaks. Notes aren't hyphenated. Standard and Plain Text show the source and never hyphenate.
+A word breaks only where the list gives a point (`a=ro=se`); a word not in the list never breaks. Preview's notes frame hyphenates by the same rules, a kind of note standing in for the paragraph marker (`\Marker f`, `\Hyphenate -` turns footnotes off); with no `\Hyphenate`, the list's `HyphenatedMarkers` line decides when it has one, and without one notes hyphenate. Standard and Plain Text show the source and never hyphenate.
 
 ## Built-in rules
 

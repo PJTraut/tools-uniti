@@ -631,6 +631,30 @@ class _RichEditor(QTextEdit):
         return menu
 
 
+class _NotesEditor(QTextEdit):
+    """A notes section's text: read-only, and copying it leaves out what the
+    view generated (Hyphenate Preview's soft hyphens), as in the main text."""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self.owner: "_NoteSectionView | None" = None
+
+    def createMimeDataFromSelection(self) -> QMimeData:  # noqa: N802 - Qt override
+        data = super().createMimeDataFromSelection()
+        owner = self.owner
+        if owner is None or owner.section is None or not owner.view_only:
+            return data
+        cursor = self.textCursor()
+        start, end = owner.offsets.from_qt(cursor.selectionStart()), owner.offsets.from_qt(cursor.selectionEnd())
+        text = cursor.selection().toPlainText()
+        if len(text) != end - start:
+            return data
+        text = "".join(char for index, char in enumerate(text) if start + index not in owner.view_only)
+        data = QMimeData()
+        data.setText(text)
+        return data
+
+
 class _NoteSectionView(QWidget):
     """One note class (Footnotes, Cross References, …) of the notes frame."""
 
@@ -639,9 +663,11 @@ class _NoteSectionView(QWidget):
         self._owner = owner
         self.section = None
         self.offsets = Utf16Offsets("")
+        self.view_only: frozenset[int] = frozenset()  # view positions of generated soft hyphens
         self.title = QLabel(self)
         self.title.setContentsMargins(6, 6, 6, 2)
-        self.editor = QTextEdit(self)
+        self.editor = _NotesEditor(self)
+        self.editor.owner = self
         self.editor.setReadOnly(True)
         self.editor.setUndoRedoEnabled(False)
         self.editor.cursorPositionChanged.connect(self._clicked)
@@ -655,6 +681,7 @@ class _NoteSectionView(QWidget):
         self.section = section
         self.title.setText(section.label)
         self.offsets = Utf16Offsets(section.projection.text)
+        self.view_only = frozenset(section.projection.source_map.view_only_positions(0, len(section.projection.text)))
         self.editor.setFont(font)
         self.editor.setPalette(self._owner.editor.palette())
         blocked = self.editor.blockSignals(True)
