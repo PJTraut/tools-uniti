@@ -1,6 +1,6 @@
 # UNITI Current Handover
 
-Captured: 2026-10-21
+Captured: 2026-10-22
 
 This is a continuation snapshot. [Current Status](../01_current/STATUS.md) owns the baseline and verification evidence; the [Documentation System](../00_governance/DOCUMENTATION_SYSTEM.md) defines authority.
 
@@ -10,7 +10,7 @@ This is a continuation snapshot. [Current Status](../01_current/STATUS.md) owns 
 - Active milestone: B4 Compare, Character Inspector & Per-View Settings Beta. B3 Find/Replace Rework & Editor Refinement Beta and B2 Feedback Refinement Beta are both superseded as active (their own native-host/hosted evidence remains open, not implemented history). A21 Cross-Platform Alpha is the latest fully completed milestone.
 - Complete reviewed feedback source: BF-019 (real fix), BF-070 (Compare full editor parity and all its same-day follow-ups), BF-072, BF-073 (Character Inspector list+detail rebuild and all its same-day follow-ups), and BF-075 (per-view settings), plus a shared toggle-window state-persistence mechanism, committed and integrated on `main` at `366ea42` (see the [B4 milestone plan](../02_plans/v0.001b4-compare-character-inspector-and-per-view-settings-beta.md) for the full item table).
 - Latest immutable release tag: `v0.001a15` at `10f419e`. This source promotion creates a B4 development identity; it does not create a tag, release, or native distribution.
-- Git: `main` and `origin/main` are both at `814a4f4` (status bar shows the text direction in effect), working tree clean on 2026-10-21. Everything, including the environment track, is pushed.
+- Git: `main` and `origin/main` are both at `223a32a` (the CI fixes, 2026-10-22). Everything committed is pushed. The working tree holds uncommitted work: Find/Replace scopes per environment (S1–S3, the one-book rule) and the docs that describe it.
 
 B4 is now the installed source version under [ADR-0012](../05_decisions/ADR-0012-b4-version-and-qualification.md), continuing [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md)'s B2→B3 pattern. Historical A22/A23/A24/B1 plan names, and B2's/B3's own outstanding native/hosted evidence, retain outstanding release requirements; they do not require reverting the source version.
 
@@ -29,16 +29,19 @@ Per-item implementation and remaining host checks are in the [Beta Feedback Log]
 
 ## Verification and its limits
 
-[Current Status](../01_current/STATUS.md) owns the verification record. The last full local suite recorded for the environment track is 2,653 passed, 6 expected platform skips (2026-10-13); it has not been re-run for the work since (book lock, spelling, hyphenation, text direction, window layouts), so treat it as a floor, not a current result. No native-host confirmation exists for those features; their live-app checks are the unticked sections of [LIVE_APP_CHECKLIST](../LIVE_APP_CHECKLIST.md).
+[Current Status](../01_current/STATUS.md) owns the verification record. The last full local suite is **2,993 passed, 6 expected platform skips** at `97861a6` (2026-10-22, offscreen, nothing deselected). The live-app checks for the environment-track features are the unticked sections of [LIVE_APP_CHECKLIST](../LIVE_APP_CHECKLIST.md); BF-097, BF-098 and BF-099 are confirmed on the Mac.
 
-The latest complete four-lane hosted feedback pass remains [run `34253008439`](https://github.com/PJTraut/tools-uniti/actions/runs/34253008439) on earlier checkpoint `aab3f3c`. The last recorded hosted attempt, [run `34259043043`](https://github.com/PJTraut/tools-uniti/actions/runs/34259043043) on `33c71d3`, reported failure with zero executed steps in all four jobs; GitHub annotations cited failed account payments or a spending-limit block. No hosted attempt has been made on any B3 or B4 commit.
+**Hosted CI is green on `main` at `223a32a`** ([run `39824869039`](https://github.com/PJTraut/tools-uniti/actions/runs/39824869039), 2026-10-22: macOS, Windows, Linux 3.12 and Linux latest all pass). It had been red on every run since `9d42a2c` (Check Spelling, 2026-10-14), for two reasons:
+- `tests/ui/test_main_window_contract.py::test_right_click_in_editor_shows_a_context_menu_and_focuses_that_view` failed on Linux and Windows. The cause was a real bug, not the test: `UNITITextView._char_for_point` raised `ValueError` for a point below the last line (non-wrapping branch), the error was swallowed in the signal handler, and no menu was built. It now returns the caret, as the soft-wrap branch does; `test_a_point_below_the_last_line_maps_to_the_caret_not_an_error` fails on the old code.
+- The **Verify exact skip policy** step failed on an unlisted skip. `ci/a21-skip-policy.json` now lists `test_a_real_book_checks_fast_and_flags_few_words` and `test_real_projects_load_quickly` (both "no local Paratext projects", all three families) and the macOS-only Cmd+= zoom test (Linux and Windows). The policy is an exact match, so a new platform-dependent skip fails CI until it is listed.
+The run covers `223a32a` only; the environment-scopes work in the working tree isn't in it. The earlier account block (`33c71d3`, run `34259043043`) was resolved 2026-10-13.
 
 ## Remaining work
 
 1. Obtain affected Windows and Mac confirmation of first use, last-window close, explicit Quit, terminal prompt return, and relaunch. BF-002 remains a critical testing blocker until those reports exist.
 2. Continue obtaining native confirmation for any item still recorded as pending native/affected-host evidence, notably BF-017 and BF-025 (carried from B3) and any BF-070/BF-073 follow-up not yet exercised on native hardware beyond the user's own visual/interaction reports already recorded in the feedback log.
 3. Qualify physical Chinese/Korean IME composition, commit, and cancellation on Windows, macOS, and Linux. Synthetic events do not close physical input qualification.
-4. Complete all four hosted lanes on the integrated B4 candidate once GitHub allows jobs to execute; none has run yet on this or the B3 candidate.
+4. ~~Make the four hosted lanes green again~~ Done 2026-10-22 at `223a32a`. Keep them green: list any new platform-dependent skip in `ci/a21-skip-policy.json`.
 5. Complete the retained release sequence: seven distinct qualifying A22 real-use days; A23 executable health/recovery delivery; A24 same-candidate qualification; then B1 private executable feedback over fourteen calendar days with three independent testers covering macOS, Windows, and Linux. These gates remain open; source integration and automated runs do not replace them.
 6. Keep the source version at B4 while completing the outstanding qualification. Do not mark a release ready or create a tag, public release, or tester distribution solely from this version promotion.
 
