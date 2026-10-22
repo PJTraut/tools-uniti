@@ -223,3 +223,36 @@ def test_macos_cmd_equals_zooms_in_and_sits_ahead_of_the_font_weight_items(qapp,
     action.trigger()
     assert window.current_view.zoom_percent > before
     assert window.current_view.font_weight == weight_before
+
+
+@pytest.mark.parametrize("detached", [True, False])
+def test_view_menu_zoom_handlers_route_to_find_replace(qapp, window, detached):
+    """BF-097: Find/Replace's keyboard zoom did nothing (only the mouse
+    wheel worked) because the View menu's Zoom keys always zoomed the
+    editor. They zoom Find/Replace while it is the window you are in."""
+
+    window.show_find()
+    panel = window._find_replace
+    if detached:
+        panel.detach()
+    qapp.processEvents()
+    _activate(qapp, panel)
+    panel.focus_find()
+    qapp.processEvents()
+    if detached and qapp.activeWindow() is not panel:
+        pytest.skip("this platform will not make the floating window active")
+    if not panel.isAncestorOf(qapp.focusWidget()):
+        pytest.skip("this platform will not give the panel keyboard focus")
+
+    editor = window.current_view.zoom_percent
+    before = panel.zoom_percent
+    window.zoom_in_editor()
+    assert panel.zoom_percent > before
+    assert window.current_view.zoom_percent == editor
+    window.zoom_out_editor()
+    assert panel.zoom_percent == before
+    window.zoom_in_editor()
+    window.reset_editor_zoom()
+    assert panel.zoom_percent == 100
+    assert window.current_view.zoom_percent == editor
+    panel.hide()

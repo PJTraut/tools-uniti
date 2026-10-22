@@ -3323,6 +3323,15 @@ class UNITIMainWindow(QMainWindow):
         for window in self._toggle_windows.values():
             if window is active:
                 return window
+        # Find/Replace is a dock widget, not a toggle window: detached it is
+        # its own active window; attached, the key is its own while focus is.
+        find_replace = self._find_replace
+        if find_replace.isVisible():
+            focus = QApplication.focusWidget()
+            if active is find_replace or (
+                focus is not None and find_replace.isAncestorOf(focus)
+            ):
+                return find_replace
         return None
 
     def zoom_in_editor(self) -> None:
