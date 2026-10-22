@@ -2110,7 +2110,11 @@ class UNITITextView(QAbstractScrollArea):
             text_x = self._gutter_width
         else:
             line = visual_row
-            column_start, offset, geometry, resolved = self._horizontal_geometry(line)
+            try:
+                column_start, offset, geometry, resolved = self._horizontal_geometry(line)
+            except ValueError:
+                # A point below the last line.
+                return self.state.cursor
             if not resolved:
                 return self.state.cursor
             text_x = self._row_text_x(offset, geometry.direction, geometry.width)

@@ -25,6 +25,14 @@
       [
         "tests/app/test_instance_service.py::test_primary_removes_stale_endpoint_only_after_acquiring_lease",
         "requires a filesystem-backed QLocalServer endpoint"
+      ],
+      [
+        "tests/test_spellcheck_lines.py::test_a_real_book_checks_fast_and_flags_few_words",
+        "no local Paratext projects"
+      ],
+      [
+        "tests/test_spelling_lists.py::test_real_projects_load_quickly",
+        "no local Paratext projects"
       ]
     ],
     "linux": [
@@ -55,6 +63,18 @@
       [
         "tests/performance/test_host.py::test_sparse_probe_uses_macos_hole_deallocation",
         "APFS-specific hole punching"
+      ],
+      [
+        "tests/test_spellcheck_lines.py::test_a_real_book_checks_fast_and_flags_few_words",
+        "no local Paratext projects"
+      ],
+      [
+        "tests/test_spelling_lists.py::test_real_projects_load_quickly",
+        "no local Paratext projects"
+      ],
+      [
+        "tests/ui/test_floating_window_zoom.py::test_macos_cmd_equals_zooms_in_and_sits_ahead_of_the_font_weight_items",
+        "macOS menu bar key matching"
       ]
     ],
     "windows": [
@@ -85,6 +105,18 @@
       [
         "tests/app/test_instance_service.py::test_primary_removes_stale_endpoint_only_after_acquiring_lease",
         "requires a filesystem-backed QLocalServer endpoint"
+      ],
+      [
+        "tests/test_spellcheck_lines.py::test_a_real_book_checks_fast_and_flags_few_words",
+        "no local Paratext projects"
+      ],
+      [
+        "tests/test_spelling_lists.py::test_real_projects_load_quickly",
+        "no local Paratext projects"
+      ],
+      [
+        "tests/ui/test_floating_window_zoom.py::test_macos_cmd_equals_zooms_in_and_sits_ahead_of_the_font_weight_items",
+        "macOS menu bar key matching"
       ]
     ]
   }

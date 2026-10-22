@@ -496,6 +496,27 @@ def test_right_click_in_editor_shows_a_context_menu_and_focuses_that_view(
     window.close()
 
 
+def test_a_point_below_the_last_line_maps_to_the_caret_not_an_error(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication
+
+    from uniti.ui.main_window import UNITIMainWindow
+
+    source = tmp_path / "short.txt"
+    source.write_text("abc\n", encoding="utf-8", newline="")
+    app = QApplication.instance() or QApplication([])
+    window = UNITIMainWindow()
+    view = window.open_path(source)
+    window.show()
+    app.processEvents()
+
+    assert view._char_for_point(5, 10_000) == view.state.cursor
+    window.close_all_documents(force=True)
+    window.close()
+
+
 def test_reload_cancel_preserves_modified_document(tmp_path: Path, monkeypatch):
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
