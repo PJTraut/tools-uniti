@@ -60,7 +60,7 @@ Ordered, alongside B4. This track doesn't gate B4's qualification.
 
 Row 26 is implemented, with the status-bar direction display from its plan's Risks (2026-10-21); its live-app checks are still to do.
 
-Open field-test items: [BF-097](../BETA_FEEDBACK.md) (keyboard zoom in a floating window changed the editor; fixed 2026-10-21, Find/Replace 2026-10-22; reporter confirmed the Inspector and Find/Replace, other floating windows still to confirm) and [BF-098](../BETA_FEEDBACK.md) (Character Inspector opened full screen; not reproduced; the Inspector works for the reporter now).
+Field-test items closed 2026-10-22: [BF-097](../BETA_FEEDBACK.md) (keyboard zoom in a floating window changed the editor; fixed 2026-10-21, Find/Replace 2026-10-22) and [BF-098](../BETA_FEEDBACK.md) (Character Inspector opened full screen; never reproduced); the reporter confirmed both work on the Mac.
 
 Wishlist, not queued: USFM files outside a project, a file/folder lock for the basic environments, multi-cursor, SFM highlighting informed by `.sty`, and an automatic hyphenation rule (the one spelling leftover; [wishlist](../FEATURE_WISHLIST.md)).
 

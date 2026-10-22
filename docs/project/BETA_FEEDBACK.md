@@ -1151,7 +1151,7 @@ BF-089 remains open, needing the user's own clarification before any scoping is 
 ## BF-097 — Floating windows: keyboard font zoom acts on the editor, not the floating window
 
 - Reported: 2026-10-20, field test, macOS (`@externalresources/field_test_feedback`): "floating windows font zoom works with mouse/trackpad; keyboard hotkeys affects the active text editor box".
-- Status: **fixed 2026-10-21 and verified on native Cocoa by delivering real key events**; the reporter confirmed the Character Inspector 2026-10-22, and Find/Replace was fixed and confirmed by the reporter the same day: see the second investigation below.
+- Status: **fixed 2026-10-21 and verified on native Cocoa by delivering real key events; closed 2026-10-22.** The reporter confirmed the Character Inspector and Find/Replace on 2026-10-22 (see the second and third rounds below) and then reported BF-097 working on the Mac.
 - Environment: macOS, current `main`.
 - Observation: in a floating (toggle) window (Compare, Character Inspector, Whitespace Legend; Find/Replace too if it is detached), Ctrl/Cmd + mouse-wheel or trackpad zoom changes that window's own font, but the keyboard zoom in/out hotkeys change the font of the editor behind it.
 - Impact: keyboard zoom of a floating window is unavailable; the editor's zoom changes instead.
@@ -1177,7 +1177,7 @@ BF-089 remains open, needing the user's own clarification before any scoping is 
 ## BF-098 — Character Inspector opened full screen and did not resize
 
 - Reported: 2026-10-20, field test, macOS: the Character Inspector opened "with full screen and did not resize" with a word selected and the main text window not full screen, opened with its hotkey (Opt+Cmd+I), current build.
-- Status: **not reproduced.** Partly addressed by `5bf877d`; the report is not closed. Reporter 2026-10-22: the Inspector works (no further full-screen report).
+- Status: **closed 2026-10-22, never reproduced.** Partly addressed by `5bf877d` (a window relocated from a gone screen shrinks to at most 80% of its new screen). The reporter said 2026-10-22 that BF-098 works on the Mac.
 - Environment: macOS, built-in Retina display (1800×1095 available), a second monitor used earlier.
 - Investigated 2026-10-20: on native Cocoa with a copy of the reporter's settings (inspector saved at 763×622, zoom 130) and a word selected, the Inspector opens at 763×622, not full screen. The same settings held windows saved on the external monitor that is no longer connected (Compare 3260×1720, Whitespace Legend 1077×1008); the clamp capped such a window to the whole screen, so it came back near full screen. Since `5bf877d` a window relocated from a gone screen shrinks in proportion to at most 80% of the screen it lands on.
 - Open: whether the report was the Inspector itself or one of those windows, whether it happens on every open or only after a display change, and whether it can be resized (a frameless tool window). Needs the reporter's steps or a screenshot.
