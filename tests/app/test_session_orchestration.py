@@ -1475,7 +1475,7 @@ def test_restored_session_rebuilds_its_environment_window(qapp, tmp_path: Path):
 
 
 def test_restored_session_keeps_each_environment_windows_slot(qapp, tmp_path: Path):
-    """Round 3 T3: a window's slot ("USFM B" is 1) comes back with it."""
+    """Round 3 T3: a window's slot ("SFM-2" is 1) comes back with it."""
 
     store, loaded, _paths = _published_session(tmp_path, document_count=1)
     ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
@@ -1497,7 +1497,7 @@ def test_restored_session_keeps_each_environment_windows_slot(qapp, tmp_path: Pa
     )
     window = service.windows.windows[0]
     assert window.environment_window == ("usfm", 1)
-    assert window.environment_window_name() == "USFM B"
+    assert window.environment_window_name() == "SFM-2"
     assert not window._chapter_view.enabled
     service.request_quit(lambda _entry: None)
     qapp.processEvents()

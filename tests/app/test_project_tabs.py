@@ -45,7 +45,7 @@ def _leaf(window, view):
     return window._panes.leaf_for_view(view.view_id)
 
 
-def test_a_projects_books_share_one_tab_titled_with_its_short_name(desktop, tmp_path: Path):
+def test_a_project_has_one_open_book_in_a_tab_titled_with_its_short_name(desktop, tmp_path: Path):
     app, service = desktop
     niv = _project(tmp_path / "niv", "NIV")
     window, genesis = _usfm_window(service, niv)
@@ -53,60 +53,78 @@ def test_a_projects_books_share_one_tab_titled_with_its_short_name(desktop, tmp_
     exodus = window.open_path(niv / "02EXO.usfm")
 
     leaf = _leaf(window, exodus)
-    assert leaf is _leaf(window, genesis) and len(leaf.view_ids) == 2  # both books open
+    assert leaf.view_ids == (exodus.view_id,)  # one open book: GEN closed, not hidden
+    assert not service.documents.find_path(niv / "01GEN.usfm").view_ids
     assert visible_tab_texts(leaf) == ["NIV"]  # one tab, the short name
     assert window.current_view is exodus
     assert leaf.tabToolTip(leaf.index_of(exodus.view_id)) == f"EXO\n{niv / '02EXO.usfm'}"
-    assert window.windowTitle().startswith("UNITI — USFM A — NIV")
+    assert window.windowTitle().startswith("UNITI — SFM-1 — NIV")
 
-    # Another project is another tab.
+    # Another project is another tab, with its own open book.
     cars = _project(tmp_path / "cars", "CARS")
     window.open_path(cars / "01GEN.usfm")
     assert visible_tab_texts(leaf) == ["NIV", "CARS"]
+    assert len(leaf.view_ids) == 2
 
 
-def test_changing_the_book_changes_it_in_the_tab_and_keeps_each_books_state(desktop, tmp_path: Path):
+def test_changing_the_book_replaces_it_in_the_tab(desktop, tmp_path: Path):
     app, service = desktop
     niv = _project(tmp_path / "niv", "NIV")
     window, genesis = _usfm_window(service, niv)
     bar = window._environment_bar
-    from uniti.app.editor_state import EditorStateSnapshot
-
-    caret = _GEN.index("\\v 2")
-    genesis.state.restore_state(EditorStateSnapshot(caret, caret, None))
-    genesis._state_changed()
 
     exodus = bar.open_book(niv / "02EXO.usfm")
 
+    leaf = _leaf(window, exodus)
+    assert window.current_view is exodus
+    assert leaf.view_ids == (exodus.view_id,)
+    assert visible_tab_texts(leaf) == ["NIV"]
+    # Back again: GEN opens afresh, in the tab's place.
+    again = bar.open_book(niv / "01GEN.usfm")
+    assert again is not genesis and leaf.view_ids == (again.view_id,)
+    assert visible_tab_texts(leaf) == ["NIV"]
+    assert leaf.index_of(again.view_id) == 0
+
+
+@pytest.mark.book_lock
+def test_a_changed_book_asks_before_the_next_replaces_it_and_stays_when_cancelled(desktop, tmp_path: Path, monkeypatch):
+    from uniti.ui import book_lock
+
+    app, service = desktop
+    niv = _project(tmp_path / "niv", "NIV")
+    window, genesis = _usfm_window(service, niv)
+    genesis = window.current_view
+    genesis.document.set_locked(False)
+    genesis.document.insert(0, "\\rem edited\n")
+    monkeypatch.setattr(book_lock, "ask_save_or_discard", lambda *args, **kwargs: None)
+
+    genesis = window.current_view
+    assert window.open_path(niv / "02EXO.usfm") is not None  # File > Open of another book
+
     leaf = _leaf(window, genesis)
-    assert window.current_view is exodus and _leaf(window, exodus) is leaf
-    assert visible_tab_texts(leaf) == ["NIV"]
-    assert not leaf.tabBar().isTabVisible(leaf.index_of(genesis.view_id))
-    # Back again: the same view, caret where it was, still one tab.
-    assert bar.open_book(niv / "01GEN.usfm") is genesis
-    assert genesis.state.cursor == caret
-    assert visible_tab_texts(leaf) == ["NIV"]
-    # The tab stays where the project's tab was.
-    assert leaf.index_of(genesis.view_id) == 0
+    assert genesis.view_id in leaf.view_ids  # cancelled: it stays, hidden
+    monkeypatch.setattr(book_lock, "ask_save_or_discard", lambda *args, **kwargs: False)
+    window._environment_bar.keep_one_book(window.current_view)
+    assert genesis.view_id not in leaf.view_ids  # Discard closes it
+    assert service.documents.find_path(niv / "01GEN.usfm") is None
 
 
-def test_closing_a_project_tab_closes_all_its_books(desktop, tmp_path: Path, monkeypatch):
+def test_closing_a_project_tab_closes_its_book(desktop, tmp_path: Path, monkeypatch):
     app, service = desktop
     niv = _project(tmp_path / "niv", "NIV")
     cars = _project(tmp_path / "cars", "CARS")
     window, genesis = _usfm_window(service, niv)
-    exodus = window._environment_bar.open_book(niv / "02EXO.usfm")
     other = window.open_path(cars / "01GEN.usfm")
     genesis.document.insert(0, "\\rem edited\n")
     asked = []
     monkeypatch.setattr(
         window, "_confirm_close", lambda view: (asked.append(view.document.path.name) if view.document.modified else None) or True
     )
-    leaf = _leaf(window, exodus)
+    leaf = _leaf(window, genesis)
 
-    assert window._close_tab_request(exodus.view_id) is True
+    assert window._close_tab_request(genesis.view_id) is True
 
-    assert asked == ["01GEN.usfm"]  # each modified book asks
+    assert asked == ["01GEN.usfm"]  # a modified book asks
     assert leaf.view_ids == (other.view_id,)
     assert visible_tab_texts(leaf) == ["CARS"]
 
@@ -115,13 +133,12 @@ def test_a_cancelled_close_keeps_the_tab(desktop, tmp_path: Path, monkeypatch):
     app, service = desktop
     niv = _project(tmp_path / "niv", "NIV")
     window, genesis = _usfm_window(service, niv)
-    exodus = window._environment_bar.open_book(niv / "02EXO.usfm")
-    exodus.document.insert(0, "\\rem edited\n")
+    genesis.document.insert(0, "\\rem edited\n")
     monkeypatch.setattr(window, "_confirm_close", lambda view: not view.document.modified)
 
     assert window.close_current() is False
 
-    assert set(_leaf(window, exodus).view_ids) == {exodus.view_id}  # GEN closed, EXO kept
+    assert set(_leaf(window, genesis).view_ids) == {genesis.view_id}
 
 
 def test_project_tabs_survive_a_session_capture(desktop, tmp_path: Path):
@@ -138,8 +155,8 @@ def test_project_tabs_survive_a_session_capture(desktop, tmp_path: Path):
     )
 
     record = next(item for item in snapshot.manifest.windows if item.window_id == window.window_id)
-    # Both books are saved, the current one first: restored, it's the tab's book.
-    assert record.root.view_ids == (exodus.view_id, genesis.view_id)
+    # One open book per project: just the current one.
+    assert record.root.view_ids == (exodus.view_id,)
 
 
 def test_ordinary_windows_keep_a_tab_per_file(desktop, tmp_path: Path):
@@ -161,18 +178,41 @@ def test_the_same_book_can_be_open_in_two_windows(desktop, tmp_path: Path):
     app, service = desktop
     niv = _project(tmp_path / "niv", "NIV")
     window_a, genesis_a = _usfm_window(service, niv)
-    exodus_a = window_a._environment_bar.open_book(niv / "02EXO.usfm")
     window_b = service.new_environment_window("usfm")
 
     genesis_b = window_b.open_path(niv / "01GEN.usfm")
-    exodus_b = window_b._environment_bar.open_book(niv / "02EXO.usfm")
 
-    assert window_a.view_for_id(genesis_a.view_id) is genesis_a
-    assert window_a.view_for_id(exodus_a.view_id) is exodus_a
+    assert window_a.view_for_id(genesis_a.view_id) is genesis_a  # still in A
     assert genesis_b is not genesis_a and genesis_b.document is genesis_a.document
-    assert exodus_b is not exodus_a and exodus_b.document is exodus_a.document
-    assert window_b.current_view is exodus_b
-    assert visible_tab_texts(_leaf(window_a, exodus_a)) == ["NIV"]
+    exodus_b = window_b._environment_bar.open_book(niv / "02EXO.usfm")
+    assert window_a.view_for_id(genesis_a.view_id) is genesis_a  # B's change leaves A's book
+    assert window_b.view_for_id(genesis_b.view_id) is None  # B's own view of it closed
+    assert service.documents.find_path(niv / "01GEN.usfm") is not None  # A still shows it
+    assert visible_tab_texts(_leaf(window_a, genesis_a)) == ["NIV"]
     assert visible_tab_texts(_leaf(window_b, exodus_b)) == ["NIV"]
-    # Opening it again in B shows B's own view of it.
-    assert window_b.open_path(niv / "01GEN.usfm") is genesis_b
+    # Opening it again in B shows a view of it there.
+    again = window_b.open_path(niv / "01GEN.usfm")
+    assert again.document is genesis_a.document and _leaf(window_b, again).view_ids == (again.view_id,)
+
+
+def test_a_restored_tab_with_several_books_keeps_the_shown_one_and_any_with_changes(desktop, tmp_path: Path):
+    app, service = desktop
+    niv = _project(tmp_path / "niv", "NIV")
+    window, genesis = _usfm_window(service, niv)
+    bar = window._environment_bar
+    genesis = window.current_view
+    bar._keeping = True  # as an old session had it: several books in one tab
+    try:
+        exodus = window.open_path(niv / "02EXO.usfm")
+    finally:
+        bar._keeping = False
+    leaf = _leaf(window, genesis)
+    assert set(leaf.view_ids) == {genesis.view_id, exodus.view_id}
+    genesis.document.insert(0, "\\rem edited\n")
+
+    bar.settle_restored_books()
+    assert set(leaf.view_ids) == {genesis.view_id, exodus.view_id}  # GEN has changes: kept
+
+    genesis.document.undo()
+    bar.settle_restored_books()
+    assert leaf.view_ids == (exodus.view_id,)  # the shown book stays

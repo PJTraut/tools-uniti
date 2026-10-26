@@ -292,7 +292,7 @@ class EnvironmentController:
             self.plain_mode_action.setCheckable(True)
             self.plain_mode_action.triggered.connect(lambda _checked=False: self.toggle_plain_mode())
         # An exclusive picker, so a submenu (like Whitespace/Tab Width).
-        self.document_environment_menu = QMenu("Environment for This Document", window)
+        self.document_environment_menu = QMenu("Assign Environment", window)
         group = QActionGroup(window)
         group.setExclusive(True)
         self.document_environment_actions: dict[str | None, QAction] = {}
@@ -312,7 +312,7 @@ class EnvironmentController:
             group.addAction(action)
             self.document_environment_menu.addAction(action)
             self.document_environment_actions[descriptor.key] = action
-        self.assignment_action = QAction("File Type Environments…", window)
+        self.assignment_action = QAction("Assign by File Type…", window)
         self.assignment_action.triggered.connect(
             lambda _checked=False: window.show_environment_assignment_editor()
         )

@@ -47,7 +47,7 @@ def _group(window, service, view, group_id: str) -> None:
 
 
 def test_environment_windows_are_named_per_environment_not_per_group(desktop, tmp_path: Path):
-    """Round 3 T3: "USFM A", "USFM B" … hold files of any group."""
+    """Round 3 T3: "SFM-1", "SFM-2" … hold files of any group."""
 
     app, service = desktop
     main = service.new_window()
@@ -61,10 +61,10 @@ def test_environment_windows_are_named_per_environment_not_per_group(desktop, tm
     usfm_a = main.move_to_environment_window(first)
     assert usfm_a is not main
     assert usfm_a.environment_window == ("usfm", 0)
-    assert usfm_a.environment_window_name() == "USFM A"
+    assert usfm_a.environment_window_name() == "SFM-1"
     assert usfm_a.current_view is first
     assert usfm_a._environment_bar is not None
-    assert usfm_a.windowTitle() == "UNITI — USFM A — TST — 01GEN.usfm"
+    assert usfm_a.windowTitle() == "UNITI — SFM-1 — TST — 01GEN.usfm"
     # The tab's own mode selector moves to the window's toolbar.
     assert usfm_a._rich_views.pane_mode_selector is False
 
@@ -73,9 +73,9 @@ def test_environment_windows_are_named_per_environment_not_per_group(desktop, tm
     assert main.move_to_environment_window(third) is usfm_a
     assert service.documents.entry_for_view(third.view_id).group_id == "B"
 
-    # A second window is "USFM B"; a slot can be asked for.
+    # A second window is "SFM-2"; a slot can be asked for.
     usfm_b = service.new_environment_window("usfm")
-    assert usfm_b.environment_window == ("usfm", 1) and usfm_b.environment_window_name() == "USFM B"
+    assert usfm_b.environment_window == ("usfm", 1) and usfm_b.environment_window_name() == "SFM-2"
     assert usfm_a.move_to_environment_window(third, slot=1) is usfm_b
     # A book of a project already shown somewhere goes to that window, even
     # when another USFM window is more recent.
@@ -85,9 +85,11 @@ def test_environment_windows_are_named_per_environment_not_per_group(desktop, tm
     assert main.move_to_environment_window(exodus) is usfm_a
 
     # Dock takes a file back to where it came from.
-    service.dock_view(first.view_id)
-    assert service.windows.window_for_view(first.view_id) is main
-    assert main.view_location(first.view_id).pane_id == home.pane_id
+    # (A project has one open book: EXO took GEN's place in the project's tab.)
+    assert service.windows.window_for_view(first.view_id) is None
+    service.dock_view(exodus.view_id)
+    assert service.windows.window_for_view(exodus.view_id) is main
+    assert main.view_location(exodus.view_id).pane_id == home.pane_id
 
 
 def test_environment_window_survives_session_capture(desktop, tmp_path: Path):
@@ -170,7 +172,7 @@ def test_book_selector_lists_a_projects_books_and_opens_them_into_the_group(desk
     # The id and the \h line; a book without \h (GEN here) shows its id
     # alone, even though BookNames.xml names it.
     assert [bar.book.itemText(index) for index in range(bar.book.count())] == ["GEN", "EXO Exodus"]
-    assert window.windowTitle() == "UNITI — USFM A — NIV11 — 01GENNIV11.SFM"
+    assert window.windowTitle() == "UNITI — SFM-1 — NIV11 — 01GENNIV11.SFM"
     assert "NIV11" in bar.project_label.text()
     assert "New International Version" not in bar.project_label.toolTip()  # the short name only
 
@@ -340,9 +342,10 @@ def test_plain_text_files_get_an_environment_window(desktop, tmp_path: Path):
     window = main.move_to_environment_window(view)
 
     assert window.environment_window == ("plain_text", 0)
-    assert window.windowTitle() == "UNITI — Plain Text A — notes.txt"
+    assert window.windowTitle() == "UNITI — TXT-1 — notes.txt"
     bar = window._environment_bar
-    assert list(bar.mode_actions) == [None]  # no rich views for plain text
+    assert list(bar.mode_actions) == [None, "(no preview)"]  # no rich views for plain text: Preview is shown disabled
+    assert not bar.mode_actions["(no preview)"].isEnabled()
     assert bar.book.isHidden() and bar.chapter.isHidden()
     # Already home: the entry is there but has nothing to do.
     assert window._environment.move_to_window_action.isEnabled() is False
@@ -647,7 +650,8 @@ def test_open_folder_by_type_asks_once_for_the_batch(desktop, tmp_path: Path, an
 
     assert answer.asked == [("01GEN.usfm", "USFM", 2)]
     window = service.environment_window_for("usfm", 0)
-    assert window is not None and len(window.views) == 2
+    # A project has one open book: the folder's first book opens, not both.
+    assert window is not None and [view.document.path.name for view in window.views] == ["01GEN.usfm"]
 
 
 # --- R8: configuration files from an environment window -----------------------------
@@ -920,14 +924,11 @@ def test_an_english_psalm_heading_syncs_to_its_russian_title_or_first_verse(desk
     assert right.state.cursor == _PSA_RU.index("\\v 22")
 
 
-# --- the toolbar's Group dropdown ---------------------------------------------------
+# --- the toolbar's Group button ---------------------------------------------------
 
 
 def _choose_group(bar, text: str) -> None:
-    index = bar.group.findText(text)
-    assert index >= 0, text
-    bar.group.setCurrentIndex(index)
-    bar._group_chosen(index)
+    assert bar.choose_group(text), text
 
 
 def test_the_group_dropdown_shows_the_current_files_group(desktop, tmp_path: Path):
@@ -937,9 +938,8 @@ def test_the_group_dropdown_shows_the_current_files_group(desktop, tmp_path: Pat
     window = main.move_to_environment_window(view)
     bar = window._environment_bar
 
-    items = [bar.group.itemText(i) for i in range(bar.group.count()) if bar.group.itemText(i)]
-    assert items == ["Ungrouped", "A", "B", "C", "New Group…", "Manage Groups…"]
-    assert bar.group.currentText() == "Ungrouped"
+    assert bar.group_choices() == ["Ungrouped", "A", "B", "C", "New Group…", "Manage Groups…"]
+    assert bar.group.text() == "Ungrouped"
 
 
 def test_choosing_a_group_sets_the_current_files_group_only(desktop, tmp_path: Path):
@@ -958,10 +958,10 @@ def test_choosing_a_group_sets_the_current_files_group_only(desktop, tmp_path: P
     assert service.documents.entry_for_view(left.view_id).group_id == "A"
     assert service.documents.entry_for_view(right.view_id).group_id is None
     assert all(service.windows.window_for_view(v.view_id) is window for v in (left, right))
-    assert window._environment_bar.group.currentText() == "A"
+    assert window._environment_bar.group.text() == "A"
     window._select_view(right)
-    assert window._environment_bar.group.currentText() == "Ungrouped"
-    assert window.windowTitle().startswith("UNITI — USFM A")
+    assert window._environment_bar.group.text() == "Ungrouped"
+    assert window.windowTitle().startswith("UNITI — SFM-1")
 
 
 def test_new_group_from_the_dropdown(desktop, tmp_path: Path, monkeypatch):
@@ -977,7 +977,7 @@ def test_new_group_from_the_dropdown(desktop, tmp_path: Path, monkeypatch):
 
     group_id = service.documents.entry_for_view(view.view_id).group_id
     assert window._group_by_id(group_id, "usfm").name == "Translators"
-    assert window._environment_bar.group.currentText() == "Translators"
+    assert window._environment_bar.group.text() == "Translators"
 
 
 # --- Round 3 T3: window names ---------------------------------------------------------
@@ -996,21 +996,21 @@ def test_a_window_can_be_renamed_and_keeps_its_name(desktop, tmp_path: Path, mon
 
     window._environment.rename_window_action.trigger()
 
-    assert window.environment_window_name() == "USFM Compare"
-    assert window._environment_bar.title.text() == "USFM Compare"
-    assert window.windowTitle().startswith("UNITI — USFM Compare — TST")
+    assert window.environment_window_name() == "SFM-Compare"
+    assert window._environment_bar.title.text() == "SFM-Compare"
+    assert window.windowTitle().startswith("UNITI — SFM-Compare — TST")
     # The name belongs to the slot: saved with the environment's settings.
     saved = tmp_path / "Environments" / "USFM" / "windows.json"
     assert saved.is_file() and "Compare" in saved.read_text(encoding="utf-8")
-    # A second window is still "USFM B"; Plain Text windows have their own names.
-    assert service.new_environment_window("usfm").environment_window_name() == "USFM B"
-    assert service.new_environment_window("plain_text").environment_window_name() == "Plain Text A"
+    # A second window is still "SFM-2"; Plain Text windows have their own names.
+    assert service.new_environment_window("usfm").environment_window_name() == "SFM-2"
+    assert service.new_environment_window("plain_text").environment_window_name() == "TXT-1"
     # Names stay different.
     from PySide6.QtWidgets import QMessageBox
 
     warnings = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *args, **kwargs: warnings.append(args[2]))
-    assert window.rename_environment_window("B") is False
+    assert window.rename_environment_window("2") is False
     assert warnings == ["Window names must be different"]
 
 
@@ -1137,4 +1137,68 @@ def test_the_toolbar_keeps_the_sync_button_short(desktop, tmp_path: Path):
     button = bar.widgetForAction(action)
     assert isinstance(button, QToolButton) and button.text() == "Sync"
     assert action.text() == "Sync Side-by-Side by Reference"
-    assert bar.sizeHint().width() < 1000
+    # 2026-10-26: BK/CH/VS labels and the − + steppers cost about 90 px; still within 1,150.
+    assert bar.sizeHint().width() < 1100
+
+
+def test_an_environment_has_at_most_nine_windows(desktop):
+    app, service = desktop
+    windows = [service.new_environment_window("usfm") for _ in range(9)]
+    assert [w.environment_window[1] for w in windows] == list(range(9))
+    assert service.free_environment_slot("usfm") is None
+
+    assert service.new_environment_window("usfm") in windows  # no tenth window
+    assert len(service.environment_windows("usfm")) == 9
+
+
+def test_the_steppers_move_to_the_previous_and_next_item(desktop, tmp_path: Path):
+    """Field test, 2026-10-26: "+" and "−" beside Chapter and Verse step
+    through the list; a list's ends disable them."""
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+    previous, following = bar._steppers[bar.chapter]
+    # The caret is before chapter 1 (the \\id line): nothing is chosen yet.
+    assert bar.chapter.currentText() == ""
+    assert not previous.isEnabled() and following.isEnabled()
+
+    assert bar.step(bar.chapter, 1) is True
+    assert bar.chapter.currentText() == "1"
+    assert bar.step(bar.chapter, 1) is True
+    assert bar.chapter.currentText() == "2"
+    assert view.state.cursor == _GEN_A.index("\\c 2")
+    assert previous.isEnabled() and not following.isEnabled()
+    assert bar.step(bar.chapter, 1) is False
+
+    assert bar.step(bar.chapter, -1) is True
+    assert bar.chapter.currentText() == "1"
+    assert bar.chapter.maxVisibleItems() == 12
+
+
+def test_markdown_text_view_formats_with_the_bold_and_italic_shortcuts(desktop, tmp_path: Path):
+    """Field test, 2026-10-26 (N8b): Cmd/Ctrl+B and +I wrap the selection in
+    a Markdown file's text view; other environments leave the keys alone."""
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QKeyEvent
+    from PySide6.QtCore import QEvent
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "notes.md", "Some text here\n"))
+    view.state.move_to(5)
+    view.state.move_to(9, selecting=True)
+
+    def press(target, key):
+        target.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.ControlModifier))
+
+    press(view, Qt.Key.Key_B)
+    assert view.document.read(0, view.document.total_chars()) == "Some **text** here\n"
+    assert view.state.selected_text() == "text"
+
+    view.state.move_to(0)
+    press(view, Qt.Key.Key_I)  # nothing selected: an empty pair, caret between
+    assert view.document.read(0, view.document.total_chars()).startswith("**Some") and view.state.cursor == 1

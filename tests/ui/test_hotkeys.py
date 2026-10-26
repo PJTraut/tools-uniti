@@ -38,16 +38,16 @@ def test_menu_bar_uses_compact_coteditor_reference_structure():
     assert _menu_labels(window.menuBar()) == [
         "File",
         "Edit",
-        "Format",
         "View",
         # ADR-0014: the active document's environment menu, retitled per
-        # document ("Environment" with nothing open).
+        # document ("Environment" with nothing open); Help is last
+        # (field test, 2026-10-26: fewer top menus; Format and Tools folded).
         "Environment",
-        "Tools",
-        "Hotkeys",
+        "Help",
     ]
     edit_menu = _top_level_action(window, "Edit").menu()
-    format_menu = _top_level_action(window, "Format").menu()
+    file_menu = _top_level_action(window, "File").menu()
+    format_menu = next(a.menu() for a in file_menu.actions() if a.text() == "Encoding && Line Endings")
     view_menu = _top_level_action(window, "View").menu()
     # Find/Replace and Navigation are flat blocks inside Edit, not their own
     # top-level menu or submenu (menus restructured 2026-09-15: prefer

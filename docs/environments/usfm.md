@@ -2,7 +2,7 @@
 
 Scripture text in USFM (Unified Standard Format Markers) and its older SFM form, in Paratext projects. See the [overview](README.md) for what all environments share.
 
-**USFM assumes a Paratext project:** a folder with a `Settings.xml`. A `.usfm` or `.sfm` file outside one opens as plain text, without the "Open in USFM Environment?" question, and the status bar says why ("GEN.usfm isn't in a Paratext project: opened as plain text"). **Environment for This Document** doesn't offer USFM for such a file. Working with USFM files outside a project is planned for later.
+**USFM assumes a Paratext project:** a folder with a `Settings.xml`. A `.usfm` or `.sfm` file outside one opens as plain text, without the "Open in USFM Environment?" question, and the status bar says why ("GEN.usfm isn't in a Paratext project: opened as plain text"). **Assign Environment** doesn't offer USFM for such a file. Working with USFM files outside a project is planned for later.
 
 - **Extensions:** `.usfm`, `.sfm` (any case). The separate "SFM" environment was folded into USFM on 2026-10-08. A setting saved under the old name is read as USFM.
 - **Highlighting:** every marker is colored as a keyword: `\v`, `\wj*`, nested `\+it`, milestones `\qt-s … \*`, table cells `\th1-2`. The text is uncolored.
@@ -41,12 +41,13 @@ When you open a USFM file that uses markers no loaded stylesheet defines, a repo
 ## Project tabs
 
 In a USFM window, **a tab is a project**, titled with the project's short name (`<Name>` in `Settings.xml`), e.g. "NIV". Each split has one tab per project.
-- **Changing the book** (the toolbar's **Book**) shows that book in the same tab. Every book you've opened stays open in the tab with its own caret, undo history and view mode, so going back to it picks up where you were.
-- **Unsaved changes:** when the book you're leaving has unsaved changes, UNITI asks "Save changes to GEN (NIV)?". **Yes** saves it; **No** keeps the changes in the book, open but not shown. Nothing is ever saved without asking. The Book list marks a book with unsaved changes "•", and the tab's name gets a "*" while any of its books has them.
-- **Opening a book** of a project that already has a tab in the split (File → Open, Recent Files, Open USFM Project…) shows it in that tab; a book of another project gets a tab of its own.
-- **Closing the tab** closes all its books, asking about each one with unsaved changes.
-- The same project can have a tab in two splits or windows, each showing its own book.
-- **Right-click the tab** to put it in a group, move it to another split (up to four) or window, or dock it back; it moves with all its books (see [Environment windows](README.md#environment-windows)). **Read Only** there makes the project's folder read-only (see [Read-only folders](README.md#read-only-folders)).
+- **A project has one open book at a time** in a tab. Changing the book (the toolbar's **Book**, Go to Chapter:Verse, Find stepping, File → Open, Recent Files, Open USFM Project…) closes the book you're leaving and shows the new one in the same tab; the other books of the project are just files on disk. A caret and undo history don't outlive the book; the project remembers the book and verse you were at.
+- **Unsaved changes:** when the book you're leaving has unsaved changes, UNITI asks "Save changes to GEN (NIV)?": **Save** saves it, **Discard** drops the changes, **Cancel** stays in the book. Nothing is ever saved without asking. The tab's name gets a "*" while its book has unsaved changes.
+- **Open Folder by Type** opens only the first book of each project in the folder.
+- **Sync never replaces a book with unsaved changes:** a split showing one stays where it is, and the status bar says so.
+- **Closing the tab** closes its book, asking about unsaved changes.
+- The same project can have a tab in two splits or windows, each showing its own book (even the same book).
+- **Right-click the tab** to put it in a group, move it to another split (up to four) or window, or dock it back (see [Environment windows](README.md#environment-windows)). Moving a book into a window that already has a tab for its project replaces that tab's book. **Read Only** there makes the project's folder read-only (see [Read-only folders](README.md#read-only-folders)).
 - The tab's tooltip names the current book and its file. Only the project's short name is shown, anywhere in UNITI.
 
 ## Book, chapter and verse
@@ -142,9 +143,13 @@ Approved and rejected words are kept in **your own spelling list**, never in Par
 
 ## Find and Replace across a project
 
-With **Current Group** as the Replace scope, **the group is the project**: every SFM book of the current project, open or not.
-- **Replace All** first lists every file with matches (name, folder, match count, 🔒 for locked books), each with a checkbox, **all unticked**. Only the ticked files change; a ticked locked book is unlocked first (the dialog says "2 locked books will be unlocked"), and one that wasn't open opens, changed and unsaved, in the project's tab. Unticked books that weren't open are closed again. Cancel changes nothing. Files in read-only folders are listed greyed out and never changed. **All Open Documents** uses the same list, across every environment.
-- **Find Next / Replace** step through the project's books: past the last match in a book, the next book with a match is shown in the pane (as the Book list shows it, with the Save or Discard question for the book you leave). A book with no match is passed over. Wrapping past the last book asks before carrying on from the first.
+In USFM the Replace scope offers **Book** (the current book), **Cursor to End**, **Project** and **Group**.
+- **Project** is every SFM book of the current project, open or not.
+- **Group** is every book of every open project in the current project's group (see [Groups and side-by-side sync](#groups-and-side-by-side-sync)), books that aren't open included, the current project first. A project with no group is a group of one, so Group then equals Project. A project that isn't open in a tab isn't searched.
+
+The two below work the same way for Project and Group.
+- **Replace All** first lists every file with matches (name, folder, match count, 🔒 for locked books), each with a checkbox, **all unticked**. Only the ticked files change; a ticked locked book is unlocked first (the dialog says "2 locked books will be unlocked"). A ticked book that isn't open is **changed and saved to disk** (the dialog says "2 files that aren't open will be saved to disk"), since a project has one open book and there is no tab to leave it in; a book that is open changes in its tab, unsaved, and can be undone. Cancel changes nothing. Files in read-only folders are listed greyed out and never changed. The other environments' **All Open Documents** uses the same list, limited to that environment's open documents.
+- **Find Next / Replace** step through the project's books: past the last match in a book, the next book with a match is shown in the pane (as the Book list shows it, with the Save or Discard question for the book you leave). A book with no match is passed over. Wrapping past the last book asks before carrying on from the first. With Group, stepping runs project by project and can open a book of another project in that project's own tab.
 - **Replace in a locked book** (the current one, or one reached by stepping) asks **Unlock and Replace** or **Skip**; Skip changes nothing and the next Replace asks again.
 
 ## Groups and side-by-side sync
@@ -178,7 +183,7 @@ When a mapping lands on a verse the text doesn't have, sync uses the same refere
 
 **File → Open USFM Project…** opens a Paratext project folder: one with a `Settings.xml`.
 - **Book:** UNITI opens one book, the one you were last in (otherwise the first), and the Book list opens the rest.
-- **Window and group:** the book opens in the USFM window that already shows the project, otherwise the most recently used USFM window, otherwise a new "USFM A". It gets the group the project was left in.
+- **Window and group:** the book opens in the USFM window that already shows the project, otherwise the most recently used USFM window, otherwise a new "SFM-1". It gets the group the project was left in.
 - **Recent Projects:** **File → Recent Projects** remembers each project's book, chapter:verse and group.
 - **From `Settings.xml`,** UNITI reads the name, the book-file naming, the encoding (books open in it), the versification, and the stylesheet to use in place of `usfm.sty`.
 - **Books opened as files:** a file opened with Open File inside a project folder counts as that project's book, whatever its extension. A file outside any project opens as plain text.

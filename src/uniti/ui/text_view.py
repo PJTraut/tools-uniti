@@ -255,6 +255,10 @@ class UNITITextView(QAbstractScrollArea):
         # (first, last) it shows — the chapter the caret is in — or None
         # to show every line.
         self.line_window_provider: Callable[[UNITITextView], tuple[int, int] | None] | None = None
+        # Cmd/Ctrl+B and +I: the window's handler takes "bold" or "italic"
+        # when the view's environment formats them (Markdown); it returns
+        # whether it did, and the key is otherwise left alone.
+        self.format_shortcut_handler: Callable[[UNITITextView, str], bool] | None = None
         self._applied_line_window: tuple[int, int] | None = None
         self._syntax_colors = self._theme_tokens.syntax
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -2561,6 +2565,11 @@ class UNITITextView(QAbstractScrollArea):
         window = self.line_window()
         bounds = self._window_bounds(window)
         editing = False
+
+        format_command = {Qt.Key.Key_B: "bold", Qt.Key.Key_I: "italic"}.get(key) if primary and not selecting else None
+        if format_command and self.format_shortcut_handler is not None and self.format_shortcut_handler(self, format_command):
+            event.accept()
+            return
 
         if primary and key == Qt.Key.Key_A:
             self.select_all()

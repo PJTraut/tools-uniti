@@ -78,9 +78,9 @@ def test_show_one_chapter_narrows_the_text_to_the_carets_chapter(desktop, tmp_pa
     window, view = _usfm_window(desktop, tmp_path)
     toggle = window._chapter_view.action
     assert not toggle.isChecked() and view.line_window() is None
-    # The toolbar's "Chapter" (beside the Chapter selector) is the toggle.
+    # The toolbar's "CH" (beside the Chapter selector) is the toggle.
     button = window._environment_bar.chapter_toggle
-    assert button.defaultAction() is toggle and button.text() == "Chapter"
+    assert button.defaultAction() is toggle and button.text() == "CH"
 
     _caret(view, "Two two")
     toggle.trigger()

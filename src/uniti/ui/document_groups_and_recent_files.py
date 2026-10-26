@@ -71,6 +71,23 @@ class DocumentGroupsAndRecentFiles:
             painter.end()
         return QIcon(pixmap)
 
+    @staticmethod
+    def _group_bar_icon(color: str) -> QIcon:
+        """The group's mark on a tab: a short horizontal bar, smaller than
+        the menus' round swatch (field test, 2026-10-26)."""
+
+        pixmap = QPixmap(12, 12)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setBrush(QColor(color))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.drawRoundedRect(0, 5, 12, 3, 1.5, 1.5)
+        finally:
+            painter.end()
+        return QIcon(pixmap)
+
     def _refresh_group_indicator(self, view_id: str) -> None:
         owner = self._owner
         if owner._service is None:
@@ -84,7 +101,7 @@ class DocumentGroupsAndRecentFiles:
         entry = owner._service.documents.entry_for_view(view_id)
         group = None if entry is None else self._group_by_id(entry.group_id, self._key_for_document(entry.document_id))
         leaf.tabs.setTabIcon(
-            index, self._group_swatch_icon(group.color) if group is not None else QIcon()
+            index, self._group_bar_icon(group.color) if group is not None else QIcon()
         )
         grouped_tabs = getattr(owner, "_grouped_tabs", None)
         if grouped_tabs is not None and grouped_tabs.enabled:

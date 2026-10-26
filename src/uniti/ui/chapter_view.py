@@ -31,7 +31,7 @@ class ChapterView(QObject):
         self._window = window
         self.action = QAction("Show One Chapter", window)
         # On the environment toolbar it's the "Chapter" before the Chapter selector.
-        self.action.setIconText("Chapter")
+        self.action.setIconText("CH")
         self.action.setCheckable(True)
         self.action.setToolTip(
             "Show only the chapter the caret is in, in every mode. The Chapter selector, sync, "

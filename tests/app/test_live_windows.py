@@ -29,7 +29,7 @@ def desktop(tmp_path: Path):
 
 
 def _two_windows(app, service, tmp_path: Path):
-    """NIV GEN in USFM A and, as a second view, in USFM B shown in Preview."""
+    """NIV GEN in SFM-1 and, as a second view, in SFM-2 shown in Preview."""
 
     niv = ensure_project(tmp_path / "niv", name="NIV")
     (niv / "01GEN.usfm").write_text(_GEN, encoding="utf-8")

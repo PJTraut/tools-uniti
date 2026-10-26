@@ -43,11 +43,30 @@ PROJECT_ENVIRONMENTS = frozenset({"usfm"})
 _EXTENSION_RE = re.compile(r"[a-z0-9_-]{1,32}")
 
 
+# The compact names window titles use: "SFM-1", "MD-2" (field test,
+# 2026-10-26). "SFM" is only a short label for USFM; there is no separate SFM
+# environment (R5). Menus and tooltips keep the full label.
+SHORT_LABELS = {
+    "plain_text": "TXT",
+    "markdown": "MD",
+    "xml": "XML",
+    "json": "JSON",
+    "yaml": "YAML",
+    "usfm": "SFM",
+    "csv": "CSV",
+    "tsv": "TSV",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class EnvironmentDescriptor:
     key: str
     label: str
     factory: Callable[[], Environment]
+
+    @property
+    def short_label(self) -> str:
+        return SHORT_LABELS.get(self.key, self.label)
 
     @property
     def profile(self) -> SyntaxProfile:

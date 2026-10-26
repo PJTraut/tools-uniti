@@ -601,7 +601,7 @@ def test_active_view_routes_across_registered_windows(tmp_path: Path):
     service.documents.close_all()
 
 
-def test_find_replace_document_provider_lists_every_adopted_document(
+def test_find_replace_document_provider_lists_the_documents_of_one_environment(
     tmp_path: Path,
 ):
     app, service, _recovery = _desktop_service(tmp_path)
@@ -611,7 +611,7 @@ def test_find_replace_document_provider_lists_every_adopted_document(
         service.documents.adopt(first)
         service.documents.adopt(second)
 
-        provided = list(service.find_replace._document_provider())
+        provided = list(service.find_replace._document_provider(first))
 
         assert set(provided) == {first, second}
     finally:

@@ -367,7 +367,7 @@ def test_a_utf8_crlf_book_isnt_asked_about(desktop, tmp_path: Path, monkeypatch)
 def test_line_endings_and_encoding_are_off_while_a_book_is_locked(desktop, tmp_path: Path):
     _app, service = desktop
     window, view = _usfm_window(service, _project(tmp_path / "niv"))
-    format_menu = next(action.menu() for action in window.menuBar().actions() if action.text() == "F&ormat")
+    format_menu = next(action.menu() for action in next(top.menu() for top in window.menuBar().actions() if top.text() == "&File").actions() if action.text() == "Encoding && Line Endings")
 
     format_menu.aboutToShow.emit()
     assert not any(action.isEnabled() for action in format_menu.actions() if not action.isSeparator())
@@ -537,6 +537,7 @@ def _replace_all(service, find, replace, scope):
     panel.find_input.set_text(find)
     panel.replace_input.set_text(replace)
     _wait(service, lambda: panel.compile_current() is not None and panel._replacement_is_current())
+    panel.target_changed()  # the combo follows the active view's environment
     panel.replace_scope_combo.setCurrentIndex(panel.replace_scope_combo.findData(scope))
     panel.replace_all()
     _wait(service, lambda: not panel.busy and panel.status_label.text() not in ("", "Planning replacements"))
@@ -567,9 +568,14 @@ def test_in_usfm_the_group_is_the_whole_project_opened_or_not(desktop, tmp_path:
 
     assert [Path(document.path).name for document in documents] == ["01GEN.usfm", "02EXO.usfm", "03LEV.usfm", "04NUM.usfm"]
     assert documents[0] is genesis.document
-    assert len(service._transient_documents) == 3  # opened only to be searched
-    for document in service._transient_documents:
-        service.release_group_document(document)
+    assert service._transient_documents == []  # nothing is opened until the search reads it
+    from uniti.app.pending_book import PendingBook
+
+    pending = [document for document in documents if isinstance(document, PendingBook)]
+    assert [book.path.name for book in pending] == ["02EXO.usfm", "03LEV.usfm", "04NUM.usfm"]
+    opened = pending[0].open_for_search()
+    assert opened is not None and service._transient_documents == [opened]
+    pending[0].release_search()
     assert service._transient_documents == []
 
 
@@ -591,7 +597,7 @@ def test_replace_all_in_the_group_lists_files_with_matches_and_changes_only_tick
 
     monkeypatch.setattr(replace_files, "choose", choose)
 
-    panel = _replace_all(service, "beginning|names|LORD", "X", ReplaceScope.CURRENT_GROUP)
+    panel = _replace_all(service, "beginning|names|LORD", "X", ReplaceScope.PROJECT)
 
     (rows,) = seen
     assert [(row.name, row.count, row.locked) for row in rows] == [
@@ -602,15 +608,15 @@ def test_replace_all_in_the_group_lists_files_with_matches_and_changes_only_tick
     # Unticked books are unchanged and never written; NUM has no match so isn't listed.
     assert (niv / "01GEN.usfm").read_bytes() == _GEN.encode()
     assert (niv / "02EXO.usfm").read_bytes() == _EXO.encode()
-    assert (niv / "03LEV.usfm").read_bytes() == _LEV.encode()
     assert (niv / "04NUM.usfm").read_bytes() == _NUM.encode()
     assert not genesis.document.modified
+    assert [row.saved for row in rows] == [False, True, True]  # the ones that aren't open
     assert panel.status_label.text().startswith("1 replaced across 1 document(s)")
-    # The ticked book that wasn't open stays open in the project tab: changed, unsaved.
-    lev = service.documents.find_path(niv / "03LEV.usfm")
-    assert lev is not None and lev.view_ids and lev.document.modified
-    assert "And the X called." in lev.document.read(0, lev.document.total_chars())
-    # Books that weren't chosen and weren't open are closed again.
+    assert panel.status_label.text().endswith("; 1 saved to disk")
+    # A project has one open book: the ticked book that wasn't open is saved, not left in a tab.
+    assert b"And the X called." in (niv / "03LEV.usfm").read_bytes()
+    assert (niv / "03LEV.usfm").read_bytes().replace(b"X", b"LORD") == _LEV.encode()  # nothing else changed
+    assert service.documents.find_path(niv / "03LEV.usfm") is None
     assert service.documents.find_path(niv / "04NUM.usfm") is None
     assert service.documents.find_path(niv / "02EXO.usfm") is None
     assert service._transient_documents == []
@@ -627,7 +633,7 @@ def test_ticked_locked_books_are_unlocked_and_left_unsaved(desktop, tmp_path: Pa
     window.activateWindow()
     monkeypatch.setattr(replace_files, "choose", lambda parent, rows: {0})
 
-    panel = _replace_all(service, "beginning|names|LORD", "X", ReplaceScope.CURRENT_GROUP)
+    panel = _replace_all(service, "beginning|names|LORD", "X", ReplaceScope.PROJECT)
 
     assert genesis.document.locked is False and genesis.document.modified
     assert "In the X." in genesis.document.read(0, genesis.document.total_chars())
@@ -645,7 +651,7 @@ def test_cancelling_the_list_changes_nothing(desktop, tmp_path: Path, monkeypatc
     window.activateWindow()
     monkeypatch.setattr(replace_files, "choose", lambda parent, rows: None)
 
-    panel = _replace_all(service, "beginning|names|LORD", "X", ReplaceScope.CURRENT_GROUP)
+    panel = _replace_all(service, "beginning|names|LORD", "X", ReplaceScope.PROJECT)
 
     assert panel.status_label.text() == "cancelled: no file changed"
     assert genesis.document.locked and not genesis.document.modified
@@ -665,7 +671,7 @@ def test_read_only_folder_files_are_listed_but_never_changed(desktop, tmp_path: 
     seen = []
     monkeypatch.setattr(replace_files, "choose", lambda parent, rows: seen.append(rows) or set(range(len(rows))))
 
-    panel = _replace_all(service, "beginning|names|LORD", "X", ReplaceScope.CURRENT_GROUP)
+    panel = _replace_all(service, "beginning|names|LORD", "X", ReplaceScope.PROJECT)
 
     assert seen and all(row.read_only for row in seen[0])
     assert panel.status_label.text().startswith("0 replaced across 0 document(s)")
@@ -690,7 +696,29 @@ def test_the_dialog_lists_all_unticked_and_names_the_locked_books(desktop, tmp_p
     assert dialog.note.text() == "1 locked book will be unlocked"
 
 
-def test_replace_all_in_all_open_documents_lists_every_environment(desktop, tmp_path: Path, monkeypatch):
+def test_a_usfm_view_offers_book_project_and_group_not_all_open_documents(desktop, tmp_path: Path):
+    from uniti.ui.find_replace import ReplaceScope
+
+    _app, service = desktop
+    niv = _project(tmp_path / "niv")
+    main = service.new_window()
+    main.activateWindow()
+    main.open_path(tmp_path_note(tmp_path))
+    book = main.open_path(niv / "01GEN.usfm")
+    service.find_replace.target_changed()
+    combo = service.find_replace.replace_scope_combo
+
+    assert [combo.itemText(i) for i in range(combo.count())] == ["Book", "Cursor to End", "Project", "Group"]
+    assert combo.findData(ReplaceScope.ALL_OPEN_DOCUMENTS) == -1
+
+
+def tmp_path_note(folder: Path) -> Path:
+    note = folder / "notes.txt"
+    note.write_bytes(b"the end\r\n")
+    return note
+
+
+def test_all_open_documents_from_a_plain_text_view_leaves_the_books_out(desktop, tmp_path: Path, monkeypatch):
     from uniti.ui import replace_files
     from uniti.ui.find_replace import ReplaceScope
 
@@ -698,18 +726,16 @@ def test_replace_all_in_all_open_documents_lists_every_environment(desktop, tmp_
     niv = _project(tmp_path / "niv")
     main = service.new_window()
     main.activateWindow()
+    main.open_path(niv / "01GEN.usfm")
     plain = tmp_path / "notes.txt"
     plain.write_bytes(b"the end\r\n")
     main.open_path(plain)
-    book = main.open_path(niv / "01GEN.usfm")
     seen = []
-    monkeypatch.setattr(replace_files, "choose", lambda parent, rows: seen.append(rows) or {0})
+    monkeypatch.setattr(replace_files, "choose", lambda parent, rows: seen.append(rows) or set())
 
     _replace_all(service, "the", "THE", ReplaceScope.ALL_OPEN_DOCUMENTS)
 
-    names = sorted(row.name for row in seen[0])
-    assert names == ["GEN (NIV)", "notes.txt"]
-    assert plain.read_bytes() == b"the end\r\n"
+    assert sorted(row.name for row in seen[0]) == ["notes.txt"]
 
 
 # --- L5: stepping through the project's books ---------------------------------
@@ -724,7 +750,8 @@ def _step_panel(service, window, find: str = "LORD|beginning"):
     panel.find_input.set_text(find)
     panel.replace_input.set_text("X")
     _wait(service, lambda: panel.compile_current() is not None and panel._replacement_is_current())
-    panel.replace_scope_combo.setCurrentIndex(panel.replace_scope_combo.findData(ReplaceScope.CURRENT_GROUP))
+    panel.target_changed()  # the combo follows the active view's environment
+    panel.replace_scope_combo.setCurrentIndex(panel.replace_scope_combo.findData(ReplaceScope.PROJECT))
     return panel
 
 
@@ -870,10 +897,128 @@ def test_other_scopes_dont_step(desktop, tmp_path: Path):
     niv = _project_of_four(tmp_path / "niv")
     window, genesis = _usfm_window(service, niv)
     panel = _step_panel(service, window)
-    panel.replace_scope_combo.setCurrentIndex(panel.replace_scope_combo.findData(ReplaceScope.WHOLE_DOCUMENT))
+    panel.replace_scope_combo.setCurrentIndex(panel.replace_scope_combo.findData(ReplaceScope.BOOK))
     _caret_after(genesis, "beginning")
 
     panel.next_match()
     _settle(service, panel)
 
     assert window.current_view is genesis
+
+
+# --- scopes plan S2: Book, Project, Group ---------------------------------------
+
+
+def _grouped_projects(service, tmp_path: Path, groups: dict[str, str | None]):
+    """Open each project of `groups` ({name: group id}) with its first book."""
+
+    main = service.new_window()
+    views = {}
+    folders = {}
+    for name, group in groups.items():
+        folder = _project_of_four(tmp_path / name)
+        folders[name] = folder
+        if group is not None:
+            main._usfm_projects.store.record_opened(folder, name, group_id=group)
+        views[name] = main._usfm_projects.open_project(folder)
+    return main, folders, views
+
+
+def test_group_is_every_book_of_every_open_project_in_the_group(desktop, tmp_path: Path):
+    _app, service = desktop
+    _main, folders, views = _grouped_projects(service, tmp_path, {"niv": "B", "esv": "B", "kjv": "C"})
+
+    documents = service._documents_in_project_group(views["niv"].document)
+
+    paths = [Path(document.path) for document in documents]
+    assert sorted(path.parent.name for path in paths) == ["esv"] * 4 + ["niv"] * 4  # kjv is in another group
+    assert sorted(path.name for path in paths if path.parent.name == "esv") == [
+        "01GEN.usfm", "02EXO.usfm", "03LEV.usfm", "04NUM.usfm"
+    ]  # the books of esv that are not open too
+    assert paths[0].parent.name == "niv"  # the current project first
+
+
+def test_a_project_without_a_group_is_a_group_of_one(desktop, tmp_path: Path):
+    _app, service = desktop
+    _main, _folders, views = _grouped_projects(service, tmp_path, {"niv": None, "esv": "B"})
+    assert service.documents.entry_for_view(views["niv"].view_id).group_id != "B"
+
+    documents = service._documents_in_project_group(views["niv"].document)
+
+    assert {Path(document.path).parent.name for document in documents} == {"niv"}
+
+
+def test_project_is_one_projects_books_only(desktop, tmp_path: Path):
+    _app, service = desktop
+    _main, _folders, views = _grouped_projects(service, tmp_path, {"niv": "B", "esv": "B"})
+
+    documents = service._documents_in_same_group(views["niv"].document)
+
+    assert {Path(document.path).parent.name for document in documents} == {"niv"}
+
+
+def test_find_next_in_group_steps_into_another_projects_book(desktop, tmp_path: Path):
+    from uniti.ui.find_replace import ReplaceScope
+
+    _app, service = desktop
+    main, folders, views = _grouped_projects(service, tmp_path, {"niv": "B", "esv": "B"})
+    (folders["esv"] / "04NUM.usfm").write_bytes(b"\\id NUM\r\n\\c 1\r\n\\p\r\n\\v 1 Zebulun.\r\n")
+    window = service.windows.window_for_view(views["niv"].view_id)
+    panel = _step_panel(service, window, find="Zebulun")
+    panel.replace_scope_combo.setCurrentIndex(panel.replace_scope_combo.findData(ReplaceScope.PROJECT_GROUP))
+
+    panel.next_match()
+    _settle(service, panel)
+
+    shown = service.active_view
+    assert Path(shown.document.path) == folders["esv"] / "04NUM.usfm"
+
+
+def test_a_search_over_the_project_holds_one_unopened_book_at_a_time(desktop, tmp_path: Path):
+    _app, service = desktop
+    niv = _project_of_four(tmp_path / "niv")
+    window, genesis = _usfm_window(service, niv)
+    panel = _step_panel(service, window, find="Count them")  # only NUM has it
+    _caret_after(genesis, "beginning")
+    most = [0]
+    original = service._open_transient_book
+
+    def counting(path):
+        opened = original(path)
+        most[0] = max(most[0], len(service._transient_documents))
+        return opened
+
+    service._open_transient_book = counting
+
+    panel.next_match()
+    _settle(service, panel)
+
+    assert Path(window.current_view.document.path).name == "04NUM.usfm"
+    assert most[0] == 1  # EXO and LEV were closed before the next was opened
+    assert service._transient_documents == []
+
+
+def test_wrapping_past_the_groups_last_book_asks_about_the_group(desktop, tmp_path: Path, monkeypatch):
+    from uniti.ui.find_replace import ReplaceScope
+
+    _app, service = desktop
+    main, folders, views = _grouped_projects(service, tmp_path, {"niv": "B"})
+    window = service.windows.window_for_view(views["niv"].view_id)
+    panel = _step_panel(service, window, find="Count them|LORD")  # LEV and NUM
+    panel.replace_scope_combo.setCurrentIndex(panel.replace_scope_combo.findData(ReplaceScope.PROJECT_GROUP))
+    _caret_after(window.current_view, "beginning")
+    panel.next_match()
+    _settle(service, panel)
+    assert Path(window.current_view.document.path).name == "03LEV.usfm"
+    _caret_after(window.current_view, "LORD")
+    panel.next_match()
+    _settle(service, panel)
+    assert Path(window.current_view.document.path).name == "04NUM.usfm"
+    _caret_after(window.current_view, "Count them")
+
+    asked = _answers(monkeypatch, ask_wrap_project=False)
+    panel.next_match()
+    _settle(service, panel)
+
+    assert len(asked["ask_wrap_project"]) == 1
+    assert panel.status_label.text() == "stopped at the end of the group"

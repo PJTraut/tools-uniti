@@ -106,11 +106,46 @@ FIND_REPLACE_VIEW_ID = "uniti-find-replace"
 DEFAULT_ATTACHED_HEIGHT = 280
 
 
+def _is_pending(item) -> bool:
+    """A project book the search job opens itself (`app/pending_book.py`)."""
+
+    return hasattr(item, "open_for_search")
+
+
 class ReplaceScope(Enum):
     WHOLE_DOCUMENT = "whole_document"
     CURSOR_TO_END = "cursor_to_end"
     CURRENT_GROUP = "current_group"
     ALL_OPEN_DOCUMENTS = "all_open_documents"
+    # USFM's (scopes plan D2): the current book is the whole document; a
+    # project is every book of its folder, open or not; a group is every
+    # book of every open project in the current project's group.
+    BOOK = "book"
+    PROJECT = "project"
+    PROJECT_GROUP = "project_group"
+
+
+# The combo's text for each scope (the scopes an environment offers: app/find_scopes.py).
+_SCOPE_LABELS = {
+    ReplaceScope.WHOLE_DOCUMENT: "Whole Document",
+    ReplaceScope.CURSOR_TO_END: "Cursor to End",
+    ReplaceScope.CURRENT_GROUP: "Current Group",
+    ReplaceScope.ALL_OPEN_DOCUMENTS: "All Open Documents",
+    ReplaceScope.BOOK: "Book",
+    ReplaceScope.PROJECT: "Project",
+    ReplaceScope.PROJECT_GROUP: "Group",
+}
+# What a window with no scope provider offers.
+_DEFAULT_SCOPES = (
+    ReplaceScope.WHOLE_DOCUMENT,
+    ReplaceScope.CURSOR_TO_END,
+    ReplaceScope.CURRENT_GROUP,
+    ReplaceScope.ALL_OPEN_DOCUMENTS,
+)
+# The scopes that step through several books (plan L5, scopes plan D4).
+_BOOK_STEPPING_SCOPES = frozenset(
+    {ReplaceScope.CURRENT_GROUP, ReplaceScope.PROJECT, ReplaceScope.PROJECT_GROUP}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,8 +269,10 @@ class FindReplaceWindow(QDockWidget):
         *,
         resource_manager: ResourceManager | None = None,
         dogfood_observer: Callable[..., None] | None = None,
-        document_provider: Callable[[], object] | None = None,
+        document_provider: Callable[[object], object] | None = None,
         group_provider: Callable[[object], object] | None = None,
+        project_group_provider: Callable[[object], object] | None = None,
+        scope_provider: Callable[[object], object] | None = None,
         recipe_store: object | None = None,
     ) -> None:
         if dogfood_observer is not None and not callable(dogfood_observer):
@@ -244,6 +281,8 @@ class FindReplaceWindow(QDockWidget):
             raise TypeError("document provider must be callable or None")
         if group_provider is not None and not callable(group_provider):
             raise TypeError("group provider must be callable or None")
+        if scope_provider is not None and not callable(scope_provider):
+            raise TypeError("scope provider must be callable or None")
         super().__init__("Find / Replace", parent)
         # BF-094: QDockWidget is used here purely as a convenient top-level
         # floating-window base -- this window is never actually docked into
@@ -273,9 +312,12 @@ class FindReplaceWindow(QDockWidget):
         self._view_provider = view_provider
         self._document_provider = document_provider
         self._group_provider = group_provider
+        self._project_group_provider = project_group_provider
+        self._scope_provider = scope_provider
         # Documents a group provider opened only for the search (a project's
         # books that weren't open), and how to keep or drop one (plan L4).
-        self._group_document_adopt: Callable[[object], None] | None = None
+        self._group_document_save: Callable[[object], None] | None = None
+        self._group_document_unopened: Callable[[object], bool] | None = None
         self._group_document_release: Callable[[object], None] | None = None
         self._replace_documents: list = []
         # Stepping through a project's books (plan L5): (available(view),
@@ -409,12 +451,8 @@ class FindReplaceWindow(QDockWidget):
         self.replace_scope_combo = QComboBox(content)
         self.replace_scope_combo.setAccessibleName("Replace Scope")
         self.replace_scope_combo.setToolTip("Replace Scope")
-        self.replace_scope_combo.addItem("Whole Document", ReplaceScope.WHOLE_DOCUMENT)
-        self.replace_scope_combo.addItem("Cursor to End", ReplaceScope.CURSOR_TO_END)
-        self.replace_scope_combo.addItem("Current Group", ReplaceScope.CURRENT_GROUP)
-        self.replace_scope_combo.addItem(
-            "All Open Documents", ReplaceScope.ALL_OPEN_DOCUMENTS
-        )
+        self._scope_choices: tuple[ReplaceScope, ...] = ()
+        self._load_scopes(_DEFAULT_SCOPES)
         self.replace_scope_combo.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToContents
         )
@@ -682,37 +720,21 @@ class FindReplaceWindow(QDockWidget):
         previous_view_id = (
             previous_leaf.selected_view_id if previous_leaf is not None else None
         )
-        anchor = host.active_view_id
-        if anchor is None and tree.view_ids:
-            anchor = tree.view_ids[0]
         # BF-059: attach at the remembered last-used height (never a
         # hardcoded 50%, and not computed as a proportion of the pane
         # tree's current height, which is unreliable before a layout pass
         # has run) and pin it against window-resize deltas via stretch
-        # factors (1 for the editor pane, 0 for this one) rather than the
+        # factors (1 for the editor panes, 0 for this one) rather than the
         # ordinary proportional-resize behavior `split_view` gives
-        # user-created Split Right/Down panes.
-        if anchor is None:
-            # BF-090: no document is open at all, so there is no view to
-            # anchor a `split_view` against -- split the (empty) root pane
-            # directly instead of falling back to `add_view`, which made
-            # Find/Replace the tree's sole tab and filled the whole window
-            # rather than reserving the usual bounded height. The reserved
-            # sibling leaf simply stays empty (the same blank state an
-            # ordinary document-less window already shows).
-            new_leaf = tree.split_pane(
-                tree.first_leaf.pane_id,
-                Qt.Orientation.Vertical,
-                stretch=(1, 0),
-                fixed_sizes=(1, self._attached_height),
-            )
-        else:
-            new_leaf = tree.split_view(
-                anchor,
-                Qt.Orientation.Vertical,
-                stretch=(1, 0),
-                fixed_sizes=(1, self._attached_height),
-            )
+        # user-created Split Right/Down panes. It sits below the whole tree,
+        # across the window's frame, not under one pane (field test,
+        # 2026-10-26); that also covers a window with no document open
+        # (BF-090): the empty root pane simply stays empty above it.
+        new_leaf = tree.split_root(
+            Qt.Orientation.Vertical,
+            stretch=(1, 0),
+            fixed_sizes=(1, self._attached_height),
+        )
         tree.add_view(
             self.content,
             pane_id=new_leaf.pane_id,
@@ -1152,9 +1174,8 @@ class FindReplaceWindow(QDockWidget):
         # compose meaningfully, so selection scope wins outright while
         # checked, and the combo is unavailable rather than silently ignored.
         if checked:
-            self.replace_scope_combo.setCurrentIndex(
-                self.replace_scope_combo.findData(ReplaceScope.WHOLE_DOCUMENT)
-            )
+            # The first scope is always the current document alone.
+            self.replace_scope_combo.setCurrentIndex(0)
         self.replace_scope_combo.setEnabled(not checked)
         self._clear_results()
 
@@ -1273,7 +1294,52 @@ class FindReplaceWindow(QDockWidget):
         self._view_provider = provider
         self._update_actions()
 
-    def set_document_provider(self, provider: Callable[[], object] | None) -> None:
+    def set_scope_provider(self, provider: Callable[[object], object] | None) -> None:
+        """`provider(view)` is the scopes (`ReplaceScope` values) the view's
+        environment offers (None when it isn't known: the combo stays);
+        no provider offers the default four."""
+
+        if provider is not None and not callable(provider):
+            raise TypeError("scope provider must be callable or None")
+        self._scope_provider = provider
+        self._refresh_scopes()
+
+    def _load_scopes(self, scopes: tuple[ReplaceScope, ...]) -> None:
+        """Show `scopes` in the combo, keeping the chosen one when it's still
+        offered and falling back to the first (Whole Document) when not."""
+
+        chosen = self.replace_scope_combo.currentData()
+        self._scope_choices = scopes
+        self.replace_scope_combo.blockSignals(True)
+        try:
+            self.replace_scope_combo.clear()
+            for scope in scopes:
+                self.replace_scope_combo.addItem(_SCOPE_LABELS[scope], scope)
+            index = self.replace_scope_combo.findData(chosen)
+            self.replace_scope_combo.setCurrentIndex(max(index, 0))
+        finally:
+            self.replace_scope_combo.blockSignals(False)
+
+    def _refresh_scopes(self) -> None:
+        view = self._current_view()
+        if view is None:
+            return  # between views: the choice stays as it is
+        scopes = _DEFAULT_SCOPES
+        if self._scope_provider is not None:
+            value_lists = self._scope_provider(view)
+            if value_lists is None:
+                return  # the view's environment isn't known yet
+            offered = []
+            for value in value_lists:
+                try:
+                    offered.append(ReplaceScope(value))
+                except ValueError:
+                    continue  # a scope this window doesn't know
+            scopes = tuple(offered) or scopes
+        if scopes != self._scope_choices:
+            self._load_scopes(scopes)
+
+    def set_document_provider(self, provider: Callable[[object], object] | None) -> None:
         if provider is not None and not callable(provider):
             raise TypeError("document provider must be callable or None")
         self._document_provider = provider
@@ -1293,14 +1359,38 @@ class FindReplaceWindow(QDockWidget):
 
     def set_group_document_hooks(
         self,
-        adopt: Callable[[object], None] | None,
         release: Callable[[object], None] | None,
+        save: Callable[[object], None] | None = None,
+        unopened: Callable[[object], bool] | None = None,
     ) -> None:
-        """`adopt(document)` opens a book the group provider opened for the
-        search, once it's chosen; `release(document)` drops one that isn't."""
+        """A project has one open book, so a book the group provider opened
+        only for the search is never left in a tab: `unopened(document)`
+        says whether it is one, `save(document)` writes a changed one to
+        disk, and `release(document)` drops it."""
 
-        self._group_document_adopt = adopt
         self._group_document_release = release
+        self._group_document_save = save
+        self._group_document_unopened = unopened
+
+    def set_project_group_provider(self, provider: Callable[[object], object] | None) -> None:
+        """`provider(document)` is every book of every open project in
+        `document`'s project's group (USFM's Group scope)."""
+
+        if provider is not None and not callable(provider):
+            raise TypeError("project group provider must be callable or None")
+        self._project_group_provider = provider
+        self._update_actions()
+
+    def _documents_provider_for(self, scope: ReplaceScope):
+        """The provider of the documents a multi-document `scope` covers."""
+
+        if scope is ReplaceScope.ALL_OPEN_DOCUMENTS:
+            return self._document_provider
+        if scope is ReplaceScope.PROJECT_GROUP:
+            return self._project_group_provider
+        if scope in (ReplaceScope.CURRENT_GROUP, ReplaceScope.PROJECT):
+            return self._group_provider
+        return None
 
     def set_group_provider(self, provider: Callable[[object], object] | None) -> None:
         if provider is not None and not callable(provider):
@@ -1599,6 +1689,7 @@ class FindReplaceWindow(QDockWidget):
         self.status_label.setText("")
 
     def _update_actions(self) -> None:
+        self._refresh_scopes()
         view = self._current_view()
         idle = not self.busy
         pattern_valid = view is not None and self._pattern_is_current()
@@ -1929,11 +2020,13 @@ class FindReplaceWindow(QDockWidget):
 
     def replace_all(self) -> None:
         scope = self.replace_scope()
-        if scope is ReplaceScope.ALL_OPEN_DOCUMENTS:
-            self._replace_all_open_documents()
-            return
-        if scope is ReplaceScope.CURRENT_GROUP:
-            self._replace_all_in_group()
+        if scope in (
+            ReplaceScope.ALL_OPEN_DOCUMENTS,
+            ReplaceScope.CURRENT_GROUP,
+            ReplaceScope.PROJECT,
+            ReplaceScope.PROJECT_GROUP,
+        ):
+            self._replace_all_in_scope(scope)
             return
         started_at = time.monotonic()
         view = self._current_view()
@@ -1991,16 +2084,10 @@ class FindReplaceWindow(QDockWidget):
             rejected_cleanup=snapshot.close,
         )
 
-    def _replace_all_open_documents(self) -> None:
-        self._replace_all_in_documents(
-            provider=self._document_provider,
-            provider_args=(),
-        )
-
-    def _replace_all_in_group(self) -> None:
+    def _replace_all_in_scope(self, scope: ReplaceScope) -> None:
         view = self._current_view()
         self._replace_all_in_documents(
-            provider=self._group_provider,
+            provider=self._documents_provider_for(scope),
             provider_args=(None if view is None else view.document,),
         )
 
@@ -2042,6 +2129,11 @@ class FindReplaceWindow(QDockWidget):
             results: list[tuple[object, ReplacementPlan]] = []
             try:
                 for document in documents:
+                    pending = document if _is_pending(document) else None
+                    if pending is not None:
+                        document = pending.open_for_search()  # opened now, closed again if it has no match
+                        if document is None:
+                            continue
                     revision = document.revision
                     snapshot = document.snapshot()
                     with snapshot:
@@ -2053,6 +2145,10 @@ class FindReplaceWindow(QDockWidget):
                             options=SearchOptions(timeout=0.5),
                             cancelled=lambda: context.token.cancelled,
                         )
+                    if pending is not None and not len(plan):
+                        plan.close()
+                        pending.release_search()
+                        continue
                     results.append((document, plan))
             except Exception:
                 for _document, pending_plan in results:
@@ -2191,14 +2287,14 @@ class FindReplaceWindow(QDockWidget):
     def _stepping_active(self, view) -> bool:
         return (
             self._book_stepping is not None
-            and self._group_provider is not None
-            and self.replace_scope() is ReplaceScope.CURRENT_GROUP
+            and self.replace_scope() in _BOOK_STEPPING_SCOPES
+            and self._documents_provider_for(self.replace_scope()) is not None
             and not self.selection_only_checkbox.isChecked()
             and self._book_stepping[0](view)
         )
 
     def _step_into_another_book(self, view, compiled, direction: int, origin: int, index: int | None) -> bool:
-        """With Current Group in a USFM project, a Find Next / Replace that
+        """With a Project or Group scope in USFM, a Find Next / Replace that
         finds no match past the caret in this book (`index` is None, or it
         wraps to the other end) looks for the next book with a match. True
         when that search started: it takes over, and falls back to `index`
@@ -2211,7 +2307,7 @@ class FindReplaceWindow(QDockWidget):
             wraps = record.start < origin if direction > 0 else record.end > origin
             if not wraps:
                 return False
-        documents = list(self._group_provider(view.document))
+        documents = list(self._documents_provider_for(self.replace_scope())(view.document))
         position = next((n for n, document in enumerate(documents) if document is view.document), None)
         if position is None or len(documents) < 2:
             self._release_group_documents(documents)
@@ -2225,7 +2321,12 @@ class FindReplaceWindow(QDockWidget):
         self._replace_documents = documents
 
         def work(context: TaskContext):
-            for number, document in enumerate(order):
+            for number, book in enumerate(order):
+                document = book
+                if _is_pending(book):
+                    document = book.open_for_search()
+                    if document is None:
+                        continue
                 snapshot = document.snapshot()
                 try:
                     with snapshot:
@@ -2241,9 +2342,11 @@ class FindReplaceWindow(QDockWidget):
                             None,
                         )
                 except RegexSearchTimeout:
-                    continue
+                    found = None
                 if found is not None:
-                    return document, number >= forward_count
+                    return book, number >= forward_count  # a PendingBook stays open until released
+                if book is not document:
+                    book.release_search()
             return None
 
         context = (compiled, direction, index)
@@ -2279,8 +2382,9 @@ class FindReplaceWindow(QDockWidget):
             self.status_label.setText("no matches")
             self.capture_model.clear()
             return Outcome.UNAVAILABLE
-        if wrapped and not book_lock.ask_wrap_project(self, forward=direction > 0):
-            self.status_label.setText("stopped at the end of the project")
+        group = self.replace_scope() is ReplaceScope.PROJECT_GROUP
+        if wrapped and not book_lock.ask_wrap_project(self, forward=direction > 0, group=group):
+            self.status_label.setText(f"stopped at the end of the {'group' if group else 'project'}")
             return Outcome.CANCELLED
         opened = self._book_stepping[1](view, target_path) if self._book_stepping is not None else None
         if opened is None:
@@ -2429,13 +2533,18 @@ class FindReplaceWindow(QDockWidget):
         self._update_actions()
         return Outcome.SUCCESS
 
+    def _is_unopened(self, document) -> bool:
+        """A book opened only for this search, not shown in any tab."""
+
+        return self._group_document_unopened is not None and bool(self._group_document_unopened(document))
+
     def _release_group_documents(self, documents, keep=()) -> None:
         """Drop the books a group search opened only to read, except `keep`."""
 
-        if self._group_document_release is None:
-            return
         for document in documents:
-            if not any(document is kept for kept in keep):
+            if _is_pending(document):
+                document.release_search()  # a book the search job opened
+            elif self._group_document_release is not None and not any(document is kept for kept in keep):
                 self._group_document_release(document)
 
     def _release_replace_documents(self) -> None:
@@ -2471,6 +2580,7 @@ class FindReplaceWindow(QDockWidget):
                 count=len(plan),
                 locked=bool(getattr(document, "locked", False)),
                 read_only=bool(getattr(document, "read_only", False)),
+                saved=self._is_unopened(document),
             )
             for document, plan in with_matches
         ]
@@ -2488,7 +2598,7 @@ class FindReplaceWindow(QDockWidget):
         documents_skipped = 0
         documents_read_only = 0
         documents_unlocked = 0
-        applied = []
+        documents_saved = 0
         for index, (document, plan) in enumerate(with_matches):
             if getattr(document, "read_only", False):
                 # A file in a read-only folder (round 3 T7) is left alone.
@@ -2498,11 +2608,9 @@ class FindReplaceWindow(QDockWidget):
             if index not in chosen:
                 plan.close()
                 continue
-            applied.append(document)
             was_locked = False
+            unopened = self._is_unopened(document)
             try:
-                if self._group_document_adopt is not None:
-                    self._group_document_adopt(document)
                 was_locked = bool(getattr(document, "locked", False))
                 if was_locked:
                     document.set_locked(False)
@@ -2511,6 +2619,9 @@ class FindReplaceWindow(QDockWidget):
                     expected_revision=plan.document_revision,
                     memory_limit_bytes=memory_limit,
                 )
+                if count and unopened and self._group_document_save is not None:
+                    self._group_document_save(document)
+                    documents_saved += 1
             except Exception:
                 documents_skipped += 1
                 if was_locked:
@@ -2522,10 +2633,11 @@ class FindReplaceWindow(QDockWidget):
             replaced_total += count
             if count:
                 documents_changed += 1
-        self._release_group_documents(documents, keep=applied)
+        self._release_group_documents(documents)
         self._clear_results()
         read_only_note = f"; {documents_read_only:,} read-only" if documents_read_only else ""
         read_only_note += f"; {documents_unlocked:,} unlocked" if documents_unlocked else ""
+        read_only_note += f"; {documents_saved:,} saved to disk" if documents_saved else ""
         if documents_skipped:
             self.status_label.setText(
                 f"{replaced_total:,} replaced across {documents_changed:,} "

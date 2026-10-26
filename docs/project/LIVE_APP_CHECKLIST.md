@@ -3,7 +3,7 @@
 Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything that's wrong under it. Use two Paratext projects (for example `usNIVv3` and `ruCARSv3`). Add their folder to **View › Read-Only Folders…** only in section 7, or work on copies, so nothing is changed by accident.
 
 ## 1. Project tabs (round 3 T4)
-- [ ] Open a book with **File › Open USFM Project…**: it opens in "USFM A", in a tab titled with the project's short name only (e.g. "NIV").
+- [ ] Open a book with **File › Open USFM Project…**: it opens in "SFM-1", in a tab titled with the project's short name only (e.g. "NIV").
 - [ ] Pick another book in the **Book** list: the same tab now shows it; no new tab.
 - [ ] Type in a book, then pick another book: "Save changes to GEN (NIV)?" appears.
   - [ ] **No**: the book changes; the edited book is marked "•" in the Book list and the tab reads "NIV*".
@@ -14,7 +14,7 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 
 ## 2. Windows (T3)
 - [ ] The title reads "UNITI — USFM A — NIV — 01GEN.usfm".
-- [ ] Open a second USFM window: it's "USFM B".
+- [ ] Open a second USFM window: it's "SFM-2".
 - [ ] Rename a window (click its name on the toolbar, or **Rename Window…**). Restart UNITI: the name is kept.
 
 ## 3. Groups (T2, T5)
@@ -30,7 +30,7 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 
 ## 5. The tab menu (T6)
 - [ ] Right-click a tab: **Group**, **Split**, **Window**, **Read Only**.
-- [ ] **Split › Move to New Split Right**: the tab moves with all its books.
+- [ ] **Split › Move to New Split Right**: the tab moves with its book.
 - [ ] At most four splits. **New 2026-10-13:** with Find/Replace attached you still get four splits, and **Move to Split** never lists the Find pane.
 - [ ] **Unsplit**: the split's tabs join the neighbouring split.
 - [ ] **Window › Move to New Window**, then **Dock**: the tab goes back where it was.
@@ -61,8 +61,10 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] Change the book with unsaved changes: Save / Discard / Cancel. Discard, then reopen: the file's text, no Undo history.
 - [ ] Open a book that's LF, mixed or not UTF-8: Close / Update. Update leaves it locked and unsaved.
 - [ ] Replace in a locked book: Unlock and Replace / Skip.
-- [ ] Current Group **Replace All**: the list shows files with matches, all unticked, locked ones marked; only ticked files change; Cancel changes nothing; books that weren't open and weren't ticked close again.
-- [ ] Find Next with Current Group steps into the next book with a match (one that wasn't open too) and asks at the end of the project.
+- [ ] Project **Replace All**: the list shows files with matches, all unticked, locked ones marked; only ticked files change; Cancel changes nothing; books that weren't open and weren't ticked close again.
+- [ ] Find Next with Project steps into the next book with a match (one that wasn't open too) and asks at the end of the project.
+- [ ] Scopes follow the tab: a USFM tab offers Book, Cursor to End, Project, Group; a text or JSON tab offers Whole Document, Cursor to End, Current Group, All Open Documents (only that environment's files). Group with two projects in one group searches both, books that weren't open too, and Find Next steps into the other project's book.
+- [ ] One book per project: changing the book (Book list, Find stepping, File → Open) closes the previous one and asks about unsaved changes; Replace All over a Project writes the ticked books that aren't open to disk and says so in the list.
 - [ ] A book in a read-only folder can't be unlocked.
 
 ## 10. Check Spelling (S1–S5)

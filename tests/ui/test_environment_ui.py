@@ -83,8 +83,8 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "Versification",
         "Configuration Files…",
         "Plain Text Mode",
-        "Environment for This Document",
-        "File Type Environments…",
+        "Assign Environment",
+        "Assign by File Type…",
     ]
 
     _open(window, tmp_path, "notes.txt", "hi")
@@ -95,15 +95,16 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "No environment tools for plain text",
         "Move to Environment Window",
         "Configuration Files…",
-        "Environment for This Document",
-        "File Type Environments…",
+        "Assign Environment",
+        "Assign by File Type…",
     ]
 
 
-def test_menu_sits_between_view_and_tools(window):
+def test_menu_sits_between_view_and_help(window):
     titles = [action.text() for action in window.menuBar().actions()]
     assert titles.index("Environment") == titles.index("&View") + 1
-    assert titles.index("&Tools") == titles.index("Environment") + 1
+    assert titles.index("&Help") == titles.index("Environment") + 1
+    assert titles[-2:] == ["Environment", "&Help"]
 
 
 def test_plain_text_mode_is_per_view_and_reversible(window, tmp_path: Path):

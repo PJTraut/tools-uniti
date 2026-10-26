@@ -811,3 +811,44 @@ def test_fallback_font_uses_the_editor_monospace_family_first(app):
     assert result.families()[0] == editor_families[0]
     assert "Arial" in result.families()
     assert result.pointSize() == 12
+
+
+def test_an_elided_replacement_line_keeps_its_group_colours(app):
+    """Field test, 2026-10-26: a replacement line too long for the column was
+    painted in one colour; it now elides and keeps the colour of the groups
+    in the part that is still shown."""
+
+    from PySide6.QtCore import QRect
+    from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPalette
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    from uniti.ui.capture_report_delegate import CaptureReportDelegate
+    from uniti.ui.regex_input import group_palette
+
+    delegate = CaptureReportDelegate()
+    content = "aaa " + "x" * 80 + " bbb"
+    spans = ((0, 3, 1), (len(content) - 3, len(content), 2))
+    option = QStyleOptionViewItem()
+    option.font = QFont("Menlo", 14)
+    option.palette = QPalette()
+    base = option.palette.color(QPalette.ColorGroup.Normal, QPalette.ColorRole.Base)
+    group1_color = group_palette(base)[0]
+
+    image = QImage(200, 30, QImage.Format.Format_ARGB32)
+    image.fill(QColor("white"))
+    painter = QPainter(image)
+    painted = delegate._paint_content_group_spans(
+        painter, option, QRect(0, 0, 200, 30), content, spans, QColor("black")
+    )
+    painter.end()
+
+    assert painted is True
+    coloured = [
+        (x, y)
+        for x in range(image.width())
+        for y in range(image.height())
+        if abs(image.pixelColor(x, y).red() - group1_color.red()) < 30
+        and abs(image.pixelColor(x, y).green() - group1_color.green()) < 30
+        and abs(image.pixelColor(x, y).blue() - group1_color.blue()) < 30
+    ]
+    assert coloured  # group 1's "aaa" is still in its colour although the line is elided

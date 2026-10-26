@@ -674,6 +674,41 @@ class EditorPaneTree(QWidget):
             fixed_sizes=fixed_sizes,
         )
 
+    def split_root(
+        self,
+        orientation: Qt.Orientation,
+        *,
+        proportions: tuple[float, float] = (0.5, 0.5),
+        stretch: tuple[int, int] | None = None,
+        fixed_sizes: tuple[int, int] | None = None,
+    ) -> PaneLeaf:
+        """Put a new leaf beside the whole tree (below it, for a vertical
+        split), whatever the tree's shape: the frame's edge, not the edge
+        of one pane. Find/Replace attaches this way (field test, 2026-10-26)."""
+
+        if orientation not in (Qt.Orientation.Horizontal, Qt.Orientation.Vertical):
+            raise ValueError("split orientation must be horizontal or vertical")
+        if self.leaf_count >= MAX_LEAF_PANES:
+            raise ValueError(f"pane tree cannot exceed {MAX_LEAF_PANES} leaf panes")
+        new_leaf = self._make_leaf()
+        old_root = self._root
+        old_widget = self._widget(old_root)
+        self._layout.removeWidget(old_widget)
+        old_widget.setParent(None)
+        branch = self._make_split(
+            orientation,
+            old_root,
+            new_leaf,
+            proportions=proportions,
+            stretch=stretch,
+            fixed_sizes=fixed_sizes,
+        )
+        self._root = branch
+        self._layout.addWidget(branch.widget)
+        self._active_leaf = new_leaf
+        self.activeViewChanged.emit(None)
+        return new_leaf
+
     def _split_leaf(
         self,
         leaf: PaneLeaf,

@@ -51,23 +51,23 @@ def _action(menu, text: str):
 
 
 def _window_with_two_projects(service, tmp_path: Path):
-    """USFM A with an NIV tab (GEN and EXO) and a CARS tab (GEN)."""
+    """SFM-1 with an NIV tab (GEN) and a CARS tab (GEN)."""
 
     niv = _project(tmp_path / "niv", "NIV")
     cars = _project(tmp_path / "cars", "CARS")
     main = service.new_window()
     genesis = main.open_path(niv / "01GEN.usfm")
     window = main.move_to_environment_window(genesis)
-    exodus = window._environment_bar.open_book(niv / "02EXO.usfm")
+    genesis = window.current_view  # the view in this window
     other = window.open_path(cars / "01GEN.usfm")
-    return window, genesis, exodus, other
+    return window, genesis, other
 
 
 def test_the_tab_menu_has_group_split_and_window(desktop, tmp_path: Path):
     app, service = desktop
-    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window, genesis, other = _window_with_two_projects(service, tmp_path)
 
-    menu = window.tab_menu(exodus.view_id)
+    menu = window.tab_menu(genesis.view_id)
 
     assert _texts(menu) == ["Group", "Lock Book", "Check Spelling", "Hyphenate Preview", "Footnote Categories", "Split", "Window", "Read Only"]  # Read Only: a project tab (T7)
     assert _texts(_submenu(menu, "Group"))[0] == "No Group"
@@ -88,28 +88,27 @@ def test_an_ordinary_windows_tab_menu_is_its_group(desktop, tmp_path: Path):
     assert _texts(main.tab_menu(view.view_id))[0] == "No Group"
 
 
-def test_a_tab_moves_with_all_its_books_to_a_new_split(desktop, tmp_path: Path):
+def test_a_tab_moves_to_a_new_split_and_back(desktop, tmp_path: Path):
     app, service = desktop
-    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window, genesis, other = _window_with_two_projects(service, tmp_path)
     first = window._panes.leaf_for_view(other.view_id)
 
-    _action(_submenu(window.tab_menu(exodus.view_id), "Split"), "Move to New Split Right").trigger()
+    _action(_submenu(window.tab_menu(genesis.view_id), "Split"), "Move to New Split Right").trigger()
 
-    leaf = window._panes.leaf_for_view(exodus.view_id)
+    leaf = window._panes.leaf_for_view(genesis.view_id)
     assert leaf is not first and window._panes.leaf_count == 2
-    assert window._panes.leaf_for_view(genesis.view_id) is leaf  # the hidden book came too
     assert visible_tab_texts(leaf) == ["NIV"] and visible_tab_texts(first) == ["CARS"]
-    assert window.current_view is exodus
+    assert window.current_view is genesis
 
     # Back with Move to Split 1, and the emptied split closes.
-    _action(_submenu(window.tab_menu(exodus.view_id), "Split"), "Move to Split 1").trigger()
+    _action(_submenu(window.tab_menu(genesis.view_id), "Split"), "Move to Split 1").trigger()
     assert window._panes.leaf_count == 1
     assert visible_tab_texts(first) == ["CARS", "NIV"]
 
 
 def test_unsplit_merges_a_split_into_its_neighbour(desktop, tmp_path: Path):
     app, service = desktop
-    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window, genesis, other = _window_with_two_projects(service, tmp_path)
     window.move_tab_to_new_split(other.view_id, Qt.Orientation.Vertical)
     assert window._panes.leaf_count == 2
 
@@ -117,13 +116,13 @@ def test_unsplit_merges_a_split_into_its_neighbour(desktop, tmp_path: Path):
 
     assert window._panes.leaf_count == 1
     leaf = window._panes.leaf_for_view(other.view_id)
-    assert set(leaf.view_ids) == {genesis.view_id, exodus.view_id, other.view_id}
+    assert set(leaf.view_ids) == {genesis.view_id, other.view_id}
     assert visible_tab_texts(leaf) == ["NIV", "CARS"]
 
 
 def test_an_environment_window_has_at_most_four_splits(desktop, tmp_path: Path):
     app, service = desktop
-    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window, genesis, other = _window_with_two_projects(service, tmp_path)
     for _ in range(3):
         assert window.split_right() is not None
     assert window._panes.leaf_count == 4
@@ -140,33 +139,31 @@ def test_an_environment_window_has_at_most_four_splits(desktop, tmp_path: Path):
 
 def test_a_tab_moves_between_windows_and_docks_back(desktop, tmp_path: Path):
     app, service = desktop
-    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window, genesis, other = _window_with_two_projects(service, tmp_path)
 
-    _action(_submenu(window.tab_menu(exodus.view_id), "Window"), "Move to New Window").trigger()
+    _action(_submenu(window.tab_menu(genesis.view_id), "Window"), "Move to New Window").trigger()
 
-    usfm_b = service.windows.window_for_view(exodus.view_id)
-    assert usfm_b is not window and usfm_b.environment_window_name() == "USFM B"
-    assert service.windows.window_for_view(genesis.view_id) is usfm_b
-    assert visible_tab_texts(usfm_b._panes.leaf_for_view(exodus.view_id)) == ["NIV"]
-    assert usfm_b.current_view is exodus
+    usfm_b = service.windows.window_for_view(genesis.view_id)
+    assert usfm_b is not window and usfm_b.environment_window_name() == "SFM-2"
+    assert visible_tab_texts(usfm_b._panes.leaf_for_view(genesis.view_id)) == ["NIV"]
+    assert usfm_b.current_view is genesis
 
-    # From USFM B, the menu offers USFM A; moving there again merges with
+    # From SFM-2, the menu offers SFM-1; moving there again merges with
     # whatever tab of the project is there (here: none, so its own tab).
-    window_menu = _submenu(usfm_b.tab_menu(exodus.view_id), "Window")
-    assert "Move to USFM A" in _texts(window_menu)
+    window_menu = _submenu(usfm_b.tab_menu(genesis.view_id), "Window")
+    assert "Move to SFM-1" in _texts(window_menu)
     assert _action(window_menu, "Dock").isEnabled()
 
     _action(window_menu, "Dock").trigger()
-    assert service.windows.window_for_view(exodus.view_id) is window
     assert service.windows.window_for_view(genesis.view_id) is window
 
 
-def test_moving_a_tab_into_a_window_with_its_project_merges_the_books(desktop, tmp_path: Path):
+def test_moving_a_book_into_a_window_with_its_project_replaces_the_projects_book(desktop, tmp_path: Path):
     app, service = desktop
-    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window, genesis, other = _window_with_two_projects(service, tmp_path)
     usfm_b = service.new_environment_window("usfm")
     niv = tmp_path / "niv"
-    # A second NIV book view in USFM B: open a third book there.
+    # A second NIV book in SFM-2: open a third book there.
     (niv / "03LEV.usfm").write_text("\\id LEV\n\\c 1\n\\p\n\\v 1 Leviticus.\n", encoding="utf-8")
     leviticus = usfm_b.open_path(niv / "03LEV.usfm")
     assert service.windows.window_for_view(leviticus.view_id) is usfm_b
@@ -174,7 +171,7 @@ def test_moving_a_tab_into_a_window_with_its_project_merges_the_books(desktop, t
     usfm_b.move_tab_to_window(leviticus.view_id, window.environment_window[1])
 
     leaf = window._panes.leaf_for_view(leviticus.view_id)
-    assert leaf is window._panes.leaf_for_view(genesis.view_id)
+    assert genesis.view_id not in leaf.view_ids  # a project has one open book: LEV takes GEN's place
     assert visible_tab_texts(leaf) == ["NIV", "CARS"]  # one NIV tab, now with LEV
     assert window.current_view is leviticus
 
@@ -184,7 +181,7 @@ def test_moving_a_splits_only_tab_to_another_window_closes_the_split(desktop, tm
     and left the toolbar with nothing to show."""
 
     app, service = desktop
-    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window, genesis, other = _window_with_two_projects(service, tmp_path)
     window.move_tab_to_new_split(other.view_id, Qt.Orientation.Horizontal)
     assert window._panes.leaf_count == 2
 
@@ -192,7 +189,7 @@ def test_moving_a_splits_only_tab_to_another_window_closes_the_split(desktop, tm
 
     assert service.windows.window_for_view(other.view_id) is usfm_b
     assert window._panes.leaf_count == 1
-    assert window.current_view in (genesis, exodus)
+    assert window.current_view is genesis
     assert window._environment_bar.group.isEnabled()
     # Dock still brings it back (to the window's remaining split).
     usfm_b.dock_tab(other.view_id)
@@ -204,7 +201,7 @@ def test_an_attached_find_pane_isnt_a_split(desktop, tmp_path: Path):
     never a place to move a tab to (2026-10-13 spec check)."""
 
     app, service = desktop
-    window, genesis, exodus, other = _window_with_two_projects(service, tmp_path)
+    window, genesis, other = _window_with_two_projects(service, tmp_path)
     window._find_replace.attach_to(window)
     assert window._panes.leaf_count == 2
 

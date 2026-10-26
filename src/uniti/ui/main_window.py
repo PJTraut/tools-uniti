@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 
 from uniti.app.diagnostics import diagnostics_snapshot
 from uniti.app.dogfood import Operation, Outcome
+from uniti.app.environment_window_names import MAX_ENV_WINDOWS
 from uniti.app.commands import (
     CommandCategory,
     CommandRegistry,
@@ -262,7 +263,7 @@ class UNITIMainWindow(QMainWindow):
         self._chapter_view = ChapterView(self)
         self._book_lock = book_lock.BookLock(self)
         # (environment key, slot) once this is an environment window: slot 0
-        # is "USFM A", 1 "USFM B" … (round 3 T3).
+        # is "SFM-1", 1 "SFM-2" … (round 3 T3).
         self.environment_window: tuple[str, int] | None = None
         self._environment_bar = None
         self._opening_into_environment = False
@@ -1136,6 +1137,10 @@ class UNITIMainWindow(QMainWindow):
         )
         file_menu.addAction(self._command_action("file.reload", self.reload_current))
         file_menu.addSeparator()
+        # The former top-level Format menu (field test, 2026-10-26: fewer top
+        # menus); built below with the other encoding code.
+        format_menu = file_menu.addMenu("Encoding && Line Endings")
+        file_tools_anchor = file_menu.addSeparator()  # Compare… goes before it
         file_menu.addAction(self._command_action("file.close", self.close_current))
         file_menu.addAction(
             self._command_action("file.close_all", self.close_all_documents)
@@ -1206,7 +1211,6 @@ class UNITIMainWindow(QMainWindow):
             )
         )
 
-        format_menu = self.menuBar().addMenu("F&ormat")
         format_menu.aboutToShow.connect(lambda menu=format_menu: self._refresh_format_menu(menu))
         reinterpret_menu = format_menu.addMenu("Reinterpret As")
         convert_menu = format_menu.addMenu("Convert on Save")
@@ -1263,9 +1267,6 @@ class UNITIMainWindow(QMainWindow):
         self._grouped_tabs_action.setChecked(self._settings.grouped_tabs)
         self._grouped_tabs_action.toggled.connect(self._grouped_tabs.set_enabled)
         view_menu.addAction(self._grouped_tabs_action)
-        view_menu.addAction(
-            "File Type Environments…", self.show_environment_assignment_editor
-        )
         # BF-062's preview is the Markdown environment's host feature: it
         # lives in that environment's menu (ADR-0014), not under View.
         self._markdown_preview_action = self._command_action(
@@ -1458,22 +1459,23 @@ class UNITIMainWindow(QMainWindow):
         )
 
         view_menu.addSeparator()
-        view_menu.addAction(
+        find_panel_menu = view_menu.addMenu("Find Panel")
+        find_panel_menu.addAction(
             self._command_action(
                 "find.toggle_attachment",
                 self.toggle_find_replace_attachment,
             )
         )
-        view_menu.addAction(
+        find_panel_menu.addAction(
             self._command_action("find.zoom_in", self._find_replace.zoom_in)
         )
-        view_menu.addAction(
+        find_panel_menu.addAction(
             self._command_action("find.zoom_out", self._find_replace.zoom_out)
         )
-        view_menu.addAction(
+        find_panel_menu.addAction(
             self._command_action("find.zoom_reset", self._find_replace.reset_zoom)
         )
-        view_menu.addAction(
+        find_panel_menu.addAction(
             self._command_action(
                 "find.report_cycle",
                 self._find_replace.toggle_report,
@@ -1510,26 +1512,36 @@ class UNITIMainWindow(QMainWindow):
         self._environment.register_slot_actions(slot_actions, plain_mode_action)
         self._environment.build_menu(self.menuBar())
 
-        tools_menu = self.menuBar().addMenu("&Tools")
-        tools_menu.addAction(
+        # The former Tools menu is folded away (field test, 2026-10-26):
+        # Compare… sits with the file commands, the inspectors with View,
+        # and Diagnostics and the dogfood evidence under Help.
+        file_menu.insertAction(
+            file_tools_anchor, self._command_action("tools.compare", self.show_compare)
+        )
+        view_menu.addSeparator()
+        view_menu.addAction(
             self._command_action(
                 "tools.character_inspector", self.show_character_inspector
             )
         )
-        tools_menu.addAction(self._command_action("tools.compare", self.show_compare))
-        tools_menu.addAction(
+        view_menu.addAction(
             self._command_action(
                 "tools.whitespace_legend", self.show_whitespace_legend
             )
         )
-        tools_menu.addAction(
+
+        help_menu = self.menuBar().addMenu("&Help")
+        self._hotkeys_action = help_menu.addAction("Hotkeys")
+        self._hotkeys_action.triggered.connect(self.show_hotkeys)
+        help_menu.addSeparator()
+        help_menu.addAction(
             self._action(
                 "Diagnostics…",
                 None,
                 self.show_diagnostics,
             )
         )
-        tools_menu.addSeparator()
+        help_menu.addSeparator()
         self._export_dogfood_action = self._action(
             "Export Dogfood Evidence…",
             None,
@@ -1546,11 +1558,8 @@ class UNITIMainWindow(QMainWindow):
         )
         self._export_dogfood_action.setEnabled(dogfood_available)
         self._clear_dogfood_action.setEnabled(dogfood_available)
-        tools_menu.addAction(self._export_dogfood_action)
-        tools_menu.addAction(self._clear_dogfood_action)
-
-        self._hotkeys_action = self.menuBar().addAction("&Hotkeys")
-        self._hotkeys_action.triggered.connect(self.show_hotkeys)
+        help_menu.addAction(self._export_dogfood_action)
+        help_menu.addAction(self._clear_dogfood_action)
         for definition in self._command_registry.definitions():
             if definition.scope == CommandScope.FIND_REPLACE:
                 self._find_replace.addAction(
@@ -1805,6 +1814,9 @@ class UNITIMainWindow(QMainWindow):
         key = self.environment_window[0]
         new_window = window_menu.addAction("Move to New Window")
         new_window.triggered.connect(lambda _checked=False: self.move_tab_to_window(view_id, None))
+        if self._service is not None and self._service.free_environment_slot(key) is None:
+            new_window.setEnabled(False)
+            new_window.setToolTip("Nine windows are open; move the tab to one of them")
         if self._service is not None:
             windows = sorted(
                 (window for window in self._service.environment_windows(key) if window is not self),
@@ -2097,6 +2109,10 @@ class UNITIMainWindow(QMainWindow):
             raise
 
     @staticmethod
+    def _group_bar_icon(color: str) -> QIcon:
+        return DocumentGroupsAndRecentFiles._group_bar_icon(color)
+
+    @staticmethod
     def _group_swatch_icon(color: str) -> QIcon:
         return DocumentGroupsAndRecentFiles._group_swatch_icon(color)
 
@@ -2163,12 +2179,12 @@ class UNITIMainWindow(QMainWindow):
         return groups
 
     def environment_window_name(self) -> str | None:
-        """This environment window's name, e.g. "USFM A" (round 3 T3)."""
+        """This environment window's name, e.g. "SFM-1" (round 3 T3)."""
 
         if self.environment_window is None:
             return None
         key, slot = self.environment_window
-        return f"{descriptor_for_key(key).label} {self._environment_window_names.name(key, slot)}"
+        return f"{descriptor_for_key(key).short_label}-{self._environment_window_names.name(key, slot)}"
 
     def rename_environment_window(self, name: str | None = None) -> bool:
         """Rename this window's slot for its environment (D4); asks for the
@@ -2385,6 +2401,8 @@ class UNITIMainWindow(QMainWindow):
         self._tabs = leaf.tabs
         self._schedule_eol_analysis(view)
         self._rich_views.sync(view)
+        if self._environment_bar is not None:
+            self._environment_bar.keep_one_book(view)  # a project has one open book
         view.setFocus()
         return view
 
@@ -2655,7 +2673,18 @@ class UNITIMainWindow(QMainWindow):
 
         opened = 0
         failures: list[str] = []
+        # A project has one open book (USFM): only the first book of each
+        # project in the folder opens; the rest are a Book list away.
+        projects_opened: set[Path] = set()
         for path in matching:
+            if batch_key in PROJECT_ENVIRONMENTS and path in asked and open_mode is not OpenMode.PLAIN_TEXT:
+                from uniti.core.environments.sfm.paratext_project import project_for_file
+
+                project = project_for_file(path)
+                if project is not None:
+                    if project.folder in projects_opened:
+                        continue
+                    projects_opened.add(project.folder)
             try:
                 view = self.open_path(
                     path, open_mode=open_mode if path in asked else OpenMode.HERE
@@ -2699,6 +2728,7 @@ class UNITIMainWindow(QMainWindow):
         view.editRefused.connect(lambda view=view: self._refuse_edit(view))
         view.set_progressive_navigation(True)
         view.line_window_provider = self._chapter_view.line_window
+        view.format_shortcut_handler = self._format_shortcut
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
         view.cursorPositionChanged.connect(self._status.update_cursor)
         view.zoomChanged.connect(
@@ -2839,6 +2869,8 @@ class UNITIMainWindow(QMainWindow):
                 tokens = self._resolve_editor_theme_tokens(view.theme_choice_id)
                 if tokens is not None:
                     view.set_theme_choice(view.theme_choice_id, tokens)
+        if restore_record is None and self._environment_bar is not None:
+            self._environment_bar.keep_one_book(view)  # a project has one open book
         if select:
             view.setFocus()
         return view
@@ -3483,12 +3515,33 @@ class UNITIMainWindow(QMainWindow):
             return "UNITI"
         return f"UNITI — {self._environment_bar.window_title_prefix()}"
 
+    _FORMAT_DELIMITERS = {"bold": "**", "italic": "*"}
+
+    def _format_shortcut(self, view, command: str) -> bool:
+        """Cmd/Ctrl+B and +I in a Markdown file's text view (field test,
+        2026-10-26): wrap the selection in `**` or `*`; with nothing selected
+        insert the pair and leave the caret between. False elsewhere."""
+
+        if self._environment.environment_key_for(view.document) != "markdown" or self._environment.is_plain_mode(view):
+            return False
+        delimiter = self._FORMAT_DELIMITERS[command]
+        low, high = sorted((view.state.anchor, view.state.cursor))
+        inner = view.state.selected_text()
+        if not view.replace_range(low, high, f"{delimiter}{inner}{delimiter}"):
+            return True  # read-only: the edit was refused and reported
+        caret = low + len(delimiter)
+        view.state.move_to(caret)
+        if inner:
+            view.state.move_to(caret + len(inner), selecting=True)
+        view._state_changed()
+        return True
+
     # --- environment windows (ADR-0017) -------------------------------------
 
     def set_environment_window(self, environment_key: str, slot: int | None = None) -> None:
         """Make this an environment window: the frame (mode switch, and for
         USFM the Book/Chapter/Verse selector) of `environment_key`, in window
-        `slot` of that environment ("USFM A" is 0; round 3 T3). With no slot,
+        `slot` of that environment ("SFM-1" is 0; round 3 T3). With no slot,
         or one another window has, it takes the lowest free one."""
 
         from uniti.ui.environment_window import EnvironmentBar
@@ -3501,6 +3554,8 @@ class UNITIMainWindow(QMainWindow):
             taken = self._service.environment_window_for(environment_key, slot) if slot is not None else None
             if slot is None or not isinstance(slot, int) or slot < 0 or (taken is not None and taken is not self):
                 slot = self._service.free_environment_slot(environment_key)
+                if slot is None:  # nine windows are open already
+                    slot = MAX_ENV_WINDOWS - 1
         elif slot is None:
             slot = 0
         if self._environment_bar is not None:

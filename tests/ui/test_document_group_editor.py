@@ -181,17 +181,17 @@ def test_editor_edits_each_environments_window_names(qapp):
         _starting_groups(),
         environments=[("plain_text", "Plain Text", ()), ("usfm", "USFM", _starting_groups())],
         environment="usfm",
-        window_names={"plain_text": ["A", "B", "C"], "usfm": ["A", "B", "C"]},
+        window_names={"plain_text": ["1", "2", "3"], "usfm": ["1", "2", "3"]},
     )
     try:
-        assert editor.window_names_edit.text() == "A, B, C"
-        editor.window_names_edit.setText("Draft, Compare , C")
+        assert editor.window_names_edit.text() == "1, 2, 3"
+        editor.window_names_edit.setText("Draft, Compare , 3")
         editor.set_environment("plain_text")
-        assert editor.window_names_edit.text() == "A, B, C"
+        assert editor.window_names_edit.text() == "1, 2, 3"
 
         assert editor.window_names_by_environment() == {
-            "plain_text": ["A", "B", "C"],
-            "usfm": ["Draft", "Compare", "C"],
+            "plain_text": ["1", "2", "3"],
+            "usfm": ["Draft", "Compare", "3"],
         }
     finally:
         editor.close()

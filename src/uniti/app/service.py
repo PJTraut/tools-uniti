@@ -22,6 +22,7 @@ from .dogfood import Durability, Operation, Outcome, ResourceBand
 from .file_environment_manager import FileEnvironmentManager
 from .session import MAX_VIEWS, MAX_WINDOWS, DockReturnRecord
 from .window_manager import ViewLocation, WindowManager
+from .environment_window_names import MAX_ENV_WINDOWS
 
 
 _UNCHANGED_DOCK_RETURN = object()
@@ -439,6 +440,29 @@ class UNITIService:
             window.restore_window_record(record)
         return window
 
+    def _documents_in_same_environment(self, document) -> list:
+        """Every open document in `document`'s environment, `document`
+        included: what "All Open Documents" searches (scopes plan D1/D5)."""
+
+        entries = self.documents.entries
+        current = next((entry for entry in entries if entry.document is document), None)
+        if current is None:
+            return []
+        return [
+            entry.document
+            for entry in entries
+            if entry.environment_key == current.environment_key
+        ]
+
+    def _find_scopes_for_view(self, view) -> tuple[str, ...] | None:
+        """The Find/Replace scopes `view`'s environment offers; None while
+        the view has no document entry (it is being opened or closed)."""
+
+        from uniti.app.find_scopes import scopes_for_environment
+
+        entry = self.documents.entry_for_view(view.view_id)
+        return None if entry is None else scopes_for_environment(entry.environment_key)
+
     def _documents_in_same_group(self, document) -> list:
         """Every open document sharing `document`'s group, `document` included.
 
@@ -457,37 +481,48 @@ class UNITIService:
             entry.document for entry in entries if entry.group_id == current.group_id
         ]
 
-    def _project_documents(self, project, current) -> list:
-        """`project`'s books as documents: the open ones, then ones the
-        service knows (closed lately), then books opened here just to be
-        searched (`_transient_documents`, dropped by `release_group_document`
-        unless they're chosen)."""
+    def _documents_in_project_group(self, document) -> list:
+        """USFM's Group scope: every book of every open project in
+        `document`'s project's group, project by project in the order the
+        projects were opened. A project with no group is a group of one."""
 
-        from uniti.core.document import Document
-        from uniti.core.environments.sfm.paratext_project import project_encoding_profile
+        entries = self.documents.entries
+        current = next((entry for entry in entries if entry.document is document), None)
+        if current is None or current.environment_key not in PROJECT_ENVIRONMENTS:
+            return []
+        own = project_for_file(document.path)
+        if own is None:
+            return []
+        projects = [own]
+        if current.group_id is not None:
+            for entry in entries:
+                if entry.group_id != current.group_id or entry.environment_key not in PROJECT_ENVIRONMENTS:
+                    continue
+                project = project_for_file(entry.document.path)
+                if project is not None and all(project.folder != seen.folder for seen in projects):
+                    projects.append(project)
+        documents = []
+        for project in projects:
+            documents.extend(self._project_documents(project, document if project is own else None))
+        return documents
+
+    def _project_documents(self, project, current) -> list:
+        """`project`'s books: the open ones as documents, the rest as
+        `PendingBook`s the search job opens when its turn comes
+        (`_transient_documents`, dropped by `release_group_document`)."""
+
+        from uniti.app.pending_book import PendingBook
 
         documents = []
         for book in project.books():
             entry = self.documents.find_path(book.path)
             if entry is not None:
                 documents.append(entry.document)
-                continue
-            try:
-                opened = Document.open(
-                    book.path,
-                    profile=project_encoding_profile(book.path),
-                    resource_manager=self.resources,
-                )
-            except Exception:
-                continue  # an unreadable book is left out of the search
-            folders = self._read_only_folders()
-            if folders:
-                from uniti.app.read_only import is_read_only_path
-
-                opened.set_read_only(is_read_only_path(book.path, folders))
-            self._transient_documents.append(opened)
-            documents.append(opened)
-        if not any(document is current for document in documents):
+            else:
+                # Opened by the search job when its turn comes, and closed
+                # again unless the search keeps it (S3).
+                documents.append(PendingBook(book.path, self._open_transient_book, self.release_group_document))
+        if current is not None and not any(document is current for document in documents):
             documents.append(current)
         return documents
 
@@ -516,20 +551,40 @@ class UNITIService:
         load = getattr(self.settings, "load", None)
         return tuple(load().read_only_folders) if callable(load) else ()
 
-    def adopt_group_document(self, document) -> None:
-        """A book of a project search that was chosen: open it in the
-        active window, in its project's tab, without taking focus. One
-        already shown stays as it is."""
+    def _open_transient_book(self, path: Path):
+        """Open a project book only to be searched (`_transient_documents`,
+        dropped by `release_group_document`); None when it can't be read."""
 
-        entry = self.documents.find_path(document.path)
-        if entry is not None and entry.view_ids and entry.document is document:
-            return
-        view = self.active_view
-        window = None if view is None else self.windows.window_for_view(view.view_id)
-        if window is None:
-            window = self.most_recent_window
-        self._transient_documents = [item for item in self._transient_documents if item is not document]
-        window.open_existing_document(document, select=False)
+        from uniti.core.document import Document
+        from uniti.core.environments.sfm.paratext_project import project_encoding_profile
+
+        try:
+            opened = Document.open(
+                path,
+                profile=project_encoding_profile(path),
+                resource_manager=self.resources,
+            )
+        except Exception:
+            return None  # an unreadable book is left out of the search
+        folders = self._read_only_folders()
+        if folders:
+            from uniti.app.read_only import is_read_only_path
+
+            opened.set_read_only(is_read_only_path(path, folders))
+        self._transient_documents.append(opened)
+        return opened
+
+    def is_group_document_unopened(self, document) -> bool:
+        """A book of a project search that no tab shows."""
+
+        return any(item is document for item in self._transient_documents)
+
+    def save_group_document(self, document) -> None:
+        """Write a changed book that was opened only for the search (a
+        project has one open book, so it has no tab to stay unsaved in).
+        Its format is the one it was read in."""
+
+        document.save(output_format=document.output_format)
 
     def release_group_document(self, document) -> None:
         """A book opened only to be searched that wasn't chosen: close it."""
@@ -556,13 +611,17 @@ class UNITIService:
                 lambda: self.active_view,
                 resource_manager=self.resources,
                 dogfood_observer=self.record_dogfood,
-                document_provider=lambda: [
-                    entry.document for entry in self.documents.entries
-                ],
+                document_provider=self._documents_in_same_environment,
                 group_provider=self._documents_in_same_group,
+                project_group_provider=self._documents_in_project_group,
+                scope_provider=self._find_scopes_for_view,
                 recipe_store=getattr(self.settings, "find_replace_recipes", None),
             )
-            self._find_replace.set_group_document_hooks(self.adopt_group_document, self.release_group_document)
+            self._find_replace.set_group_document_hooks(
+                self.release_group_document,
+                self.save_group_document,
+                self.is_group_document_unopened,
+            )
             self._find_replace.set_book_stepping(self._book_stepping_available, self._step_to_book)
             self._find_replace.placementChanged.connect(
                 self._record_find_replace_placement
@@ -1464,7 +1523,7 @@ class UNITIService:
 
     def environment_window_for(self, environment_key: str, slot: int):
         """The open environment window of `environment_key` in `slot`
-        (round 3 T3: "USFM A" is slot 0, "USFM B" slot 1 …)."""
+        (round 3 T3: "SFM-1" is slot 0, "SFM-2" slot 1 …)."""
 
         for _window_id, window in self.windows.items:
             if getattr(window, "environment_window", None) == (environment_key, slot):
@@ -1480,20 +1539,25 @@ class UNITIService:
             if (getattr(window, "environment_window", None) or (None,))[0] == environment_key
         )
 
-    def free_environment_slot(self, environment_key: str) -> int:
-        """The lowest slot no open window of `environment_key` has."""
+    def free_environment_slot(self, environment_key: str) -> int | None:
+        """The lowest slot no open window of `environment_key` has; None
+        when all MAX_ENV_WINDOWS are open."""
 
         used = {window.environment_window[1] for window in self.environment_windows(environment_key)}
         slot = 0
         while slot in used:
             slot += 1
-        return slot
+        return slot if slot < MAX_ENV_WINDOWS else None
 
     def new_environment_window(self, environment_key: str):
-        """A new environment window of `environment_key`, in its lowest free slot."""
+        """A new environment window of `environment_key`, in its lowest free
+        slot; at the limit of nine, its most recently used window."""
 
+        slot = self.free_environment_slot(environment_key)
+        if slot is None:
+            return self.environment_windows(environment_key)[0]
         window = self.new_window()
-        window.set_environment_window(environment_key, self.free_environment_slot(environment_key))
+        window.set_environment_window(environment_key, slot)
         return window
 
     def environment_window_target(self, environment_key: str, path: Path | str | None = None):

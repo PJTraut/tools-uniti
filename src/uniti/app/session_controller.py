@@ -456,6 +456,16 @@ class SessionController:
             for reference in manifest.packs
         ):
             self._release_generation_lease()
+            self._settle_project_books()
+
+    def _settle_project_books(self) -> None:
+        """Every document is back: a project tab saved with several books
+        keeps its shown one (a project has one open book)."""
+
+        for _window_id, window in self._service.windows.items:
+            bar = getattr(window, "_environment_bar", None)
+            if bar is not None:
+                bar.settle_restored_books()
 
     def _document_id_for_view(self, view_id: str | None) -> str | None:
         if view_id is None:

@@ -34,8 +34,8 @@ A separate engineering track alongside B4. It doesn't gate B4's qualification. I
 
 What it does:
 - Every file lives in an environment. Opening asks "Open in <Environment> Environment / Open as Plain Text". USFM assumes a Paratext project: a USFM file outside one is plain text.
-- Environment windows are named per environment ("USFM A", "USFM B", renameable) and have a toolbar: the window's name, the current file's group, the Plain Text / Standard / Preview mode switch and, for USFM, a Book/Chapter/Verse selector. Standard and Preview are shown in place, styled entirely from layered `.sty` stylesheets plus `uniti.sty` presentation rules, and Preview has a notes frame.
-- In a USFM window a tab is a project, titled with its short name; changing the book changes it in the tab, asking before leaving unsaved changes. A tab's menu moves it, with all its books, between up to four splits and between windows.
+- Environment windows are named per environment ("SFM-1", "SFM-2", renameable) and have a toolbar: the window's name, the current file's group, the Text / Preview mode switch (USFM: Text / Standard / Preview) and, for USFM, a Book/Chapter/Verse selector. Standard and Preview are shown in place, styled entirely from layered `.sty` stylesheets plus `uniti.sty` presentation rules, and Preview has a notes frame.
+- In a USFM window a tab is a project, titled with its short name; a project has one open book at a time (2026-10-22): changing the book closes the old one, asking before leaving unsaved changes. A tab's menu moves it between up to four splits and between windows.
 - Each environment has its own groups. In USFM a group belongs to a project, colours its tab, and binds projects for side-by-side sync across windows, mapped by versification and across books.
 - USFM covers `.sfm` and `.usfm`, nested `\+` markers, milestones and `\cat`.
 - Paratext projects (`Settings.xml`) open with Open USFM Project…, and Recent Projects remembers them.
@@ -72,7 +72,7 @@ Spec check of round 3 and Show One Chapter, 2026-10-13, against the field-test f
 - **T7: Save As writes into a read-only folder.** Neither Save As path checked the destination; both now refuse with a message (`_refuse_read_only_destination`).
 - **T7 (minor):** Format/Minify on a read-only file raised an uncaught `DocumentReadOnlyError`; it now shows the read-only message. Closing a modified read-only file offered Save, which then failed; it now offers Discard or Cancel and points to Save As (`_ask_save_changes`).
 
-Untested: Find's "All open documents" including a project tab's hidden books; a session saved with more than 4 splits isn't capped on restore.
+Find's multi-document scopes are being redesigned per environment (scopes plan, S1–S2 built 2026-10-22); a session saved with more than 4 splits isn't capped on restore.
 
 Local verification of round 3, 2026-10-08. Each phase's full suite ran (from T3 on in a separate worktree at the phase's commit, importing that tree's code), with the same deselected test as below:
 - T1 `9a575d1`: 2,564 passed (and the 2 tests it broke, fixed in the same commit); T2 `c58135b`: 2,573; T3 `95a3253`: 2,581; T4 `bb47e25`: 2,588; T5 `eff5ecd`: 2,593; T6 `5790d51`: 2,600; T7 `2a3ca75`: **2,605 passed**. Each with 6 platform skips.

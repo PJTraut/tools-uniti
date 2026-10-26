@@ -297,6 +297,20 @@ class CaptureReportDelegate(QStyledItemDelegate):
         positioned.
         """
 
+        # A line too long for the column is elided and keeps its colours up
+        # to the ellipsis (field test, 2026-10-26: it used to fall back to
+        # plain text, so only short lines were coloured).
+        elided = option.fontMetrics.elidedText(
+            content, Qt.TextElideMode.ElideRight, content_rect.width()
+        )
+        if elided != content:
+            keep = len(elided) - 1 if elided.endswith("…") else len(elided)
+            content = elided
+            spans = tuple(
+                (start, min(end, keep), group_number)
+                for start, end, group_number in spans
+                if start < keep
+            )
         layout = QTextLayout(content, option.font)
         no_wrap = QTextOption()
         no_wrap.setWrapMode(QTextOption.WrapMode.NoWrap)
@@ -332,9 +346,6 @@ class CaptureReportDelegate(QStyledItemDelegate):
         # wrapping or truncating within the layout itself.
         line.setLineWidth(2**20)
         layout.endLayout()
-
-        if line.naturalTextWidth() > content_rect.width():
-            return False
 
         painter.save()
         painter.setPen(base_color)

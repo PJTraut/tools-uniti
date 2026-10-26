@@ -28,6 +28,9 @@ class FileRow:
     count: int
     locked: bool = False
     read_only: bool = False
+    # Not open in any tab (a project has one open book): a ticked one is
+    # changed and saved to disk, since there is no tab to leave it in.
+    saved: bool = False
 
 
 class ReplaceFilesDialog(QDialog):
@@ -48,6 +51,8 @@ class ReplaceFilesDialog(QDialog):
             if row.read_only:
                 flags &= ~Qt.ItemFlag.ItemIsEnabled
                 item.setToolTip(0, "In a read-only folder: it is never changed")
+            elif row.saved:
+                item.setToolTip(0, "Not open: a ticked file is changed and saved to disk")
             item.setFlags(flags)
             item.setCheckState(0, Qt.CheckState.Unchecked)
             item.setTextAlignment(2, Qt.AlignmentFlag.AlignRight)
@@ -75,7 +80,13 @@ class ReplaceFilesDialog(QDialog):
     def _refresh(self) -> None:
         chosen = self.chosen()
         locked = sum(1 for index in chosen if self._rows[index].locked)
-        self.note.setText(f"{locked} locked book{'s' if locked != 1 else ''} will be unlocked" if locked else "")
+        saved = sum(1 for index in chosen if self._rows[index].saved)
+        notes = []
+        if locked:
+            notes.append(f"{locked} locked book{'s' if locked != 1 else ''} will be unlocked")
+        if saved:
+            notes.append(f"{saved} file{'s' if saved != 1 else ''} that aren't open will be saved to disk")
+        self.note.setText("; ".join(notes))
         self.replace_button.setEnabled(bool(chosen))
 
 

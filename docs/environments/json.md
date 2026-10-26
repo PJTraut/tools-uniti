@@ -2,7 +2,7 @@
 
 JSON documents (USJ, configuration files, data). See the [overview](README.md).
 
-- **Extensions:** `.json`. A different extension, such as `.usj`, can be added under **File Type Environments…**
+- **Extensions:** `.json`. A different extension, such as `.usj`, can be added under **Assign by File Type…**
 - **Highlighting:** strings, numbers, keywords and punctuation.
 
 ## Commands

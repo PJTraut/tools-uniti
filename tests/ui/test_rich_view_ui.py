@@ -627,3 +627,15 @@ def test_preview_notes_frame_shows_categories_in_brackets(window, tmp_path: Path
     window._rich_views.show("sfm.preview")
     (footnotes,) = window._rich_views.pane.note_sections
     assert footnotes.editor.toPlainText() == "a [People] 1:1 A note."
+
+
+def test_markdown_rendered_has_no_command_buttons_but_keeps_its_commands(window, tmp_path: Path):
+    """Field test, 2026-10-26: no Bold/Italic/… buttons on Markdown's top bar."""
+
+    _open(window, tmp_path, "notes.md", "# Title\n\nSome **bold** text\n")
+    window._rich_views.show("markdown.rendered")
+    pane = window._rich_views.pane
+
+    assert pane.command_bar.count() == 0
+    labels = [action.text() for action in pane.editor.context_menu().actions()]
+    assert "Bold" in labels and "Italic" in labels

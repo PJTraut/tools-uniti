@@ -183,19 +183,24 @@ class BookLock(QObject):
         return view.document.locked
 
 
-def ask_wrap_project(parent, *, forward: bool) -> bool:
-    """Find or Replace ran past the project's last (or first) book: True to
-    carry on from the other end."""
+def ask_wrap_project(parent, *, forward: bool, group: bool = False) -> bool:
+    """Find or Replace ran past the project's (or, with `group`, the
+    group's) last or first book: True to carry on from the other end."""
 
+    what = "group" if group else "project"
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Question)
-    box.setWindowTitle("End of Project")
+    box.setWindowTitle(f"End of {what.capitalize()}")
     box.setText(
-        "No more matches to the end of the project."
+        f"No more matches to the end of the {what}."
         if forward
-        else "No more matches back to the start of the project."
+        else f"No more matches back to the start of the {what}."
     )
-    box.setInformativeText("Continue from the first book?" if forward else "Continue from the last book?")
+    box.setInformativeText(
+        ("Continue from the first book?" if forward else "Continue from the last book?")
+        if not group
+        else ("Continue from the first project's first book?" if forward else "Continue from the last project's last book?")
+    )
     go = box.addButton("Continue", QMessageBox.ButtonRole.AcceptRole)
     box.addButton(QMessageBox.StandardButton.Cancel)
     box.setDefaultButton(go)

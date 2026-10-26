@@ -80,7 +80,7 @@ class DocumentGroupEditor(QDialog):
         self.window_names_label = QLabel("Window names:", self)
         self.window_names_edit = QLineEdit(self)
         self.window_names_edit.setAccessibleName("Window names")
-        self.window_names_edit.setToolTip("This environment's windows, in order, separated by commas (e.g. A, B, C)")
+        self.window_names_edit.setToolTip("This environment's windows, in order, separated by commas (e.g. 1, 2, 3)")
         self.window_names_edit.setText(self._window_names.get(self._key, ""))
         for widget in (self.window_names_label, self.window_names_edit):
             widget.setVisible(bool(self._window_names))

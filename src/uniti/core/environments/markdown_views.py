@@ -72,8 +72,11 @@ def _inline(builder: ProjectionBuilder, source: str, start: int, end: int) -> No
 
 class MarkdownRenderedView:
     key = "markdown.rendered"
-    label = "Rendered View"
+    label = "Preview"
     proportional = True
+    # No Bold/Italic/… buttons on the pane's top bar (field test, 2026-10-26):
+    # the commands stay on the right-click menu and their shortcuts.
+    command_buttons = False
 
     def project(self, source: str) -> Projection:
         builder = ProjectionBuilder(self.key)

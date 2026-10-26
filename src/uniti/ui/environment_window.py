@@ -3,7 +3,7 @@
 2026-10-07 field test: "undock from MAIN panel, create 'environment panel',
 move text file to the 'environment panel'". An environment window is an
 ordinary UNITI window (tabs, splits, Find/Replace, save, session — all
-unchanged) that belongs to one environment, e.g. "USFM A", and carries that
+unchanged) that belongs to one environment, e.g. "SFM-1", and carries that
 environment's frame: an `EnvironmentBar` toolbar with the window's name,
 the Plain Text / Standard / Preview mode switch and, for USFM, a Book /
 Chapter / Verse selector.
@@ -22,11 +22,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QObject, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QActionGroup, QColor
+from PySide6.QtGui import QAction, QActionGroup, QColor, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
     QLabel,
     QMenu,
+    QMessageBox,
     QSizePolicy,
     QStyle,
     QStyleOptionComboBox,
@@ -47,7 +48,7 @@ from uniti.core.environments.sfm.references import (
     book_header_for_path,
 )
 from uniti.core.environments.sfm.versification import map_reference
-from uniti.ui.rich_view import PLAIN_TEXT_LABEL, reference_highlight_color
+from uniti.ui.rich_view import reference_highlight_color
 
 if TYPE_CHECKING:
     from uniti.core.document import Document
@@ -221,8 +222,9 @@ class ReferenceSync(QObject):
         source_versification = environment.versification_for(source.document)
         source_leaf = self._window._panes.leaf_for_view(source.view_id)
         missing: list[str] = []
+        unsaved: list[str] = []
         moves: list[tuple[UNITITextView, int, tuple[int, int] | None]] = []
-        for target in self._targets(source, source_leaf, group, book, missing):
+        for target in self._targets(source, source_leaf, group, book, missing, unsaved):
             target_map = self.maps.for_document(target.document)
             if target_map is None:
                 continue
@@ -241,7 +243,13 @@ class ReferenceSync(QObject):
                     self._highlight(target, span)
         finally:
             self._syncing = False
-        if missing:
+        if unsaved:
+            self._window.statusBar().showMessage(
+                f"{', '.join(unsaved)} {'has' if len(unsaved) == 1 else 'have'} unsaved changes: "
+                f"{'that split stays' if len(unsaved) == 1 else 'those splits stay'} where it is",
+                6000,
+            )
+        elif missing:
             self._window.statusBar().showMessage(
                 f"{book} isn't in {', '.join(missing)}: {'that split stays' if len(missing) == 1 else 'those splits stay'} where it is",
                 6000,
@@ -298,12 +306,16 @@ class ReferenceSync(QObject):
                 return found.start, target_map.verse_range(found)
         return 0, None
 
-    def _targets(self, source, source_leaf, group: str, book: str, missing: list[str]) -> list["UNITITextView"]:
+    def _targets(
+        self, source, source_leaf, group: str, book: str, missing: list[str], unsaved: list[str]
+    ) -> list["UNITITextView"]:
         """Per other split showing a text of `group`: its shown tab when it
         has `book`; else another tab of that split that does (then shown);
         else, for a Paratext project text, the project's file of `book`
         (opened in that split). A single file without `book` is listed in
-        `missing` and stays."""
+        `missing` and stays. A project has one open book, so a sync never
+        replaces one with unsaved changes (it can't ask): that split is
+        listed in `unsaved` and stays."""
 
         from uniti.core.environments.sfm.paratext_project import project_for_file
 
@@ -337,6 +349,9 @@ class ReferenceSync(QObject):
                 targets.append(candidate)
                 continue
             project_book = None if project is None else project.book_for(book)
+            if project_book is not None and shown.document.modified:
+                unsaved.append(shown.document.path.name)
+                continue
             opened = None if project_book is None else self._open_in_split(shown, project_book.path, source, group)
             if opened is not None:
                 targets.append(opened)
@@ -507,11 +522,15 @@ class EnvironmentBar(QToolBar):
         self.environment_key = environment_key
         self.slot = slot
         self._updating = False
+        # `open_book`'s answers about the book it leaves (view id -> "keep"
+        # or "discard"), so `keep_one_book` doesn't ask twice.
+        self._leaving: dict[str, str] = {}
+        self._keeping = False
         self._books_project: Path | None = None
         self._books: tuple[tuple[str, Path], ...] = ()
         self._map: ReferenceMap | None = None
 
-        # The window's name ("USFM A"); click to rename it (round 3 T3, D4).
+        # The window's name ("SFM-1"); click to rename it (round 3 T3, D4).
         self.title = QToolButton(self)
         self.title.setAutoRaise(True)
         self.title.setAccessibleName("Window name")
@@ -520,16 +539,19 @@ class EnvironmentBar(QToolBar):
         self.addWidget(self.title)
         # The current file's document group: side-by-side sync works within
         # a group.
-        self.group = QComboBox(self)
+        # A button like the window's name (field test, 2026-10-26): it shows
+        # the group; clicking it lists the groups.
+        self.group = QToolButton(self)
         self.group.setAccessibleName("Group")
         self.group.setToolTip(
             "The current file's document group. Side-by-side sync works within a group."
         )
-        # About ten characters wide on the toolbar; the list opens wide
-        # enough for every group name.
-        self.group.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
-        self.group.setMinimumContentsLength(10)
-        self.group.activated.connect(self._group_chosen)
+        self.group.setAutoRaise(True)
+        self.group.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.group.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.group.setMenu(QMenu(self.group))
+        self.group.setStyleSheet("QToolButton::menu-indicator { image: none; }")
+        self.group.setMinimumWidth(round(8 * self.group.fontMetrics().horizontalAdvance("M")))
         group_label = QLabel("Group", self)
         group_label.setContentsMargins(6, 0, 3, 0)
         self.addWidget(group_label)
@@ -557,6 +579,11 @@ class EnvironmentBar(QToolBar):
         # digits of chapter and verse.
         for combo, ems in ((self.book, BOOK_EMS), (self.chapter, NUMBER_EMS), (self.verse, NUMBER_EMS)):
             _fix_display_width(combo, ems)
+            # A short list with a scrollbar (field test, 2026-10-26): not the
+            # native pop-up that stretches over a 150-chapter Psalms list.
+            combo.setStyleSheet("QComboBox { combobox-popup: 0; }")
+            combo.setMaxVisibleItems(POPUP_ITEMS)
+        self._steppers: dict[QComboBox, tuple[QToolButton, QToolButton]] = {}
         if references:
             # Book : Chapter : Verse sits at the right end of the toolbar.
             spacer = QWidget(self)
@@ -569,6 +596,10 @@ class EnvironmentBar(QToolBar):
                     # The lock before the Book list stands for "Book" and is
                     # Unlock Book / Lock Book: no extra button on a toolbar
                     # that must stay short.
+                    abbreviation = QLabel("BK", self)
+                    abbreviation.setContentsMargins(6, 0, 3, 0)
+                    abbreviation.setToolTip("Book")
+                    self.addWidget(abbreviation)
                     self.lock_toggle = QToolButton(self)
                     self.lock_toggle.setDefaultAction(window._book_lock.action)
                     self.lock_toggle.setAutoRaise(True)
@@ -583,16 +614,57 @@ class EnvironmentBar(QToolBar):
                     self.chapter_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
                     self.addWidget(self.chapter_toggle)
                 else:
-                    label = QLabel(text, self)
+                    label = QLabel("VS", self)
                     label.setContentsMargins(6, 0, 3, 0)
+                    label.setToolTip(text)
                     self.addWidget(label)
+                previous, following = self._make_steppers(combo)
+                self.addWidget(previous)
                 self.addWidget(combo)
+                self.addWidget(following)
         else:
             for combo in (self.book, self.chapter, self.verse):
                 combo.hide()
         self.refresh()
 
     # --- state -------------------------------------------------------------------
+
+    def _make_steppers(self, combo: QComboBox) -> tuple[QToolButton, QToolButton]:
+        """"−" and "+" around `combo`: the previous and the next item of its
+        list (Book GEN + is EXO, Chapter 3 − is 2)."""
+
+        buttons = []
+        for text, delta, name in (("−", -1, "Previous"), ("+", 1, "Next")):
+            button = QToolButton(self)
+            button.setText(text)
+            button.setAutoRaise(True)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            button.setFixedWidth(round(1.3 * button.fontMetrics().horizontalAdvance("M")))  # the toolbar must stay short
+            button.setAccessibleName(f"{name} {combo.accessibleName()}")
+            button.setToolTip(f"{name} {combo.accessibleName().lower()}")
+            button.clicked.connect(lambda _checked=False, combo=combo, delta=delta: self.step(combo, delta))
+            buttons.append(button)
+        self._steppers[combo] = (buttons[0], buttons[1])
+        return buttons[0], buttons[1]
+
+    def step(self, combo: QComboBox, delta: int) -> bool:
+        """Move `combo` to the previous (-1) or next (+1) item and act on it
+        as if it had been chosen; False at either end of the list."""
+
+        index = combo.currentIndex() + delta
+        if self._updating or not combo.isEnabled() or not 0 <= index < combo.count():
+            return False
+        combo.setCurrentIndex(index)
+        chosen = {self.book: self._book_chosen, self.chapter: self._chapter_chosen, self.verse: self._verse_chosen}[combo]
+        chosen(index)
+        self._refresh_steppers()
+        return True
+
+    def _refresh_steppers(self) -> None:
+        for combo, (previous, following) in getattr(self, "_steppers", {}).items():
+            previous.setEnabled(combo.isEnabled() and combo.currentIndex() > 0)
+            following.setEnabled(combo.isEnabled() and combo.currentIndex() < combo.count() - 1)
 
     def _view(self) -> "UNITITextView | None":
         view = self._window.current_view
@@ -648,27 +720,41 @@ class EnvironmentBar(QToolBar):
         window = self._window
         swatch = window._groups_and_recent_files._group_swatch_icon
         entry = self._entry()
-        self._updating = True
-        try:
-            self.group.clear()
-            self.group.addItem("Ungrouped", None)
-            for group in window.groups_for(self.environment_key):
-                self.group.addItem(swatch(group.color), group.name, group.id)
-            self.group.insertSeparator(self.group.count())
-            self.group.addItem("New Group…", self._NEW_GROUP)
-            self.group.addItem("Manage Groups…", self._MANAGE_GROUPS)
-            current = None if entry is None else entry.group_id
-            self.group.setCurrentIndex(max(0, self.group.findData(current)))
-            self.group.setEnabled(entry is not None)
-            popup = self.group.view()
-            popup.setMinimumWidth(popup.sizeHintForColumn(0) + 2 * popup.frameWidth() + 24)
-        finally:
-            self._updating = False
+        current = None if entry is None else entry.group_id
+        menu = self.group.menu()
+        menu.clear()
+        shown, shown_icon = "Ungrouped", QIcon()
+        choices = [("Ungrouped", None, QIcon())]
+        choices += [(group.name, group.id, swatch(group.color)) for group in window.groups_for(self.environment_key)]
+        for name, data, icon in choices:
+            action = menu.addAction(icon, name)
+            action.setCheckable(True)
+            action.setChecked(data == current)
+            action.triggered.connect(lambda _checked=False, data=data: self._group_chosen(data))
+            if data == current:
+                shown, shown_icon = name, icon
+        menu.addSeparator()
+        menu.addAction("New Group…").triggered.connect(lambda _checked=False: self._group_chosen(self._NEW_GROUP))
+        menu.addAction("Manage Groups…").triggered.connect(lambda _checked=False: self._group_chosen(self._MANAGE_GROUPS))
+        self.group.setText(shown)
+        self.group.setIcon(shown_icon)
+        self.group.setEnabled(entry is not None)
 
-    def _group_chosen(self, index: int) -> None:
-        if self._updating:
-            return
-        data = self.group.itemData(index)
+    def group_choices(self) -> list[str]:
+        """The group menu's entries, in order."""
+
+        return [action.text() for action in self.group.menu().actions() if action.text()]
+
+    def choose_group(self, text: str) -> bool:
+        """Pick the group menu's entry `text`, as a click would."""
+
+        for action in self.group.menu().actions():
+            if action.text() == text:
+                action.trigger()
+                return True
+        return False
+
+    def _group_chosen(self, data) -> None:
         window = self._window
         if data == self._MANAGE_GROUPS:
             self._refresh_group_choices()
@@ -694,7 +780,12 @@ class EnvironmentBar(QToolBar):
         rich_views = self._window._rich_views
         view = self._view()
         providers = rich_views.providers_for(view) if view is not None else ()
-        entries = [(None, PLAIN_TEXT_LABEL)] + [(provider.key, provider.label) for provider in providers]
+        # The same switch in every environment (field test, 2026-10-26): Text,
+        # then the environment's views; one without a rich view shows a
+        # disabled Preview.
+        entries = [(None, TEXT_MODE_LABEL)] + [(provider.key, provider.label) for provider in providers]
+        if not providers:
+            entries.append((NO_PREVIEW, "Preview"))
         if [key for key, _label in entries] != list(self.mode_actions):
             for action in self.mode_actions.values():
                 self._mode_group.removeAction(action)
@@ -710,7 +801,7 @@ class EnvironmentBar(QToolBar):
                 self.mode_actions[key] = action
         showing = rich_views.key_for(view)
         for key, action in self.mode_actions.items():
-            action.setEnabled(view is not None and (key is None or bool(providers)))
+            action.setEnabled(view is not None and key is not NO_PREVIEW and (key is None or bool(providers)))
             blocked = action.blockSignals(True)
             action.setChecked(key == showing)
             action.blockSignals(blocked)
@@ -785,6 +876,7 @@ class EnvironmentBar(QToolBar):
             popup.setMinimumWidth(popup.sizeHintForColumn(0) + 2 * popup.frameWidth() + 24)
         finally:
             self._updating = False
+        self._refresh_steppers()
 
     def _modified_paths(self) -> set[Path]:
         """The open files of this window with unsaved changes."""
@@ -804,6 +896,7 @@ class EnvironmentBar(QToolBar):
         finally:
             self._updating = False
         self.follow_caret(view)
+        self._refresh_steppers()
 
     def _fill_verses(self, chapter: str | None) -> None:
         self.verse.clear()
@@ -834,6 +927,7 @@ class EnvironmentBar(QToolBar):
             self.verse.setCurrentIndex(-1 if verse is None else self.verse.findData(verse.start))
         finally:
             self._updating = False
+        self._refresh_steppers()
 
     def _navigate(self, offset: int | None) -> None:
         view = self._view()
@@ -875,7 +969,6 @@ class EnvironmentBar(QToolBar):
 
         window = self._window
         previous = window.current_view
-        discard = None
         if (
             previous is not None
             and window._project_tabs.active
@@ -886,14 +979,64 @@ class EnvironmentBar(QToolBar):
             if decision is None:
                 self._refresh_books()
                 return None
-            if decision == "discard":
-                discard = previous
-        opened = self._show_book(path)
-        if discard is not None and opened is not None and opened is not discard:
-            window.close_view_discarding(discard)
-            window._project_tabs.refresh_all()
-            self.refresh()
+            self._leaving[previous.view_id] = decision
+        try:
+            opened = self._show_book(path)
+            if opened is not None:
+                self.keep_one_book(opened)
+        finally:
+            self._leaving.clear()
         return opened
+
+    def settle_restored_books(self) -> None:
+        """A session saved before a project had one open book can come back
+        with several in a tab: keep each tab's shown book and close the
+        rest, asking about nothing (a book with unsaved changes stays)."""
+
+        window = self._window
+        tabs = window._project_tabs
+        if not tabs.active:
+            return
+        panes = window._panes
+        for pane_id in panes.pane_ids:
+            try:
+                leaf = panes.leaf(pane_id)
+            except (KeyError, ValueError):
+                continue
+            for books in tabs.members(leaf).values():
+                if len(books) < 2:
+                    continue
+                shown = next((book for book in books if book.view_id == leaf.selected_view_id), books[0])
+                self.keep_one_book(shown, ask=False)
+
+    def keep_one_book(self, shown: "UNITITextView", *, ask: bool = True) -> None:
+        """A project has one open book per tab: close the other books open
+        in `shown`'s tab, asking about unsaved changes (book-lock plan D4)
+        unless the question was just answered (`open_book`). A book whose
+        question the user cancels stays open, hidden, as does one with
+        unsaved changes when `ask` is False."""
+
+        window = self._window
+        tabs = window._project_tabs
+        if not tabs.active or self._keeping:
+            return
+        self._keeping = True
+        try:
+            for book in tabs.books_of(shown):
+                if book is shown or _same_path(book.document.path, shown.document.path):
+                    continue
+                decision = self._leaving.pop(book.view_id, None)
+                if decision is None and book.document.modified:
+                    if not ask:
+                        continue
+                    decision = self._leave_book(book)
+                    if decision is None:
+                        continue
+                window.close_view_discarding(book)
+            tabs.refresh_all()
+            self.refresh()
+        finally:
+            self._keeping = False
 
     def _show_book(self, path: Path) -> "UNITITextView | None":
         window = self._window
@@ -963,7 +1106,10 @@ class EnvironmentBar(QToolBar):
             return "keep"
         document = view.document
         if document.read_only:
-            return "keep"  # a read-only file can't be saved: it stays open, unsaved
+            # It can't be saved in place (T7): Discard its changes, or stay.
+            if window._ask_save_changes(document) == QMessageBox.StandardButton.Discard:
+                return "discard"
+            return None
         answer = book_lock.ask_save_or_discard(
             window, book_lock.document_title(document), locked=document.locked
         )
@@ -982,6 +1128,9 @@ class EnvironmentBar(QToolBar):
 
 BOOK_EMS = 10
 NUMBER_EMS = 3
+TEXT_MODE_LABEL = "Text"
+NO_PREVIEW = "(no preview)"  # the key of the disabled Preview an environment without views shows
+POPUP_ITEMS = 12  # rows a Book, Chapter or Verse list shows before it scrolls
 
 
 def _fix_display_width(combo: QComboBox, ems: float) -> None:

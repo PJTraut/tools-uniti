@@ -309,3 +309,23 @@ def test_live_mutations_honor_the_persisted_layout_limits(qapp):
     leaf_tree.add_view(StubView("anchor"))
     with pytest.raises(ValueError, match="128 leaf panes"):
         leaf_tree.split_view("anchor", Qt.Orientation.Horizontal)
+
+
+def test_split_root_puts_a_leaf_below_the_whole_tree(three_views):
+    """Field test, 2026-10-26: Find/Replace attaches across the frame, below
+    every pane, not under the one pane it was anchored to."""
+
+    _document, views = three_views
+    tree = EditorPaneTree()
+    tree.add_view(views[0], pane_id=tree.first_leaf.pane_id)
+    side = tree.split_view(views[0].view_id, Qt.Orientation.Horizontal)
+    tree.add_view(views[1], pane_id=side.pane_id)
+
+    bottom = tree.split_root(Qt.Orientation.Vertical, stretch=(1, 0), fixed_sizes=(1, 120))
+
+    assert tree.leaf_count == 3
+    root = tree._root
+    assert root.orientation == Qt.Orientation.Vertical
+    assert root.children[1] is bottom
+    # Both editor panes still sit together in the first child.
+    assert {leaf.pane_id for leaf in tree._leaves(root.children[0])} == {tree.leaf_for_view(views[0].view_id).pane_id, side.pane_id}

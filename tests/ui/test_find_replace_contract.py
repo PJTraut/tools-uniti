@@ -360,7 +360,7 @@ def test_replace_all_open_documents_replaces_every_document_once(tmp_path: Path)
     app, document, view, panel = _make_panel(
         tmp_path,
         "alpha alpha",
-        document_provider=lambda: [document, other_document],
+        document_provider=lambda _document: [document, other_document],
     )
     try:
         panel.find_input.set_text("alpha")
@@ -3379,3 +3379,47 @@ def test_restore_state_clamps_a_geometry_from_a_since_removed_screen():
     finally:
         panel.shutdown()
         panel.close()
+
+
+def test_scope_combo_follows_the_scopes_the_environment_offers(tmp_path: Path):
+    from uniti.ui.find_replace import ReplaceScope
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha")
+    try:
+        offered = [["whole_document", "cursor_to_end", "current_group", "all_open_documents"]]
+        panel.set_scope_provider(lambda _view: offered[0])
+        panel.replace_scope_combo.setCurrentIndex(
+            panel.replace_scope_combo.findData(ReplaceScope.CURSOR_TO_END)
+        )
+
+        offered[0] = ["whole_document", "cursor_to_end", "bogus"]
+        panel._update_actions()
+
+        labels = [panel.replace_scope_combo.itemText(i) for i in range(panel.replace_scope_combo.count())]
+        assert labels == ["Whole Document", "Cursor to End"]
+        assert panel.replace_scope() == ReplaceScope.CURSOR_TO_END  # still offered, so kept
+
+        offered[0] = ["whole_document", "current_group"]
+        panel._update_actions()
+
+        assert panel.replace_scope() == ReplaceScope.WHOLE_DOCUMENT  # no longer offered
+        panel.set_scope_provider(None)
+        assert panel.replace_scope_combo.count() == 4
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_scope_combo_keeps_its_choice_while_the_environment_is_unknown(tmp_path: Path):
+    from uniti.ui.find_replace import ReplaceScope
+
+    app, document, view, panel = _make_panel(tmp_path, "alpha")
+    try:
+        panel.set_scope_provider(lambda _view: ["book", "cursor_to_end", "project", "project_group"])
+        panel.replace_scope_combo.setCurrentIndex(panel.replace_scope_combo.findData(ReplaceScope.PROJECT))
+
+        panel.set_scope_provider(lambda _view: None)
+        panel._update_actions()
+
+        assert panel.replace_scope() == ReplaceScope.PROJECT
+    finally:
+        _close_panel(app, document, view, panel)

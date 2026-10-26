@@ -114,7 +114,7 @@ def test_regrouping_a_file_in_an_environment_window_keeps_it_there(desktop, tmp_
 
     assert service.windows.window_for_view(view.view_id) is window
     assert service.documents.entry_for_view(view.view_id).group_id == "B"
-    assert window._environment_bar.group.currentText() == "B"
+    assert window._environment_bar.group.text() == "B"
     # Dock still goes back to where the file came from.
     service.dock_view(view.view_id)
     assert service.windows.window_for_view(view.view_id) is main
@@ -200,7 +200,7 @@ def test_manage_groups_renames_an_environments_windows(desktop, tmp_path: Path, 
 
     window.show_document_group_editor()
 
-    assert seen["names"]["usfm"] == ["A", "B", "C"]
-    assert window.environment_window_name() == "USFM Draft"
-    assert window.windowTitle().startswith("UNITI — USFM Draft")
-    assert service.new_environment_window("usfm").environment_window_name() == "USFM Compare"
+    assert seen["names"]["usfm"] == ["1", "2", "3"]
+    assert window.environment_window_name() == "SFM-Draft"
+    assert window.windowTitle().startswith("UNITI — SFM-Draft")
+    assert service.new_environment_window("usfm").environment_window_name() == "SFM-Compare"

@@ -20,7 +20,7 @@ Extensions are matched without regard to case: `.SFM`, `.sfm` and `.Sfm` are the
 When you open a file whose extension belongs to an environment other than Plain Text, UNITI asks how to open it:
 
 - **Open in <Environment> Environment** (the default): the file goes to that environment's window, with all its tools.
-- **Open as Plain Text**: the file stays in the window you opened it from, in the Plain Text environment. That means **no extended features** while you work on it: no environment commands, views, checks or sync. Choose **Environment for This Document → By Extension** to give it its environment back.
+- **Open as Plain Text**: the file stays in the window you opened it from, in the Plain Text environment. That means **no extended features** while you work on it: no environment commands, views, checks or sync. Choose **Assign Environment → By Extension** to give it its environment back.
 - **Cancel**: nothing opens.
 
 Some opens don't ask:
@@ -31,7 +31,7 @@ Some opens don't ask:
 
 ## Environment windows
 
-An environment window is an ordinary UNITI window for **one environment**, named "USFM A", "USFM B", "Plain Text A" and so on. It has tabs, splits, Find/Replace and saving like any window, plus a toolbar across the top. The toolbar holds the window's name, the current file's group, the view-mode buttons (for USFM: Plain Text / Standard / Preview) and the environment's own controls (for USFM: Book, Chapter, Verse and Sync).
+An environment window is an ordinary UNITI window for **one environment**, named "SFM-1", "SFM-2", "MD-1", "TXT-1" and so on (SFM is USFM's short label; at most nine per environment). It has tabs, splits, Find/Replace and saving like any window, plus a toolbar across the top. The toolbar holds the window's name, the current file's group, the view-mode buttons (Text and Preview in every environment; USFM adds Standard; an environment without a rich view shows Preview greyed out) and the environment's own controls (for USFM: Book, Chapter, Verse and Sync).
 
 **Names.** An environment's first window is "A", its second "B", and so on; a new window takes the first free letter. To rename a window, click its name on the toolbar or use **Rename Window…** in the environment menu. **Manage Groups…** also edits each environment's window names, as a comma-separated list. A name belongs to its place in that order: rename the first USFM window "Draft" and it stays "Draft" after a restart. Each environment has its own names, saved in `windows.json` in its configuration folder.
 
@@ -40,7 +40,7 @@ An environment window is an ordinary UNITI window for **one environment**, named
 Ways a file gets there:
 - **Opening:** "Open in <Environment> Environment" in the dialog above.
 - **Moving:** **Move to Environment Window** in the environment menu. **Dock** (on the tab) takes the file back where it came from.
-- **Pinning:** choosing an environment in **Environment for This Document**. The file moves to that environment's window.
+- **Pinning:** choosing an environment in **Assign Environment**. The file moves to that environment's window.
 - **Opening inside the window:** a file opened inside an environment window lives there.
   - It's pinned to that environment, and keeps its own group.
   - If its extension isn't assigned to that environment, UNITI asks "Open as <Environment>?" first.
@@ -55,7 +55,7 @@ Environment windows come back when UNITI restarts.
 **Each environment has its own groups**, starting from A, B and C. USFM's group A and Plain Text's group A are two different groups, each with its own name, colour and saved files.
 - A file's group menu (right-click its tab or its text → **Document Group**) lists the groups of the file's environment.
 - **Manage Groups…** edits one environment's groups at a time. Choose the environment at the top; it starts at the current window's or file's.
-- Choosing another environment for a file (**Environment for This Document**) takes it out of its group.
+- Choosing another environment for a file (**Assign Environment**) takes it out of its group.
 - In USFM a group belongs to a project, not a single book, and binds its projects for sync across windows (see [usfm.md](usfm.md#groups-and-side-by-side-sync)).
 - The groups you had before environments had their own are Plain Text's groups now.
 - Each environment's groups are saved in `groups.json` in its configuration folder (see [Configuration](#configuration)).
@@ -65,9 +65,9 @@ In a USFM window each tab is a Paratext project, showing one of its books at a t
 **Right-click a tab** in an environment window for:
 - **Group:** the tab's group, as anywhere (for USFM, the project's).
 - **Split:** **Move to New Split Right / Down** moves the tab into a new split beside its own; **Move to Split 1 … 4** moves it into another split (numbered left to right, top to bottom); **Unsplit** closes the tab's split, and its tabs join the neighbouring one. An environment window has at most **four splits**, also for the split buttons above each split. Each split has its own tabs, and texts in different splits can be in different groups.
-- **Window:** **Move to New Window** opens the next window of the environment ("USFM B") with the tab; **Move to USFM A** (each other window of the environment) moves it there, joining that window's tab of the same project if it has one; **Dock** takes it back where it came from.
+- **Window:** **Move to New Window** opens the next window of the environment ("SFM-2") with the tab; **Move to SFM-1** (each other window of the environment) moves it there, joining that window's tab of the same project if it has one; **Dock** takes it back where it came from.
 
-A USFM tab moves with all its books, each keeping its state. The toolbar's **Group** dropdown shows and sets the current file's group, and has **New Group…** and **Manage Groups…**. Giving a file another group (there, or by right-clicking its tab or text → **Document Group**) doesn't move it.
+A USFM tab moves with its book. The toolbar's **Group** button shows and sets the current file's group, and its list has **New Group…** and **Manage Groups…**. Giving a file another group (there, or by right-clicking its tab or text → **Document Group**) doesn't move it.
 
 ## Read-only folders
 
@@ -90,8 +90,8 @@ The menu between **View** and **Tools** is named after the active tab's environm
 - **Move to Environment Window**;
 - **Configuration Files…**;
 - **Plain Text Mode**;
-- **Environment for This Document**;
-- **File Type Environments…**
+- **Assign Environment**;
+- **Assign by File Type…**
 
 Commands shared by several environments keep one shortcut, and you can rebind them under **Hotkeys**. On macOS, Ctrl means Cmd and Alt means Option.
 
@@ -111,7 +111,7 @@ Commands shared by several environments keep one shortcut, and you can rebind th
 
 ## Assigning extensions
 
-**View → File Type Environments…** shows one row per environment, with every extension it owns. Type extensions to move them, e.g. `.ptx` onto USFM. UNITI saves only your changes from the defaults. Open files switch environment straight away.
+**Environment → Assign by File Type…** shows one row per environment, with every extension it owns. Type extensions to move them, e.g. `.ptx` onto USFM. UNITI saves only your changes from the defaults. Open files switch environment straight away.
 
 ## Configuration
 

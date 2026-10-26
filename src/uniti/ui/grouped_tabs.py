@@ -234,7 +234,7 @@ class GroupedTabsController:
                 name = f"{name} · {descriptor_for_key(group_id[0]).label}"
             button.setText(f"{name} ({len(view_ids)})")
             button.setToolTip(f"{name}: click to choose a file; drag off the bar to move the group to a new window")
-            button.setIcon(helpers._group_swatch_icon(group.color) if group is not None else QIcon())
+            button.setIcon(helpers._group_bar_icon(group.color) if group is not None else QIcon())
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             button.setCheckable(True)
             button.setChecked(selected in view_ids)

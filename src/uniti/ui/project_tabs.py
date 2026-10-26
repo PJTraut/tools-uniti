@@ -1,17 +1,19 @@
 """One tab per project in a USFM window (field test round 3, T4).
 
 In an environment window of a project environment (USFM), each split shows
-one tab per Paratext project. Every open book is still its own
-`UNITITextView` and its own tab, so undo history, caret, scroll, view mode,
-session capture, Find/Replace and transfer keep working on it; only the
-project's current book has a visible tab (`setTabVisible`, as Grouped Tabs
-does). The visible tab is titled with the project's short name and sits
-where the project's first tab is, so changing the book doesn't move it.
+one tab per Paratext project, and a project has one open book at a time
+(2026-10-22, `EnvironmentBar.keep_one_book`): the tab is that book's
+`UNITITextView`, titled with the project's short name. The tab-per-book
+machinery below (`members`, `books_of`, `setTabVisible`, as Grouped Tabs
+does) stays for the moments a second book is open: a book whose Save /
+Discard question was cancelled, or one an old session restored with unsaved
+changes. The visible tab sits where the project's first tab is, so changing
+the book doesn't move it.
 
-Changing the book (the toolbar's Book list) shows another book in the same
-tab: its hidden tab, or a newly opened one. When the current book has
-unsaved changes and this is its last view it asks first (book-lock plan
-D4): Save, or Discard, which closes the book without saving.
+Changing the book (the toolbar's Book list, Find stepping, File > Open)
+closes the previous one and shows the new one in the same tab. When the
+current book has unsaved changes it asks first (book-lock plan D4): Save,
+Discard, or Cancel.
 """
 
 from __future__ import annotations

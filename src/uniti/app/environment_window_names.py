@@ -2,7 +2,8 @@
 
 An environment window is (environment, slot): slot 0 is the environment's
 first window, 1 its second, and so on. By default a slot is named by a
-letter (A, B, C, … Z, AA, AB, …), so the windows are "USFM A", "USFM B".
+number (1, 2, … 9), so the windows are "SFM-1", "SFM-2"; an
+environment has at most nine windows (field test 2026-10-26).
 The user can rename a slot; the name then belongs to that slot for that
 environment. Renamed slots are stored as `windows.json` in the environment's
 user configuration folder, next to its `groups.json`.
@@ -19,20 +20,21 @@ from .atomic_json import atomic_write_json
 WINDOWS_FILE = "windows.json"
 MAX_NAME_LENGTH = 32
 MAX_SLOTS = 256
+MAX_ENV_WINDOWS = 9  # windows per environment: "SFM-1" … "SFM-9" (field test 2026-10-26)
 MAX_BYTES = 64 * 1024
 
 
 def default_window_name(slot: int) -> str:
-    """A, B, … Z, AA, AB, … for slots 0, 1, … 25, 26, 27, …"""
+    """1, 2, … 9, 11, 12, … 19, 21, … for slots 0, 1, … 8, 9, 10, … (no zero)."""
 
     if slot < 0:
         raise ValueError("window slot must not be negative")
-    letters = ""
+    digits = ""
     number = slot + 1
     while number:
-        number, remainder = divmod(number - 1, 26)
-        letters = chr(ord("A") + remainder) + letters
-    return letters
+        number, remainder = divmod(number - 1, 9)
+        digits = str(remainder + 1) + digits
+    return digits
 
 
 def validate_window_name(name: str) -> str:
@@ -131,6 +133,7 @@ class EnvironmentWindowNames:
 __all__ = [
     "EnvironmentWindowNames",
     "MAX_NAME_LENGTH",
+    "MAX_ENV_WINDOWS",
     "WINDOWS_FILE",
     "default_window_name",
     "validate_window_name",

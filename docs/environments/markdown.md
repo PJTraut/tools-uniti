@@ -10,7 +10,7 @@ Markdown documents. See the [overview](README.md).
 | Mode | What it shows | Editing |
 |---|---|---|
 | Plain Text | the Markdown source | yes |
-| Rendered View | headings sized, emphasis, code and quotes formatted; the syntax characters hidden; list bullets as "•"; lines match the source's lines | yes: Bold, Italic, Code, Heading…; Enter continues a list |
+| Preview (the Rendered view) | headings sized, emphasis, code and quotes formatted; the syntax characters hidden; list bullets as "•"; lines match the source's lines | yes: Bold, Italic, Code, Heading…; Enter continues a list |
 
 The rendering covers a CommonMark subset. Anything it doesn't recognise stays visible as text.
 

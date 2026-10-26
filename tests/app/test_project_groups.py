@@ -53,17 +53,16 @@ def test_a_projects_group_is_every_one_of_its_books(desktop, tmp_path: Path):
     main = service.new_window()
     genesis = main.open_path(niv / "01GEN.usfm")
     window = main.move_to_environment_window(genesis)
-    exodus = window._environment_bar.open_book(niv / "02EXO.usfm")
+    genesis = window.current_view
 
-    _group(window, service, exodus, "B")
+    _group(window, service, genesis, "B")
 
-    for view in (genesis, exodus):
-        assert service.documents.entry_for_view(view.view_id).group_id == "B"
+    assert service.documents.entry_for_view(genesis.view_id).group_id == "B"
     saved = json.loads((tmp_path / "Environments" / "USFM" / "projects.json").read_text(encoding="utf-8"))
     assert saved == {"schema": 1, "projects": {str(niv.resolve()): "B"}}
     # The tab carries the group's colour.
-    leaf = window._panes.leaf_for_view(exodus.view_id)
-    assert leaf.tabBar().tab_tint(exodus.view_id) == window._group_by_id("B", "usfm").color
+    leaf = window._panes.leaf_for_view(genesis.view_id)
+    assert leaf.tabBar().tab_tint(genesis.view_id) == window._group_by_id("B", "usfm").color
 
     # A book opened later, anywhere, takes the project's group.
     window.close_all_documents(force=True)
@@ -83,7 +82,7 @@ def test_a_project_opens_in_its_group(desktop, tmp_path: Path):
 
 
 def _two_windows(service, tmp_path: Path):
-    """NIV in USFM A, CARS in USFM B, both in group A."""
+    """NIV in SFM-1, CARS in SFM-2, both in group A."""
 
     niv = _project(tmp_path / "niv", "NIV")
     cars = _project(tmp_path / "cars", "CARS")
@@ -112,22 +111,21 @@ def test_a_group_syncs_its_projects_across_windows(desktop, tmp_path: Path):
     assert window_b._reference_sync._timer.isActive() is False
 
 
-def test_sync_changes_a_tabs_book_without_asking_and_keeps_its_edits(desktop, tmp_path: Path, monkeypatch):
+def test_sync_leaves_a_tab_with_unsaved_changes_alone_without_asking(desktop, tmp_path: Path, monkeypatch):
     from uniti.ui import book_lock
 
     app, service = desktop
     niv, cars, window_a, window_b, left, right = _two_windows(service, tmp_path)
-    exodus = window_b._environment_bar.open_book(cars / "02EXO.usfm")
+    exodus = window_b._environment_bar.open_book(cars / "02EXO.usfm")  # NIV's tab follows to EXO
     exodus.document.insert(exodus.document.total_chars(), "\\v 2 Edited.\n")
     monkeypatch.setattr(book_lock, "ask_save_or_discard", lambda *args, **kwargs: pytest.fail("sync must not ask (D2)"))
 
-    _caret_at(left, _GEN, "\\v 3")
-    window_a._reference_sync.sync_from(left)
+    window_a._environment_bar.open_book(niv / "01GEN.usfm")  # and back: B would follow
 
-    shown = window_b.current_view
-    assert shown is right and shown.state.cursor == _GEN.index("\\v 3")  # CARS's tab is at GEN again
+    # A project has one open book, so sync can't keep EXO's edits and show GEN: that split stays.
+    assert window_b.current_view is exodus and window_b.view_for_id(exodus.view_id) is exodus
     assert exodus.document.modified  # still open, still unsaved
-    assert window_b.view_for_id(exodus.view_id) is exodus
+    assert "unsaved changes" in window_a.statusBar().currentMessage()
 
 
 def test_ungrouped_projects_dont_sync(desktop, tmp_path: Path):

@@ -89,15 +89,15 @@ def test_a_book_opened_into_the_tab_takes_it_and_the_session_keeps_it(desktop, t
 
     exodus = window._environment_bar.open_book(niv / "02EXO.usfm")
     window._project_tabs.refresh_all()
-    assert exodus.hyphenate_preview
+    assert exodus.hyphenate_preview  # the tab keeps it as the book changes
 
-    record = genesis.export_state("doc")
+    record = exodus.export_state("doc")
     assert record.extra["hyphenate_preview"] is True
-    genesis.hyphenate_preview = False
-    genesis.restore_state(record)
-    assert genesis.hyphenate_preview
-    window._hyphenation.set_tab(genesis, False)
-    assert "hyphenate_preview" not in genesis.export_state("doc").extra
+    exodus.hyphenate_preview = False
+    exodus.restore_state(record)
+    assert exodus.hyphenate_preview
+    window._hyphenation.set_tab(exodus, False)
+    assert "hyphenate_preview" not in exodus.export_state("doc").extra
 
 
 def test_a_project_without_a_list_disables_it_with_the_reason(desktop, tmp_path: Path):

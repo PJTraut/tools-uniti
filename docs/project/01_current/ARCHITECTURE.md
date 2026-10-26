@@ -210,11 +210,11 @@ File | Edit | Format | View | Find | Tools | Hotkeys
 |---|---|
 | `File` | Open, Save, Save As, Reload/Revert, Close, and Quit. |
 | `Edit` | Undo/Redo, Cut/Copy/Paste, Select All, plus a `Navigation` submenu for Go to Line, page, document, and word movement. |
-| `Format` | `Encoding` and `Line Endings` submenus; reinterpretation remains distinct from convert-on-save. |
-| `View` | `Theme`, `Editor View`, and `F/R View` submenus for appearance/contrast, independent zoom, editor wrap/whitespace, panel attachment, and Match Report visibility. |
-| `Find` | Open Find/Replace, Find Next, and Find Previous. |
-| `Tools` | Character Inspector and Diagnostics. |
-| `Hotkeys` | Open the shortcut display/editor; do not duplicate the full command tree in a menu. |
+| `View` | Theme, zoom, wrap, whitespace, direction, tab width, editor theme and syntax profile, splits, a `Find Panel` submenu (attachment, zoom, Match Report), and the Character Inspector and Whitespace/Unicode Legend. |
+| `Environment` | The active document's environment commands, then `Assign Environment` and `Assign by File Type…` (second to last; plain text shows only these). |
+| `Help` | Hotkeys, Diagnostics and dogfood evidence (last). |
+
+Format's encoding and line-ending choices are `File › Encoding & Line Endings`, and Compare is under File (field test, 2026-10-26; the former Format, Find and Tools menus are gone).
 
 The Hotkeys display retains the horizontal categories `File | Editing | Navigation | Find/Replace | Editor View | F/R View` and the columns `Command | Default | Current`. It renders native platform shortcut notation for display while persisting portable bindings. Every ordinary menu item displays the current binding from the same registry.
 
