@@ -11,6 +11,7 @@ import regex
 from uniti.core.document import Document
 from uniti.core.offsets import ReadIntent
 from .engine import compile_pattern
+from .replacement_expand import expand_replacement
 from .replacement_plan import Replacement, ReplacementPlan
 from .search import SearchOptions, _iter_engine_matches
 
@@ -31,7 +32,7 @@ def collect_replacements(
         options=opts,
         cancelled=cancelled,
     ):
-        replacements.append(Replacement(record.start, record.end, match.expand(replacement)))
+        replacements.append(Replacement(record.start, record.end, expand_replacement(match, replacement)))
     return replacements
 
 
@@ -63,7 +64,7 @@ def collect_replacement_plan(
                 Replacement(
                     record.start,
                     record.end,
-                    match.expand(replacement),
+                    expand_replacement(match, replacement),
                 )
             )
     except Exception:
@@ -272,7 +273,7 @@ def stream_replace_to_file(
             options=opts,
             cancelled=cancelled,
         ):
-            replacement_text = match.expand(replacement)
+            replacement_text = expand_replacement(match, replacement)
             yield from advance_to(record.start, emit=True)
             yield replacement_text
             yield from advance_to(record.end, emit=False)

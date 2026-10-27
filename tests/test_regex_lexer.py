@@ -163,3 +163,9 @@ def test_pattern_scanner_retains_malformed_spans(pattern):
     structure = scan_pattern(pattern)
 
     assert any(not token.valid for token in structure.tokens)
+
+
+def test_replacement_lexer_marks_case_escapes_but_keeps_hex_escapes():
+    tokens = tokenize_replacement(r"\U\1\E\u\l\L" + "\\u00e9")
+    assert [t.text for t in tokens if t.kind == "case_escape"] == [r"\U", r"\E", r"\u", r"\l", r"\L"]
+    assert [t.text for t in tokens if t.kind == "unicode_escape"] == ["\\u00e9"]

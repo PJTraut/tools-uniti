@@ -174,6 +174,7 @@ class _AnalysisHighlighter(QSyntaxHighlighter):
             "flag": _format(text),
             "special": _format(text),
             "backreference": _format(categories["backreference"], bold=True),
+            "case_escape": _format(categories["anchor"], bold=True),
         }
         self._non_capturing_bracket_format = _format(
             self.non_capturing_bracket_color, bold=True

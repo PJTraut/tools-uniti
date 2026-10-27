@@ -61,6 +61,11 @@ _HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 _UNICODE_ESCAPE_HEX_WIDTH = {"x": 2, "u": 4, "U": 8}
 
 
+# Replacement case conversion (Perl, PCRE and Notepad++ style): \U and \L
+# upper- or lower-case up to \E; \u and \l change only the next character.
+CASE_ESCAPES = "ULEul"
+
+
 def _consume_unicode_escape(pattern: str, start: int) -> int | None:
     """Recognize `\\uHHHH`, `\\UHHHHHHHH`, `\\xHH`, and `\\N{...}` as one
     unit (BF-052) — the actual Unicode-codepoint escape forms the `regex`
@@ -524,7 +529,10 @@ def tokenize_replacement(
             continue
 
         end = i + 2
-        tokens.append(RegexToken("escape", i, end, replacement[i:end]))
+        # \U \L \E \u \l change the case of what follows (a \u or \U
+        # that begins a hex codepoint escape was taken above).
+        kind = "case_escape" if replacement[i + 1] in CASE_ESCAPES else "escape"
+        tokens.append(RegexToken(kind, i, end, replacement[i:end]))
         i = end
 
     return tuple(tokens)

@@ -212,3 +212,36 @@ def test_probe_replacements_returns_complete_small_transaction(tmp_path: Path):
         probe = probe_replacements(doc, compile_pattern("x"), "y", threshold=5)
     assert probe.truncated is False
     assert [item.text for item in probe.replacements] == ["y", "y", "y"]
+
+
+_SFM_NAME_OF_GOD = r"\\nd\s([^\\]+)\\nd\*"
+
+
+@pytest.mark.parametrize(
+    ("replacement", "expected"),
+    [
+        (r"\U\1\E", "to the LORD, both"),
+        (r"\L\1\E", "to the lord, both"),
+        (r"\u\L\1", "to the Lord, both"),
+        (r"\l\1", "to the lord, both"),
+        (r"<\U\1\E>", "to the <LORD>, both"),
+        (r"\U\1", "to the LORD, both"),
+        (r"\U\1x\Ey", "to the LORDXy, both"),
+        (r"\u0041\1", "to the ALord, both"),  # a hex escape, not \u
+        (r"\1", "to the Lord, both"),
+    ],
+)
+def test_replace_all_converts_case_with_u_l_e_escapes(tmp_path: Path, replacement: str, expected: str):
+    path = tmp_path / "case.sfm"
+    path.write_text(r"to the \nd Lord\nd*, both", encoding="utf-8", newline="")
+    with Document.open(path) as doc:
+        assert replace_all(doc, compile_pattern(_SFM_NAME_OF_GOD), replacement) == 1
+        assert doc.read(0, doc.total_chars()) == expected
+
+
+def test_a_one_character_case_escape_waits_for_the_next_character(tmp_path: Path):
+    path = tmp_path / "wait.txt"
+    path.write_text("ab", encoding="utf-8")
+    with Document.open(path) as doc:
+        replacements = collect_replacements(doc, compile_pattern(r"(x?)(b)"), r"\u\1\2")
+    assert [r.text for r in replacements] == ["B"]

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Callable
 import regex
 
 from .lexer import tokenize_replacement
+from .replacement_expand import expand_tokens
 from .results import MatchRecord
 from .search import RegexSearchCancelled, RegexSearchTimeout
 
@@ -335,12 +336,12 @@ def _replacement_preview(
         pieces: list[str] = []
         spans: list[tuple[int, int, int]] = []
         offset = 0
-        for token in tokens:
-            # Delegate all actual escape/backreference decoding to the
-            # engine itself (one call per token) rather than reimplementing
-            # escape semantics here — this only tracks where each piece
-            # lands in the concatenated output (BF-052 item 5).
-            piece = match.expand(token.text)
+        # Delegate all actual escape/backreference decoding to the engine
+        # itself (one call per token; case escapes are applied by
+        # `expand_tokens`) rather than reimplementing escape semantics here
+        # — this only tracks where each piece lands in the concatenated
+        # output (BF-052 item 5).
+        for token, piece in zip(tokens, expand_tokens(match, tokens)):
             if (
                 token.kind == "backreference"
                 and token.valid
