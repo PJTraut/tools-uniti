@@ -45,6 +45,10 @@ Common defaults below use **Ctrl on Windows/Linux** and **Cmd on macOS**. Check 
 | `(?i:apple)` / `(?-i:ID)` | Enable / disable case-insensitivity for one group |
 | `\A` / `\Z` | Strict document start / end |
 | `\1` / `\g<name>` | Insert a captured group in replacement text |
+| `\U…\E` / `\L…\E` | In replacement text, upper-case / lower-case everything up to `\E` (`\U\1\E` turns `Lord` into `LORD`) |
+| `\u` / `\l` | In replacement text, upper-case / lower-case only the next character (`\u\L\1` gives `Lord` from `LORD`); a `\u` followed by four hex digits is still the code point escape |
+
+`\U`, `\L`, `\E`, `\u` and `\l` are UNITI extensions (Perl/Notepad++ style), not part of the underlying `regex` library; they work in replacement text only.
 
 **Without `(?m)`, `^` means document start.** `$` can also match before a final LF. `m` affects anchors; `s` affects the dot. See the guide for ASCII/Unicode flags and CR-only line endings.
 
