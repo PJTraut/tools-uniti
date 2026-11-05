@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 REGEX_INPUT = Path("src/uniti/ui/regex_input.py")
 PANEL = Path("src/uniti/ui/find_replace.py")
 VIEW = Path("src/uniti/ui/text_view.py")
@@ -1370,7 +1369,7 @@ def test_closing_the_panel_while_busy_cancels_the_running_job(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     started = threading.Event()
     release = threading.Event()
@@ -1535,7 +1534,7 @@ def test_regex_analysis_is_debounced_serialized_and_stale_safe(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     calls: list[str] = []
     real = find_replace.analyze_pattern
@@ -1895,7 +1894,7 @@ def test_find_jobs_limit_resident_match_records_to_one_mib(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     observed_budgets = []
     real_store = find_replace.MatchStore
@@ -2709,7 +2708,7 @@ def test_navigation_publishes_loading_then_current_and_next_capture_report(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     real = find_replace.resolve_capture_report
     started = threading.Event()
@@ -2730,9 +2729,10 @@ def test_navigation_publishes_loading_then_current_and_next_capture_report(
         _wait_until(
             app,
             lambda: panel.capture_model.rows()
-            and panel.capture_model.rows()[0] == "Match 1 of 2",
+            and panel.capture_model.rows()[0] == "Match 2 of 2",  # previous (wraps), then current
         )
         rows = panel.capture_model.rows()
+        assert [row for row in rows if row.startswith("Match ")] == ["Match 2 of 2", "Match 1 of 2"]
         assert r"\1 a | a | a (3 occurrences) [letter]" in rows
         assert "Match 2 of 2" in rows
         assert r"\1 b | b | b (3 occurrences) [letter]" in rows
@@ -2802,7 +2802,7 @@ def test_rapid_navigation_publishes_only_latest_capture_generation(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     real = find_replace.resolve_capture_report
     started = threading.Event()
@@ -2824,7 +2824,11 @@ def test_rapid_navigation_publishes_only_latest_capture_generation(
         release.set()
         _wait_until(app, lambda: panel.capture_model.current_index == 2)
 
-        assert panel.capture_model.rows()[0] == "Match 3 of 3"
+        assert [row for row in panel.capture_model.rows() if row.startswith("Match ")] == [
+            "Match 2 of 3",
+            "Match 3 of 3",
+            "Match 1 of 3",
+        ]  # previous, current, next (wraps)
         assert panel._current_index == 2
         assert panel.result_count == 3
     finally:
@@ -2839,7 +2843,7 @@ def test_capture_failure_leaves_valid_match_navigation_intact(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     def failed(*_args, **_kwargs):
         raise RuntimeError("sensitive detail must not escape")
@@ -2923,7 +2927,7 @@ def test_snapshot_failure_cancels_obsolete_capture_work(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     app, document, view, panel = _make_panel(tmp_path, "a a a")
     release = threading.Event()
@@ -2970,7 +2974,7 @@ def test_capture_snapshot_closes_on_every_invalidation_boundary(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     app, document, view, panel = _make_panel(tmp_path, "a a")
     release = threading.Event()
@@ -3034,7 +3038,7 @@ def test_replaced_pending_capture_snapshot_closes_before_active_work_finishes(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     app, document, view, panel = _make_panel(tmp_path, "a a")
     release = threading.Event()
@@ -3084,7 +3088,7 @@ def test_shutdown_drops_late_capture_completion_after_dialog_is_deleted(
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtCore import QCoreApplication, QEvent
 
-    import uniti.ui.find_replace as find_replace
+    from uniti.ui import find_replace
 
     app, document, view, panel = _make_panel(tmp_path, "a a")
     release = threading.Event()
@@ -3421,5 +3425,61 @@ def test_scope_combo_keeps_its_choice_while_the_environment_is_unknown(tmp_path:
         panel._update_actions()
 
         assert panel.replace_scope() == ReplaceScope.PROJECT
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_current_match_outline_survives_a_click_in_the_text(tmp_path: Path):
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 is not installed")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    app, document, view, panel = _make_panel(tmp_path, "aaa bbb ccc")
+    try:
+        _run_regex_search(app, panel, r"[a-z]+", expected=3)
+        panel._navigate_to(1)
+        assert view._current_match == (4, 7)
+        view.resize(400, 200)
+        view.show()
+        app.processEvents()
+        QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, QPoint(10, 8))
+        assert view.state.selection is None
+        assert view._current_match == (4, 7)
+        assert len(panel._results) == 3
+        panel._clear_results()
+        assert view._current_match is None
+    finally:
+        _close_panel(app, document, view, panel)
+
+
+def test_match_report_shows_previous_current_next_and_only_the_ends_navigate(tmp_path: Path):
+    from uniti.ui.capture_report import CaptureReportModel
+
+    app, document, view, panel = _make_panel(tmp_path, "aaa bbb ccc ddd")
+    try:
+        _run_regex_search(app, panel, r"[a-z]+", expected=4)
+        panel._navigate_to(1)
+        _wait_until(
+            app,
+            lambda: [r for r in panel.capture_model.rows() if r.startswith("Match ")]
+            == ["Match 1 of 4", "Match 2 of 4", "Match 3 of 4"],
+        )
+
+        def row_for(header: str):
+            return panel.capture_model.index(panel.capture_model.rows().index(header), 0)
+
+        panel.capture_view.clicked.emit(row_for("Match 2 of 4"))  # the middle one: nothing
+        assert panel._current_index == 1
+        panel.capture_view.clicked.emit(row_for("Match 3 of 4"))  # the bottom one: next
+        assert panel._current_index == 2
+        _wait_until(
+            app,
+            lambda: [r for r in panel.capture_model.rows() if r.startswith("Match ")]
+            == ["Match 2 of 4", "Match 3 of 4", "Match 4 of 4"],
+        )
+        panel.capture_view.clicked.emit(row_for("Match 2 of 4"))  # the top one: previous
+        assert panel._current_index == 1
     finally:
         _close_panel(app, document, view, panel)

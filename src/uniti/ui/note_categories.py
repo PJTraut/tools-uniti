@@ -31,13 +31,13 @@ def category_label(category: str) -> str:
 class NoteCategories:
     """One window's Footnote Categories menu."""
 
-    def __init__(self, window: "UNITIMainWindow") -> None:
+    def __init__(self, window: UNITIMainWindow) -> None:
         self._window = window
         self.menu = QMenu("Footnote Categories", window)
         self.menu.setToolTipsVisible(True)
         self.menu.aboutToShow.connect(lambda: self.fill(self.menu, window.current_view))
 
-    def applies_to(self, view: "UNITITextView | None") -> bool:
+    def applies_to(self, view: UNITITextView | None) -> bool:
         return (
             view is not None
             and self._window._project_tabs.active
@@ -45,7 +45,7 @@ class NoteCategories:
             and project_for_file(view.document.path) is not None
         )
 
-    def categories_of(self, view: "UNITITextView") -> list[str]:
+    def categories_of(self, view: UNITITextView) -> list[str]:
         """What to list: the book's categories, then any hidden ones the
         book lacks (so they can be shown again), "None" always present."""
 
@@ -58,7 +58,7 @@ class NoteCategories:
             found.remove(NO_CATEGORY)
         return found + [NO_CATEGORY]
 
-    def fill(self, menu: QMenu, view: "UNITITextView | None") -> None:
+    def fill(self, menu: QMenu, view: UNITITextView | None) -> None:
         menu.clear()
         if not self.applies_to(view):
             action = menu.addAction("Footnote Categories")
@@ -78,7 +78,7 @@ class NoteCategories:
         show_all.setEnabled(bool(hidden))
         show_all.triggered.connect(lambda _checked=False: self._window._project_tabs.set_note_filter(view, frozenset()))
 
-    def set_shown(self, view: "UNITITextView", category: str, shown: bool) -> None:
+    def set_shown(self, view: UNITITextView, category: str, shown: bool) -> None:
         hidden = set(view.hidden_note_categories)
         if shown:
             hidden.discard(category)
@@ -86,7 +86,7 @@ class NoteCategories:
             hidden.add(category)
         self._window._project_tabs.set_note_filter(view, frozenset(hidden))
 
-    def make_menu(self, view: "UNITITextView", parent) -> QMenu:
+    def make_menu(self, view: UNITITextView, parent) -> QMenu:
         """A submenu of its own for a right-click menu on `view`."""
 
         menu = QMenu("Footnote Categories", parent)

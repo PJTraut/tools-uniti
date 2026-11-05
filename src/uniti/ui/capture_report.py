@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
+from PySide6.QtGui import QBrush, QColor, QFont, QGuiApplication
 
 from uniti.regex.captures import CaptureGroupRow, CaptureReport
-
 
 _SEPARATOR = "─────────────────"
 
@@ -76,6 +76,16 @@ class CaptureReportModel(QAbstractListModel):
             Qt.ItemDataRole.AccessibleTextRole,
         ):
             return row.display
+        if role in (Qt.ItemDataRole.BackgroundRole, Qt.ItemDataRole.FontRole) and self._is_current_header(row):
+            # "Match 2 of 4", the one Find is on, stands out among the
+            # previous and next matches (field test, 2026-10-31).
+            if role == Qt.ItemDataRole.FontRole:
+                font = QFont()
+                font.setBold(True)
+                return font
+            color = QColor(QGuiApplication.palette().highlight().color())
+            color.setAlpha(70)
+            return QBrush(color)
         if role == self.LabelRole:
             return row.label
         if role == self.ContentRole:
@@ -87,6 +97,14 @@ class CaptureReportModel(QAbstractListModel):
         if role == self.ContentGroupSpansRole:
             return row.content_group_spans
         return None
+
+    def _is_current_header(self, row: _ReportRow) -> bool:
+        return (
+            row.label is None
+            and row.match_index is not None
+            and row.match_index == self.current_index
+            and row.display.startswith("Match ")
+        )
 
     def rows(self) -> tuple[str, ...]:
         return tuple(row.display for row in self._rows)

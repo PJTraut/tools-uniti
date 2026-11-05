@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from collections import Counter, OrderedDict
-from collections.abc import Callable
-import time
 import math
+import time
 import uuid
 import weakref
+from collections import Counter, OrderedDict
+from collections.abc import Callable
+from dataclasses import dataclass
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, Signal, QTimer
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QKeyEvent,
     QMouseEvent,
     QPainter,
+    QPen,
     QPixmap,
     QTextCharFormat,
     QTextLayout,
@@ -34,12 +35,12 @@ from uniti.app.session import DockReturnRecord, ViewRecord
 from uniti.core.syntax_profiles import PLAIN_TEXT, PROFILES_BY_KEY, SyntaxProfile
 from uniti.regex.match_store import MatchStore
 from uniti.regex.results import MatchIndex
-from uniti.ui.theme import EditorThemeTokens, active_theme
 from uniti.ui.bundled_fonts import ordered_families, register_bundled_fonts
 from uniti.ui.font_policy import resolve_editor_font
-from uniti.ui.text_layout import ShapedWindow, Utf16Map, direction_for_text
 from uniti.ui.horizontal_layout import HorizontalLayouts
 from uniti.ui.shaped_wrap import ShapedRowProvider
+from uniti.ui.text_layout import ShapedWindow, Utf16Map, direction_for_text
+from uniti.ui.theme import EditorThemeTokens, active_theme
 from uniti.ui.whitespace import (
     WhitespaceKind,
     WhitespaceMode,
@@ -49,11 +50,9 @@ from uniti.ui.whitespace import (
 )
 from uniti.ui.whitespace_painter import (
     end_of_text_marker_x,
-    paint_compact_marker,
     paint_whitespace_marker,
 )
 from uniti.ui.wrap_index import WrappedRowIndex
-
 
 MAX_WHITESPACE_MARKERS_PER_FRAME = 4096
 
@@ -223,6 +222,7 @@ class UNITITextView(QAbstractScrollArea):
         self._horizontal_signature = None
         self.geometry_pending = False
         self._match_index = MatchIndex(())
+        self._current_match: tuple[int, int] | None = None
         self._spelling = None  # a SpellingCache while Check Spelling is on (plan S3)
         self.check_spelling = False  # the tab's Check Spelling setting, saved with the session (D3)
         self.hyphenate_preview = False  # the tab's Hyphenate Preview setting, saved with the session (H-D2)
@@ -1046,7 +1046,7 @@ class UNITITextView(QAbstractScrollArea):
                 painter.setBrushOrigin(rect.left(), rect.top())
                 painter.fillRect(rect, brush)
 
-    def viewportEvent(self, event) -> bool:  # noqa: N802 - Qt override
+    def viewportEvent(self, event) -> bool:
         if event.type() == QEvent.Type.ToolTip and self._spelling is not None:
             if self._show_spelling_tooltip(event):
                 return True
@@ -1073,7 +1073,19 @@ class UNITITextView(QAbstractScrollArea):
 
     def set_match_index(self, match_index: MatchIndex | MatchStore | None) -> None:
         self._match_index = MatchIndex(()) if match_index is None else match_index
+        if match_index is None:
+            self._current_match = None
         self.viewport().update()
+
+    def set_current_match(self, span: tuple[int, int] | None) -> None:
+        """Outline the match Find last went to, so it stays marked after a
+        click collapses the selection that showed it (field test N15)."""
+
+        if span is not None and span[0] >= span[1]:
+            span = None  # a zero-width match already has its marker
+        if span != self._current_match:
+            self._current_match = span
+            self.viewport().update()
 
     # --- the USFM per-chapter view ------------------------------------------------
 
@@ -2010,6 +2022,15 @@ class UNITITextView(QAbstractScrollArea):
                             shaped, text_x, a, b, y, self._line_height
                         ):
                             painter.fillRect(rect, match_color)
+                        if self._current_match == record.span:
+                            painter.save()
+                            painter.setPen(QPen(tokens.current_match, 2.0))
+                            painter.setBrush(Qt.BrushStyle.NoBrush)
+                            for rect in self._span_rects(
+                                shaped, text_x, a, b, y, self._line_height
+                            ):
+                                painter.drawRect(rect.adjusted(1, 1, -1, -1))
+                            painter.restore()
 
             selected_range: tuple[int, int] | None = None
             if selection is not None:

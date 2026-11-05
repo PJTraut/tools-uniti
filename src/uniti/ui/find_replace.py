@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import time
+import uuid
+import weakref
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import Enum
-import time
-import uuid
-import weakref
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QPoint, QPointF, QTimer, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QFont,
     QFontMetrics,
@@ -24,8 +24,8 @@ from PySide6.QtGui import (
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
-    QCheckBox,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDockWidget,
     QFrame,
@@ -43,11 +43,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from uniti.app.dogfood import Durability, Operation, Outcome
 from uniti.app.session import (
     FindReplaceRecord,
     bound_find_replace_histories,
 )
-from uniti.app.dogfood import Durability, Operation, Outcome
 from uniti.regex.analysis import (
     AnalysisState,
     ExpressionRole,
@@ -95,7 +95,6 @@ from uniti.ui.screen_geometry import (
     current_screen_geometries,
     first_run_geometry,
 )
-
 
 _FIND_RESULT_MEMORY_BYTES = 1 << 20
 
@@ -1721,7 +1720,7 @@ class FindReplaceWindow(QDockWidget):
             self._result_listener_remove = None
         previous_view = self._results_view
         if previous_view is not None:
-            previous_view.set_match_index(None)
+            previous_view.set_match_index(None)  # also drops the current-match outline
         if isinstance(self._results, MatchStore):
             self._results.close()
         self._results = MatchIndex(())
@@ -2742,8 +2741,8 @@ class FindReplaceWindow(QDockWidget):
 
     def _jump_to_report_row(self, index) -> None:
         match_index = index.data(CaptureReportModel.MatchIndexRole)
-        if isinstance(match_index, int):
-            self._navigate_to(match_index)
+        if isinstance(match_index, int) and match_index != self._current_index:
+            self._navigate_to(match_index)  # the current match's own rows do nothing
 
     def _navigate_to(self, index: int) -> None:
         view = self._current_view()
@@ -2758,6 +2757,7 @@ class FindReplaceWindow(QDockWidget):
         view.state.move_to(record.start)
         if record.end > record.start:
             view.state.move_to(record.end, selecting=True)
+        view.set_current_match(record.span)
         view._state_changed()
         self.matchPositionChanged.emit(
             view.view_id, f"Match {index + 1:,} of {len(self._results):,}"
@@ -2773,10 +2773,11 @@ class FindReplaceWindow(QDockWidget):
             self._cancel_capture_report(clear=True)
             return
         count = len(self._results)
-        window = min(count, MAX_CAPTURE_REPORT_MATCHES)
+        # Previous, current, next (field test, 2026-10-31); the ends wrap, as
+        # Find Previous and Find Next do.
         indices = tuple(
-            dict.fromkeys((index + offset) % count for offset in range(window))
-        )
+            dict.fromkeys((index + offset) % count for offset in (-1, 0, 1))
+        )[:MAX_CAPTURE_REPORT_MATCHES]
         request = CaptureReportRequest(
             pattern_generation=self._pattern_generation,
             pattern_text=self.find_input.text(),

@@ -3,7 +3,6 @@ import os
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="PySide6 is not installed"
 )
@@ -635,7 +634,15 @@ def test_colored_group_spans_do_not_overlap_across_a_literal_tab(app):
     non-overlapping, correctly-ordered column ranges."""
 
     from PySide6.QtCore import QRect
-    from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPalette, QTextLayout, QTextOption
+    from PySide6.QtGui import (
+        QColor,
+        QFont,
+        QImage,
+        QPainter,
+        QPalette,
+        QTextLayout,
+        QTextOption,
+    )
     from PySide6.QtWidgets import QStyleOptionViewItem
 
     from uniti.ui.capture_report_delegate import CaptureReportDelegate
@@ -768,7 +775,7 @@ def test_paint_renders_the_label_smaller_without_changing_its_reserved_rect(app)
 
     CaptureReportDelegate._paint_single_color_text = staticmethod(spy)
     try:
-        from PySide6.QtGui import QPixmap, QPainter
+        from PySide6.QtGui import QPainter, QPixmap
 
         pixmap = QPixmap(400, 30)
         painter = QPainter(pixmap)
@@ -852,3 +859,19 @@ def test_an_elided_replacement_line_keeps_its_group_colours(app):
         and abs(image.pixelColor(x, y).blue() - group1_color.blue()) < 30
     ]
     assert coloured  # group 1's "aaa" is still in its colour although the line is elided
+
+
+def test_the_current_matchs_header_row_is_highlighted_and_bold(app):
+    from PySide6.QtCore import Qt
+
+    from uniti.ui.capture_report import CaptureReportModel
+
+    model = CaptureReportModel()
+    model.set_report(_report())  # requested_index=8; matches 8 and 9
+    rows = model.rows()
+    current = model.index(rows.index("Match 9 of 100"), 0)
+    other = model.index(rows.index("Match 10 of 100"), 0)
+    assert current.data(Qt.ItemDataRole.BackgroundRole) is not None
+    assert current.data(Qt.ItemDataRole.FontRole).bold()
+    assert other.data(Qt.ItemDataRole.BackgroundRole) is None
+    assert model.index(1, 0).data(Qt.ItemDataRole.BackgroundRole) is None  # a group row

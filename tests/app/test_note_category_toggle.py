@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
-from usfm_project_fixture import ensure_project  # noqa: E402
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
 _GEN = (
     "\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 Alpha\\f + \\cat aa bb\\cat* \\ft first note\\f* beta"
@@ -132,7 +130,6 @@ def test_a_book_opened_into_the_tab_takes_the_filter_and_the_session_keeps_it(de
 
 
 def test_a_filtered_projection_is_cached_beside_the_full_one(desktop, tmp_path: Path):
-    from uniti.ui.rich_view import PROJECTIONS
 
     _app, service = desktop
     window, view = _usfm_window(service, _project(tmp_path / "niv", "NIV"))
@@ -157,3 +154,26 @@ def test_the_tab_menu_has_the_submenu(desktop, tmp_path: Path):
     submenu = next(a.menu() for a in tab_menu.actions() if a.text() == "Footnote Categories")
     assert isinstance(submenu, QMenu)
     assert _entries(submenu) == {"aa": True, "bb": True, "cc": True, "None": True}
+
+
+def test_the_footnotes_title_line_toggles_categories(desktop, tmp_path: Path):
+    _app, service = desktop
+    window, view = _usfm_window(service, _project(tmp_path / "niv", "NIV"))
+    pane = _preview(window)
+    section = pane.note_sections[0]
+
+    assert section.categories.text().count("<a ") == 4
+    assert [(label, shown) for _key, label, shown in pane._category_toggles()] == [
+        ("aa", True),
+        ("bb", True),
+        ("cc", True),
+        ("None", True),
+    ]
+
+    section._category_clicked("aa")  # what a click on the "aa" link does
+    assert view.hidden_note_categories == frozenset({"aa"})
+    assert "first note" in pane.note_sections[0].editor.toPlainText()  # bb still shows it
+    assert dict((k, s) for k, _l, s in pane._category_toggles())["aa"] is False
+
+    pane.note_sections[0]._category_clicked("aa")
+    assert view.hidden_note_categories == frozenset()
