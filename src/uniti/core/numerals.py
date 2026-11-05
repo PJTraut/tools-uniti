@@ -55,24 +55,56 @@ def convert_numerals(text: str, system: str) -> str:
     return "".join(out)
 
 
-def with_numerals(projection: Projection, system: str) -> Projection:
-    """`projection` showing its digits in `system` (notes frame included)."""
+STYLE_PROPERTY_PREFIX = "numerals-"
 
-    if system not in NUMERAL_SYSTEMS:
-        return projection
+
+def style_numerals(style: object) -> str | None:
+    """The numerals a character style asks for: `\\TextProperties
+    numerals-latin` (or `numerals-persian`, … `numerals-as-written`) in a
+    project's stylesheet (`custom.sty`) makes the digits of that style's text
+    show in those numerals whatever the project's choice."""
+
+    for prop in sorted(getattr(style, "text_properties", ()) or ()):
+        if prop.startswith(STYLE_PROPERTY_PREFIX):
+            system = prop[len(STYLE_PROPERTY_PREFIX) :]
+            if system == AS_WRITTEN or system in NUMERAL_SYSTEMS:
+                return system
+    return None
+
+
+def with_numerals(projection: Projection, system: str) -> Projection:
+    """`projection` showing its digits in `system` (notes frame included).
+
+    A span with a `numerals` attribute (its style's `\\TextProperties
+    numerals-…`, see `style_numerals`) uses those numerals instead; the
+    innermost such span wins."""
+
     source_map = projection.source_map
-    text = convert_numerals(source_map.view_text, system)
+    original = source_map.view_text
+    per_char: list[str | None] | None = None
+    for span in projection.spans:  # outer spans first, so inner ones overwrite
+        wanted = span.attrs.get("numerals")
+        if wanted is None:
+            continue
+        if per_char is None:
+            per_char = [None] * len(original)
+        for index in range(span.view_start, min(span.view_end, len(original))):
+            per_char[index] = wanted
+    if per_char is None:
+        text = convert_numerals(original, system) if system in NUMERAL_SYSTEMS else original
+    else:
+        out = []
+        for char, wanted in zip(original, per_char):
+            use = system if wanted is None else wanted
+            out.append(convert_numerals(char, use) if use in NUMERAL_SYSTEMS else char)
+        text = "".join(out)
     notes = tuple(
         NoteSection(section.key, section.label, with_numerals(section.projection, system))
         for section in projection.notes
     )
-    if text == source_map.view_text and not notes:
+    if text == original and all(new.projection is old.projection for new, old in zip(notes, projection.notes)):
         return projection
-    return replace(
-        projection,
-        source_map=SourceMap(source_map.segments, text, source_map.source_length),
-        notes=notes,
-    )
+    return replace(projection, source_map=SourceMap(source_map.segments, text, source_map.source_length), notes=notes)
 
 
 PROJECT_NUMERALS_FILE = "project_numerals.json"
@@ -180,6 +212,7 @@ def numerals_for_path(path: Path | None) -> str:
 
 
 __all__ = [
+    "style_numerals",
     "effective_numerals",
     "language_numerals",
     "numerals_for_path",

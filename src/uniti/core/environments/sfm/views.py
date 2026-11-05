@@ -40,6 +40,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from uniti.core.numerals import style_numerals
 from uniti.core.rich_views.editing import EditPlan
 from uniti.core.rich_views.projection import NoteSection, Projection, ProjectionBuilder
 from uniti.core.rich_views.provider import ViewCommand
@@ -530,6 +531,10 @@ def layout_projection(
     isolates = _SpanIsolates(builder, styles)
 
     def add_span(start: int, end: int, attrs: dict[str, str], marker: str | None) -> None:
+        wanted = style_numerals(registry.style_for(marker)) if marker else None
+        if wanted is not None:
+            # `\TextProperties numerals-…`: Preview keeps this style's digits in those numerals.
+            attrs = {**attrs, "numerals": wanted}
         if end > start and attrs:
             spans.append((start, end, attrs, marker))
 

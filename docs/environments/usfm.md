@@ -93,11 +93,16 @@ A USFM book is UTF-8 with CRLF line endings. A book that isn't (LF, CR or mixed 
 
 A note's categories are the words inside its `\cat … \cat*` (`\cat People Places\cat*` is in two); a note with none is in **None**. **USFM → Footnote Categories** (also on the tab's right-click menu) lists the book's categories and **None**, all checked. Unchecking one leaves the notes out of **Preview**, caller and body, when all of a note's categories are unchecked; the callers that remain number from a. **Show All** checks everything again.
 
-### Preview Numerals
-
-**USFM → Preview Numerals** (also on the tab's right-click menu) chooses the numerals **Preview** and the HTML export show for every digit: As written, Latin, Arabic-Indic (Hindi), Persian/Urdu, Devanagari, Bengali or Thai. It is a display choice only; the source and Standard keep the digits as written. The choice is **per project**; **All <language> Projects** sets a default for every project in a language (the project's language code in its settings), which a project follows when it has no choice of its own (**Language Default**). Stored in the user data folder (`Environments/USFM/project_numerals.json`).
 - **Per project tab,** like Check Spelling: it applies to every book of the tab and the books you open into it, and is saved with the session.
 - **Preview only.** Standard and Plain Text keep every note, since they show the source you edit.
+
+## Preview numerals
+
+**USFM → Preview Numerals** (also on the tab's right-click menu) chooses the numerals **Preview** and the HTML export show for every digit, chapter and verse numbers (`\c`, `\v`, `\vp`) and numbers in the text and notes included: As written, Latin, Arabic-Indic (Hindi), Persian/Urdu, Devanagari, Bengali or Thai.
+
+- **Preview only.** The source and Standard keep the digits as written; only the display changes.
+- **Per project.** The choice applies to every book and tab of the project, in every window. **All <language> Projects** sets a default for every project in a language (the project's language code in `Settings.xml`); a project follows it until it has a choice of its own. **Language Default** puts a project back to following its language, and **As written** on a project overrides a language default. Stored in the user data folder, `Environments/USFM/project_numerals.json`.
+- **Some text in other numerals** (Latin years or references in a Persian book): define a character style with a `numerals-…` text property in the project's `custom.sty`; see [USFM Stylesheet Rules](../usfm-stylesheet-rules.md#numerals).
 
 ## Hyphenating Preview
 

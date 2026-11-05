@@ -10,6 +10,7 @@ UNITI's **Standard** and **Preview** views take every look from the stylesheets:
 - [Justification](#justification) — `Left`, `Right`, `Center`, `Both`, `Start`, `End`
 - [Text direction](#text-direction) — `\Direction`, and where a paragraph's direction comes from
 - [Hyphenation](#hyphenation) — `\Hyphenate` and the Hyphenate Preview toggle
+- [Numerals](#numerals) — `\TextProperties numerals-…`, and the Preview Numerals choice
 - [Built-in rules](#built-in-rules)
 - [How a style is worked out](#how-a-style-is-worked-out)
 - [Where to put rules](#where-to-put-rules)
@@ -51,7 +52,7 @@ A `.sty` file is a list of **records**. A record starts with `\Marker` and holds
 
 ## Fields
 
-These fields change how Standard and Preview look. Paratext and PTXprint read the same fields in their own way; `\Hyphenate` and `\Direction` are UNITI's own.
+These fields change how Standard and Preview look. Paratext and PTXprint read the same fields in their own way; `\Hyphenate`, `\Direction` and the `numerals-…` text property are UNITI's own.
 
 | Field | Value | Applies to | What it does |
 |---|---|---|---|
@@ -65,6 +66,7 @@ These fields change how Standard and Preview look. Paratext and PTXprint read th
 | `\Justification` | `Left` `Center` `Right` `Both` `Justify` `Start` `End` | paragraph | which edge the lines sit against; see [Justification](#justification) |
 | `\Hyphenate` | flag | paragraph | whether Preview breaks this paragraph's words at their hyphenation points; see [Hyphenation](#hyphenation) |
 | `\Direction` | `LTR` `RTL` `Auto` | paragraph, character | a paragraph's reading direction, over the tab's and the project's; on a character style, the direction its text reads in, inside any paragraph; see [Text direction](#text-direction) |
+| `\TextProperties` `numerals-…` | `numerals-latin` `numerals-arabic-indic` `numerals-persian` `numerals-devanagari` `numerals-bengali` `numerals-thai` `numerals-as-written`, beside the usual properties (`publishable`, `vernacular`, …) | character (and `\v`, `\c`) | Preview shows the digits of this style's text in those numerals, whatever the project's Preview Numerals; see [Numerals](#numerals) |
 | `\LeftMargin` | inches | paragraph | indent of every line from the start edge (the right edge in a right-to-left paragraph) |
 | `\RightMargin` | inches | paragraph | indent from the end edge |
 | `\FirstLineIndent` | inches | paragraph | extra indent of the first line on the start side (negative for a hanging indent) |
@@ -221,6 +223,39 @@ Paratext and PTXprint don't read a character style's `\Direction`. For a book th
 ```
 
 A word breaks only where the list gives a point (`a=ro=se`); a word not in the list never breaks. Preview's notes frame hyphenates by the same rules, a kind of note standing in for the paragraph marker (`\Marker f`, `\Hyphenate -` turns footnotes off); with no `\Hyphenate`, the list's `HyphenatedMarkers` line decides when it has one, and without one notes hyphenate. Standard and Plain Text show the source and never hyphenate.
+
+## Numerals
+
+**Preview Numerals** (USFM menu) shows every digit of a project's Preview and HTML export in one numeral system; see [USFM](environments/usfm.md#preview-numerals). A stylesheet can override it for some text, so a Persian book can keep Latin years or references.
+
+The override is a **text property** on a character style, written in the `\TextProperties` field next to the usual ones (`publishable`, `vernacular`, …):
+
+| Property | Digits of the style's text show as |
+|---|---|
+| `numerals-latin` | `0123456789` |
+| `numerals-arabic-indic` | `٠١٢٣٤٥٦٧٨٩` (Arabic-Indic, "Hindi") |
+| `numerals-persian` | `۰۱۲۳۴۵۶۷۸۹` (Persian, Urdu) |
+| `numerals-devanagari` | `०१२३४५६७८९` |
+| `numerals-bengali` | `০১২৩৪৫৬৭৮৯` |
+| `numerals-thai` | `๐๑๒๓๔๕๖๗๘๙` |
+| `numerals-as-written` | the digits exactly as the source has them |
+
+- **Where:** a character style defined or changed in any layer; the project's `custom.sty` is the usual place. It also works on `\v`, `\c`, `\vp` and a note marker, to change how those display.
+- **Which wins:** the innermost style around a digit decides; a digit in no such style follows the project's (or its language's) choice.
+- **Preview only.** Standard and Plain Text show the source. The property changes how a digit is drawn, never the text: a digit is swapped for one digit, so positions, Find and sync are unaffected.
+- **Only the first `numerals-…` property counts,** in alphabetical order, if a style lists more than one. An unknown one (`numerals-klingon`) is ignored.
+- **Not read by Paratext or PTXprint,** which keep any `\TextProperties` value they don't know. Keep `publishable` (and `vernacular` for text to be spell-checked) beside it so they treat the style as before.
+
+```
+# Latin years and references in a Persian book
+\Marker zn
+\Endmarker zn*
+\Name zn - Latin numbers
+\StyleType Character
+\TextProperties publishable vernacular numerals-latin
+```
+
+`\zn 2026\zn*` shows `2026` in a project whose Preview Numerals are Persian.
 
 ## Built-in rules
 

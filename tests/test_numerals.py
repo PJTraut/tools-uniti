@@ -62,3 +62,25 @@ def test_the_choice_is_per_project_then_per_language(tmp_path: Path):
         assert effective_numerals("faPCBv3", "fa") == "as-written"
     finally:
         set_user_config_root(None)
+
+
+def test_a_character_style_can_keep_its_own_numerals():
+    """`\\TextProperties numerals-latin` in the project's stylesheet: that
+    style's digits stay Latin while the rest of Preview shows Persian."""
+
+    from uniti.core.environments.sfm.sty import parse_raw_stylesheet
+    from uniti.core.environments.sfm.style_layers import StyleLayer, StyleOrigin
+    custom = parse_raw_stylesheet(
+        "\\Marker zn\n\\Endmarker zn*\n\\Name zn - Latin numbers\n\\StyleType Character\n"
+        "\\TextProperties publishable vernacular numerals-latin\n\\FontSize 12\n"
+    )
+    layers = build_layers(load_usfm_baseline(), None)
+    styles = LayeredStyleRegistry((*layers, StyleLayer("custom.sty", StyleOrigin.PROJECT, custom)))
+    source = "\\id PRO\n\\c 1\n\\p\n\\v 5 Year 12 and \\zn 2026\\zn* in ۷\n"
+    projection = layout_projection(source, styles, "k", show_markers=False)
+    shown = with_numerals(projection, "persian")
+    assert "2026" in shown.text  # kept Latin
+    assert "۱۲" in shown.text  # 12: Persian
+    assert "۲۰۲۶" not in shown.text
+    shown.source_map.check()
+    assert len(shown.text) == len(projection.text)
