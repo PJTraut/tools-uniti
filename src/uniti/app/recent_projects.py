@@ -41,7 +41,7 @@ class RecentProject:
         return dict(folder=self.folder, name=self.name, group_id=self.group_id, book=self.book, reference=self.reference)
 
     @classmethod
-    def from_payload(cls, payload: object) -> "RecentProject":
+    def from_payload(cls, payload: object) -> RecentProject:
         if not isinstance(payload, dict) or set(payload) != _FIELDS:
             raise ValueError("Invalid recent project entry")
         if not isinstance(payload["folder"], str) or not isinstance(payload["name"], str):

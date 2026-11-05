@@ -26,7 +26,7 @@ def _run_in(directory: Path) -> dict[str, object]:
     regex_source = directory / "regex-input.txt"
     regex_output = directory / "regex-output-utf16.txt"
     regex_source.write_bytes(
-        "2026-08-31 Pieter\r\n2026-09-01 John\r\n".encode("utf-8")
+        b"2026-08-31 Pieter\r\n2026-09-01 John\r\n"
     )
     pattern = compile_pattern(r"(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<name>\w+)")
     with Document.open(regex_source) as document:
@@ -161,20 +161,20 @@ def run_gui_smoke(base_dir: str | Path) -> dict[str, object]:
     from PySide6.QtGui import QGuiApplication, QKeySequence
     from PySide6.QtWidgets import QApplication
 
+    from uniti.app.dogfood import (
+        DogfoodRecorder,
+        HostFacts,
+        OSFamily,
+        classify_cpu,
+        classify_ram,
+    )
+    from uniti.app.dogfood_store import DogfoodStore
     from uniti.app.instance_protocol import (
         InstancePathOutcome,
         InstanceReply,
         InstanceRequest,
     )
     from uniti.app.instance_service import InstanceRole, InstanceService
-    from uniti.app.dogfood import (
-        OSFamily,
-        DogfoodRecorder,
-        HostFacts,
-        classify_cpu,
-        classify_ram,
-    )
-    from uniti.app.dogfood_store import DogfoodStore
     from uniti.app.platform_policy import classify_platform
     from uniti.app.service import QuitChoice, UNITIService
     from uniti.app.session_store import SessionStore

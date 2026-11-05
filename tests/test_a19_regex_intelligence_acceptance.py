@@ -1,13 +1,12 @@
-from dataclasses import FrozenInstanceError
 import importlib.metadata
-from pathlib import Path
 import tomllib
-
-from packaging.version import Version
+from dataclasses import FrozenInstanceError
+from pathlib import Path
 
 import pytest
-import uniti
+from packaging.version import Version
 
+import uniti
 from uniti.core.document import Document
 from uniti.regex.analysis import AnalysisState, analyze_pattern
 from uniti.regex.captures import CaptureReportRequest, resolve_capture_report

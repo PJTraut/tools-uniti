@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from uniti.app.platform_policy import PlatformFamily, UnsupportedPlatformError
 from uniti.app.paths import AppPaths
+from uniti.app.platform_policy import PlatformFamily, UnsupportedPlatformError
 
 
 def test_linux_paths_honor_xdg_environment(tmp_path: Path):

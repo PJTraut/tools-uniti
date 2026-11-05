@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 SOURCE = Path("src/uniti/ui/text_view.py")
 
 
@@ -214,9 +213,9 @@ def test_whitespace_modes_paint_only_their_marker_categories(
     if importlib.util.find_spec("PySide6") is None:
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QEvent, Qt
     from PySide6.QtGui import QKeyEvent
+    from PySide6.QtWidgets import QApplication
 
     from uniti.app.editor_state import EditorState
     from uniti.core.document import Document
@@ -790,6 +789,7 @@ def test_tokenize_cache_avoids_recomputing_tokens_on_a_pure_repaint(tmp_path: Pa
         pytest.skip("PySide6 is not installed")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from dataclasses import replace
+
     from PySide6.QtWidgets import QApplication
 
     from uniti.app.editor_state import EditorState
@@ -1742,9 +1742,10 @@ def test_gutter_ink_is_smaller_with_text_baselines_and_six_digit_hit_testing(
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtGui import QFont, QFontMetrics, QPainter
     from PySide6.QtWidgets import QApplication
+
     from uniti.app.editor_state import EditorState
     from uniti.core.document import Document
-    import uniti.ui.text_view as text_view
+    from uniti.ui import text_view
 
     app = QApplication.instance() or QApplication([])
     path = tmp_path / "six-digit.txt"
@@ -1802,9 +1803,10 @@ def test_small_gutter_font_does_not_leak_into_wrapped_text_or_markers(tmp_path, 
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtGui import QFont, QPainter
     from PySide6.QtWidgets import QApplication
+
     from uniti.app.editor_state import EditorState
     from uniti.core.document import Document
-    import uniti.ui.text_view as text_view
+    from uniti.ui import text_view
 
     app = QApplication.instance() or QApplication([])
     path = tmp_path / "gutter-wrap.txt"
@@ -1862,11 +1864,13 @@ def test_restored_deep_wrapped_row_has_six_digit_gutter_before_first_paint(
 ):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from dataclasses import replace
+
     from PySide6.QtGui import QPainter
     from PySide6.QtWidgets import QApplication
+
     from uniti.app.editor_state import EditorState
     from uniti.core.document import Document
-    import uniti.ui.text_view as text_view
+    from uniti.ui import text_view
 
     app = QApplication.instance() or QApplication([])
     path = tmp_path / "deep-wrapped.txt"
@@ -2102,8 +2106,8 @@ def test_per_view_settings_round_trip_through_view_state(tmp_path: Path):
     from uniti.app.editor_state import EditorState
     from uniti.core.document import Document
     from uniti.core.syntax_profiles import MARKDOWN
-    from uniti.ui.theme import EditorThemeTokens, active_theme
     from uniti.ui.text_view import UNITITextView
+    from uniti.ui.theme import EditorThemeTokens, active_theme
     from uniti.ui.whitespace import WhitespaceMode
 
     path = tmp_path / "per-view-settings.txt"

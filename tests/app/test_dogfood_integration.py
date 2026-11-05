@@ -10,19 +10,19 @@ import pytest
 
 from uniti.app.dogfood import (
     CPUClass,
-    RAMClass,
     DogfoodRecorder,
     Durability,
     HostFacts,
     Operation,
     OSFamily,
     Outcome,
+    RAMClass,
     ResourceBand,
     encode_dogfood_snapshot,
 )
 from uniti.app.dogfood_store import ClearReport, StoreStatus
-from uniti.app.service import QuitChoice, UNITIService
 from uniti.app.recovery_manager import FileRecoveryIO, RecoveryManager
+from uniti.app.service import QuitChoice, UNITIService
 from uniti.app.session_controller import SessionController
 from uniti.core.document import Document
 from uniti.core.durability import (
@@ -31,7 +31,6 @@ from uniti.core.durability import (
     NativeDurabilityAdapter,
 )
 from uniti.resources import ResourceManager
-
 
 _HOST = HostFacts(
     "v0.001a22",

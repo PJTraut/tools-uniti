@@ -31,7 +31,6 @@ from .session import (
     ViewRecord,
 )
 
-
 # ViewRecord.extra key naming the environment window a view was in (ADR-0017).
 ENVIRONMENT_WINDOW_EXTRA = "environment_window"
 
@@ -171,17 +170,17 @@ def _history_generation(
     document: object,
     history: object,
 ) -> str:
-    output_format = getattr(document, "output_format")
-    saved_output_format = getattr(document, "saved_output_format")
+    output_format = document.output_format
+    saved_output_format = document.saved_output_format
     signature = "\0".join(
         (
             service_id,
             document_id,
-            str(getattr(document, "revision")),
-            str(getattr(history, "cursor")),
-            str(getattr(history, "saved_cursor")),
-            str(len(getattr(history, "transactions"))),
-            str(getattr(history, "decoded_bytes")),
+            str(document.revision),
+            str(history.cursor),
+            str(history.saved_cursor),
+            str(len(history.transactions)),
+            str(history.decoded_bytes),
             output_format.encoding.key,
             output_format.eol.value,
             saved_output_format.encoding.key,
@@ -207,11 +206,11 @@ def capture_service_session(
 ) -> SessionSnapshot:
     """Capture live GUI state into immutable records without filesystem I/O."""
 
-    window_items = tuple(getattr(service, "windows").items)
+    window_items = tuple(service.windows.items)
     views = []
     for _window_id, window in window_items:
         for view in window.views:
-            entry = getattr(service, "documents").entry_for_view(view.view_id)
+            entry = service.documents.entry_for_view(view.view_id)
             if entry is None:
                 raise RuntimeError("live view is not bound to a document")
             if entry.document_id in excluded_document_ids:
@@ -234,7 +233,7 @@ def capture_service_session(
         document_view_order.setdefault(view.document_id, position)
     retained_entries = tuple(
         entry
-        for entry in getattr(service, "documents").entries
+        for entry in service.documents.entries
         if entry.document_id not in excluded_document_ids
     )
     retained_entries = tuple(
@@ -330,10 +329,10 @@ def capture_service_session(
             )
         )
 
-    active_view_id = getattr(service, "windows").active_view_id
+    active_view_id = service.windows.active_view_id
     if active_view_id not in retained_view_ids:
         active_view_id = views[0].view_id if views else None
-    active_window_id = getattr(service, "windows").active_window_id
+    active_window_id = service.windows.active_window_id
     active_window_record = next(
         (
             record
@@ -351,7 +350,7 @@ def capture_service_session(
             for window_id, record in window_records
             if _pane_contains_view(record.root, active_view_id)
         )
-    find_state = getattr(service, "find_replace").export_state(active_view_id)
+    find_state = service.find_replace.export_state(active_view_id)
     find_generation = (
         previous_find_pack.generation
         if previous_find_pack is not None
@@ -534,7 +533,11 @@ def restore_fresh_document(
 def merge_find_replace_history(manifest_record, history_pack):
     """Reconstitute the panel record from manifest state and optional history."""
 
-    from .session import FindReplaceRecord, InputHistoryRecord, estimate_input_history_bytes
+    from .session import (
+        FindReplaceRecord,
+        InputHistoryRecord,
+        estimate_input_history_bytes,
+    )
 
     if history_pack is None:
         find = InputHistoryRecord(

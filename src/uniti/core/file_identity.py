@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-
 _SHA256_RE = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -33,7 +32,7 @@ class FileIdentity:
     device: int | None = None
 
     @classmethod
-    def from_path(cls, path: str | os.PathLike[str]) -> "FileIdentity":
+    def from_path(cls, path: str | os.PathLike[str]) -> FileIdentity:
         stat = Path(path).stat()
         return cls(
             size=stat.st_size,

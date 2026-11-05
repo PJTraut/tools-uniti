@@ -13,7 +13,9 @@ multi-checkpoint RTL scroll fix. Nothing here needed to change for it.
 
 from bisect import bisect_right
 from collections import OrderedDict
+
 import regex
+
 from uniti.ui.text_layout import ShapedWindow, direction_for_text
 
 

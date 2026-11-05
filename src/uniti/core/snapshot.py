@@ -9,12 +9,10 @@ from .byte_source import ByteSource
 from .file_identity import FileIdentity
 from .offsets import OffsetCheckpoint, OffsetMapper, ReadIntent
 from .pieces import (
-    AnnotatedChunk,
     AnnotatedText,
     EditRef,
     Piece,
     PieceTable,
-    TextSegment,
 )
 from .text_format import EncodingProfile, OutputFormat
 
@@ -57,7 +55,7 @@ class PieceTableSnapshot:
         encoding: str,
         pieces: tuple[Piece, ...],
         edit_store: EditStoreSnapshot,
-    ) -> "PieceTableSnapshot":
+    ) -> PieceTableSnapshot:
         mapper = OffsetMapper(source, encoding)
         table = PieceTable(source, encoding, mapper, edit_store)  # type: ignore[arg-type]
         table._pieces = list(pieces)
@@ -217,7 +215,7 @@ class DocumentReadSnapshot:
         self._source.close()
         object.__setattr__(self, "_closed", True)
 
-    def __enter__(self) -> "DocumentReadSnapshot":
+    def __enter__(self) -> DocumentReadSnapshot:
         self._ensure_open()
         return self
 

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from uniti.app.graphemes import deletion_span, neighbor_boundary
 from uniti.core.bidi import is_rtl_paragraph
 from uniti.core.document import Document
 from uniti.core.unicode_hex import LOOKBACK_WINDOW, hex_notation, hex_run_before_cursor
-from uniti.app.graphemes import neighbor_boundary, deletion_span
 
 # BF-064: bounded enough to reliably reach a paragraph's first strong
 # character (see `uniti.core.bidi`) without reading an entire huge line

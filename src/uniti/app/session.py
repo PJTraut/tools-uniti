@@ -26,7 +26,6 @@ from uniti.core.history import (
     HistoryTruncation,
 )
 
-
 SESSION_SCHEMA = 6
 # Qt's nine named QFont::Weight values (Thin..Black); duplicated here rather
 # than imported from `uniti.ui.text_view` so this module stays Qt-free.
@@ -383,17 +382,17 @@ def _validate_find_replace_options(record: object) -> None:
         "replace_wrap",
     ):
         _require_bool(getattr(record, field), f"find/replace {field}")
-    _validate_geometry(getattr(record, "geometry"), optional=True)
+    _validate_geometry(record.geometry, optional=True)
     _require_plain_int(
-        getattr(record, "zoom_percent"),
+        record.zoom_percent,
         "find/replace zoom_percent",
         minimum=25,
         maximum=500,
     )
-    target = getattr(record, "last_target_view_id")
+    target = record.last_target_view_id
     if target is not None:
         _require_identifier(target, "find/replace target view ID")
-    _require_placement(getattr(record, "placement"))
+    _require_placement(record.placement)
 
 
 def _require_placement(value: object) -> str:

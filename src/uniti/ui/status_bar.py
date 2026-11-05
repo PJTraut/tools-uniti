@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from PySide6.QtWidgets import QLabel, QStatusBar
+
 from uniti.core.eol import EOLReport
 from uniti.core.text_format import EOLPolicy, format_summary
 from uniti.resources import ResourceStatus, TaskProgress
-from PySide6.QtWidgets import QLabel, QStatusBar
 
 
 class UNITIStatusBar(QStatusBar):

@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
+import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-import weakref
 
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
 from uniti.ui.syntax_theme import syntax_category_palette
-
 
 THEME_MODES = ("System", "Light", "Dark")
 THEME_CONTRASTS = ("Standard", "High Contrast")
@@ -360,9 +359,9 @@ def resolve_profile_editor_tokens(app: QApplication, profile, contrast: str = "S
 
 
 __all__ = [
-    "EditorThemeTokens",
     "THEME_CONTRASTS",
     "THEME_MODES",
+    "EditorThemeTokens",
     "ThemeSpec",
     "active_theme",
     "apply_theme",
@@ -401,7 +400,12 @@ def contrast_feedback(spec: ThemeSpec) -> tuple[tuple[str, float, float], ...]:
 
 
 def profile_from_spec(spec: ThemeSpec, profile_id: str, name: str, base_mode: str):
-    from uniti.app.theme_profiles import ThemeProfile, PALETTE_ROLES, EDITOR_ROLES, SYNTAX_ROLES
+    from uniti.app.theme_profiles import (
+        EDITOR_ROLES,
+        PALETTE_ROLES,
+        SYNTAX_ROLES,
+        ThemeProfile,
+    )
     colors = {'palette.' + r: spec.palette.color(getattr(QPalette.ColorRole, r)).name() for r in PALETTE_ROLES}
     colors.update({'disabled.' + r: spec.palette.color(QPalette.ColorGroup.Disabled, getattr(QPalette.ColorRole, r)).name()
                    for r in ('Text', 'WindowText', 'ButtonText')})
@@ -411,7 +415,7 @@ def profile_from_spec(spec: ThemeSpec, profile_id: str, name: str, base_mode: st
 
 
 def build_profile_theme(system_palette: QPalette, profile, contrast='Standard', *, overlay=True) -> ThemeSpec:
-    from uniti.app.theme_profiles import PALETTE_ROLES, EDITOR_ROLES, SYNTAX_ROLES
+    from uniti.app.theme_profiles import EDITOR_ROLES, PALETTE_ROLES, SYNTAX_ROLES
     palette = QPalette(system_palette)
     for role in PALETTE_ROLES:
         palette.setColor(getattr(QPalette.ColorRole, role), QColor(profile.colors['palette.' + role]))

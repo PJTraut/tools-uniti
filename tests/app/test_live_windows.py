@@ -9,10 +9,8 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from usfm_project_fixture import ensure_project  # noqa: E402
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
-
-from PySide6.QtCore import Qt  # noqa: E402
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
 _GEN = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning.\n"
 
@@ -29,7 +27,7 @@ def desktop(tmp_path: Path):
 
 
 def _two_windows(app, service, tmp_path: Path):
-    """NIV GEN in SFM-1 and, as a second view, in SFM-2 shown in Preview."""
+    """NIV GEN in SFM/1 and, as a second view, in SFM/2 shown in Preview."""
 
     niv = ensure_project(tmp_path / "niv", name="NIV")
     (niv / "01GEN.usfm").write_text(_GEN, encoding="utf-8")

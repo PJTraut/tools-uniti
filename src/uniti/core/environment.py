@@ -48,7 +48,7 @@ class EnvironmentContext:
         *,
         caret: int | None = None,
         anchor: int | None = None,
-    ) -> "EnvironmentContext":
+    ) -> EnvironmentContext:
         return cls(
             edits=EnvironmentEditFacade(document),
             resource_profile=ResourceProfile(size_bytes=document.source.size),

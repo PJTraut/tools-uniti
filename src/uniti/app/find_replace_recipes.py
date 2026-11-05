@@ -1,13 +1,12 @@
 """Qt-free saved Find/Replace "recipes" and their atomic storage."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import re
+from dataclasses import dataclass
+from pathlib import Path
 
 from .atomic_json import atomic_write_json
-
 
 MAX_RECIPES = 50
 MAX_NAME_LENGTH = 64
@@ -52,7 +51,7 @@ class FindReplaceRecipe:
         )
 
     @classmethod
-    def from_dict(cls, payload: object) -> 'FindReplaceRecipe':
+    def from_dict(cls, payload: object) -> FindReplaceRecipe:
         expected = {
             'id', 'name', 'expression', 'replacement',
             'regex', 'case_sensitive', 'whole_word',

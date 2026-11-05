@@ -149,9 +149,7 @@ def _settings_from_payload(payload: object) -> Settings:
     find_replace_report_location = payload.get(
         "find_replace_report_location", "Right"
     )
-    if find_replace_report_location == "Bottom":
-        find_replace_report_location = "Right"
-    elif find_replace_report_location not in {"Hidden", "Right"}:
+    if find_replace_report_location == "Bottom" or find_replace_report_location not in {"Hidden", "Right"}:
         find_replace_report_location = "Right"
     geometry = payload.get("find_replace_geometry")
     if (

@@ -185,7 +185,7 @@ class SpellingList:
         rejected: Iterable[str] = (),
         prefixes: Iterable[str] = (),
         suffixes: Iterable[str] = (),
-    ) -> "SpellingList":
+    ) -> SpellingList:
         """A list over the same files with the user's words and the
         project's affixes; it has a status cache of its own."""
 
@@ -453,12 +453,12 @@ __all__ = [
     "SpellingList",
     "SpellingState",
     "SpellingStatusData",
+    "effective_spelling_list",
     "list_signature",
     "lists_changed",
     "load_hyphenated_words",
     "load_spelling_list",
     "load_spelling_status",
-    "effective_spelling_list",
     "normalize",
     "spelling_list_for",
 ]

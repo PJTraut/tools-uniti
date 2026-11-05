@@ -1,8 +1,8 @@
 """Qt-free recent-files list and its atomic storage (BF-058, BF-082)."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 from .atomic_json import atomic_write_json
@@ -32,7 +32,7 @@ class RecentFileEntry:
         return dict(path=self.path, group_id=self.group_id)
 
     @classmethod
-    def from_payload(cls, payload: object) -> 'RecentFileEntry':
+    def from_payload(cls, payload: object) -> RecentFileEntry:
         # Backward compatible: files written before BF-082 store a bare path.
         if isinstance(payload, str):
             return cls(path=payload)

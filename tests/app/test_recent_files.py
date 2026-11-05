@@ -1,4 +1,3 @@
-import pytest
 
 
 def test_empty_store_loads_as_empty_tuple(tmp_path):

@@ -318,9 +318,9 @@ def scan_books(folder: Path, extensions: Iterable[str]) -> tuple[BookFile, ...]:
 
 __all__ = [
     "BOOK_ORDER",
+    "HEADER_BLOCK_LINES",
     "BookFile",
     "BookHeader",
-    "HEADER_BLOCK_LINES",
     "Chapter",
     "Reference",
     "ReferenceMap",

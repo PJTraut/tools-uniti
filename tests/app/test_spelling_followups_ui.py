@@ -11,13 +11,12 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint  # noqa: E402
-from PySide6.QtWidgets import QApplication, QMenu  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMenu
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
-from usfm_project_fixture import ensure_project  # noqa: E402
-from uniti.core.environments.sfm.user_words import user_words_for  # noqa: E402
-from uniti.core.environments.user_config import set_user_config_root  # noqa: E402
+from uniti.core.environments.sfm.user_words import user_words_for
+from uniti.core.environments.user_config import set_user_config_root
 
 _GEN = (
     "\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 In the begining God created.\r\n"
@@ -177,7 +176,7 @@ def test_a_locked_book_refuses_the_replacement(desktop, tmp_path: Path):
 def test_next_and_previous_issue_walk_the_book_and_wrap(desktop, tmp_path: Path):
     _app, service = desktop
     window, view = _checking(service, _project(tmp_path / "niv"))
-    selected = lambda: view.document.read(*sorted((view.state.cursor, view.state.anchor)))  # noqa: E731
+    selected = lambda: view.document.read(*sorted((view.state.cursor, view.state.anchor)))
     view.state.move_to(0)
 
     window._spelling.next_action.trigger()
@@ -336,7 +335,7 @@ def test_suggestions_are_ranked_by_use_in_the_book(desktop, tmp_path: Path):
         encoding="utf-8",
     )
     (folder / "01GEN.usfm").write_bytes(
-        "\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 Ten men had ten sons and teh tea.\r\n".encode()
+        b"\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 Ten men had ten sons and teh tea.\r\n"
     )
     window, view = _checking(service, folder)
 

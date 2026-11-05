@@ -272,13 +272,12 @@ def test_export_copy_rejects_destination_changed_since_ui_preflight(tmp_path: Pa
     expected = FileIdentity.from_path(target)
     target.write_text("external change", encoding="utf-8")
 
-    with Document.open(source) as document:
-        with pytest.raises(ExternalFileChangedError):
-            document.export_copy(
-                target,
-                output_format=document.output_format,
-                expected_destination_identity=expected,
-            )
+    with Document.open(source) as document, pytest.raises(ExternalFileChangedError):
+        document.export_copy(
+            target,
+            output_format=document.output_format,
+            expected_destination_identity=expected,
+        )
 
     assert target.read_text(encoding="utf-8") == "external change"
 
@@ -287,9 +286,8 @@ def test_save_no_longer_accepts_a_destination_argument(tmp_path: Path):
     path = tmp_path / "source.txt"
     target = tmp_path / "target.txt"
     path.write_text("abc", encoding="utf-8")
-    with Document.open(path) as document:
-        with pytest.raises(TypeError):
-            document.save(target)
+    with Document.open(path) as document, pytest.raises(TypeError):
+        document.save(target)
     assert not target.exists()
 
 

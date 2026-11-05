@@ -14,7 +14,7 @@ def _identifier(value: str, label: str) -> str:
 def _window_view_ids(window: object) -> tuple[str, ...] | None:
     if not hasattr(window, "view_ids"):
         return None
-    value = getattr(window, "view_ids")
+    value = window.view_ids
     value = value() if callable(value) else value
     if value is None:
         return ()

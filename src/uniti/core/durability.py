@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import sys
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
-import os
 from pathlib import Path
-import sys
-import time
 from typing import Protocol
-
 
 _MAX_DETAIL_CHARS = 128
 

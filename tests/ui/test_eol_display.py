@@ -9,6 +9,7 @@ import pytest
 def workspace(tmp_path):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
+
     from uniti.app.service import QuitChoice, UNITIService
     from uniti.app.session_store import SessionStore
     from uniti.app.settings import SettingsStore

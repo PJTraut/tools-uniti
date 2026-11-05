@@ -9,14 +9,19 @@ nothing elsewhere. Only words in the list break (H-D4). Qt-free.
 
 from __future__ import annotations
 
-import unicodedata
 import threading
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import regex
 
-from .spelling import HYPHENATED_WORDS_FILE, HyphenatedWordsData, load_hyphenated_words, normalize
+from .spelling import (
+    HYPHENATED_WORDS_FILE,
+    HyphenatedWordsData,
+    load_hyphenated_words,
+    normalize,
+)
 
 SOFT_HYPHEN = "­"
 # A word the way the spellcheck finds one (letters, marks, joined by an
@@ -178,4 +183,4 @@ def hyphenation_rules_for(folder: Path) -> HyphenationRules | None:
     return rules
 
 
-__all__ = ["HyphenationRules", "SOFT_HYPHEN", "has_hyphenation_list", "hyphenation_rules_for", "rules_for"]
+__all__ = ["SOFT_HYPHEN", "HyphenationRules", "has_hyphenation_list", "hyphenation_rules_for", "rules_for"]

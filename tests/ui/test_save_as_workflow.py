@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None,
     reason="PySide6 is not installed",
@@ -374,7 +373,7 @@ def test_low_confidence_existing_target_requires_explicit_target_profile(
     from PySide6.QtWidgets import QDialog, QMessageBox
 
     from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     _open(window, tmp_path / "source.txt", "Price - 10\n")
     target = tmp_path / "legacy.txt"
@@ -427,8 +426,8 @@ def test_dialog_save_as_uses_selected_filename_and_format(
     from PySide6.QtWidgets import QDialog
 
     from uniti.core.text_format import EOLPolicy, OutputFormat, encoding_profile
+    from uniti.ui import main_window
     from uniti.ui.file_format_dialogs import SaveAsSelection
-    import uniti.ui.main_window as main_window
 
     _open(window, tmp_path / "source.txt", "dialog\n")
     target = tmp_path / "chosen.txt"

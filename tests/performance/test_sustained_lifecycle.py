@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import benchmarks.sustained_workloads as sustained_workloads
+from benchmarks import sustained_workloads
 from benchmarks.corpus import CorpusKind, CorpusSpec, generate_corpus
 from benchmarks.models import ResultState
 from benchmarks.sustained_workloads import run_sustained_workload

@@ -13,21 +13,27 @@ from pathlib import Path
 
 from uniti.core.environment import EnvironmentContext
 from uniti.core.environment_commands import (
+    TOO_LARGE_TO_VALIDATE,
+    UNDEFINED_MARKUP_COMMAND,
     CommandResult,
     EnvironmentCommand,
     SaveTextFile,
     ShowFindings,
-    TOO_LARGE_TO_VALIDATE,
     ShowMessage,
     ShowStyleInspector,
     ShowUndefinedMarkup,
-    UNDEFINED_MARKUP_COMMAND,
     document_text,
 )
 
 from .inspection import marker_at
 from .sty import RawStyleSheet, StyleRegistry
-from .style_layers import LayeredStyleRegistry, StyleLayer, StyleOrigin, build_layers, load_stylesheet_file
+from .style_layers import (
+    LayeredStyleRegistry,
+    StyleLayer,
+    StyleOrigin,
+    build_layers,
+    load_stylesheet_file,
+)
 
 IMPORT_STYLESHEET_FEATURE = "sfm.import_stylesheet"
 # Export Preview as HTML (text direction plan W8): the window implements it,

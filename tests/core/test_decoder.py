@@ -2,14 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from uniti.core.byte_source import ByteSource
 from uniti.core.boundaries import LinearBoundaries
+from uniti.core.byte_source import ByteSource
 from uniti.core.decoder import decode_span, decode_text, iter_decoded_spans
 
 
 def test_utf8_span_maps_character_boundaries_to_bytes(tmp_path: Path):
     path = tmp_path / "utf8.txt"
-    path.write_bytes("Aé中Z".encode("utf-8"))
+    path.write_bytes("Aé中Z".encode())
     with ByteSource.open(path) as source:
         span = decode_span(source, 0, source.size, "utf-8")
     assert span.text == "Aé中Z"
@@ -41,7 +41,7 @@ def test_undefined_cp1252_byte_is_preserved(tmp_path: Path):
 
 def test_utf8_sig_keeps_bom_outside_visible_text_boundaries(tmp_path: Path):
     path = tmp_path / "bom.txt"
-    path.write_bytes(b"\xef\xbb\xbf" + "Aé".encode("utf-8"))
+    path.write_bytes(b"\xef\xbb\xbf" + "Aé".encode())
     with ByteSource.open(path) as source:
         span = decode_span(source, 0, source.size, "utf-8-sig")
     assert span.text == "Aé"
@@ -51,7 +51,7 @@ def test_utf8_sig_keeps_bom_outside_visible_text_boundaries(tmp_path: Path):
 
 def test_span_mapping_uses_absolute_source_offsets(tmp_path: Path):
     path = tmp_path / "slice.txt"
-    path.write_bytes(b"xx" + "Aé".encode("utf-8") + b"yy")
+    path.write_bytes(b"xx" + "Aé".encode() + b"yy")
     with ByteSource.open(path) as source:
         span = decode_span(source, 2, 3, "utf-8")
     assert span.char_boundaries == (0, 1, 3)
@@ -119,7 +119,7 @@ def test_utf32be_bom_is_not_visible_text(tmp_path: Path):
 
 def test_iter_decoded_spans_keeps_utf8_character_intact(tmp_path: Path):
     path = tmp_path / "utf8-window.txt"
-    path.write_bytes("AB€CD".encode("utf-8"))
+    path.write_bytes("AB€CD".encode())
     with ByteSource.open(path) as source:
         spans = list(iter_decoded_spans(source, "utf-8", chunk_size=4))
     assert "".join(span.text for span in spans) == "AB€CD"
@@ -137,7 +137,7 @@ def test_iter_decoded_spans_keeps_utf16_surrogate_pair_intact(tmp_path: Path):
 
 def test_iter_decoded_spans_preserves_bom_only_on_first_span(tmp_path: Path):
     path = tmp_path / "bom-window.txt"
-    path.write_bytes(b"\xef\xbb\xbf" + "ABéCD".encode("utf-8"))
+    path.write_bytes(b"\xef\xbb\xbf" + "ABéCD".encode())
     with ByteSource.open(path) as source:
         spans = list(iter_decoded_spans(source, "utf-8-sig", chunk_size=4))
     assert "".join(span.text for span in spans) == "ABéCD"
@@ -196,9 +196,9 @@ def test_ascii_span_uses_constant_size_boundary_metadata(tmp_path: Path):
 @pytest.mark.parametrize(
     ("encoding", "data", "middle"),
     [
-        ("utf-8", "plain ascii".encode("utf-8"), 6),
-        ("utf-8", "Псалом 11:1 “Help, LORD,” non‑breaking 中".encode("utf-8"), 2),
-        ("utf-8-sig", b"\xef\xbb\xbf" + "BOM then Ж".encode("utf-8"), 3),
+        ("utf-8", b"plain ascii", 6),
+        ("utf-8", "Псалом 11:1 “Help, LORD,” non‑breaking 中".encode(), 2),
+        ("utf-8-sig", b"\xef\xbb\xbf" + "BOM then Ж".encode(), 3),
         ("utf-8", b"A\xffB\xc3", 1),  # undecodable bytes, a cut-off sequence
         ("windows-1252", b"caf\xe9 \x81 undefined", 3),
         ("utf-16-le", b"\xff\xfe" + "Ж中\U0001f600".encode("utf-16-le"), 2),

@@ -19,7 +19,7 @@ class CountingByteSource(ByteSource):
 
 def test_utf8_character_boundaries_round_trip(tmp_path: Path):
     path = tmp_path / "map.txt"
-    path.write_bytes("Aé中Z".encode("utf-8"))
+    path.write_bytes("Aé中Z".encode())
     with ByteSource.open(path) as source:
         mapper = OffsetMapper(source, "utf-8", checkpoint_bytes=3)
         assert mapper.char_to_byte(3) == 6
@@ -57,7 +57,7 @@ def test_multibyte_unicode_mappings_round_trip(tmp_path: Path, encoding: str, te
 
 def test_bom_prefix_maps_character_zero_after_bom(tmp_path: Path):
     path = tmp_path / "bom.txt"
-    path.write_bytes(b"\xef\xbb\xbf" + "Aé".encode("utf-8"))
+    path.write_bytes(b"\xef\xbb\xbf" + "Aé".encode())
     with ByteSource.open(path) as source:
         mapper = OffsetMapper(source, "utf-8-sig", checkpoint_bytes=2)
         assert mapper.char_to_byte(0) == 3
@@ -68,7 +68,7 @@ def test_bom_prefix_maps_character_zero_after_bom(tmp_path: Path):
 
 def test_byte_inside_utf8_character_is_rejected(tmp_path: Path):
     path = tmp_path / "inside.txt"
-    path.write_bytes("A€B".encode("utf-8"))
+    path.write_bytes("A€B".encode())
     with ByteSource.open(path) as source:
         mapper = OffsetMapper(source, "utf-8", checkpoint_bytes=4)
         assert mapper.byte_to_char(1) == 1

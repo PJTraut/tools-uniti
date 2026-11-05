@@ -17,10 +17,10 @@ direction) and `DefaultFont`, and the file naming — Paratext 8+
 from __future__ import annotations
 
 import logging
-import xml.etree.ElementTree as ElementTree
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from xml.etree import ElementTree
 
 from .references import ID_PROBE_BYTES, book_code
 
@@ -140,7 +140,7 @@ class ParatextProject:
     default_font: str | None = None
 
     @classmethod
-    def load(cls, folder: Path) -> "ParatextProject | None":
+    def load(cls, folder: Path) -> ParatextProject | None:
         """The project in `folder`, or None when it has no valid `Settings.xml`."""
 
         folder = Path(folder)
@@ -431,13 +431,13 @@ def _is_file(path: Path) -> bool:
 
 
 __all__ = [
-    "BookNaming",
     "DEFAULT_VERSIFICATION",
     "PARATEXT_BOOKS",
-    "ParatextProject",
-    "ProjectBook",
     "SETTINGS_FILE",
     "VERSIFICATIONS",
+    "BookNaming",
+    "ParatextProject",
+    "ProjectBook",
     "book_file_number",
     "find_file",
     "project_encoding_profile",

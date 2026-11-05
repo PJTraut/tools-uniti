@@ -98,7 +98,7 @@ class RuntimeMarker:
         }
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, object]) -> "RuntimeMarker":
+    def from_dict(cls, payload: Mapping[str, object]) -> RuntimeMarker:
         try:
             return cls(
                 schema=int(payload["schema"]),

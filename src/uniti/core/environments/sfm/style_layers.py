@@ -378,9 +378,9 @@ def build_layers(
 
 __all__ = [
     "BUILTIN_ORIGINS",
-    "LayeredStyleRegistry",
     "MAX_STYLESHEET_BYTES",
     "PROJECT_STYLESHEET_CANDIDATES",
+    "LayeredStyleRegistry",
     "PresentationRule",
     "PropertyValue",
     "StyleLayer",
@@ -389,7 +389,7 @@ __all__ = [
     "clean_value",
     "discover_project_stylesheets",
     "is_selector",
-    "project_stylesheet_candidates",
     "load_stylesheet_file",
+    "project_stylesheet_candidates",
     "rule_marker_key",
 ]

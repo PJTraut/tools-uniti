@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import sys
 from array import array
 from bisect import bisect_right
 from collections import OrderedDict
 from dataclasses import dataclass, replace
-import sys
 
 from .byte_source import ByteSource
 from .decoder import decode_span, iter_decoded_spans

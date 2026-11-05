@@ -6,7 +6,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
-
 _COALESCE_KINDS = frozenset({"typing", "backspace", "delete_forward"})
 
 
@@ -64,7 +63,7 @@ class HistorySnapshot:
     truncations: tuple[HistoryTruncation, ...] = ()
 
     @classmethod
-    def empty(cls) -> "HistorySnapshot":
+    def empty(cls) -> HistorySnapshot:
         return cls((), 0, 0, None, 0)
 
 

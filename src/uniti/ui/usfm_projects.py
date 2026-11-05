@@ -18,7 +18,10 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, QTimer
 from PySide6.QtWidgets import QFileDialog, QMenu, QMessageBox
 
-from uniti.core.environments.sfm.paratext_project import ParatextProject, project_for_file
+from uniti.core.environments.sfm.paratext_project import (
+    ParatextProject,
+    project_for_file,
+)
 
 if TYPE_CHECKING:
     from uniti.app.recent_projects import RecentProject
@@ -34,11 +37,11 @@ _POSITION_DELAY_MS = 1500
 class UsfmProjectController(QObject):
     """Owns the project commands and Recent Projects for one window."""
 
-    def __init__(self, window: "UNITIMainWindow") -> None:
+    def __init__(self, window: UNITIMainWindow) -> None:
         super().__init__(window)
         self._window = window
         self.menu: QMenu | None = None
-        self._pending: "UNITITextView | None" = None
+        self._pending: UNITITextView | None = None
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.setInterval(_POSITION_DELAY_MS)
@@ -80,13 +83,13 @@ class UsfmProjectController(QObject):
 
     # --- opening ----------------------------------------------------------------
 
-    def open_project_dialog(self) -> "UNITITextView | None":
+    def open_project_dialog(self) -> UNITITextView | None:
         folder = QFileDialog.getExistingDirectory(
             self._window, "Open USFM Project", self._window._settings.last_directory or ""
         )
         return self.open_project(Path(folder)) if folder else None
 
-    def open_project(self, folder: Path) -> "UNITITextView | None":
+    def open_project(self, folder: Path) -> UNITITextView | None:
         """Open `folder`'s project at the book and reference it was left at."""
 
         window = self._window
@@ -122,14 +125,14 @@ class UsfmProjectController(QObject):
             self.store.record_opened(project.folder, project.name, group_id=group_id, book=book.code)
         return view
 
-    def _group_for(self, remembered: "RecentProject | None") -> str | None:
+    def _group_for(self, remembered: RecentProject | None) -> str | None:
         """The remembered group, if USFM still has it."""
 
         if remembered is not None and self._window._group_by_id(remembered.group_id, USFM) is not None:
             return remembered.group_id
         return None
 
-    def _target_window(self, book_path: Path) -> "UNITIMainWindow":
+    def _target_window(self, book_path: Path) -> UNITIMainWindow:
         """The USFM window showing this project, else the most recent one,
         else a new one (round 3 T3)."""
 
@@ -147,7 +150,7 @@ class UsfmProjectController(QObject):
 
     # --- remembering where a project was left ------------------------------------
 
-    def note_opened(self, view: "UNITITextView") -> None:
+    def note_opened(self, view: UNITITextView) -> None:
         """A file was opened: if it is a project book, it takes its
         project's group (round 3 T5) and the project is recent."""
 
@@ -166,7 +169,7 @@ class UsfmProjectController(QObject):
         except (OSError, ValueError):
             logger.warning("could not record recent project %s", project.folder, exc_info=True)
 
-    def note_caret(self, view: "UNITITextView") -> None:
+    def note_caret(self, view: UNITITextView) -> None:
         """The caret moved in the active tab; remember its place shortly."""
 
         self._pending = view
@@ -197,7 +200,7 @@ class UsfmProjectController(QObject):
         except (OSError, ValueError):
             logger.warning("could not remember project position", exc_info=True)
 
-    def _group_of(self, view: "UNITITextView") -> str | None:
+    def _group_of(self, view: UNITITextView) -> str | None:
         service = self._window._service
         entry = None if service is None else service.documents.entry_for_view(view.view_id)
         return None if entry is None else entry.group_id
@@ -215,7 +218,7 @@ def _same(first: Path, second: Path) -> bool:
         return first == second
 
 
-def _go_to_reference(window: "UNITIMainWindow", view: "UNITITextView", reference: str) -> None:
+def _go_to_reference(window: UNITIMainWindow, view: UNITITextView, reference: str) -> None:
     reference_map = window._reference_sync.maps.for_document(view.document)
     if reference_map is None:
         return

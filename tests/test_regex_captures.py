@@ -6,8 +6,8 @@ import pytest
 from uniti.core.document import Document
 from uniti.regex.captures import (
     MAX_CAPTURE_CONTEXT_CHARS,
-    MAX_CAPTURE_PREVIEWS,
     MAX_CAPTURE_PREVIEW_CHARS,
+    MAX_CAPTURE_PREVIEWS,
     MAX_CAPTURE_REPORT_BYTES,
     CaptureReportRequest,
     resolve_capture_report,

@@ -143,7 +143,7 @@ class RecoveryEvent:
         cursor: int,
         saved_cursor: int | None,
         revision: int,
-    ) -> "RecoveryEvent":
+    ) -> RecoveryEvent:
         return cls(
             sequence,
             RecoveryEventKind.TRANSACTION,
@@ -162,7 +162,7 @@ class RecoveryEvent:
         cursor: int,
         saved_cursor: int | None,
         revision: int,
-    ) -> "RecoveryEvent":
+    ) -> RecoveryEvent:
         if kind not in {
             RecoveryEventKind.UNDO,
             RecoveryEventKind.REDO,
@@ -627,7 +627,7 @@ class RecoveryJournal:
         output_encoding: str | None = None,
         output_eol: str | None = None,
         encoding: str | None = None,
-    ) -> "RecoveryJournal":
+    ) -> RecoveryJournal:
         if source_encoding is None:
             source_encoding = encoding
         if source_encoding is None:
@@ -669,7 +669,7 @@ class RecoveryJournal:
         output_encoding: str,
         output_eol: str | None,
         base_history: HistorySnapshot,
-    ) -> "RecoveryJournal":
+    ) -> RecoveryJournal:
         if not isinstance(source_encoding, str) or not source_encoding:
             raise ValueError("source encoding is invalid")
         if not isinstance(output_encoding, str) or not output_encoding:
@@ -785,7 +785,7 @@ class RecoveryJournal:
         self._handle.close()
         self._closed = True
 
-    def __enter__(self) -> "RecoveryJournal":
+    def __enter__(self) -> RecoveryJournal:
         self._ensure_open()
         return self
 
@@ -1101,7 +1101,7 @@ def load_recovery(path: str | os.PathLike[str]) -> RecoverySession:
     raise ValueError(result.error or "recovery journal could not be loaded")
 
 
-def _apply_recovery_metadata(document: "Document", event: RecoveryEvent) -> None:
+def _apply_recovery_metadata(document: Document, event: RecoveryEvent) -> None:
     if not event.metadata:
         return
     profile_key = event.metadata.get("output_profile_key")
@@ -1132,7 +1132,7 @@ def _apply_recovery_metadata(document: "Document", event: RecoveryEvent) -> None
 
 
 def _validate_replayed_event(
-    document: "Document",
+    document: Document,
     event: RecoveryEvent,
     revision_offset: int,
 ) -> None:
@@ -1143,7 +1143,7 @@ def _validate_replayed_event(
         raise RecoveryReplayError("recovery document revision does not match event")
 
 
-def replay_recovery(document: "Document", session: RecoverySession) -> None:
+def replay_recovery(document: Document, session: RecoverySession) -> None:
     if session.clean:
         return
     if session.format_version in (1, 2):

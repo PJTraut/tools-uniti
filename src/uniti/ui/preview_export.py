@@ -15,12 +15,12 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QAction
 
-from uniti.core.resource_profile import ResourceProfile
 from uniti.core.environment_commands import SaveTextFile
 from uniti.core.environments.sfm.html_export import export_preview_html
 from uniti.core.environments.sfm.paratext_project import project_for_file
 from uniti.core.environments.sfm.stylesheet_support import EXPORT_PREVIEW_HTML_FEATURE
 from uniti.core.environments.sfm.views import SfmPreviewView, body_font_size
+from uniti.core.resource_profile import ResourceProfile
 from uniti.ui.rich_view import PROJECTIONS
 
 if TYPE_CHECKING:
@@ -33,7 +33,7 @@ TITLE = "Export Preview as HTML"
 class PreviewExport(QObject):
     """One window's Export Preview as HTML… action."""
 
-    def __init__(self, window: "UNITIMainWindow") -> None:
+    def __init__(self, window: UNITIMainWindow) -> None:
         super().__init__(window)
         self._window = window
         self.action = QAction(f"{TITLE}…", window)
@@ -41,7 +41,7 @@ class PreviewExport(QObject):
         self.action.triggered.connect(lambda _checked=False: self.export())
         window._environment.register_host_action(EXPORT_PREVIEW_HTML_FEATURE, self.action)
 
-    def html_for(self, view: "UNITITextView") -> str | None:
+    def html_for(self, view: UNITITextView) -> str | None:
         """`view`'s book as the HTML page, or None when it has no Preview."""
 
         controller = self._window._rich_views
@@ -72,7 +72,7 @@ class PreviewExport(QObject):
             font=project.default_font if project is not None else None,
         )
 
-    def export(self, view: "UNITITextView | None" = None, path=None) -> bool:
+    def export(self, view: UNITITextView | None = None, path=None) -> bool:
         """Ask where to save `view`'s book (default: the current tab) as HTML
         next to it, and write it; `path` skips the dialog."""
 
@@ -91,4 +91,4 @@ class PreviewExport(QObject):
         return self._window._environment.save_text_file(view, result, path)
 
 
-__all__ = ["PreviewExport", "TITLE"]
+__all__ = ["TITLE", "PreviewExport"]

@@ -8,8 +8,17 @@ from pathlib import Path
 import pytest
 
 from uniti.core.document import Document
-from uniti.core.environments.sfm.spellcheck import START, CheckContext, SpellingCache, check_line
-from uniti.core.environments.sfm.spelling import SpellingList, SpellingState, SpellingStatusData, load_spelling_list
+from uniti.core.environments.sfm.spellcheck import (
+    START,
+    CheckContext,
+    SpellingCache,
+    check_line,
+)
+from uniti.core.environments.sfm.spelling import (
+    SpellingList,
+    SpellingStatusData,
+    load_spelling_list,
+)
 from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
 

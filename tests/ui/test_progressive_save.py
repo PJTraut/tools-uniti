@@ -31,7 +31,7 @@ def test_progressive_save_as_locks_only_source_and_cancel_preserves_target(
 ):
     from PySide6.QtWidgets import QMessageBox
 
-    import uniti.ui.file_operations as file_operations
+    from uniti.ui import file_operations
     from uniti.ui.main_window import UNITIMainWindow
 
     source_path = tmp_path / "source.txt"
@@ -166,7 +166,7 @@ def test_file_menu_uses_progressive_handlers():
 
 
 def test_post_save_format_inspection_is_bounded(monkeypatch, tmp_path: Path):
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     path = tmp_path / "saved.txt"
     path.write_text("text\n", encoding="utf-8", newline="")

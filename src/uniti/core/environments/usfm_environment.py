@@ -39,7 +39,6 @@ from .sfm.usfm_baseline import load_usfm_baseline
 from .sfm.usfmtc_adapter import validate_with_usfmtc
 from .sfm.validation import unmatched_end_marker_findings
 
-
 _REFERENCE_RE = re.compile(r"\s*(\d+)\s*(?:[:.\s]\s*(\d+)\s*)?")
 _VERSE_NUMBER_RE = re.compile(r"(\d+)(?:\s*-\s*(\d+))?")
 

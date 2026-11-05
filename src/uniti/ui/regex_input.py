@@ -6,10 +6,9 @@ from PySide6.QtCore import QEvent
 from PySide6.QtGui import QColor, QSyntaxHighlighter, QTextCharFormat
 
 from uniti.regex.analysis import RegexAnalysis
-from uniti.ui.font_policy import resolve_editor_font
-from uniti.ui.text_layout import Utf16Map, ShapedWindow
 from uniti.ui.bounded_text_edit import BoundedSingleLineTextEdit
-
+from uniti.ui.font_policy import resolve_editor_font
+from uniti.ui.text_layout import ShapedWindow, Utf16Map
 
 _GROUP_HUES = (210, 18, 132, 286, 48, 174, 330, 258)
 

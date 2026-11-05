@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from uniti.app.smoke import run_alpha_smoke, run_combined_smoke, run_gui_smoke
 from scripts.alpha_smoke import DOGFOOD_SMOKE_FIELDS
+from uniti.app.smoke import run_alpha_smoke, run_combined_smoke, run_gui_smoke
 
 
 def test_alpha_smoke_exercises_core_workflow(tmp_path: Path):

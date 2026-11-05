@@ -16,7 +16,10 @@ from uniti.core.environments.sfm.style_layers import (
     discover_project_stylesheets,
     is_selector,
 )
-from uniti.core.environments.sfm.usfm_baseline import load_uniti_builtin, load_usfm_baseline
+from uniti.core.environments.sfm.usfm_baseline import (
+    load_uniti_builtin,
+    load_usfm_baseline,
+)
 from uniti.core.environments.sfm.views import (
     SfmPreviewView,
     SfmStandardView,

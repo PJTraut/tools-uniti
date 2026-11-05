@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 class ChapterView(QObject):
     """One window's Show One Chapter toggle, and every view's line window."""
 
-    def __init__(self, window: "UNITIMainWindow") -> None:
+    def __init__(self, window: UNITIMainWindow) -> None:
         super().__init__(window)
         self._window = window
         self.action = QAction("Show One Chapter", window)
@@ -55,7 +55,7 @@ class ChapterView(QObject):
             if pane is not None:
                 pane.apply_window()
 
-    def line_window(self, view: "UNITITextView") -> tuple[int, int] | None:
+    def line_window(self, view: UNITITextView) -> tuple[int, int] | None:
         """`view`'s chapter lines when the window it's in shows one chapter
         (every view's `line_window_provider`; a tab moved to another window
         follows that window's toggle)."""

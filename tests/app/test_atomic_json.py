@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from uniti.app.atomic_json import atomic_write_bytes, atomic_write_json, preserve_invalid
+from uniti.app.atomic_json import (
+    atomic_write_bytes,
+    atomic_write_json,
+    preserve_invalid,
+)
 from uniti.core.durability import DurabilityError, DurabilityLevel
 
 

@@ -4,7 +4,13 @@ attributes (field test round 2, R2)."""
 from __future__ import annotations
 
 from uniti.core.environments.sfm.inspection import marker_at
-from uniti.core.environments.sfm.markers import is_closing, is_milestone, is_milestone_close, is_nested, marker_name
+from uniti.core.environments.sfm.markers import (
+    is_closing,
+    is_milestone,
+    is_milestone_close,
+    is_nested,
+    marker_name,
+)
 from uniti.core.environments.sfm.parser import parse_sfm
 from uniti.core.environments.sfm.placement import placement_findings
 from uniti.core.environments.sfm.semantic import apply_character_style

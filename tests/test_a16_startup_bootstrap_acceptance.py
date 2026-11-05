@@ -1,6 +1,5 @@
 import importlib.util
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -10,9 +9,13 @@ import pytest
 from uniti.app import application
 from uniti.app.paths import AppPaths
 from uniti.app.setup_state import SetupStateStore
-from uniti.app.startup import StartupContext, StartupCoordinator, StartupLog, StartupPhase
+from uniti.app.startup import (
+    StartupContext,
+    StartupCoordinator,
+    StartupLog,
+    StartupPhase,
+)
 from uniti.bootstrap.model import BootstrapMode
-
 
 REPO_ROOT = Path(__file__).parents[1]
 

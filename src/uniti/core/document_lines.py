@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import sys
 from array import array
 from bisect import bisect_right
 from collections import OrderedDict
 from collections.abc import Hashable
 from dataclasses import dataclass, replace
-import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -111,7 +111,7 @@ class DocumentLineIndex:
         *,
         chunk_chars: int = 65_536,
         detail_budget_bytes: int = 2 << 20,
-        resource_manager: "ResourceManager | None" = None,
+        resource_manager: ResourceManager | None = None,
         cache_owner: Hashable | None = None,
     ) -> None:
         if chunk_chars <= 0:

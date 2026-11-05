@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import unicodedata
+from dataclasses import dataclass
 
 from .byte_source import ByteSource
 from .decoder import DecodeError
 from .text_format import EncodingProfile
-
 
 SERIOUS_CONFIDENCE_THRESHOLD = 0.75
 

@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 PySide6 = pytest.importorskip("PySide6")
@@ -17,7 +16,7 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog
 
-import uniti.ui.main_window as main_window
+from uniti.ui import main_window
 
 
 @pytest.fixture(scope="module")

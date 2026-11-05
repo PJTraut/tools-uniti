@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from array import array
 import pickle
 import struct
 import tempfile
 import uuid
+from array import array
 from collections.abc import Iterator, Sequence
 
 from .results import MatchRecord
@@ -15,7 +15,7 @@ _LENGTH = struct.Struct("!I")
 
 
 class _RecordSequence(Sequence[MatchRecord]):
-    def __init__(self, store: "MatchStore") -> None:
+    def __init__(self, store: MatchStore) -> None:
         self._store = store
 
     def __len__(self) -> int:

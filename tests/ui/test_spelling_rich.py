@@ -13,16 +13,16 @@ if importlib.util.find_spec("PySide6") is None:  # pragma: no cover
     pytest.skip("PySide6 is not installed", allow_module_level=True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtGui import QTextCharFormat  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtGui import QTextCharFormat
+from PySide6.QtWidgets import QApplication
+from usfm_project_fixture import in_project
 
-from usfm_project_fixture import in_project  # noqa: E402
-from uniti.app.settings import SettingsStore  # noqa: E402
-from uniti.core.environments.sfm.spellcheck import CheckContext, SpellingCache  # noqa: E402
-from uniti.core.environments.sfm.spelling import SpellingList, SpellingStatusData  # noqa: E402
-from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers  # noqa: E402
-from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline  # noqa: E402
-from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
+from uniti.app.settings import SettingsStore
+from uniti.core.environments.sfm.spellcheck import CheckContext, SpellingCache
+from uniti.core.environments.sfm.spelling import SpellingList, SpellingStatusData
+from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
+from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
+from uniti.ui.main_window import UNITIMainWindow
 
 _USFM = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning God created.\n"
 _WITH_NOTE = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning God created.\\f + \\fr 1.1 \\ft zzfootnote\\f*\n"
@@ -158,7 +158,7 @@ def test_a_frozen_window_underlines_nothing_until_it_is_live(window, tmp_path: P
 
 
 def test_the_tooltip_in_a_rich_view(window, tmp_path: Path, app, monkeypatch):
-    from PySide6.QtCore import QEvent, QPoint
+    from PySide6.QtCore import QEvent
     from PySide6.QtGui import QHelpEvent
     from PySide6.QtWidgets import QToolTip
 

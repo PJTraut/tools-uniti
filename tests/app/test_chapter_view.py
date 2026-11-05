@@ -9,13 +9,12 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import in_project
 
-from usfm_project_fixture import in_project  # noqa: E402
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
-
-from uniti.app.document_groups import DocumentGroup  # noqa: E402
+from uniti.app.document_groups import DocumentGroup
 
 # Lines: 0-2 the header, \c 1 on line 3, \c 2 on 7, \c 3 on 11, and an
 # empty line 15 after the last line break.
@@ -99,8 +98,8 @@ def test_the_selector_go_to_and_find_change_the_chapter_and_keys_do_not(desktop,
     window._chapter_view.set_enabled(True)
     bar = window._environment_bar
 
-    bar.chapter.setCurrentIndex(2)
-    bar._chapter_chosen(2)
+    bar.chapter.setCurrentIndex(3)  # 0 (front matter), 1, 2, 3
+    bar._chapter_chosen(3)
     assert view.line_window() == CHAPTER_3
 
     assert window._environment.run_command("go_to", "2:2") is True
@@ -151,7 +150,7 @@ def test_preview_shows_only_the_chapters_text_and_notes(desktop, tmp_path: Path)
     notes = "\n".join(_shown_text(section.editor) for section in pane.note_sections if section.isVisibleTo(pane))
     assert "Note two." in notes and "Note one." not in notes
 
-    window._environment_bar._chapter_chosen(2)
+    window._environment_bar._chapter_chosen(3)
     shown = _shown_text(pane.editor)
     assert "Three one" in shown and "Two one" not in shown
     assert not any(section.isVisibleTo(pane) for section in pane.note_sections)  # chapter 3 has no notes

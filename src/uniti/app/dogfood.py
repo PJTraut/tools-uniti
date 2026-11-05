@@ -6,12 +6,11 @@ import json
 import math
 import re
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Mapping
-
 
 DOGFOOD_SCHEMA = 1
 MAX_COUNTER = (1 << 31) - 1
@@ -604,15 +603,15 @@ def decode_dogfood_snapshot(payload: bytes) -> DogfoodSnapshot:
 
 
 __all__ = [
-    "CPUClass",
     "DOGFOOD_SCHEMA",
+    "MAX_COUNTER",
+    "MAX_DOGFOOD_SNAPSHOT_BYTES",
+    "CPUClass",
     "DogfoodRecorder",
     "DogfoodSnapshot",
     "Durability",
     "HostFacts",
     "LatencyBucket",
-    "MAX_COUNTER",
-    "MAX_DOGFOOD_SNAPSHOT_BYTES",
     "OSFamily",
     "Operation",
     "OperationAggregate",

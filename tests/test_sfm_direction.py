@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 from uniti.core.environments.sfm.sty import parse_raw_stylesheet
-from uniti.core.rich_views.source_map import ISOLATE, LRI, PDI, RLI, SegmentRole
-from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, StyleLayer, StyleOrigin, build_layers
+from uniti.core.environments.sfm.style_layers import (
+    LayeredStyleRegistry,
+    StyleLayer,
+    StyleOrigin,
+    build_layers,
+)
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
-from uniti.core.environments.sfm.views import SfmPreviewView, SfmStandardView, layout_projection
+from uniti.core.environments.sfm.views import (
+    SfmPreviewView,
+    SfmStandardView,
+    layout_projection,
+)
+from uniti.core.rich_views.source_map import ISOLATE, LRI, PDI, RLI, SegmentRole
 
 STYLES = LayeredStyleRegistry(build_layers(load_usfm_baseline(), None))
 BOOK = (

@@ -21,7 +21,13 @@ from uniti.core.environments.catalog import (
     extension_assignments,
 )
 from uniti.core.environments.sfm.validation import unmatched_end_marker_findings
-from uniti.core.syntax_profiles import PROFILES, PROFILES_BY_KEY, USFM, canonical_key, profile_for_extension
+from uniti.core.syntax_profiles import (
+    PROFILES,
+    PROFILES_BY_KEY,
+    USFM,
+    canonical_key,
+    profile_for_extension,
+)
 
 
 @contextmanager

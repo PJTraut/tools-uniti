@@ -9,7 +9,12 @@ from pathlib import Path
 import pytest
 
 from uniti.core.environments.sfm.paratext_project import ParatextProject
-from uniti.core.environments.sfm.spellcheck import START, CheckContext, check_line, describe
+from uniti.core.environments.sfm.spellcheck import (
+    START,
+    CheckContext,
+    check_line,
+    describe,
+)
 from uniti.core.environments.sfm.spelling import (
     SpellingList,
     SpellingState,
@@ -18,8 +23,12 @@ from uniti.core.environments.sfm.spelling import (
     load_spelling_list,
 )
 from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
+from uniti.core.environments.sfm.user_words import (
+    UserWords,
+    user_words_for,
+    user_words_path,
+)
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
-from uniti.core.environments.sfm.user_words import UserWords, user_words_for, user_words_path
 from uniti.core.environments.user_config import set_user_config_root
 
 _STYLES = LayeredStyleRegistry(build_layers(load_usfm_baseline(), None))
@@ -103,7 +112,8 @@ def test_another_process_changing_the_file_is_read_again(tmp_path: Path):
     words = UserWords(path)
     words.approve("alpha")
     path.write_text(json.dumps({"approved": ["alpha", "gamma"], "rejected": []}), encoding="utf-8")
-    import os, time
+    import os
+    import time
 
     later = time.time() + 5
     os.utime(path, (later, later))

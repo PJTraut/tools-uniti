@@ -25,7 +25,6 @@ from uniti.ui.recovery_center import (
     RecoveryEntryKind,
 )
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 

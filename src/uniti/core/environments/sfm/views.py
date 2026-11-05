@@ -46,7 +46,14 @@ from uniti.core.rich_views.provider import ViewCommand
 from uniti.core.rich_views.source_map import HYPHEN, ISOLATE, LRI, PDI, RLI
 
 from .hyphenation import SOFT_HYPHEN, HyphenationRules
-from .markers import NOTE_MARKERS, is_closing, is_milestone, is_milestone_close, is_nested, marker_name
+from .markers import (
+    NOTE_MARKERS,
+    is_closing,
+    is_milestone,
+    is_milestone_close,
+    is_nested,
+    marker_name,
+)
 from .nodes import SfmNode, SfmNodeKind
 from .parser import parse_sfm
 from .semantic import (
@@ -298,7 +305,7 @@ class _SfmViewBase:
         return paragraph_enter_text(source, source_offset, self._styles().registry)
 
     def view_commands(self) -> tuple[ViewCommand, ...]:
-        registry = lambda: self._styles().registry  # noqa: E731
+        registry = lambda: self._styles().registry
 
         def style(marker: str) -> Callable[[str, int, int, str | None], EditPlan]:
             return lambda source, start, end, _argument: apply_character_style(source, start, end, marker)
@@ -465,7 +472,7 @@ def layout_projection(
     *,
     show_markers: bool,
     hidden_categories: frozenset[str] = frozenset(),
-    hyphenation: "HyphenationRules | None" = None,
+    hyphenation: HyphenationRules | None = None,
     direction: str | None = None,
 ) -> Projection:
     """Paragraph blocks with each marker's effective STY formatting.
@@ -853,7 +860,7 @@ def _note_sections(
     notes: list[_Note],
     key: str,
     direction: str | None = None,
-    hyphenation: "HyphenationRules | None" = None,
+    hyphenation: HyphenationRules | None = None,
 ) -> tuple[NoteSection, ...]:
     """One `NoteSection` per note kind: every note body of that kind on
     its own line, after its caller. With `hyphenation`, a kind's bodies
@@ -892,7 +899,7 @@ def _note_sections(
     return tuple(sections)
 
 
-def _notes_hyphenate(hyphenation: "HyphenationRules", block_attrs: dict[str, str], kind: str) -> bool:
+def _notes_hyphenate(hyphenation: HyphenationRules, block_attrs: dict[str, str], kind: str) -> bool:
     """Whether the bodies of note `kind` hyphenate: its stylesheet's
     `\\Hyphenate` decides, else the file's marker list when it has one, else
     they do (a note is narrow, and the file's default is for verse text)."""
@@ -912,7 +919,7 @@ def _note_body(
     closers,
     spans,
     note: _Note,
-    hyphenation: "HyphenationRules | None" = None,
+    hyphenation: HyphenationRules | None = None,
 ) -> None:
     """A note's body as text, its markers hidden and their styles applied;
     `hyphenation` puts a soft hyphen at the listed break points."""
@@ -1021,7 +1028,7 @@ class SfmStandardView(_SfmViewBase):
         self,
         source: str,
         hidden_categories: frozenset[str] = frozenset(),
-        hyphenation: "HyphenationRules | None" = None,
+        hyphenation: HyphenationRules | None = None,
         direction: str | None = None,
     ) -> Projection:
         """Standard with the reading `direction` of its blocks (the
@@ -1045,7 +1052,7 @@ class SfmPreviewView(_SfmViewBase):
         self,
         source: str,
         hidden_categories: frozenset[str] = frozenset(),
-        hyphenation: "HyphenationRules | None" = None,
+        hyphenation: HyphenationRules | None = None,
     ) -> Projection:
         """Preview without the notes of the hidden categories, and with
         soft hyphens at `hyphenation`'s break points."""
@@ -1056,7 +1063,7 @@ class SfmPreviewView(_SfmViewBase):
         self,
         source: str,
         hidden_categories: frozenset[str] = frozenset(),
-        hyphenation: "HyphenationRules | None" = None,
+        hyphenation: HyphenationRules | None = None,
         direction: str | None = None,
     ) -> Projection:
         """Preview with everything a tab can ask of it: the hidden
@@ -1078,7 +1085,7 @@ class SfmPreviewView(_SfmViewBase):
 
 def builder_ends_with_newline(builder: ProjectionBuilder, source: str) -> bool:
     del source
-    view = builder._view  # noqa: SLF001 - same-package helper
+    view = builder._view
     for chunk in reversed(view):
         if chunk:
             return chunk.endswith("\n")

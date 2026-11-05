@@ -28,6 +28,7 @@ def test_mouse_wheel_scrolls_over_content_not_only_the_scrollbar(app):
     from PySide6.QtCore import QPoint, QPointF, Qt
     from PySide6.QtGui import QWheelEvent
     from PySide6.QtWidgets import QLabel
+
     from uniti.ui.whitespace_legend import WhitespaceLegendWindow, _MarkerGlyphWidget
 
     window = WhitespaceLegendWindow()
@@ -74,6 +75,7 @@ def test_ctrl_or_cmd_wheel_zooms_instead_of_scrolling(app):
     from PySide6.QtCore import QPoint, QPointF, Qt
     from PySide6.QtGui import QWheelEvent
     from PySide6.QtWidgets import QLabel
+
     from uniti.ui.whitespace_legend import WhitespaceLegendWindow
 
     window = WhitespaceLegendWindow()
@@ -125,6 +127,7 @@ def test_zoom_shortcuts_use_widget_scoped_context_not_window_active_context(app)
 
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QShortcut
+
     from uniti.ui.whitespace_legend import WhitespaceLegendWindow
 
     window = WhitespaceLegendWindow()
@@ -150,6 +153,7 @@ def test_window_claims_keyboard_focus_when_shown(app):
     reports true."""
 
     from PySide6.QtCore import Qt
+
     from uniti.ui.whitespace_legend import WhitespaceLegendWindow
 
     window = WhitespaceLegendWindow()
@@ -165,6 +169,7 @@ def test_window_claims_keyboard_focus_when_shown(app):
 def test_window_is_frameless_tool_window_with_no_close_button(app):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QPushButton
+
     from uniti.ui.whitespace_legend import WhitespaceLegendWindow
 
     window = WhitespaceLegendWindow()
@@ -182,6 +187,7 @@ def test_window_is_frameless_tool_window_with_no_close_button(app):
 
 def test_every_marker_category_and_row_is_present(app):
     from PySide6.QtWidgets import QLabel
+
     from uniti.ui.whitespace_legend import _CATEGORIES, WhitespaceLegendWindow
 
     window = WhitespaceLegendWindow()
@@ -200,7 +206,7 @@ def test_every_marker_category_and_row_is_present(app):
 def test_glyph_colors_follow_the_active_theme(app):
     from uniti.ui.theme import active_theme, apply_theme
     from uniti.ui.whitespace import WhitespaceKind
-    from uniti.ui.whitespace_legend import _MarkerGlyphWidget, WhitespaceLegendWindow
+    from uniti.ui.whitespace_legend import WhitespaceLegendWindow, _MarkerGlyphWidget
 
     apply_theme(app, "Dark")
     tokens = active_theme(app).editor
@@ -223,6 +229,7 @@ def test_glyph_colors_follow_the_active_theme(app):
 def test_category_headings_are_centered(app):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QLabel
+
     from uniti.ui.whitespace_legend import _CATEGORIES, WhitespaceLegendWindow
 
     window = WhitespaceLegendWindow()
@@ -242,6 +249,7 @@ def test_category_headings_are_centered(app):
 def test_codepoint_column_is_left_aligned_not_right_aligned(app):
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QLabel
+
     from uniti.ui.whitespace_legend import WhitespaceLegendWindow
 
     window = WhitespaceLegendWindow()
@@ -264,6 +272,7 @@ def test_glyph_name_and_codepoint_form_proportional_table_columns(app):
     wide "U+000D U+000A" row shift only that category's own columns)."""
 
     from PySide6.QtWidgets import QGridLayout
+
     from uniti.ui.whitespace_legend import WhitespaceLegendWindow
 
     window = WhitespaceLegendWindow()
@@ -331,6 +340,7 @@ def test_table_columns_widen_with_zoom(app):
     just the glyph boxes."""
 
     from PySide6.QtWidgets import QGridLayout, QLabel
+
     from uniti.ui.whitespace_legend import WhitespaceLegendWindow
 
     window = WhitespaceLegendWindow()

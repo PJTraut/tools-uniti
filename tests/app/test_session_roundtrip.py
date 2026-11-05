@@ -7,16 +7,14 @@ from pathlib import Path
 
 import pytest
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
+from uniti.app.service import UNITIService
 from uniti.app.session import SessionSnapshot
 from uniti.app.session_store import SessionStore
-from uniti.app.service import UNITIService
 from uniti.app.settings import SettingsStore
 from uniti.core.file_identity import FileIdentity, SavedFileStamp
 from uniti.resources import ResourceManager

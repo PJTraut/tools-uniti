@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
-from typing import Mapping, Protocol
+from typing import Protocol
 
 
 class ResourceState(StrEnum):

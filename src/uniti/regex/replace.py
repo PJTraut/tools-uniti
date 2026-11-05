@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace as dataclass_replace
+from collections.abc import Callable
+from dataclasses import dataclass
+from dataclasses import replace as dataclass_replace
 from pathlib import Path
-from typing import Callable
 
 import regex
 
 from uniti.core.document import Document
 from uniti.core.offsets import ReadIntent
+
 from .engine import compile_pattern
 from .replacement_expand import expand_replacement
 from .replacement_plan import Replacement, ReplacementPlan

@@ -9,7 +9,6 @@ from pathlib import Path
 
 from .platform_policy import normalize_native_path
 
-
 INSTANCE_PROTOCOL_VERSION = 1
 MAX_MESSAGE_BYTES = 256 << 10
 MAX_REQUEST_FILES = 128

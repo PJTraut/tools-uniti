@@ -20,7 +20,6 @@ from benchmarks.sustained_runner import (
 )
 from uniti.resources.policy import load_performance_policy
 
-
 _FAKE_CHILD = r"""
 import sys
 import time

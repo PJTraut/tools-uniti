@@ -36,7 +36,7 @@ class DependencyManifest:
     dev: tuple[str, ...]
 
     @classmethod
-    def load(cls, source_root: Path) -> "DependencyManifest":
+    def load(cls, source_root: Path) -> DependencyManifest:
         path = Path(source_root) / "pyproject.toml"
         try:
             payload = tomllib.loads(path.read_text(encoding="utf-8"))

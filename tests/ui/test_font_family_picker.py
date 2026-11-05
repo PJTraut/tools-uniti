@@ -24,6 +24,7 @@ def test_lists_only_fixed_pitch_fonts(app):
 
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QFontDatabase
+
     from uniti.ui.font_family_picker import FontFamilyPicker
 
     picker = FontFamilyPicker(None, default_family="Menlo")
@@ -46,6 +47,7 @@ def test_lists_only_fixed_pitch_fonts(app):
 
 def test_default_entry_is_first_and_labeled_with_the_resolved_family(app):
     from PySide6.QtCore import Qt
+
     from uniti.ui.font_family_picker import FontFamilyPicker
 
     picker = FontFamilyPicker(None, default_family="Menlo")
@@ -59,9 +61,9 @@ def test_default_entry_is_first_and_labeled_with_the_resolved_family(app):
 
 def test_current_family_is_preselected(app):
     from PySide6.QtCore import Qt
-    from uniti.ui.font_family_picker import FontFamilyPicker
-
     from PySide6.QtGui import QFontDatabase
+
+    from uniti.ui.font_family_picker import FontFamilyPicker
 
     # A fixed-pitch family this platform has (Linux runners lack Courier New).
     family = next(
@@ -78,6 +80,7 @@ def test_current_family_is_preselected(app):
 
 def test_no_current_family_preselects_the_default_entry(app):
     from PySide6.QtCore import Qt
+
     from uniti.ui.font_family_picker import FontFamilyPicker
 
     picker = FontFamilyPicker(None, default_family="Menlo")

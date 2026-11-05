@@ -6,6 +6,7 @@ ordinary navigation/deletion leaves the cursor and document unchanged.
 
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
+
 import regex
 
 _CLUSTER = regex.compile(r"\X")

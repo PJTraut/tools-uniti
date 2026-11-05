@@ -56,7 +56,7 @@ def test_core_probe_does_not_full_scan_eol_by_default(tmp_path: Path):
 
 def test_core_probe_window_never_reports_split_utf8_as_decode_error(tmp_path: Path):
     path = tmp_path / "utf8-boundary.txt"
-    path.write_bytes("AB€CD".encode("utf-8"))
+    path.write_bytes("AB€CD".encode())
     env = os.environ.copy()
     env["PYTHONPATH"] = "src"
     result = subprocess.run(

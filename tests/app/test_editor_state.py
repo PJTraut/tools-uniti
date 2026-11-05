@@ -83,7 +83,7 @@ def test_undo_redo_passthrough_keeps_cursor_valid(tmp_path: Path):
 
 def test_early_cursor_movement_does_not_measure_entire_large_document(tmp_path: Path):
     path = tmp_path / "large.txt"
-    path.write_bytes((b"0123456789\n" * 50_000))
+    path.write_bytes(b"0123456789\n" * 50_000)
     with Document.open(path, encoding="utf-8") as document:
         state = EditorState(document)
         state.move_right()

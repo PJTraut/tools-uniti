@@ -6,7 +6,7 @@ import pytest
 
 from uniti.app.file_environment_manager import FileEnvironmentManager
 from uniti.core.document import Document
-from uniti.core.environment import Environment, EnvironmentContext, PlainEnvironment
+from uniti.core.environment import EnvironmentContext, PlainEnvironment
 
 
 def test_resolve_key_matches_existing_extension_resolver():

@@ -1,5 +1,4 @@
 import os
-from dataclasses import replace
 
 import pytest
 
@@ -9,6 +8,7 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 @pytest.fixture
 def window(tmp_path):
     from PySide6.QtWidgets import QApplication
+
     from uniti.app.settings import Settings, SettingsStore
     from uniti.ui.main_window import UNITIMainWindow
     from uniti.ui.theme import apply_theme
@@ -27,6 +27,7 @@ def window(tmp_path):
 
 def test_preview_new_window_cancel_restores_exact_state(window):
     from PySide6.QtWidgets import QApplication
+
     from uniti.ui.main_window import UNITIMainWindow
     from uniti.ui.theme import active_theme
     from uniti.ui.theme_editor import ThemeEditor
@@ -51,9 +52,10 @@ def test_preview_new_window_cancel_restores_exact_state(window):
 
 def test_clone_edit_apply_restart_and_unrelated_settings(window):
     from PySide6.QtWidgets import QApplication
-    from uniti.ui.theme_editor import ThemeEditor
+
     from uniti.ui.main_window import UNITIMainWindow
     from uniti.ui.theme import active_theme
+    from uniti.ui.theme_editor import ThemeEditor
     editor = ThemeEditor(window)
     editor.select_profile('Paper')
     editor.clone_profile()
@@ -75,8 +77,9 @@ def test_clone_edit_apply_restart_and_unrelated_settings(window):
 
 def test_syntax_color_role_is_listed_editable_and_propagates_live(window):
     from PySide6.QtWidgets import QApplication
-    from uniti.ui.theme_editor import ThemeEditor
+
     from uniti.ui.theme import active_theme
+    from uniti.ui.theme_editor import ThemeEditor
     editor = ThemeEditor(window)
     editor.select_profile('Paper')
     assert editor.role_combo.findData('syntax.keyword') != -1
@@ -91,9 +94,10 @@ def test_syntax_color_role_is_listed_editable_and_propagates_live(window):
 
 def test_failed_apply_stays_open_reports_error_and_cancel_restores(window, monkeypatch):
     from PySide6.QtWidgets import QApplication
-    from uniti.ui.theme_editor import ThemeEditor
-    from uniti.ui.theme import active_theme
+
     from uniti.app import theme_profiles
+    from uniti.ui.theme import active_theme
+    from uniti.ui.theme_editor import ThemeEditor
     before = active_theme(QApplication.instance())
     editor = ThemeEditor(window)
     editor.select_profile('Slate')
@@ -143,7 +147,8 @@ def test_high_contrast_rejects_invalid_draft_with_visible_feedback(window):
 
 def test_system_preview_uses_original_platform_palette(window):
     from PySide6.QtWidgets import QApplication
-    from uniti.ui.theme import apply_theme, active_theme
+
+    from uniti.ui.theme import active_theme, apply_theme
     from uniti.ui.theme_editor import ThemeEditor
     app = QApplication.instance()
     system = apply_theme(app, 'System')
@@ -156,6 +161,7 @@ def test_system_preview_uses_original_platform_palette(window):
 
 def test_closing_owner_cancels_preview(window):
     from PySide6.QtWidgets import QApplication
+
     from uniti.ui.theme import active_theme, preview_active
     from uniti.ui.theme_editor import ThemeEditor
     app = QApplication.instance()
@@ -168,14 +174,15 @@ def test_closing_owner_cancels_preview(window):
 
 
 def test_service_windows_views_and_find_replace_follow_preview(tmp_path):
-    from uniti.app.recovery_manager import RecoveryManager
     from PySide6.QtWidgets import QApplication
-    from uniti.app.service import UNITIService, QuitChoice
-    from uniti.app.settings import SettingsStore
+
+    from uniti.app.recovery_manager import RecoveryManager
+    from uniti.app.service import QuitChoice, UNITIService
     from uniti.app.session_store import SessionStore
+    from uniti.app.settings import SettingsStore
     from uniti.resources import ResourceManager
-    from uniti.ui.theme_editor import ThemeEditor
     from uniti.ui.theme import active_theme
+    from uniti.ui.theme_editor import ThemeEditor
     app = QApplication.instance() or QApplication([])
     service = UNITIService(resource_manager=ResourceManager(max_workers=1),
                            settings_store=SettingsStore(tmp_path / 'settings.json'),

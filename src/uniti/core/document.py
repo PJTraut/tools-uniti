@@ -4,19 +4,19 @@ from __future__ import annotations
 
 import codecs
 import os
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Hashable, Iterator, Mapping
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Hashable, Literal
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from uniti.resources.manager import ResourceManager
 
 from .byte_source import ByteSource
+from .document_lines import DocumentLineIndex
 from .durability import DurabilityResult
 from .encoding import EncodingInfo, detect_encoding, matching_bom
 from .eol import EOLReport, analyze_eol
-from .document_lines import DocumentLineIndex
 from .file_identity import ExternalFileChangedError, FileIdentity
 from .history import (
     EditHistory,
@@ -43,8 +43,8 @@ from .save_job import (
     prepare_document_save,
 )
 from .text_format import (
-    EOLPolicy,
     EncodingProfile,
+    EOLPolicy,
     OutputFormat,
     profile_from_codec,
 )
@@ -98,7 +98,7 @@ class Document:
         source_line_index: LineIndex,
         piece_table: PieceTable,
         document_line_index: DocumentLineIndex,
-        resource_manager: "ResourceManager | None" = None,
+        resource_manager: ResourceManager | None = None,
         cache_owner: Hashable | None = None,
         source_eol_report: EOLReport | None = None,
     ) -> None:
@@ -140,8 +140,8 @@ class Document:
         *,
         encoding: str | None = None,
         profile: EncodingProfile | None = None,
-        resource_manager: "ResourceManager | None" = None,
-    ) -> "Document":
+        resource_manager: ResourceManager | None = None,
+    ) -> Document:
         if encoding is not None and profile is not None:
             raise ValueError("profile and encoding cannot both be specified")
         source = ByteSource.open(path)
@@ -1207,7 +1207,7 @@ class Document:
         self._source.close()
         self._closed = True
 
-    def __enter__(self) -> "Document":
+    def __enter__(self) -> Document:
         self._ensure_open()
         return self
 

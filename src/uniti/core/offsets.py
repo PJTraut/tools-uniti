@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
 from collections import OrderedDict
+from collections.abc import Hashable
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Hashable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from uniti.resources.manager import ResourceManager
@@ -57,7 +58,7 @@ class OffsetMapper:
         encoding: str,
         *,
         checkpoint_bytes: int = 65_536,
-        resource_manager: "ResourceManager | None" = None,
+        resource_manager: ResourceManager | None = None,
         cache_owner: Hashable | None = None,
     ) -> None:
         if checkpoint_bytes <= 0:

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
-import benchmarks.corpus as corpus
+from benchmarks import corpus
 from benchmarks.corpus import CorpusKind, CorpusSpec, generate_corpus
 
 

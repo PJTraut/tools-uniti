@@ -6,8 +6,9 @@ import mmap
 import os
 import sys
 import threading
+from collections.abc import Iterator
 from pathlib import Path
-from typing import BinaryIO, Iterator
+from typing import BinaryIO
 
 
 def _open_windows_read_shared_delete(path: Path) -> BinaryIO:
@@ -52,7 +53,7 @@ class ByteSource:
         path: str | os.PathLike[str],
         *,
         prefer_mmap: bool = True,
-    ) -> "ByteSource":
+    ) -> ByteSource:
         resolved = Path(path)
         windows = sys.platform.startswith("win")
         handle = (
@@ -111,7 +112,7 @@ class ByteSource:
             raise OSError("short read from byte source")
         return data
 
-    def fork(self) -> "ByteSource":
+    def fork(self) -> ByteSource:
         """Duplicate the captured file identity with bounded seek/read access."""
 
         self._ensure_open()
@@ -158,7 +159,7 @@ class ByteSource:
         self._handle.close()
         self._closed = True
 
-    def __enter__(self) -> "ByteSource":
+    def __enter__(self) -> ByteSource:
         self._ensure_open()
         return self
 

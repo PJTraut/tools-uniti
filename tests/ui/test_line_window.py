@@ -9,14 +9,14 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtCore import QPoint, Qt  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
 
-from uniti.app.editor_state import EditorState  # noqa: E402
-from uniti.core.document import Document  # noqa: E402
-from uniti.core.environments.sfm.references import chapter_window  # noqa: E402
-from uniti.ui.text_view import UNITITextView  # noqa: E402
+from uniti.app.editor_state import EditorState
+from uniti.core.document import Document
+from uniti.core.environments.sfm.references import chapter_window
+from uniti.ui.text_view import UNITITextView
 
 CHAPTER = 40  # lines per "chapter"
 LINES = 120

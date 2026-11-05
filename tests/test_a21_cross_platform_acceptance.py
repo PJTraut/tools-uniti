@@ -5,7 +5,6 @@ import os
 import sys
 from pathlib import Path
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
@@ -179,9 +178,9 @@ def test_a21_combined_smoke_exports_only_bounded_cross_platform_facts(
 def test_a21_editor_docking_preserves_authority_layout_and_bytes(tmp_path: Path):
     from PySide6.QtWidgets import QApplication, QDockWidget
 
+    from uniti.app.service import QuitChoice, UNITIService
     from uniti.app.session import DockReturnRecord
     from uniti.app.session_store import SessionStore
-    from uniti.app.service import QuitChoice, UNITIService
     from uniti.app.settings import SettingsStore
     from uniti.resources import ResourceManager
     from uniti.ui.theme import active_theme

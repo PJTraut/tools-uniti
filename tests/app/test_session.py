@@ -14,13 +14,13 @@ from uniti.app.session import (
     FindReplaceManifestRecord,
     HistoryPack,
     HistoryPackReference,
-    LoadedSession,
     InputHistoryRecord,
     InputStateRecord,
+    LoadedSession,
     PaneRecord,
     PersistenceNotice,
-    SessionManifest,
     SessionLoadSource,
+    SessionManifest,
     SessionSnapshot,
     UnsupportedSessionSchema,
     ViewRecord,
@@ -39,7 +39,6 @@ from uniti.core.history import (
     EditOperation,
     EditTransaction,
 )
-
 
 NOW = "2026-09-04T10:00:00.000000Z"
 

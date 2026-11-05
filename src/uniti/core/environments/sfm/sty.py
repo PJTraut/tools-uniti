@@ -178,7 +178,7 @@ class StyleRegistry:
     styles: dict[str, SfmStyle]
 
     @classmethod
-    def from_layers(cls, *sheets: RawStyleSheet) -> "StyleRegistry":
+    def from_layers(cls, *sheets: RawStyleSheet) -> StyleRegistry:
         merged: dict[str, SfmStyle] = {}
         for sheet in sheets:
             for record in sheet.records:

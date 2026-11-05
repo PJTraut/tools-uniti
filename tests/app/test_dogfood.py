@@ -11,7 +11,6 @@ from uniti.app.dogfood import (
     MAX_COUNTER,
     MAX_DOGFOOD_SNAPSHOT_BYTES,
     CPUClass,
-    RAMClass,
     DogfoodRecorder,
     Durability,
     HostFacts,
@@ -19,6 +18,7 @@ from uniti.app.dogfood import (
     Operation,
     OSFamily,
     Outcome,
+    RAMClass,
     ResourceBand,
     classify_cpu,
     classify_ram,
@@ -27,7 +27,6 @@ from uniti.app.dogfood import (
     latency_bucket,
     merge_dogfood_snapshots,
 )
-
 
 DAY = date(2026, 9, 5)
 HOST = HostFacts(

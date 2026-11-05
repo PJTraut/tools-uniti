@@ -28,7 +28,6 @@ from .dogfood import (
     encode_dogfood_snapshot,
 )
 
-
 MAX_DOGFOOD_COMPRESSED_BYTES = MAX_DOGFOOD_SNAPSHOT_BYTES + 4096
 MAX_DOGFOOD_SEGMENTS_INSPECTED = 32
 DEFAULT_RETENTION_DAYS = 7
@@ -354,11 +353,11 @@ class DogfoodStore:
 
 
 __all__ = [
-    "ClearReport",
     "DEFAULT_AGGREGATE_MAX_BYTES",
     "DEFAULT_RETENTION_DAYS",
-    "DogfoodStore",
     "MAX_DOGFOOD_COMPRESSED_BYTES",
+    "ClearReport",
+    "DogfoodStore",
     "PublicationResult",
     "StoreDiagnostic",
     "StoreFailureCode",

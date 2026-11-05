@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from array import array
-from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
 import pickle
 import struct
 import tempfile
+from array import array
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 
-from uniti.core.document import ReplacementPlanLimitError
-
+from uniti.core.document import ReplacementPlanLimitError  # noqa: F401  (re-exported)
 
 _LENGTH = struct.Struct("!I")
 
@@ -190,7 +189,7 @@ class ReplacementPlan:
         document_revision: int,
         replacements: Iterable[Replacement],
         memory_budget_bytes: int,
-    ) -> "ReplacementPlan":
+    ) -> ReplacementPlan:
         plan = cls(
             memory_budget_bytes=memory_budget_bytes,
             document_revision=document_revision,
@@ -214,7 +213,7 @@ class ReplacementPlan:
         self._read_page = ()
         self._closed = True
 
-    def __enter__(self) -> "ReplacementPlan":
+    def __enter__(self) -> ReplacementPlan:
         self._ensure_open()
         return self
 

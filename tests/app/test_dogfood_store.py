@@ -10,19 +10,18 @@ import pytest
 
 from uniti.app.dogfood import (
     CPUClass,
-    RAMClass,
     DogfoodRecorder,
     HostFacts,
     Operation,
     OSFamily,
     Outcome,
+    RAMClass,
     decode_dogfood_snapshot,
 )
 from uniti.app.dogfood_store import (
     DogfoodStore,
     StoreFailureCode,
 )
-
 
 HOST = HostFacts(
     "v0.001a22",

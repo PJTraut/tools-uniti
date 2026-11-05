@@ -19,11 +19,10 @@ from uniti.resources.tasks import TaskHandle, TaskKind, TaskSpec
 
 from .document_registry import DocumentEntry, DocumentRegistry
 from .dogfood import Durability, Operation, Outcome, ResourceBand
+from .environment_window_names import MAX_ENV_WINDOWS
 from .file_environment_manager import FileEnvironmentManager
 from .session import MAX_VIEWS, MAX_WINDOWS, DockReturnRecord
 from .window_manager import ViewLocation, WindowManager
-from .environment_window_names import MAX_ENV_WINDOWS
-
 
 _UNCHANGED_DOCK_RETURN = object()
 
@@ -582,7 +581,9 @@ class UNITIService:
         dropped by `release_group_document`); None when it can't be read."""
 
         from uniti.core.document import Document
-        from uniti.core.environments.sfm.paratext_project import project_encoding_profile
+        from uniti.core.environments.sfm.paratext_project import (
+            project_encoding_profile,
+        )
 
         try:
             opened = Document.open(
@@ -937,15 +938,15 @@ class UNITIService:
         )
         bindings: list[_RecoveryBinding] = []
         for index, (source, payload) in enumerate(ordered):
-            evidence_path = Path(getattr(payload, "evidence_path"))
+            evidence_path = Path(payload.evidence_path)
             digest = hashlib.sha256(
-                f"{source}\0{evidence_path}".encode("utf-8")
+                f"{source}\0{evidence_path}".encode()
             ).hexdigest()[:20]
             entry_id = f"{source}-{index:04d}-{digest}"
             if source == "recovery":
                 session = getattr(payload, "session", None)
                 path = (
-                    Path(getattr(session, "source_path"))
+                    Path(session.source_path)
                     if session is not None
                     else evidence_path
                 )
@@ -956,7 +957,7 @@ class UNITIService:
             else:
                 path = evidence_path
                 entry_kind = self._problem_entry_kind(payload)
-                message = getattr(payload, "safe_message")
+                message = payload.safe_message
             entry = RecoveryEntry.create(
                 entry_id=entry_id,
                 kind=entry_kind,
@@ -1283,7 +1284,7 @@ class UNITIService:
             activate = getattr(panes, "activate_view", None)
             if callable(activate):
                 activate(view_id)
-            self.set_active_view(getattr(window, "window_id"), view_id)
+            self.set_active_view(window.window_id, view_id)
             for method_name in ("show", "raise_", "activateWindow"):
                 method = getattr(window, method_name, None)
                 if callable(method):
@@ -1397,7 +1398,7 @@ class UNITIService:
             target_view_ids = getattr(target, "view_ids", ())
             if len(tuple(target_view_ids)) >= MAX_VIEWS:
                 raise ValueError(f"pane tree cannot exceed {MAX_VIEWS} views")
-        view = getattr(source, "view_for_id")(view_id)
+        view = source.view_for_id(view_id)
         if view is None:
             raise KeyError(view_id)
         old_anchor = getattr(view, "dock_return", None)
@@ -1448,12 +1449,12 @@ class UNITIService:
         source = self.windows.window_for_view(view_id)
         if source is None:
             raise KeyError(view_id)
-        view = getattr(source, "view_for_id")(view_id)
+        view = source.view_for_id(view_id)
         if view is None:
             raise KeyError(view_id)
         if getattr(view, "dock_return", None) is not None:
             raise ValueError("view is already undocked")
-        location = getattr(source, "view_location")(view_id)
+        location = source.view_location(view_id)
         window = self.new_window()
         anchor = DockReturnRecord(
             location.window_id,
@@ -1479,7 +1480,7 @@ class UNITIService:
         source = self.windows.window_for_view(view_id)
         if source is None:
             raise KeyError(view_id)
-        view = getattr(source, "view_for_id")(view_id)
+        view = source.view_for_id(view_id)
         if view is None:
             raise KeyError(view_id)
         anchor = getattr(view, "dock_return", None)
@@ -1509,7 +1510,7 @@ class UNITIService:
             source = self.windows.window_for_view(view_id)
             if source is None:
                 raise KeyError(view_id)
-            view = getattr(source, "view_for_id")(view_id)
+            view = source.view_for_id(view_id)
             if view is None:
                 raise KeyError(view_id)
             existing = getattr(view, "dock_return", None)
@@ -1518,7 +1519,7 @@ class UNITIService:
                 # returns it there, not to this temporary window.
                 anchors.append((existing, True))
                 continue
-            location = getattr(source, "view_location")(view_id)
+            location = source.view_location(view_id)
             anchors.append(
                 (
                     DockReturnRecord(location.window_id, location.pane_id, location.tab_index),
@@ -1550,7 +1551,7 @@ class UNITIService:
 
     def environment_window_for(self, environment_key: str, slot: int):
         """The open environment window of `environment_key` in `slot`
-        (round 3 T3: "SFM-1" is slot 0, "SFM-2" slot 1 …)."""
+        (round 3 T3: "SFM/1" is slot 0, "SFM/2" slot 1 …)."""
 
         for _window_id, window in self.windows.items:
             if getattr(window, "environment_window", None) == (environment_key, slot):
@@ -1615,7 +1616,7 @@ class UNITIService:
         source = self.windows.window_for_view(view_id)
         if source is None:
             raise KeyError(view_id)
-        view = getattr(source, "view_for_id")(view_id)
+        view = source.view_for_id(view_id)
         if view is None:
             raise KeyError(view_id)
         if slot is not None:
@@ -1628,7 +1629,7 @@ class UNITIService:
         if isinstance(existing, DockReturnRecord):
             anchor, was_undocked = existing, True
         else:
-            location = getattr(source, "view_location")(view_id)
+            location = source.view_location(view_id)
             anchor = DockReturnRecord(location.window_id, location.pane_id, location.tab_index)
             was_undocked = False
         created = target is None

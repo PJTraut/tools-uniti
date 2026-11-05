@@ -210,7 +210,10 @@ def test_the_named_stylesheet_replaces_usfm_sty(tmp_path: Path):
 
 
 def test_a_stylesheet_name_with_a_path_is_ignored(tmp_path: Path):
-    from uniti.core.environments.sfm.style_layers import PROJECT_STYLESHEET_CANDIDATES, project_stylesheet_candidates
+    from uniti.core.environments.sfm.style_layers import (
+        PROJECT_STYLESHEET_CANDIDATES,
+        project_stylesheet_candidates,
+    )
 
     _settings(tmp_path, naming='<Naming PrePart="" PostPart=".SFM" BookNameForm="MAT" />')
     settings = tmp_path / "Settings.xml"
@@ -232,10 +235,10 @@ def test_project_books_open_in_the_declared_encoding(tmp_path: Path):
     modern = tmp_path / "modern"
     _settings(modern, naming='<Naming PrePart="" PostPart=".SFM" BookNameForm="MAT" />')
     with_bom = modern / "GEN.SFM"
-    with_bom.write_bytes(b"\xef\xbb\xbf" + "\\id GEN\n\\v 1 Café\n".encode("utf-8"))
+    with_bom.write_bytes(b"\xef\xbb\xbf" + "\\id GEN\n\\v 1 Café\n".encode())
     assert project_encoding_profile(with_bom).bom == b"\xef\xbb\xbf"
     plain = modern / "EXO.SFM"
-    plain.write_bytes("\\id EXO\n".encode("utf-8"))
+    plain.write_bytes(b"\\id EXO\n")
     assert project_encoding_profile(plain).key == "utf-8"
     # Content that disagrees with the declaration: leave it to detection.
     broken = modern / "LEV.SFM"

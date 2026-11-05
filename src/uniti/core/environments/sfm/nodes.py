@@ -27,4 +27,4 @@ class SfmNode:
     start: int
     end: int
     marker: str | None = None
-    children: tuple["SfmNode", ...] = ()
+    children: tuple[SfmNode, ...] = ()

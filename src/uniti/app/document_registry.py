@@ -14,7 +14,6 @@ from uniti.core.syntax_profiles import canonical_key, profile_for_extension
 
 from .platform_policy import native_paths_equal, normalize_native_path
 
-
 CLOSED_HISTORY_RETENTION = timedelta(days=7)
 
 

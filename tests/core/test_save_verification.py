@@ -10,8 +10,8 @@ from uniti.core.byte_source import ByteSource
 from uniti.core.offsets import OffsetMapper
 from uniti.core.pieces import EditStore, PieceTable
 from uniti.core.save import (
-    SaveVerificationError,
     SaveOptions,
+    SaveVerificationError,
     UnrepresentableCharacterError,
     UnresolvedMalformedBytesError,
     commit_staged_document,

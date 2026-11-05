@@ -7,9 +7,8 @@ import sys
 import threading
 from dataclasses import dataclass
 
-from .byte_source import ByteSource
 from .boundaries import BoundaryMap, LinearBoundaries, boundary_map
-
+from .byte_source import ByteSource
 
 _ERROR_HANDLER_NAME = "uniti-preserve-decode-bytes-v1"
 _ERROR_SENTINEL = "\udc00"

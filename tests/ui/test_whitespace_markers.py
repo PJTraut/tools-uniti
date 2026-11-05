@@ -18,7 +18,8 @@ def app():
 
 def test_compact_markers_are_distinct_and_transparent(app):
     from PySide6.QtCore import QRectF, Qt
-    from PySide6.QtGui import QImage, QPainter, QColor
+    from PySide6.QtGui import QColor, QImage, QPainter
+
     from uniti.ui.whitespace_painter import paint_compact_marker
 
     labels = ["EMSP", "ENSP", "NBSP", "NNBSP", "THINSP", "HAIRSP", "IDSP",
@@ -50,8 +51,12 @@ def test_paint_whitespace_marker_is_usable_as_a_standalone_free_function(app):
 
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
+
     from uniti.ui.whitespace import WhitespaceKind
-    from uniti.ui.whitespace_painter import end_of_text_marker_x, paint_whitespace_marker
+    from uniti.ui.whitespace_painter import (
+        end_of_text_marker_x,
+        paint_whitespace_marker,
+    )
 
     metrics = QFontMetrics(app.font())
     tokens = SimpleNamespace(
@@ -91,6 +96,7 @@ def test_paint_whitespace_marker_is_usable_as_a_standalone_free_function(app):
 
 def test_whitespace_positions_after_supplementary_character(app, tmp_path, monkeypatch):
     from PySide6.QtGui import QTextLayout
+
     from uniti.app.editor_state import EditorState
     from uniti.core.document import Document
     from uniti.ui.text_view import UNITITextView
@@ -127,6 +133,7 @@ def test_whitespace_positions_after_supplementary_character(app, tmp_path, monke
 def test_space_marker_alpha_centroid_is_centered(app, tmp_path, font_scale, device_scale):
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QImage, QPainter
+
     from uniti.app.editor_state import EditorState
     from uniti.core.document import Document
     from uniti.ui.text_view import UNITITextView

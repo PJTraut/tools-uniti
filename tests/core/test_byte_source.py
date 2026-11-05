@@ -72,9 +72,8 @@ def test_windows_source_uses_replace_shareable_handle_without_mmap(
 def test_invalid_read_ranges_raise(tmp_path: Path, start: int, length: int):
     path = tmp_path / "data.bin"
     path.write_bytes(b"0123456789")
-    with ByteSource.open(path) as source:
-        with pytest.raises(ValueError):
-            source.read(start, length)
+    with ByteSource.open(path) as source, pytest.raises(ValueError):
+        source.read(start, length)
 
 
 def test_sparse_file_supports_offsets_above_one_gib(tmp_path: Path):

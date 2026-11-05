@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
+
 import regex as _syntax_re
-from typing import Mapping
 
 from .analysis import InlineSwitch, PatternStructure, RegexToken, TokenPair
 

@@ -8,8 +8,17 @@ from uniti.core.environment import EnvironmentContext
 from uniti.core.environment_commands import ShowUndefinedMarkup, environment_commands
 from uniti.core.environments import UsfmEnvironment
 from uniti.core.environments.sfm.sty import parse_raw_stylesheet
-from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, StyleLayer, StyleOrigin, build_layers
-from uniti.core.environments.sfm.undefined import definition_stubs, report_text, undefined_markers
+from uniti.core.environments.sfm.style_layers import (
+    LayeredStyleRegistry,
+    StyleLayer,
+    StyleOrigin,
+    build_layers,
+)
+from uniti.core.environments.sfm.undefined import (
+    definition_stubs,
+    report_text,
+    undefined_markers,
+)
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
 
 _SOURCE = (

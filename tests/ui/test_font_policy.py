@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QFont, QFontDatabase, QFontMetrics
@@ -299,6 +298,7 @@ def test_real_editor_font_is_concrete_fixed_pitch_with_required_coverage(qapp):
 def test_bundled_faces_cover_each_declared_sample_without_system_fallback(qapp):
     import hashlib
     import json
+
     from PySide6.QtGui import QRawFont
     root = Path('src/uniti/ui/assets/fonts')
     assert (root / 'manifest.json').is_file()

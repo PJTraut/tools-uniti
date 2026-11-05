@@ -11,8 +11,9 @@ to that line.
 """
 
 from bisect import bisect_left, bisect_right
+
 import regex
-from PySide6.QtCore import Qt, QPointF
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QTextLayout, QTextOption
 
 from uniti.core.bidi import is_rtl_paragraph

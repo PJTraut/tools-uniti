@@ -6,11 +6,19 @@ from pathlib import Path
 
 from uniti.core.environments.sfm.hyphenation import SOFT_HYPHEN, rules_for
 from uniti.core.environments.sfm.spelling import load_hyphenated_words
-from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
 from uniti.core.environments.sfm.sty import parse_raw_stylesheet
-from uniti.core.environments.sfm.style_layers import StyleLayer, StyleOrigin
+from uniti.core.environments.sfm.style_layers import (
+    LayeredStyleRegistry,
+    StyleLayer,
+    StyleOrigin,
+    build_layers,
+)
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
-from uniti.core.environments.sfm.views import SfmPreviewView, SfmStandardView, layout_projection
+from uniti.core.environments.sfm.views import (
+    SfmPreviewView,
+    SfmStandardView,
+    layout_projection,
+)
 
 SHY = SOFT_HYPHEN
 STYLES = LayeredStyleRegistry(build_layers(load_usfm_baseline(), None))
@@ -103,7 +111,7 @@ def test_preview_puts_soft_hyphens_in_hyphenating_paragraphs(tmp_path):
 
 def test_headings_stay_unhyphenated_and_so_do_notes_the_list_leaves_out(tmp_path):
     projection, _rules_ = _preview(tmp_path)
-    assert f"Understand heading" in projection.text
+    assert "Understand heading" in projection.text
     assert projection.text.count(SHY) == 4
     note_text = projection.notes[0].projection.text
     assert SHY not in note_text  # the list names `p m q1`, not `f`

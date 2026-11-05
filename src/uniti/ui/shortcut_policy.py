@@ -17,7 +17,6 @@ from uniti.app.commands import (
     ShortcutCollision,
 )
 
-
 MAX_SHORTCUT_NOTICES = 32
 MAX_SHORTCUT_TEXT = 256
 _NOTICE_REASONS = frozenset({"unknown", "invalid", "conflict"})
@@ -54,7 +53,6 @@ _UNITI_FALLBACKS = {
     "environment.minify": "",
     "environment.validate": "Ctrl+Alt+V",
     "environment.go_to": "Ctrl+Alt+G",
-    "environment.preview": "Ctrl+Alt+P",
     "environment.plain_mode": "Ctrl+Alt+T",
     "environment.inspect": "Ctrl+Alt+S",
     # Check Spelling's walk through a book's flagged words. Ctrl+Alt+<key>
@@ -323,7 +321,6 @@ def _definitions() -> tuple[CommandDefinition, ...]:
         ("environment.minify", "Minify Document", category.ENVIRONMENT, scope.WINDOW, "environment.minify"),
         ("environment.validate", "Validate Document", category.ENVIRONMENT, scope.WINDOW, "environment.validate"),
         ("environment.go_to", "Go to Environment Location…", category.ENVIRONMENT, scope.WINDOW, "environment.go_to"),
-        ("environment.preview", "Preview", category.ENVIRONMENT, scope.WINDOW, "environment.preview"),
         ("environment.plain_mode", "Plain Text Mode", category.ENVIRONMENT, scope.WINDOW, "environment.plain_mode"),
         ("environment.inspect", "Inspect at Cursor", category.ENVIRONMENT, scope.WINDOW, "environment.inspect"),
         ("spelling.next_issue", "Next Spelling Issue", category.ENVIRONMENT, scope.WINDOW, "spelling.next_issue"),

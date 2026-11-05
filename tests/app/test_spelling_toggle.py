@@ -10,10 +10,9 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
-
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
-from usfm_project_fixture import ensure_project  # noqa: E402
+from PySide6.QtWidgets import QApplication
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
 _GEN = "\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 In the beginning God created.\r\n"
 _EXO = "\\id EXO\r\n\\c 1\r\n\\p\r\n\\v 1 These are the names.\r\n"

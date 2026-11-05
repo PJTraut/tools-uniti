@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from bisect import bisect_left
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 from .byte_source import ByteSource
 from .decoder import decode_span, decode_text, iter_decoded_spans
@@ -20,7 +20,7 @@ class EditRef:
 
 
 class _EditBlock:
-    __slots__ = ("chunks", "length", "_cache")
+    __slots__ = ("_cache", "chunks", "length")
 
     def __init__(self, text: str) -> None:
         self.chunks = [text]

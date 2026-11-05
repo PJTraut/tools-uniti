@@ -713,7 +713,7 @@ class ComparePane(QWidget):
 
         if not self._changed:
             return -1
-        return self._hunk_index if self._hunk_index >= 0 else 0
+        return max(self._hunk_index, 0)
 
     def _apply_current(self, *, direction: str) -> None:
         index = self._current_hunk_index()

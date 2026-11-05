@@ -24,6 +24,15 @@ class OpenMode(StrEnum):
     HERE = "here"
 
 
+def project_file_mode() -> OpenMode | None:
+    """How a file of a project environment (SFM, in its Paratext project)
+    opens without a question: in its environment's window (field test,
+    2026-10-31). The less structured environments are asked about; None here
+    means "ask" too (the test suite's way of exercising the dialog)."""
+
+    return OpenMode.ENVIRONMENT
+
+
 def prompt_open_mode(parent: QWidget | None, path: Path, environment_label: str, count: int = 1) -> OpenMode | None:
     """Ask how to open `path` (or `count` files like it); None is Cancel."""
 
@@ -49,4 +58,4 @@ def prompt_open_mode(parent: QWidget | None, path: Path, environment_label: str,
     return None
 
 
-__all__ = ["OpenMode", "prompt_open_mode"]
+__all__ = ["OpenMode", "project_file_mode", "prompt_open_mode"]

@@ -1,12 +1,12 @@
 """Immutable, Qt-free color profiles and their atomic selection authority."""
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from importlib.resources import files
-import json
 from pathlib import Path
-import re
 from types import MappingProxyType
 
 from .atomic_json import atomic_write_json
@@ -178,6 +178,7 @@ class ThemeProfileStore:
             return payload
         try:
             from PySide6.QtGui import QColor
+
             from uniti.ui.syntax_theme import syntax_category_palette
         except ImportError:
             return payload

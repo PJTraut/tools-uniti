@@ -9,7 +9,6 @@ from typing import Literal
 
 from .byte_source import ByteSource
 
-
 EOLKind = Literal["LF", "CRLF", "CR", "MIXED", "NONE"]
 
 

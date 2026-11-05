@@ -12,11 +12,11 @@ if importlib.util.find_spec("PySide6") is None:  # pragma: no cover
     pytest.skip("PySide6 is not installed", allow_module_level=True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QRect  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import QRect
+from PySide6.QtWidgets import QApplication
 
-from uniti.app.window_layouts import ScreenSpec, WindowLayoutStore  # noqa: E402
-from uniti.ui.screen_layout_manager import ScreenLayoutManager  # noqa: E402
+from uniti.app.window_layouts import ScreenSpec, WindowLayoutStore
+from uniti.ui.screen_layout_manager import ScreenLayoutManager
 
 _APP = QApplication.instance() or QApplication([])
 

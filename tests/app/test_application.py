@@ -1,13 +1,13 @@
 import sys
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-import uniti
 
+import uniti
 from uniti.app import application
-from uniti.app.platform_policy import UnsupportedPlatformError
 from uniti.app.paths import AppPaths
+from uniti.app.platform_policy import UnsupportedPlatformError
 from uniti.app.self_check import CheckResult, SelfCheckReport
 from uniti.app.startup import (
     ExitCode,

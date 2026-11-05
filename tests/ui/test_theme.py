@@ -2,7 +2,6 @@ import os
 
 import pytest
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
@@ -93,8 +92,10 @@ def test_apply_and_active_theme_retain_both_independent_axes():
 
 def test_profile_applies_every_palette_editor_and_disabled_role():
     from dataclasses import replace
-    from PySide6.QtWidgets import QApplication
+
     from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QApplication
+
     from uniti.app.theme_profiles import packaged_profiles
     from uniti.ui.theme import build_profile_theme
     app = QApplication.instance() or QApplication([])
@@ -109,6 +110,7 @@ def test_profile_applies_every_palette_editor_and_disabled_role():
 
 def test_profile_high_contrast_overlay_retains_thresholds():
     from PySide6.QtWidgets import QApplication
+
     from uniti.app.theme_profiles import packaged_profiles
     from uniti.ui.theme import build_profile_theme, contrast_feedback
     app = QApplication.instance() or QApplication([])
@@ -121,6 +123,7 @@ def test_profile_high_contrast_overlay_retains_thresholds():
 def test_system_restores_all_platform_brushes_without_retaining_dark_links():
     from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import QApplication
+
     from uniti.ui.theme import apply_theme
 
     app = QApplication.instance() or QApplication([])

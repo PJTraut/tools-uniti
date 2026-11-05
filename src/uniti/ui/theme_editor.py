@@ -1,21 +1,38 @@
 """Draft-based global color editor; Cancel restores the exact preview snapshot."""
 from __future__ import annotations
 
-from dataclasses import replace
 import uuid
+from dataclasses import replace
 
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QApplication, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
-    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QVBoxLayout,
+    QApplication,
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
 )
 
 from uniti.app.theme_profiles import (
-    BUILTIN_IDS, COLOR_ROLES, ThemeProfileState, packaged_profiles,
+    BUILTIN_IDS,
+    COLOR_ROLES,
+    ThemeProfileState,
+    packaged_profiles,
 )
 from uniti.ui.theme import (
-    active_theme, build_profile_theme, build_theme, contrast_feedback,
-    install_theme, profile_from_spec, system_theme_palette,
+    active_theme,
+    build_profile_theme,
+    build_theme,
+    contrast_feedback,
+    install_theme,
+    profile_from_spec,
+    system_theme_palette,
 )
 
 

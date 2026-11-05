@@ -5,11 +5,12 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 import regex
-from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QInputMethodEvent
-from uniti.core.document import Document
+from PySide6.QtWidgets import QApplication
+
 from uniti.app.editor_state import EditorState
+from uniti.core.document import Document
 
 
 @pytest.fixture(scope="module")
@@ -109,8 +110,8 @@ def test_ime_utf16_replacement_deletion_and_cancel(qapp, tmp_path):
 
 
 def test_wrap_uses_shaped_grapheme_boundaries(qapp, tmp_path):
-    from uniti.ui.text_view import UNITITextView
     from uniti.ui.text_layout import ShapedWindow
+    from uniti.ui.text_view import UNITITextView
 
     text = "क्षि 中文 한국어 👩‍💻 é\tX" * 8
     p = tmp_path / "wrap"
@@ -174,8 +175,8 @@ def test_preedit_shifts_following_text_without_document_edit(qapp, tmp_path):
 
 
 def test_horizontal_progress_is_bounded_and_cached(qapp):
-    from uniti.ui.horizontal_layout import HorizontalLayouts
     from uniti.ui.font_policy import resolve_editor_font
+    from uniti.ui.horizontal_layout import HorizontalLayouts
 
     class Giant:
         reads = 0
@@ -202,9 +203,9 @@ def test_horizontal_progress_is_bounded_and_cached(qapp):
 
 
 def test_shaped_wrap_far_request_is_bounded_and_rebuild_uses_checkpoint(qapp):
+    from uniti.ui.font_policy import resolve_editor_font
     from uniti.ui.shaped_wrap import ShapedRowProvider
     from uniti.ui.wrap_index import WrappedRowIndex
-    from uniti.ui.font_policy import resolve_editor_font
 
     class Giant:
         reads = 0
@@ -240,7 +241,8 @@ def test_shaped_wrap_far_request_is_bounded_and_rebuild_uses_checkpoint(qapp):
 
 
 def test_ime_format_attribute_and_surrogate_replacement(qapp, tmp_path):
-    from PySide6.QtGui import QTextCharFormat, QColor
+    from PySide6.QtGui import QColor, QTextCharFormat
+
     from uniti.ui.text_view import UNITITextView
 
     p = tmp_path / "ime"
@@ -265,8 +267,8 @@ def test_ime_format_attribute_and_surrogate_replacement(qapp, tmp_path):
 
 
 def test_regex_highlights_utf16_after_emoji(qapp):
-    from uniti.ui.regex_input import RegexInput
     from uniti.regex.analysis import analyze_pattern
+    from uniti.ui.regex_input import RegexInput
 
     widget = RegexInput()
     widget.setPlainText("😀(中)")
@@ -279,11 +281,12 @@ def test_regex_highlights_utf16_after_emoji(qapp):
 
 
 def test_capture_row_height_contains_fallback_glyphs(qapp):
-    from PySide6.QtGui import QStandardItemModel, QStandardItem
+    from PySide6.QtGui import QStandardItem, QStandardItemModel
     from PySide6.QtWidgets import QStyleOptionViewItem
+
     from uniti.ui.capture_report_delegate import CaptureReportDelegate
-    from uniti.ui.text_layout import ShapedWindow
     from uniti.ui.font_policy import resolve_editor_font
+    from uniti.ui.text_layout import ShapedWindow
 
     text = "क्षि ক্কি 中文 한국어"
     model = QStandardItemModel()
@@ -317,7 +320,8 @@ def test_capture_row_height_contains_fallback_glyphs(qapp):
 )
 @pytest.mark.parametrize("zoom", [100, 200])
 def test_actual_fallback_ink_fits_common_row_envelope(qapp, tmp_path, sample, zoom):
-    from PySide6.QtGui import QImage, QPainter, QColor
+    from PySide6.QtGui import QColor, QImage, QPainter
+
     from uniti.ui.text_view import UNITITextView
 
     p = tmp_path / "ink"
@@ -372,8 +376,8 @@ def test_multilingual_edit_copy_exact_inspection_save_and_reopen(qapp, tmp_path)
 
 
 def test_horizontal_checkpoint_tabs_keep_global_tab_origin(qapp):
-    from uniti.ui.horizontal_layout import HorizontalLayouts
     from uniti.ui.font_policy import resolve_editor_font
+    from uniti.ui.horizontal_layout import HorizontalLayouts
 
     text = "a" * 8191 + "X\tY"
 
@@ -458,8 +462,8 @@ def test_ime_selection_attribute_uses_utf16_context(qapp, tmp_path):
 
 
 def test_narrow_shaped_wrap_keeps_first_row_when_window_has_many_rows(qapp):
-    from uniti.ui.shaped_wrap import ShapedRowProvider
     from uniti.ui.font_policy import resolve_editor_font
+    from uniti.ui.shaped_wrap import ShapedRowProvider
 
     class Text:
         def read_line_window(self, line, *, column_start, max_chars):
@@ -471,8 +475,8 @@ def test_narrow_shaped_wrap_keeps_first_row_when_window_has_many_rows(qapp):
 
 
 def test_wrap_resize_inside_latin_column_bucket_uses_exact_pixel_width(qapp, tmp_path):
-    from uniti.ui.text_view import UNITITextView
     from uniti.ui.shaped_wrap import ShapedRowProvider
+    from uniti.ui.text_view import UNITITextView
 
     p = tmp_path / "pixel-wrap"
     p.write_text("中文éकिक्षि한국어" * 80, encoding="utf-8")

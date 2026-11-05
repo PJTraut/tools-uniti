@@ -91,7 +91,7 @@ def test_stale_prepared_save_cannot_replace_destination(tmp_path: Path):
 def test_cancelled_preparation_removes_temp_and_preserves_target(tmp_path: Path):
     source = tmp_path / "cancel.txt"
     target = tmp_path / "target.txt"
-    source.write_bytes((b"source text\n" * 100_000))
+    source.write_bytes(b"source text\n" * 100_000)
     target.write_bytes(b"original")
 
     with Document.open(source) as document:

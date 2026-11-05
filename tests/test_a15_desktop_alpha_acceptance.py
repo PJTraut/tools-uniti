@@ -6,8 +6,8 @@ import pytest
 
 from uniti.app.editor_state import EditorState
 from uniti.core.document import Document
-from uniti.regex.replace import replace_all
 from uniti.regex.engine import compile_pattern
+from uniti.regex.replace import replace_all
 
 
 @pytest.mark.parametrize(

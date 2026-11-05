@@ -10,7 +10,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import unicodedataplus as unicodedata
-
 from PySide6.QtCore import (
     QAbstractListModel,
     QEvent,

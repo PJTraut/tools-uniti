@@ -19,7 +19,6 @@ import bisect
 from dataclasses import dataclass
 from enum import StrEnum
 
-
 # Marker of the zero-width HIDDEN segment holding the `\r` of a CRLF.
 EOL_MARKER = "eol"
 

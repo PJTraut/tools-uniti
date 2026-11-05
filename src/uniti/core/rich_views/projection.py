@@ -56,7 +56,7 @@ class NoteSection:
 
     key: str  # note marker, e.g. "f", "x"
     label: str  # display label, plural, e.g. "Footnotes", "Cross References"
-    projection: "Projection"
+    projection: Projection
 
 
 @dataclass(frozen=True, slots=True)

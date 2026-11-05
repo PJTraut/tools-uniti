@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
-import time
 
 from PySide6.QtCore import QObject, Qt, Signal
 
+from uniti.app.dogfood import Durability, Operation, Outcome
+from uniti.core.durability import DurabilityError, DurabilityLevel, DurabilityResult
+from uniti.core.file_identity import ExternalFileChangedError
 from uniti.core.save_job import (
     DocumentSaveRequest,
     PreparedDocumentSave,
     prepare_document_save,
 )
 from uniti.core.text_format import OutputFormat
-from uniti.app.dogfood import Durability, Operation, Outcome
-from uniti.core.durability import DurabilityError, DurabilityLevel, DurabilityResult
-from uniti.core.file_identity import ExternalFileChangedError
 from uniti.resources import ResourceManager, TaskHandle, TaskKind, TaskSpec
 from uniti.ui.task_bridge import TaskBridge
 

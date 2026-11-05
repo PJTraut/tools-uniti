@@ -5,10 +5,11 @@ from __future__ import annotations
 import itertools
 import threading
 from collections import OrderedDict, deque
+from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Any, Callable
+from typing import Any
 
 from .cancel import CancellationToken
 

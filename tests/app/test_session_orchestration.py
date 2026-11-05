@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-import time
 import threading
+import time
 from concurrent.futures import Future
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -11,37 +11,36 @@ from pathlib import Path
 
 import pytest
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
+from usfm_project_fixture import ensure_project
 
-from usfm_project_fixture import ensure_project  # noqa: E402
+from uniti.app.service import UNITIService
 from uniti.app.session import (
     SESSION_SCHEMA,
-    DocumentRecord,
     DockReturnRecord,
+    DocumentRecord,
     FindReplaceHistoryPack,
     FindReplaceManifestRecord,
     HistoryPack,
     InputHistoryRecord,
     InputStateRecord,
     PaneRecord,
-    SessionManifest,
     SessionLoadSource,
+    SessionManifest,
     SessionSnapshot,
     ViewRecord,
     WindowRecord,
     estimate_input_history_bytes,
 )
-from uniti.app.session_store import SessionStore
 from uniti.app.session_runtime import merge_find_replace_history
-from uniti.app.service import UNITIService
+from uniti.app.session_store import SessionStore
 from uniti.app.settings import SettingsStore
-from uniti.core.file_identity import FileIdentity, SavedFileStamp
 from uniti.core.durability import DurabilityError, DurabilityLevel, DurabilityResult
+from uniti.core.file_identity import FileIdentity, SavedFileStamp
 from uniti.resources import ResourceManager, TaskKind, WorkPriority
 
 
@@ -1394,7 +1393,7 @@ def test_environment_pin_and_plain_text_mode_round_trip_through_a_session(
     assert window._environment.environment_key_for(view.document) == "usfm"
     assert view.environment_plain_mode is True
     assert view.syntax_profile.key == "plain_text"
-    assert window._environment.menu.title() == "USFM (Plain Text)"
+    assert window._environment.menu.title() == "SFM (Plain Text)"
 
     window._environment.set_plain_mode(False)
     assert view.syntax_profile.key == "usfm"
@@ -1475,7 +1474,7 @@ def test_restored_session_rebuilds_its_environment_window(qapp, tmp_path: Path):
 
 
 def test_restored_session_keeps_each_environment_windows_slot(qapp, tmp_path: Path):
-    """Round 3 T3: a window's slot ("SFM-2" is 1) comes back with it."""
+    """Round 3 T3: a window's slot ("SFM/2" is 1) comes back with it."""
 
     store, loaded, _paths = _published_session(tmp_path, document_count=1)
     ensure_project(tmp_path)  # USFM assumes a project (round 3 T1)
@@ -1497,7 +1496,7 @@ def test_restored_session_keeps_each_environment_windows_slot(qapp, tmp_path: Pa
     )
     window = service.windows.windows[0]
     assert window.environment_window == ("usfm", 1)
-    assert window.environment_window_name() == "SFM-2"
+    assert window.environment_window_name() == "SFM/2"
     assert not window._chapter_view.enabled
     service.request_quit(lambda _entry: None)
     qapp.processEvents()

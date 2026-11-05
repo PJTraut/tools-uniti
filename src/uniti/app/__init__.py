@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from importlib import import_module
 
-
 _EXPORTS = {
     "DocumentEntry": (".document_registry", "DocumentEntry"),
     "DocumentRegistry": (".document_registry", "DocumentRegistry"),

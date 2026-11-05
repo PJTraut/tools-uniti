@@ -414,7 +414,10 @@ class SessionController:
         self._generation = manifest.generation
         self._created_at = manifest.created_at
         self._updated_at = manifest.updated_at
-        from .session_runtime import environment_window_identity, environment_window_shows_one_chapter
+        from .session_runtime import (
+            environment_window_identity,
+            environment_window_shows_one_chapter,
+        )
 
         for record in manifest.windows:
             window = existing_windows.get(record.window_id)

@@ -10,7 +10,7 @@ def profiles():
 
 
 def test_packaged_complete_immutable_and_round_trip(tmp_path):
-    from uniti.app.theme_profiles import BUILTIN_IDS, ThemeProfileStore, COLOR_ROLES
+    from uniti.app.theme_profiles import BUILTIN_IDS, COLOR_ROLES, ThemeProfileStore
     packaged = {p.id: p for p in profiles()}
     paper, slate = packaged['Paper'], packaged['Slate']
     assert paper.colors['editor.base'] == '#fbf7ef'
@@ -33,7 +33,7 @@ def test_schema_1_profile_migrates_by_freezing_todays_syntax_colors(tmp_path):
     """BF-063: a file written before syntax colors existed must not be
     dropped just because it predates `syntax.*` roles entirely.
     """
-    from uniti.app.theme_profiles import ThemeProfileStore, THEME_SCHEMA
+    from uniti.app.theme_profiles import THEME_SCHEMA, ThemeProfileStore
 
     paper = profiles()[0]
     legacy_colors = {k: v for k, v in paper.colors.items() if not k.startswith('syntax.')}
@@ -152,7 +152,11 @@ def test_atomic_replace_failure_preserves_real_file_and_cleans_temp(tmp_path, mo
 def test_schema_2_profile_gets_spelling_colors_by_its_background(tmp_path):
     import json
 
-    from uniti.app.theme_profiles import COLOR_ROLES, ThemeProfileStore, packaged_profiles
+    from uniti.app.theme_profiles import (
+        COLOR_ROLES,
+        ThemeProfileStore,
+        packaged_profiles,
+    )
 
     packaged = packaged_profiles()
     light = next(p for p in packaged if p.base_mode == 'Light')

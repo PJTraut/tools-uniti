@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtGui import QKeySequence
@@ -113,7 +112,6 @@ def test_standard_commands_use_qt_resolved_portable_sequences(qapp):
         "environment.minify",
         "environment.validate",
         "environment.go_to",
-        "environment.preview",
         "environment.plain_mode",
         "environment.inspect",
         "spelling.next_issue",

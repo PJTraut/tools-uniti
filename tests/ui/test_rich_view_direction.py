@@ -12,16 +12,16 @@ if importlib.util.find_spec("PySide6") is None:  # pragma: no cover
     pytest.skip("PySide6 is not installed", allow_module_level=True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtGui import QFont, QPalette, QTextDocument  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont, QPalette, QTextDocument
+from PySide6.QtWidgets import QApplication
 
-from uniti.core.document import Document  # noqa: E402
-from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers  # noqa: E402
-from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline  # noqa: E402
-from uniti.core.environments.sfm.views import SfmPreviewView, SfmStandardView  # noqa: E402
-from uniti.ui.rich_view import PROJECTIONS, RichPalette, block_format, render_projection  # noqa: E402
-from uniti.ui.rich_view_controller import RichViewController  # noqa: E402
+from uniti.core.document import Document
+from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
+from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
+from uniti.core.environments.sfm.views import SfmPreviewView, SfmStandardView
+from uniti.ui.rich_view import PROJECTIONS, RichPalette, block_format, render_projection
+from uniti.ui.rich_view_controller import RichViewController
 
 _APP = QApplication.instance() or QApplication([])
 STYLES = LayeredStyleRegistry(build_layers(load_usfm_baseline(), None))
@@ -134,16 +134,16 @@ def test_no_project_or_no_setting_leaves_the_direction_to_the_text(tmp_path):
 
 # --- Standard's tags in a right-to-left paragraph (W4) ---------------------------
 
-from pathlib import Path  # noqa: E402
+from pathlib import Path
 
-from PySide6.QtTest import QTest  # noqa: E402
+from PySide6.QtTest import QTest
+from usfm_project_fixture import in_project
 
-from usfm_project_fixture import in_project  # noqa: E402
-from uniti.app.settings import SettingsStore  # noqa: E402
-from uniti.core.environments.sfm.sty import parse_raw_stylesheet  # noqa: E402
-from uniti.core.environments.sfm.style_layers import StyleLayer, StyleOrigin  # noqa: E402
-from uniti.core.rich_views.source_map import LRI, PDI, RLI  # noqa: E402
-from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
+from uniti.app.settings import SettingsStore
+from uniti.core.environments.sfm.sty import parse_raw_stylesheet
+from uniti.core.environments.sfm.style_layers import StyleLayer, StyleOrigin
+from uniti.core.rich_views.source_map import LRI, PDI, RLI
+from uniti.ui.main_window import UNITIMainWindow
 
 TAGGED = "\\p \\v 1 שלום \\nd יהוה\\nd* עולם\n"
 

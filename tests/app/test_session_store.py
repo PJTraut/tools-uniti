@@ -20,8 +20,8 @@ from uniti.app.session import (
     HistoryPack,
     InputStateRecord,
     PaneRecord,
-    SessionManifest,
     SessionLoadSource,
+    SessionManifest,
     SessionSnapshot,
     UnsupportedSessionSchema,
     ViewRecord,
@@ -37,14 +37,13 @@ from uniti.app.session_store import (
     SessionStore,
     plan_saved_history_admission,
 )
-from uniti.core.file_identity import FileIdentity, SavedFileStamp
-from uniti.core.history import EditHistory, EditOperation, EditTransaction
 from uniti.core.durability import (
     DurabilityError,
     DurabilityLevel,
     DurabilityResult,
 )
-
+from uniti.core.file_identity import FileIdentity, SavedFileStamp
+from uniti.core.history import EditHistory, EditOperation, EditTransaction
 
 NOW = datetime(2026, 9, 4, 10, tzinfo=UTC)
 

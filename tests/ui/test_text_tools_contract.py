@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-
 MAIN = Path("src/uniti/ui/main_window.py")
 STATUS = Path("src/uniti/ui/status_bar.py")
 INSPECTOR = Path("src/uniti/ui/character_inspector.py")
@@ -35,7 +34,7 @@ def test_status_bar_reports_saved_and_pending_exact_text_format(tmp_path: Path):
     from uniti.ui.main_window import UNITIMainWindow
 
     source = tmp_path / "status.txt"
-    source.write_bytes("one\r\ntwo\r\n".encode("utf-8"))
+    source.write_bytes(b"one\r\ntwo\r\n")
     app = QApplication.instance() or QApplication([])
     window = UNITIMainWindow()
     view = window.open_path(source)

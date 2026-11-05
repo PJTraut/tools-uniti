@@ -11,12 +11,12 @@ from uniti.app.session import LoadedSession
 from uniti.app.setup_state import SetupStateStore
 from uniti.app.startup import (
     ExitCode,
+    StartupCompletion,
     StartupContext,
     StartupCoordinator,
     StartupFailure,
     StartupLog,
     StartupPhase,
-    StartupCompletion,
 )
 from uniti.resources import ResourceManager
 

@@ -30,11 +30,9 @@ def marker_name(token_text: str) -> str:
     ``qt-s``, ``\\th1-2`` → ``th1-2`` (see `views._cell_style_marker`),
     ``\\*`` → ``""``."""
 
-    name = token_text[1:] if token_text.startswith("\\") else token_text
-    if name.startswith("+"):
-        name = name[1:]
-    if name.endswith("*"):
-        name = name[:-1]
+    name = token_text.removeprefix("\\")
+    name = name.removeprefix("+")
+    name = name.removesuffix("*")
     return name
 
 

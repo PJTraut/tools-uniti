@@ -4,7 +4,6 @@ from datetime import date
 from pathlib import Path
 
 import uniti
-
 from uniti.app.diagnostics import diagnostics_snapshot
 from uniti.app.dogfood_store import StoreFailureCode, StoreStatus
 from uniti.core.document import Document

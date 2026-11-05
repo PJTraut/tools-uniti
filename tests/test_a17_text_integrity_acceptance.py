@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
-from pathlib import Path
 import tomllib
-
-from packaging.version import Version
+from pathlib import Path
 
 import pytest
+from packaging.version import Version
 
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
@@ -164,7 +163,7 @@ def test_a17_malformed_conversion_is_blocked_without_touching_disk(tmp_path: Pat
 
 def test_a17_windows_1252_rejects_cyrillic_without_touching_disk(tmp_path: Path):
     path = tmp_path / "cyrillic.txt"
-    original = "Привет\n".encode("utf-8")
+    original = "Привет\n".encode()
     path.write_bytes(original)
 
     with Document.open(path, profile=encoding_profile("utf-8")) as document:

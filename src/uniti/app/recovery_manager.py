@@ -14,16 +14,6 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
-from .phase_control import (
-    NO_OP_PHASE_OBSERVER,
-    OperationId,
-    OwnedObjectCategory,
-    PhaseBoundary,
-    PhaseId,
-    PhaseObserver,
-    emit_phase,
-)
-from .dogfood import Durability, Operation, Outcome
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.durability import (
@@ -60,8 +50,17 @@ from uniti.core.recovery import (
 from uniti.resources import ResourceManager
 from uniti.resources.tasks import TaskKind, TaskSpec
 
+from .dogfood import Durability, Operation, Outcome
+from .phase_control import (
+    NO_OP_PHASE_OBSERVER,
+    OperationId,
+    OwnedObjectCategory,
+    PhaseBoundary,
+    PhaseId,
+    PhaseObserver,
+    emit_phase,
+)
 from .platform_policy import normalize_native_path
-
 
 RECOVERY_COMPACT_BYTES = 64 << 20
 RECOVERY_FREE_SPACE_RESERVE = 512 << 20

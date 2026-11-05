@@ -8,10 +8,14 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
+from test_service import _desktop_service, _stop_desktop_service
 
-from uniti.app.recent_projects import MAX_RECENT_PROJECTS, RecentProject, RecentProjectsStore  # noqa: E402
-from uniti.core.environments.sfm.paratext_project import PARATEXT_BOOKS  # noqa: E402
+from uniti.app.recent_projects import (
+    MAX_RECENT_PROJECTS,
+    RecentProject,
+    RecentProjectsStore,
+)
+from uniti.core.environments.sfm.paratext_project import PARATEXT_BOOKS
 
 
 def _project(folder: Path, name: str = "NIV11", books: tuple[str, ...] = ("GEN", "EXO")) -> Path:

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import platform
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from pathlib import Path
-from typing import Mapping
 
 import uniti
 from uniti.resources import (

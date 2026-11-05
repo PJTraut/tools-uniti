@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import StrEnum
 import ntpath
 import os
-from pathlib import Path
 import sys
-from typing import Mapping
+from collections.abc import Mapping
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path
 
 
 class PlatformFamily(StrEnum):

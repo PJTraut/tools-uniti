@@ -22,7 +22,6 @@ from .instance_protocol import (
     encode_request,
 )
 
-
 _FRAME_HEADER_BYTES = 4
 _MAX_FRAME_BYTES = _FRAME_HEADER_BYTES + MAX_MESSAGE_BYTES
 

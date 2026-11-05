@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import sys
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 from benchmarks.corpus import CorpusKind, CorpusSpec, generate_corpus

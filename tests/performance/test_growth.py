@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from benchmarks.models import ResultState
 from benchmarks.growth import select_growth_windows
+from benchmarks.models import ResultState
 from benchmarks.sustained_evaluate import evaluate_sustained_family
 from benchmarks.sustained_models import (
     ExecutionClass,

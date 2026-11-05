@@ -84,7 +84,7 @@ class ScreenSpec:
         return dict(name=self.name, geometry=list(self.geometry), scale=self.scale)
 
     @classmethod
-    def from_payload(cls, payload: object) -> "ScreenSpec":
+    def from_payload(cls, payload: object) -> ScreenSpec:
         if not isinstance(payload, dict) or set(payload) != {"name", "geometry", "scale"}:
             raise ValueError("invalid screen entry")
         return cls(payload["name"], _geometry(payload["geometry"]), payload["scale"])
@@ -119,7 +119,7 @@ class Placement:
         return dict(geometry=list(self.geometry), state=self.state)
 
     @classmethod
-    def from_payload(cls, payload: object) -> "Placement":
+    def from_payload(cls, payload: object) -> Placement:
         if not isinstance(payload, dict) or set(payload) != {"geometry", "state"}:
             raise ValueError("invalid window placement")
         return cls(_geometry(payload["geometry"]), payload["state"])
@@ -168,7 +168,7 @@ class Layout:
         )
 
     @classmethod
-    def from_payload(cls, payload: object) -> "Layout":
+    def from_payload(cls, payload: object) -> Layout:
         fields = {"signature", "serial", "screens", "windows", "find", "toggles"}
         if not isinstance(payload, dict) or set(payload) != fields:
             raise ValueError("invalid layout entry")
@@ -208,7 +208,7 @@ class LayoutBook:
     def serial(self) -> int:
         return max((item.serial for item in self.layouts), default=0)
 
-    def with_layout(self, layout: Layout) -> "LayoutBook":
+    def with_layout(self, layout: Layout) -> LayoutBook:
         """Record `layout` as the newest for its configuration and make that
         configuration the active one, dropping the oldest layouts past
         `MAX_LAYOUTS`."""
@@ -219,7 +219,7 @@ class LayoutBook:
         kept.sort(key=lambda item: item.serial)
         return LayoutBook(tuple(kept[-MAX_LAYOUTS:]), layout.signature)
 
-    def with_active(self, signature: str | None) -> "LayoutBook":
+    def with_active(self, signature: str | None) -> LayoutBook:
         return replace(self, active=signature)
 
 
@@ -270,9 +270,9 @@ class WindowLayoutStore:
 
 
 __all__ = [
+    "MAX_LAYOUTS",
     "Layout",
     "LayoutBook",
-    "MAX_LAYOUTS",
     "Placement",
     "ScreenSpec",
     "WindowLayoutStore",

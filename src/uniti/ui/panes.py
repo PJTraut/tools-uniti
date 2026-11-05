@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
 import uuid
+from dataclasses import dataclass
 
 from PySide6.QtCore import QPoint, QRect, QSignalBlocker, Qt, Signal
 from PySide6.QtGui import QColor, QMouseEvent, QPainter
@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
 )
 
 from uniti.app.session import MAX_LEAF_PANES, MAX_VIEWS, PaneRecord
-
 
 _PANE_ID_PROPERTY = "unitiPaneId"
 _VIEW_ID_PROPERTY = "unitiViewId"
@@ -66,7 +65,7 @@ class _DetachableTabBar(QTabBar):
     def tab_tint(self, view_id: str) -> str | None:
         return self._tints.get(view_id)
 
-    def paintEvent(self, event) -> None:  # noqa: N802 - Qt override
+    def paintEvent(self, event) -> None:
         super().paintEvent(event)
         if not self._tints:
             return

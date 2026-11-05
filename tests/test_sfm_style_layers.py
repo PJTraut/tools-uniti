@@ -4,9 +4,14 @@ from pathlib import Path
 
 from uniti.core.document import Document
 from uniti.core.environment import EnvironmentContext
-from uniti.core.environment_commands import ShowMessage, ShowStyleInspector, environment_commands
+from uniti.core.environment_commands import (
+    ShowMessage,
+    ShowStyleInspector,
+    environment_commands,
+)
 from uniti.core.environments import UsfmEnvironment
 from uniti.core.environments.sfm.inspection import inspect_marker, marker_at
+from uniti.core.environments.sfm.sty import parse_raw_stylesheet
 from uniti.core.environments.sfm.style_layers import (
     MAX_STYLESHEET_BYTES,
     LayeredStyleRegistry,
@@ -16,7 +21,6 @@ from uniti.core.environments.sfm.style_layers import (
     discover_project_stylesheets,
     load_stylesheet_file,
 )
-from uniti.core.environments.sfm.sty import parse_raw_stylesheet
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
 
 _CUSTOM = "\\Marker q1\n\\LeftMargin 1.0\n\\FontSize 11\n\\Marker zcustom\n\\Name zcustom - Project marker\n\\StyleType Character\n\\Endmarker zcustom*\n"

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import Protocol
 
 from uniti.app.phase_control import (
     NO_OP_PHASE_OBSERVER,

@@ -23,7 +23,13 @@ from __future__ import annotations
 
 from uniti.core.environment_findings import EnvironmentFinding, FindingSeverity
 
-from .markers import is_closing, is_milestone, is_milestone_close, is_nested, marker_name
+from .markers import (
+    is_closing,
+    is_milestone,
+    is_milestone_close,
+    is_nested,
+    marker_name,
+)
 from .nodes import SfmNode, SfmNodeKind
 from .parser import parse_sfm
 from .sty import StyleRegistry

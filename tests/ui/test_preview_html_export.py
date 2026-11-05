@@ -12,11 +12,11 @@ if importlib.util.find_spec("PySide6") is None:  # pragma: no cover
     pytest.skip("PySide6 is not installed", allow_module_level=True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication
 
-from uniti.app.settings import SettingsStore  # noqa: E402
-from uniti.core.environments.sfm.stylesheet_support import EXPORT_PREVIEW_HTML_FEATURE  # noqa: E402
-from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
+from uniti.app.settings import SettingsStore
+from uniti.core.environments.sfm.stylesheet_support import EXPORT_PREVIEW_HTML_FEATURE
+from uniti.ui.main_window import UNITIMainWindow
 
 BOOK = (
     "\\id JHN\n\\c 1\n\\p\n\\v 1 שלום\\f + \\cat People\\cat* \\ft hidden\\f* עולם\\f + \\ft shown\\f*\n"

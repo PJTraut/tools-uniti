@@ -79,7 +79,7 @@ def test_resource_recovery_scenario_holds_on_a_busy_host(tmp_path: Path, monkeyp
 
     import time
 
-    import benchmarks.scenarios as scenarios
+    from benchmarks import scenarios
     from uniti.resources import ResourceSnapshot, ResourceState
 
     class BusyAtStart(scenarios.ResourceManager):

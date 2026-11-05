@@ -29,10 +29,17 @@ from PySide6.QtWidgets import (
 )
 
 from uniti.core.environment_commands import ShowUndefinedMarkup
-from uniti.core.environments.configuration import CUSTOM_STY_TEMPLATE, uniti_rules_template
+from uniti.core.environments.configuration import (
+    CUSTOM_STY_TEMPLATE,
+    uniti_rules_template,
+)
 from uniti.core.environments.sfm.paratext_project import project_for_file
 from uniti.core.environments.sfm.references import ReferenceMap
-from uniti.core.environments.sfm.undefined import definition_stubs, location_label, report_text
+from uniti.core.environments.sfm.undefined import (
+    definition_stubs,
+    location_label,
+    report_text,
+)
 from uniti.core.environments.user_config import usfm_user_rules_path
 
 if TYPE_CHECKING:
@@ -44,7 +51,7 @@ _MARKER_ROLE = Qt.ItemDataRole.UserRole + 1
 
 
 class UndefinedMarkupDialog(QDialog):
-    def __init__(self, window: "UNITIMainWindow", view: "UNITITextView", result: ShowUndefinedMarkup) -> None:
+    def __init__(self, window: UNITIMainWindow, view: UNITITextView, result: ShowUndefinedMarkup) -> None:
         super().__init__(window)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self._window = window

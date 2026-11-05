@@ -5,14 +5,6 @@ from dataclasses import replace
 import pytest
 
 from benchmarks.evaluate import evaluate_scenario
-from benchmarks.sustained_evaluate import evaluate_sustained_suite
-from benchmarks.sustained_models import (
-    ExecutionClass,
-    ResourceCheckpoint,
-    SustainedEvaluation,
-    SustainedFamilyResult,
-    SustainedSuiteResult,
-)
 from benchmarks.models import (
     MetricSample,
     ResultState,
@@ -21,6 +13,14 @@ from benchmarks.models import (
     SuiteResult,
 )
 from benchmarks.report import render_human
+from benchmarks.sustained_evaluate import evaluate_sustained_suite
+from benchmarks.sustained_models import (
+    ExecutionClass,
+    ResourceCheckpoint,
+    SustainedEvaluation,
+    SustainedFamilyResult,
+    SustainedSuiteResult,
+)
 from uniti.resources.policy import load_performance_policy
 
 

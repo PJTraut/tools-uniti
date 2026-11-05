@@ -8,15 +8,15 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication
 
-from uniti.app.editor_state import EditorState  # noqa: E402
-from uniti.core.document import Document  # noqa: E402
-from uniti.core.environments.sfm.spellcheck import CheckContext, SpellingCache  # noqa: E402
-from uniti.core.environments.sfm.spelling import SpellingList, SpellingStatusData  # noqa: E402
-from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers  # noqa: E402
-from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline  # noqa: E402
-from uniti.ui.text_view import UNITITextView  # noqa: E402
+from uniti.app.editor_state import EditorState
+from uniti.core.document import Document
+from uniti.core.environments.sfm.spellcheck import CheckContext, SpellingCache
+from uniti.core.environments.sfm.spelling import SpellingList, SpellingStatusData
+from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
+from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
+from uniti.ui.text_view import UNITITextView
 
 _BOOK = "\\id GEN\n\\p\n\\v 1 fine bad zzzz fine\n\\v 2 fine fine\n"
 
@@ -129,7 +129,12 @@ def test_a_wrapped_and_scrolled_view_still_underlines(tmp_path: Path, app):
 
 def test_spelling_theme_roles_exist_in_every_theme_and_pass_contrast(app):
     from uniti.app.theme_profiles import packaged_profiles
-    from uniti.ui.theme import THEME_CONTRASTS, THEME_MODES, build_theme, contrast_feedback
+    from uniti.ui.theme import (
+        THEME_CONTRASTS,
+        THEME_MODES,
+        build_theme,
+        contrast_feedback,
+    )
 
     for profile in packaged_profiles():
         assert {"editor.spelling_wrong", "editor.spelling_unknown"} <= set(profile.colors)

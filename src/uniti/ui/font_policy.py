@@ -16,13 +16,11 @@ from PySide6.QtGui import (
     QGuiApplication,
 )
 
-from uniti.ui.bundled_fonts import register_bundled_fonts, ordered_families
-
 from uniti.app.platform_policy import (
     PlatformFamily,
     classify_platform,
 )
-
+from uniti.ui.bundled_fonts import ordered_families, register_bundled_fonts
 
 _PREFERENCES = {
     PlatformFamily.MACOS: ("Menlo", "Monaco"),

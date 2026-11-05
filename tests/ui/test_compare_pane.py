@@ -240,7 +240,7 @@ def test_too_large_a_document_is_reported_instead_of_diffed(
     _require_qt()
     from PySide6.QtWidgets import QApplication
 
-    import uniti.ui.compare_pane as compare_pane
+    from uniti.ui import compare_pane
 
     monkeypatch.setattr(compare_pane, "MAX_COMPARE_CHARS", 4)
     app = QApplication.instance() or QApplication([])
@@ -378,9 +378,9 @@ def test_applying_a_hunk_updates_an_ordinary_tab_on_the_same_document(
     _require_qt()
     from PySide6.QtWidgets import QApplication
 
+    from uniti.app.editor_state import EditorState
     from uniti.ui.compare_pane import ComparePane
     from uniti.ui.text_view import UNITITextView
-    from uniti.app.editor_state import EditorState
 
     app = QApplication.instance() or QApplication([])
     with _open(tmp_path / "a.txt", "alpha\nbeta") as left, _open(
@@ -528,12 +528,12 @@ def test_cross_pane_marker_line_gets_a_distinct_background_tint(tmp_path: Path):
     _require_qt()
     from PySide6.QtWidgets import QApplication
 
+    from uniti.core.text_diff import HunkKind
     from uniti.ui.compare_pane import (
         _CROSS_PANE_CURRENT_LINE_COLOR,
         _HUNK_COLORS,
         ComparePane,
     )
-    from uniti.core.text_diff import HunkKind
 
     app = QApplication.instance() or QApplication([])
     left_text = "\n".join(["same 0", "same 1", "same 2", "same 3"])
@@ -614,7 +614,7 @@ def test_a_changed_line_highlights_only_the_differing_character_span(
     _require_qt()
     from PySide6.QtWidgets import QApplication
 
-    from uniti.ui.compare_pane import ComparePane, _INTRA_LINE_CHANGE_COLOR
+    from uniti.ui.compare_pane import _INTRA_LINE_CHANGE_COLOR, ComparePane
 
     app = QApplication.instance() or QApplication([])
     with _open(tmp_path / "a.txt", "cat") as left, _open(

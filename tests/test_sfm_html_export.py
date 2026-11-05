@@ -10,7 +10,12 @@ import pytest
 from uniti.core.environments.sfm.html_export import export_preview_html
 from uniti.core.environments.sfm.hyphenation import SOFT_HYPHEN, HyphenationRules
 from uniti.core.environments.sfm.sty import parse_raw_stylesheet
-from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, StyleLayer, StyleOrigin, build_layers
+from uniti.core.environments.sfm.style_layers import (
+    LayeredStyleRegistry,
+    StyleLayer,
+    StyleOrigin,
+    build_layers,
+)
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
 from uniti.core.environments.sfm.views import SfmPreviewView, body_font_size
 

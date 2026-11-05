@@ -24,16 +24,6 @@ from .policy import (
     classify_resource_state,
     load_performance_policy,
 )
-from .telemetry import (
-    HostResourceProfile,
-    PlatformIdentity,
-    ResourceSampler,
-    ResourceSnapshot,
-    current_process_rss_bytes,
-    peak_process_rss_bytes,
-    probe_host_profile,
-    probe_platform_identity,
-)
 from .tasks import (
     LatestTaskSlot,
     TaskAdmissionError,
@@ -47,6 +37,16 @@ from .tasks import (
     TaskState,
     TaskSystemSnapshot,
 )
+from .telemetry import (
+    HostResourceProfile,
+    PlatformIdentity,
+    ResourceSampler,
+    ResourceSnapshot,
+    current_process_rss_bytes,
+    peak_process_rss_bytes,
+    probe_host_profile,
+    probe_platform_identity,
+)
 from .workers import PriorityWorkerPool, WorkPriority
 
 __all__ = [
@@ -57,20 +57,19 @@ __all__ = [
     "GateLimit",
     "HostRequirement",
     "HostResourceProfile",
-    "PlatformIdentity",
-    "MemorySnapshot",
     "LatestTaskSlot",
+    "MemorySnapshot",
     "PerformancePolicy",
-    "PressureState",
+    "PlatformIdentity",
     "PressureLimits",
-    "ResourceManager",
-    "ResourceStatus",
+    "PressureState",
+    "PriorityWorkerPool",
     "ResourceLimits",
+    "ResourceManager",
     "ResourceSampler",
     "ResourceSnapshot",
     "ResourceState",
-    "PriorityWorkerPool",
-    "TierPolicy",
+    "ResourceStatus",
     "TaskAdmissionError",
     "TaskContext",
     "TaskCoordinator",
@@ -81,6 +80,7 @@ __all__ = [
     "TaskSpec",
     "TaskState",
     "TaskSystemSnapshot",
+    "TierPolicy",
     "WorkCancelled",
     "WorkPriority",
     "automatic_cache_target",
@@ -91,7 +91,7 @@ __all__ = [
     "peak_process_rss_bytes",
     "pressure_state",
     "probe_host_profile",
-    "probe_platform_identity",
     "probe_memory",
+    "probe_platform_identity",
     "release_unused_heap_pages",
 ]

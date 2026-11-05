@@ -12,7 +12,12 @@ from uniti.bootstrap.discovery import (
     runtime_python,
     validate_source_root,
 )
-from uniti.bootstrap.model import BootstrapError, BootstrapMode, BootstrapRequest, HostPython
+from uniti.bootstrap.model import (
+    BootstrapError,
+    BootstrapMode,
+    BootstrapRequest,
+    HostPython,
+)
 
 
 def _identity(command: tuple[str, ...], version: tuple[int, int, int], executable: str):

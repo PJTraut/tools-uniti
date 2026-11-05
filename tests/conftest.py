@@ -30,6 +30,7 @@ def _open_files_here_without_asking(monkeypatch):
     from uniti.ui import open_mode
 
     monkeypatch.setattr(open_mode, "prompt_open_mode", lambda *args, **kwargs: open_mode.OpenMode.HERE)
+    monkeypatch.setattr(open_mode, "project_file_mode", lambda: open_mode.OpenMode.HERE)
 
 
 @pytest.fixture(autouse=True)

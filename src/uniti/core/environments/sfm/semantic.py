@@ -10,7 +10,13 @@ from collections.abc import Callable
 
 from uniti.core.rich_views.editing import EditPlan, EditRejected
 
-from .markers import NOTE_MARKERS, is_closing, is_milestone, is_milestone_close, marker_name
+from .markers import (
+    NOTE_MARKERS,
+    is_closing,
+    is_milestone,
+    is_milestone_close,
+    marker_name,
+)
 from .nodes import SfmNode, SfmNodeKind
 from .parser import parse_sfm
 from .sty import StyleRegistry

@@ -7,7 +7,6 @@ from pathlib import Path
 from packaging.version import Version
 
 import uniti
-
 from uniti.app.paths import AppPaths
 from uniti.app.self_check import CheckStatus, SelfCheckRunner
 from uniti.resources.policy import load_performance_policy

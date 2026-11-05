@@ -10,7 +10,6 @@ makes only the changed lines be checked again. Qt-free.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -263,8 +262,7 @@ class SpellingCache:
             if paragraph is not None:
                 break
             first -= 1
-        if first < 0:
-            first = 0
+        first = max(first, 0)
         state = START
         for line in range(first, number):
             state = self._check(self._line_text(line), state)[1]
@@ -276,7 +274,7 @@ class SpellingCache:
         state = self.line_start_state(number)
         return self._check(self._line_text(number), state)[0]
 
-    def book_spans(self) -> "BookSpans":
+    def book_spans(self) -> BookSpans:
         """Every flagged word of the document, in document offsets, sorted."""
 
         document = self._document
@@ -319,11 +317,11 @@ class BookSpans:
 
 
 __all__ = [
+    "START",
+    "WORD_RE",
     "BookSpans",
     "CheckContext",
     "LineState",
-    "START",
-    "WORD_RE",
     "Span",
     "SpellingCache",
     "check_line",

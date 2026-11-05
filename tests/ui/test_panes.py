@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 PySide6 = pytest.importorskip("PySide6")

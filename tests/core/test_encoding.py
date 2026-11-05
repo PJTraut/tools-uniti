@@ -19,7 +19,7 @@ def test_utf8_bom_is_authoritative(tmp_path: Path):
 
 
 def test_valid_utf8_without_bom_is_detected(tmp_path: Path):
-    info = detect(tmp_path, "café 世界".encode("utf-8"))
+    info = detect(tmp_path, "café 世界".encode())
     assert info.detected == "utf-8"
     assert info.bom is None
     assert info.confidence >= 0.95
@@ -60,7 +60,7 @@ def test_utf16be_without_bom_uses_null_structure(tmp_path: Path):
 
 def test_utf8_sampling_tolerates_multibyte_character_at_sample_boundary(tmp_path: Path):
     path = tmp_path / "sample-boundary.txt"
-    payload = b"A" * 11 + "é".encode("utf-8") + b"B" * 19
+    payload = b"A" * 11 + "é".encode() + b"B" * 19
     path.write_bytes(payload)
     with ByteSource.open(path) as source:
         info = detect_encoding(source, sample_size=8)

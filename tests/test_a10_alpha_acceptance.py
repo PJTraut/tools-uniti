@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from uniti.app.sparse import enable_sparse_file
 from uniti.app.smoke import run_alpha_smoke
+from uniti.app.sparse import enable_sparse_file
 from uniti.core.document import Document
 
 

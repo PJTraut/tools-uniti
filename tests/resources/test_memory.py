@@ -3,13 +3,13 @@ from uniti.resources.memory import (
     MIB,
     MemorySnapshot,
     PressureState,
+    _parse_macos_memory,
+    _probe_with_windows,
     automatic_cache_target,
     current_process_handle_count,
     pressure_state,
     probe_memory,
     release_unused_heap_pages,
-    _parse_macos_memory,
-    _probe_with_windows,
 )
 
 

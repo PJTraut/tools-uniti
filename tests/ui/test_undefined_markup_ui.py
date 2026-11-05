@@ -12,13 +12,13 @@ if importlib.util.find_spec("PySide6") is None:  # pragma: no cover
     pytest.skip("PySide6 is not installed", allow_module_level=True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication
+from usfm_project_fixture import in_project
 
-from usfm_project_fixture import in_project  # noqa: E402
-from uniti.app.settings import SettingsStore  # noqa: E402
-from uniti.core.environments import user_config  # noqa: E402
-from uniti.core.environments.sfm.paratext_project import PARATEXT_BOOKS  # noqa: E402
-from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
+from uniti.app.settings import SettingsStore
+from uniti.core.environments import user_config
+from uniti.core.environments.sfm.paratext_project import PARATEXT_BOOKS
+from uniti.ui.main_window import UNITIMainWindow
 
 _UNDEFINED = "\\id GEN\n\\c 1\n\\p\n\\v 1 A \\zfoo word\\zfoo* here.\n\\esb\n\\p B\n\\esbe\n"
 _DEFINED = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning.\n"

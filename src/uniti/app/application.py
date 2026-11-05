@@ -9,10 +9,10 @@ import os
 import platform
 import sys
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
-from typing import Mapping
 
 import uniti
 
@@ -266,9 +266,9 @@ def _create_dogfood_runtime(context: StartupContext) -> tuple[object, object, in
     from uniti.resources import load_performance_policy
 
     from .dogfood import (
-        OSFamily,
         DogfoodRecorder,
         HostFacts,
+        OSFamily,
         classify_cpu,
         classify_ram,
     )
@@ -355,7 +355,12 @@ def _startup_callbacks(
 ) -> dict[StartupPhase, object]:
     from uniti.resources import ResourceManager, probe_memory
 
-    from .capabilities import CapabilityStatus, probe_filesystem, probe_qt, probe_runtime
+    from .capabilities import (
+        CapabilityStatus,
+        probe_filesystem,
+        probe_qt,
+        probe_runtime,
+    )
     from .cleanup import cleanup_stale, create_session_record
     from .recovery_manager import RecoveryManager
     from .session_store import SessionStore
@@ -554,6 +559,7 @@ def _startup_callbacks(
 
     def session(context: StartupContext) -> None:
         from PySide6.QtWidgets import QMessageBox
+
         from uniti.app.service import UNITIService
         session_store = context.data["session_store"]
         loaded_session = context.data["loaded_session"]

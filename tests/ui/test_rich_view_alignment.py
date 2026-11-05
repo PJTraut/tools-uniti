@@ -11,11 +11,11 @@ if importlib.util.find_spec("PySide6") is None:  # pragma: no cover
     pytest.skip("PySide6 is not installed", allow_module_level=True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QRectF  # noqa: E402
-from PySide6.QtGui import QColor, QImage, QPainter, QTextCursor, QTextDocument  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import QRectF
+from PySide6.QtGui import QColor, QImage, QPainter, QTextCursor, QTextDocument
+from PySide6.QtWidgets import QApplication
 
-from uniti.ui.rich_view import block_format  # noqa: E402
+from uniti.ui.rich_view import block_format
 
 _APP = QApplication.instance() or QApplication([])
 _WIDTH = 300
@@ -86,7 +86,10 @@ def _gaps(source: str, direction: str | None) -> dict[str, list[tuple[float, flo
 
     from PySide6.QtGui import QFont, QPalette
 
-    from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
+    from uniti.core.environments.sfm.style_layers import (
+        LayeredStyleRegistry,
+        build_layers,
+    )
     from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
     from uniti.core.environments.sfm.views import SfmPreviewView
     from uniti.ui.rich_view import RichPalette, render_projection

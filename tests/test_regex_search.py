@@ -311,29 +311,27 @@ def test_search_start_and_end_together_bound_a_selection_region(tmp_path: Path):
 def test_search_can_cancel_before_engine_work(tmp_path: Path):
     path = tmp_path / "cancel.txt"
     path.write_text("abc" * 1000, encoding="utf-8")
-    with Document.open(path) as doc:
-        with pytest.raises(RegexSearchCancelled):
-            list(
-                search_document(
-                    doc,
-                    compile_pattern("abc"),
-                    cancelled=lambda: True,
-                )
+    with Document.open(path) as doc, pytest.raises(RegexSearchCancelled):
+        list(
+            search_document(
+                doc,
+                compile_pattern("abc"),
+                cancelled=lambda: True,
             )
+        )
 
 
 def test_search_timeout_is_wrapped(tmp_path: Path):
     path = tmp_path / "timeout.txt"
     path.write_text("a" * 100_000 + "X", encoding="utf-8")
-    with Document.open(path) as doc:
-        with pytest.raises(RegexSearchTimeout):
-            list(
-                search_document(
-                    doc,
-                    compile_pattern(r"(a+)+$"),
-                    options=SearchOptions(window_chars=100_001, timeout=0.000001),
-                )
+    with Document.open(path) as doc, pytest.raises(RegexSearchTimeout):
+        list(
+            search_document(
+                doc,
+                compile_pattern(r"(a+)+$"),
+                options=SearchOptions(window_chars=100_001, timeout=0.000001),
             )
+        )
 
 
 def test_first_result_can_arrive_without_indexing_entire_document(tmp_path: Path):
@@ -360,18 +358,17 @@ def test_prefix_retaining_regex_is_bounded_by_context_limit(tmp_path: Path):
 
     path = tmp_path / "anchored.txt"
     path.write_text("a" + ("x" * 200) + "Z", encoding="utf-8")
-    with Document.open(path) as doc:
-        with pytest.raises(RegexContextLimitError):
-            list(
-                search_document(
-                    doc,
-                    compile_pattern(r"^a.*Z"),
-                    options=SearchOptions(
-                        window_chars=8,
-                        max_context_chars=32,
-                    ),
-                )
+    with Document.open(path) as doc, pytest.raises(RegexContextLimitError):
+        list(
+            search_document(
+                doc,
+                compile_pattern(r"^a.*Z"),
+                options=SearchOptions(
+                    window_chars=8,
+                    max_context_chars=32,
+                ),
             )
+        )
 
 
 def test_partial_pattern_cannot_grow_search_buffer_without_bound(tmp_path: Path):

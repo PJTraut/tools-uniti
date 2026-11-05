@@ -5,10 +5,10 @@ import regex
 
 import uniti.regex.lexer as regex_lexer
 from uniti.regex.analysis import (
+    MAX_EXPRESSION_CHARS,
     AnalysisState,
     DiagnosticSeverity,
     ExpressionRole,
-    MAX_EXPRESSION_CHARS,
     RegexAnalysis,
     analyze_pattern,
     analyze_replacement,

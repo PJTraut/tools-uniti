@@ -19,7 +19,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-
 MAX_RECOVERY_ENTRIES = 256
 
 
@@ -151,7 +150,7 @@ class RecoveryEntry:
         path: Path,
         message: str,
         evidence_path: Path,
-    ) -> "RecoveryEntry":
+    ) -> RecoveryEntry:
         if not isinstance(kind, RecoveryEntryKind):
             raise TypeError("recovery entry kind must be a RecoveryEntryKind")
         return cls(

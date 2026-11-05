@@ -5,7 +5,6 @@ import os
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None,
     reason="PySide6 is not installed",

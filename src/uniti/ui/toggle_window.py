@@ -20,7 +20,10 @@ from dataclasses import replace as dataclass_replace
 
 from PySide6.QtWidgets import QWidget
 
-from uniti.ui.screen_geometry import clamp_geometry_to_screens, current_screen_geometries
+from uniti.ui.screen_geometry import (
+    clamp_geometry_to_screens,
+    current_screen_geometries,
+)
 
 
 class ToggleWindowManager:

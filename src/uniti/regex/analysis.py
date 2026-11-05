@@ -7,7 +7,6 @@ from enum import StrEnum
 
 import regex
 
-
 MAX_EXPRESSION_CHARS = 65_536
 
 # Scripts conventionally written without spaces between words (BF-034).
@@ -141,7 +140,7 @@ class RegexAnalysis:
         generation: int,
         state: AnalysisState,
         pattern_generation: int | None = None,
-    ) -> "RegexAnalysis":
+    ) -> RegexAnalysis:
         return cls(
             role=role,
             expression=expression,
@@ -513,12 +512,12 @@ def analyze_replacement(
 
 
 __all__ = [
+    "MAX_EXPRESSION_CHARS",
     "AnalysisState",
     "DiagnosticSeverity",
     "ExpressionRole",
     "GroupIdentity",
     "InlineSwitch",
-    "MAX_EXPRESSION_CHARS",
     "PatternStructure",
     "RegexAnalysis",
     "RegexDiagnostic",

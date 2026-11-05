@@ -108,7 +108,7 @@ class StartupContext:
     _cleanups: list[Callable[[], object]] = field(default_factory=list)
 
     @classmethod
-    def create(cls, paths: AppPaths, *, session_id: str) -> "StartupContext":
+    def create(cls, paths: AppPaths, *, session_id: str) -> StartupContext:
         return cls(paths=paths, session_id=session_id)
 
     def advance(self, phase: StartupPhase) -> None:

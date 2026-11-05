@@ -1,7 +1,9 @@
 """Bounded cluster-safe soft-wrap row provider."""
 
 from collections import OrderedDict
+
 import regex
+
 from uniti.ui.text_layout import ShapedWindow, direction_for_text
 
 

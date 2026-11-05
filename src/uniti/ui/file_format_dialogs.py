@@ -25,8 +25,8 @@ from PySide6.QtWidgets import (
 from uniti.core.encoding import EncodingAssessment
 from uniti.core.eol import EOLReport
 from uniti.core.text_format import (
-    EOLPolicy,
     EncodingProfile,
+    EOLPolicy,
     OutputFormat,
     encoding_profile,
     encoding_profiles,

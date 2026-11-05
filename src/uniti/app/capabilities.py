@@ -9,10 +9,10 @@ import platform
 import shutil
 import sys
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
-from typing import Mapping
 
 from uniti.core.durability import (
     DurabilityAdapter,

@@ -13,7 +13,6 @@ from PySide6.QtGui import QColor
 
 from uniti.ui.color_contrast import contrast_ratio
 
-
 _CATEGORY_HUES = {
     "keyword": 260,
     "string": 130,

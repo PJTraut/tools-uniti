@@ -41,7 +41,11 @@ from dataclasses import dataclass
 
 from uniti.core.document import Document
 from uniti.core.environment import Environment, EnvironmentContext, PlainEnvironment
-from uniti.core.environments.catalog import ENVIRONMENTS, environment_key_for_extension, environment_key_for_path
+from uniti.core.environments.catalog import (
+    ENVIRONMENTS,
+    environment_key_for_extension,
+    environment_key_for_path,
+)
 
 logger = logging.getLogger("uniti.environment.file")
 
@@ -73,7 +77,7 @@ class FileEnvironmentManager:
         )
 
     @classmethod
-    def with_builtin_environments(cls) -> "FileEnvironmentManager":
+    def with_builtin_environments(cls) -> FileEnvironmentManager:
         """A manager with every catalog environment registered (ADR-0014)."""
 
         manager = cls()

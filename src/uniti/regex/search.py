@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import Callable, Iterator
 
 import regex
 
 from uniti.core.document import Document
 from uniti.core.offsets import ReadIntent
+
 from .results import CaptureRecord, MatchRecord
 
 

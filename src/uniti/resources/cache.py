@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import itertools
 import threading
+from collections.abc import Hashable
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Hashable
 
 
 class CachePriority(IntEnum):

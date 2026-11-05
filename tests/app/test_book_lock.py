@@ -9,8 +9,8 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
-from usfm_project_fixture import ensure_project  # noqa: E402
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
 pytestmark = pytest.mark.book_lock
 
@@ -112,9 +112,8 @@ def test_a_book_opens_locked_in_the_usfm_window(desktop, tmp_path: Path):
 
 
 def test_typing_in_a_locked_book_says_it_is_locked(desktop, tmp_path: Path):
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QEvent, Qt
     from PySide6.QtGui import QKeyEvent
-    from PySide6.QtCore import QEvent
 
     _app, service = desktop
     window, view = _usfm_window(service, _project(tmp_path / "niv"))
@@ -531,7 +530,6 @@ def _project_of_four(folder: Path) -> Path:
 
 
 def _replace_all(service, find, replace, scope):
-    from uniti.ui.find_replace import ReplaceScope
 
     panel = service.find_replace
     panel.regex_checkbox.setChecked(True)

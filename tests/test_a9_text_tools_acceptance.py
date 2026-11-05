@@ -10,7 +10,7 @@ from uniti.regex.search import search_document
 def test_a9_text_tools_end_to_end(tmp_path: Path):
     source = tmp_path / "input.txt"
     output = tmp_path / "output.txt"
-    source.write_bytes("2026-08-31 Pieter\r\n2026-09-01 John\r\n".encode("utf-8"))
+    source.write_bytes(b"2026-08-31 Pieter\r\n2026-09-01 John\r\n")
 
     pattern = r"(?P<date>\d{4}-\d{2}-\d{2})\s+(?P<name>\w+)"
     replacement = r"\g<name> [\g<date>]"

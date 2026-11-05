@@ -17,7 +17,6 @@ from scripts.a22_ci import (
     validate_sustained_result,
 )
 
-
 FAMILIES = (
     "daily_editing",
     "format_integrity",

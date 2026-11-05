@@ -24,7 +24,7 @@ class BoundaryMap(Protocol):
 class LinearBoundaries(Sequence[int]):
     """An arithmetic boundary sequence with constant retained size."""
 
-    __slots__ = ("first", "step", "count")
+    __slots__ = ("count", "first", "step")
 
     def __init__(self, first: int, step: int, count: int) -> None:
         if first < 0 or step < 0 or count < 0:

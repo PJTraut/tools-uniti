@@ -10,10 +10,9 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
-from usfm_project_fixture import ensure_project  # noqa: E402
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
 SHY = "­"
 _GEN = "\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 We understand completely.\r\n"
@@ -157,7 +156,7 @@ def test_the_notes_frame_hyphenates_too_and_copying_from_it_leaves_the_soft_hyph
     _app, service = desktop
     folder = _project(tmp_path / "niv", "NIV")
     (folder / "01GEN.usfm").write_bytes(
-        "\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 We understand it.\\f + \\ft A note on completely.\\f*\r\n".encode()
+        b"\\id GEN\r\n\\c 1\r\n\\p\r\n\\v 1 We understand it.\\f + \\ft A note on completely.\\f*\r\n"
     )
     window, genesis = _usfm_window(service, folder)
     window._hyphenation.set_tab(genesis, True)

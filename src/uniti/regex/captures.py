@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import regex
 
@@ -61,8 +62,8 @@ class CaptureReportRequest:
             raise ValueError("match count must be non-negative")
         if self.requested_index < 0:
             raise ValueError("requested index must be non-negative")
-        if self.matches and self.matches[0][0] != self.requested_index:
-            raise ValueError("the requested match must be first")
+        if self.matches and all(index != self.requested_index for index, _record in self.matches):
+            raise ValueError("the requested match must be one of the matches")
         if len(self.matches) > MAX_CAPTURE_REPORT_MATCHES:
             raise ValueError(
                 f"capture reports contain at most {MAX_CAPTURE_REPORT_MATCHES} matches"

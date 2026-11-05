@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
-import unicodedata
 
 
 class WhitespaceMode(StrEnum):

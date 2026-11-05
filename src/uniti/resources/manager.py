@@ -25,7 +25,6 @@ from .telemetry import (
 )
 from .workers import PriorityWorkerPool
 
-
 _SEVERITY = {
     ResourceState.NORMAL: 0,
     ResourceState.BUSY: 1,

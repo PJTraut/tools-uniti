@@ -6,7 +6,6 @@ import pytest
 from uniti.app.document_registry import DocumentRegistry, DuplicateDocumentError
 from uniti.core.document import Document
 
-
 NOW = datetime(2026, 9, 4, 10, tzinfo=UTC)
 
 

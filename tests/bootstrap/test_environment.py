@@ -229,9 +229,8 @@ def test_live_lock_owner_is_refused(source_root, host_python, tmp_path):
         json.dumps({"session_id": "live", "pid": os.getpid()}), encoding="utf-8"
     )
 
-    with pytest.raises(BootstrapError) as caught:
-        with manager.lock():
-            raise AssertionError("unreachable")
+    with pytest.raises(BootstrapError) as caught, manager.lock():
+        raise AssertionError("unreachable")
 
     assert caught.value.exit_code == 11
     assert manager.lock_path.exists()

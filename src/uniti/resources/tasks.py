@@ -15,7 +15,6 @@ from .cancel import CancellationToken, WorkCancelled
 from .policy import ResourceState
 from .workers import PriorityWorkerPool, WorkPriority
 
-
 T = TypeVar("T")
 
 
@@ -102,7 +101,7 @@ class TaskSpec:
         revision: int | None = None,
         estimated_memory_bytes: int = 0,
         estimated_disk_bytes: int = 0,
-    ) -> "TaskSpec":
+    ) -> TaskSpec:
         return cls(
             task_id=uuid.uuid4().hex,
             kind=kind,

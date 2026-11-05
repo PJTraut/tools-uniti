@@ -6,9 +6,15 @@ from functools import lru_cache
 from importlib.resources import files
 
 from PySide6.QtCore import QByteArray, QRectF, QSize, Qt
-from PySide6.QtGui import QGuiApplication, QIcon, QIconEngine, QPainter, QPalette, QPixmap
+from PySide6.QtGui import (
+    QGuiApplication,
+    QIcon,
+    QIconEngine,
+    QPainter,
+    QPalette,
+    QPixmap,
+)
 from PySide6.QtSvg import QSvgRenderer
-
 
 LUCIDE_ICONS = frozenset({
     "search-check",

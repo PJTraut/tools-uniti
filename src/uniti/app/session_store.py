@@ -32,7 +32,11 @@ from uniti.core.durability import (
     combine_durability,
 )
 from uniti.core.file_identity import FileMatch, verify_saved_file
-from uniti.core.history import HistorySnapshot, HistoryTruncation, estimate_transaction_bytes
+from uniti.core.history import (
+    HistorySnapshot,
+    HistoryTruncation,
+    estimate_transaction_bytes,
+)
 
 from .atomic_json import atomic_write_bytes, utc_timestamp
 from .cleanup import CleanupReport, is_durable_session_artifact_name
@@ -44,8 +48,8 @@ from .session import (
     LoadedSession,
     PaneRecord,
     PersistenceNotice,
-    SessionManifest,
     SessionLoadSource,
+    SessionManifest,
     SessionProblem,
     SessionSnapshot,
     UnsupportedSessionSchema,
@@ -56,7 +60,6 @@ from .session import (
     manifest_from_payload,
     manifest_to_payload,
 )
-
 
 MIN_FREE_BYTES = 512 << 20
 AGGREGATE_HISTORY_BYTES = 512 << 20
@@ -80,7 +83,7 @@ class SessionGenerationLease:
         if release is not None:
             release()
 
-    def __enter__(self) -> "SessionGenerationLease":
+    def __enter__(self) -> SessionGenerationLease:
         return self
 
     def __exit__(self, _exc_type, _exc, _traceback) -> None:

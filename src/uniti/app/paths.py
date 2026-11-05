@@ -5,9 +5,9 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 from .platform_policy import (
     PlatformFamily,
@@ -118,7 +118,7 @@ class AppPaths:
         *,
         home: Path,
         environ: Mapping[str, str],
-    ) -> "AppPaths":
+    ) -> AppPaths:
         selected_home = Path(home)
         if not selected_home.is_absolute() or "\0" in str(selected_home):
             raise ValueError("home directory must be absolute")
@@ -176,7 +176,7 @@ class AppPaths:
         )
 
     @classmethod
-    def current(cls) -> "AppPaths":
+    def current(cls) -> AppPaths:
         return cls.for_platform(sys.platform, home=Path.home(), environ=os.environ)
 
     def ensure(self) -> None:

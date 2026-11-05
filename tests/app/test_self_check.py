@@ -3,9 +3,9 @@ import os
 import sys
 from pathlib import Path
 
-import uniti
 import pytest
 
+import uniti
 from uniti.app.paths import AppPaths
 from uniti.app.self_check import (
     CheckResult,

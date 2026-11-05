@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None,
     reason="PySide6 is not installed",
@@ -223,7 +222,6 @@ def test_closing_an_untitled_document_with_save_choice_forces_save_as(
 
         def fake_save_current_as():
             calls.append(True)
-            return None
 
         monkeypatch.setattr(window, "save_current_as", fake_save_current_as)
 

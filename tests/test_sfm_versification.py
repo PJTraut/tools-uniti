@@ -6,7 +6,6 @@ import shutil
 from pathlib import Path
 
 import pytest
-
 from usfm_project_fixture import RUSSIAN_PSALMS_VRS
 
 from uniti.core.environments import user_config
@@ -103,7 +102,10 @@ def test_paratexts_own_vrs_files_in_the_projects_folder_are_used(user_root: Path
     """Paratext keeps rsc.vrs, lxx.vrs … in its projects folder (found on a
     real ruCARS project, 2026-10-08)."""
 
-    from uniti.core.environments.sfm.versification import available_versifications, paratext_root_for
+    from uniti.core.environments.sfm.versification import (
+        available_versifications,
+        paratext_root_for,
+    )
 
     root = tmp_path / "Paratext Projects"
     book = _project(root / "ruTEST", versification=5)

@@ -5,11 +5,12 @@ from __future__ import annotations
 import codecs
 import hashlib
 import os
-import tempfile
 import stat
+import tempfile
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import BinaryIO, Callable, Iterable, Iterator, Literal
+from typing import BinaryIO, Literal
 
 from uniti.app.phase_control import (
     NO_OP_PHASE_OBSERVER,
@@ -32,11 +33,11 @@ from .durability import (
 )
 from .eol import analyze_eol
 from .file_identity import ExternalFileChangedError, FileIdentity
-from .pieces import EditSegment, PieceTable, SourceSegment
 from .offsets import ReadIntent
+from .pieces import EditSegment, PieceTable, SourceSegment
 from .text_format import (
-    EOLPolicy,
     EncodingProfile,
+    EOLPolicy,
     OutputFormat,
     encoding_profiles,
     profile_from_codec,

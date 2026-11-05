@@ -16,7 +16,6 @@ from enum import StrEnum
 from pathlib import Path
 
 import uniti
-
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.encoding import detect_encoding
@@ -82,7 +81,7 @@ class CheckResult:
         details: Mapping[str, object] | None = None,
         *,
         duration_ms: float = 0.0,
-    ) -> "CheckResult":
+    ) -> CheckResult:
         return cls(name, CheckStatus.PASS, duration_ms, summary, details or {})
 
     @classmethod
@@ -94,7 +93,7 @@ class CheckResult:
         details: Mapping[str, object] | None = None,
         *,
         duration_ms: float = 0.0,
-    ) -> "CheckResult":
+    ) -> CheckResult:
         return cls(name, CheckStatus.FAIL, duration_ms, summary, details or {}, exit_code)
 
     @classmethod
@@ -105,7 +104,7 @@ class CheckResult:
         details: Mapping[str, object] | None = None,
         *,
         duration_ms: float = 0.0,
-    ) -> "CheckResult":
+    ) -> CheckResult:
         return cls(name, CheckStatus.SKIP, duration_ms, summary, details or {})
 
     def as_dict(self) -> dict[str, object]:
@@ -133,7 +132,7 @@ class SelfCheckReport:
         mode: str,
         identity: Mapping[str, object],
         results: Sequence[CheckResult],
-    ) -> "SelfCheckReport":
+    ) -> SelfCheckReport:
         collected = tuple(results)
         failed = tuple(result for result in collected if result.status is CheckStatus.FAIL)
         if failed:
@@ -253,8 +252,6 @@ class SelfCheckRunner:
         }
 
     def _dependencies(self) -> tuple[str, Mapping[str, object]]:
-        import PySide6
-        import regex
 
         versions = {
             "uniti-editor": importlib.metadata.version("uniti-editor"),
@@ -578,7 +575,7 @@ class SelfCheckRunner:
             raise RuntimeError("exact encoding profile registry mismatch")
 
         utf8_path = root / "integrity-utf8.txt"
-        utf8_path.write_bytes("Alpha Привет\r\n".encode("utf-8"))
+        utf8_path.write_bytes("Alpha Привет\r\n".encode())
         with ByteSource.open(utf8_path) as source:
             utf8_inspection = inspect_source(source)
         if (
@@ -1044,8 +1041,8 @@ class SelfCheckRunner:
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
         from PySide6.QtWidgets import QApplication
 
-        from uniti.app.editor_state import EditorState
         from uniti.app.capabilities import probe_qt
+        from uniti.app.editor_state import EditorState
         from uniti.ui.text_view import UNITITextView
 
         app = QApplication.instance() or QApplication(["uniti-self-check"])

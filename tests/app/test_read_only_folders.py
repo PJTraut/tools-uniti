@@ -8,11 +8,11 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from usfm_project_fixture import ensure_project  # noqa: E402
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
-from uniti.app.read_only import is_read_only_path, with_folder  # noqa: E402
-from uniti.core.document import DocumentReadOnlyError  # noqa: E402
+from uniti.app.read_only import is_read_only_path, with_folder
+from uniti.core.document import DocumentReadOnlyError
 
 _GEN = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning.\n"
 

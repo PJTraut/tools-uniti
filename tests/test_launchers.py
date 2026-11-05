@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).parents[1]
 POSIX_LAUNCHER = REPO_ROOT / "uniti.command"
 WINDOWS_LAUNCHER = REPO_ROOT / "uniti.bat"

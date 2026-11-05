@@ -1,14 +1,13 @@
 """Qt-free document group (tag) profiles and their atomic storage."""
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
-import json
 from pathlib import Path
-import re
 
 from .atomic_json import atomic_write_json
-
 
 MAX_GROUPS = 32
 MAX_NAME_LENGTH = 64
@@ -53,7 +52,7 @@ class DocumentGroup:
         )
 
     @classmethod
-    def from_dict(cls, payload: object) -> 'DocumentGroup':
+    def from_dict(cls, payload: object) -> DocumentGroup:
         allowed_keys = {'id', 'name', 'color', 'saved_paths'}
         required_keys = {'id', 'name', 'color'}
         if (

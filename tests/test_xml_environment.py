@@ -5,9 +5,9 @@ from pathlib import Path
 
 from uniti.core.document import Document
 from uniti.core.environment import EnvironmentContext
-from uniti.core.resource_profile import ENVIRONMENT_LARGE_FILE_BYTES, ResourceProfile
 from uniti.core.environment_findings import FindingSeverity
 from uniti.core.environments.xml_environment import XmlEnvironment
+from uniti.core.resource_profile import ENVIRONMENT_LARGE_FILE_BYTES, ResourceProfile
 
 
 @contextmanager

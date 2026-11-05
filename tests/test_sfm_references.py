@@ -103,7 +103,11 @@ def test_scan_books_lists_matching_files_in_canonical_order(tmp_path: Path):
 
 
 def test_book_header_reads_id_and_h_from_the_header_block(tmp_path: Path):
-    from uniti.core.environments.sfm.references import BookHeader, book_header, book_header_for_path
+    from uniti.core.environments.sfm.references import (
+        BookHeader,
+        book_header,
+        book_header_for_path,
+    )
 
     assert book_header("\\id GEN Genesis NIV\n\\ide UTF-8\n\\h Genesis\n\\mt1 Genesis\n") == BookHeader("GEN", "Genesis")
     assert book_header("\\id GEN\n\\h   The First Book of Moses  \n").label == "GEN The First Book of Moses"

@@ -8,10 +8,10 @@ import os
 import sys
 import uuid
 import venv
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Iterator
 
 from uniti.app.atomic_json import atomic_write_json, utc_timestamp
 from uniti.app.process_liveness import process_is_live
@@ -147,7 +147,7 @@ class EnvironmentManager:
         self._write_marker(marker)
         try:
             builder = self._builder_factory()
-            create = getattr(builder, "create")
+            create = builder.create
             create(self.environment_path)
             return self._finish_environment(marker)
         except BootstrapError:
@@ -188,7 +188,7 @@ class EnvironmentManager:
             try:
                 self._progress("// repairing UNITI runtime")
                 builder = self._builder_factory()
-                getattr(builder, "create")(self.environment_path)
+                builder.create(self.environment_path)
                 identity = self._validate_runtime()
             except BootstrapError:
                 raise
