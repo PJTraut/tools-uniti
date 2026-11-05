@@ -10,17 +10,17 @@ if importlib.util.find_spec("PySide6") is None:  # pragma: no cover
     pytest.skip("PySide6 is not installed", allow_module_level=True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMessageBox
+from usfm_project_fixture import ensure_project, in_project
 
-from usfm_project_fixture import ensure_project, in_project  # noqa: E402
-from uniti.app.file_environment_manager import FileEnvironmentManager  # noqa: E402
-from uniti.app.settings import SettingsStore  # noqa: E402
-from uniti.core.syntax_profiles import JSON, MARKDOWN, PLAIN_TEXT, USFM  # noqa: E402
-from uniti.ui.environment_assignment_editor import (  # noqa: E402
+from uniti.app.file_environment_manager import FileEnvironmentManager
+from uniti.app.settings import SettingsStore
+from uniti.core.syntax_profiles import JSON, MARKDOWN, PLAIN_TEXT, USFM
+from uniti.ui.environment_assignment_editor import (
     EnvironmentAssignmentEditor,
     parse_extensions,
 )
-from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
+from uniti.ui.main_window import UNITIMainWindow
 
 _USFM = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning\n\\v 2 And\n"
 
@@ -55,7 +55,7 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
     assert "No document open" in _menu_texts(window)
 
     _open(window, tmp_path, "book.usfm", _USFM)
-    assert environment.menu.title() == "USFM"
+    assert environment.menu.title() == "SFM"
     assert _menu_texts(window) == [
         "Go to Chapter:Verse…",
         "Validate USFM",
@@ -82,19 +82,21 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "Sync Side-by-Side by Reference",
         "Versification",
         "Configuration Files…",
+        "Environment Settings…",
         "Plain Text Mode",
         "Assign Environment",
         "Assign by File Type…",
     ]
 
     _open(window, tmp_path, "notes.txt", "hi")
-    assert environment.menu.title() == "Plain Text"
+    assert environment.menu.title() == "TXT"
     assert "Plain Text Mode" not in _menu_texts(window)
     # Plain text gets an environment window too (no reference sync).
     assert _menu_texts(window) == [
         "No environment tools for plain text",
         "Move to Environment Window",
         "Configuration Files…",
+        "Environment Settings…",
         "Assign Environment",
         "Assign by File Type…",
     ]
@@ -139,18 +141,6 @@ def test_plain_text_mode_wins_over_and_restores_the_per_view_profile(window, tmp
     assert view.syntax_profile is PLAIN_TEXT
     window._environment.set_plain_mode(False)
     assert view.syntax_profile.key == "yaml"
-
-
-def test_plain_text_mode_disables_and_closes_markdown_preview(window, tmp_path: Path, app):
-    _open(window, tmp_path, "b.md", "# hi")
-    assert window._markdown_preview_action in window._environment.menu.actions()
-    window.toggle_markdown_preview()
-    assert window._markdown_preview is not None
-
-    window._environment.set_plain_mode(True)
-
-    assert window._markdown_preview is None
-    assert window._markdown_preview_action.isEnabled() is False
 
 
 def test_failed_activation_falls_back_to_plain_text_within_the_environment(app, tmp_path: Path):
@@ -221,12 +211,12 @@ def test_sfm_files_open_as_usfm_and_follow_reassignment(window, tmp_path: Path):
 
     view = _open(window, tmp_path, "book.sfm", _USFM)
     assert view.syntax_profile is USFM
-    assert window._environment.menu.title() == "USFM"
+    assert window._environment.menu.title() == "SFM"
     assert "Go to Chapter:Verse…" in _menu_texts(window)
 
     window.set_extension_assignments({"sfm": "plain_text"})
 
-    assert window._environment.menu.title() == "Plain Text"
+    assert window._environment.menu.title() == "TXT"
     assert window._settings_store.load().syntax_extension_overrides == {"sfm": "plain_text"}
 
 
@@ -235,7 +225,7 @@ def test_a_saved_sfm_assignment_is_read_as_usfm(window, tmp_path: Path):
     ensure_project(tmp_path)
     view = _open(window, tmp_path, "words.lex", _USFM)
     assert view.syntax_profile is USFM
-    assert window._environment.menu.title() == "USFM"
+    assert window._environment.menu.title() == "SFM"
 
 
 def test_assignment_editor_round_trips_and_rejects_conflicts(app, monkeypatch):
@@ -266,21 +256,21 @@ def test_document_can_be_pinned_to_another_environment(window, tmp_path: Path):
     environment = window._environment
     ensure_project(tmp_path)
     view = _open(window, tmp_path, "book.txt", _USFM)
-    assert environment.menu.title() == "Plain Text"
-    assert environment.document_environment_actions[None].text() == "By Extension (Plain Text)"
+    assert environment.menu.title() == "TXT"
+    assert environment.document_environment_actions[None].text() == "By Extension (TXT)"
     assert environment.document_environment_actions[None].isChecked()
 
     environment.document_environment_actions["usfm"].trigger()
 
     assert view.syntax_profile is USFM
-    assert environment.menu.title() == "USFM"
+    assert environment.menu.title() == "SFM"
     assert environment.document_environment_actions["usfm"].isChecked()
     assert environment.run_command("go_to", "1:2") is True
     assert view.state.cursor == _USFM.index("\\v 2")
 
     environment.document_environment_actions[None].trigger()
     assert view.syntax_profile is PLAIN_TEXT
-    assert environment.menu.title() == "Plain Text"
+    assert environment.menu.title() == "TXT"
 
 
 def test_environment_slots_have_shortcuts_and_follow_the_environment(window, tmp_path: Path):
@@ -310,9 +300,11 @@ def test_environment_slots_have_shortcuts_and_follow_the_environment(window, tmp
     assert actions["environment.plain_mode"].isEnabled() is False
 
 
-def test_markdown_preview_is_the_environment_preview_slot(window, tmp_path: Path):
-    assert window._command_actions["environment.preview"] is window._markdown_preview_action
-    assert window._markdown_preview_action.shortcut().toString() == "Ctrl+Alt+P"
+def test_the_markdown_preview_side_pane_is_retired(window, tmp_path: Path):
+    """Q7, 2026-11-05: the editable Preview mode replaced BF-062's side pane."""
+
+    assert "environment.preview" not in window._command_actions
+    assert not hasattr(window, "toggle_markdown_preview")
 
 
 def test_plain_text_mode_is_saved_with_the_view(window, tmp_path: Path):

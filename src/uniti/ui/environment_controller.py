@@ -40,16 +40,16 @@ from PySide6.QtWidgets import QInputDialog, QMenu, QMenuBar, QMessageBox
 from uniti.app.file_environment_manager import ActiveEnvironment
 from uniti.core.environment import EnvironmentContext
 from uniti.core.environment_commands import (
+    UNDEFINED_MARKUP_COMMAND,
     CommandResult,
     EnvironmentCommand,
     NavigateTo,
     ReplaceDocumentText,
+    SaveTextFile,
     ShowFindings,
     ShowMessage,
     ShowStyleInspector,
     ShowUndefinedMarkup,
-    SaveTextFile,
-    UNDEFINED_MARKUP_COMMAND,
     environment_commands,
 )
 from uniti.core.environments.catalog import (
@@ -74,7 +74,7 @@ logger = logging.getLogger("uniti.environment.ui")
 
 
 class EnvironmentController:
-    def __init__(self, window: "UNITIMainWindow") -> None:
+    def __init__(self, window: UNITIMainWindow) -> None:
         self._window = window
         # Per-document environment pins for windows with no service (the
         # service-owned path stores them on `DocumentEntry`).
@@ -92,9 +92,11 @@ class EnvironmentController:
         self.plain_mode_action: QAction | None = None
         self.assignment_action: QAction | None = None
         self.move_to_window_action: QAction | None = None
-        self.rename_window_action: QAction | None = None
         self.configuration_action: QAction | None = None
         self.configuration_dialog = None
+        self.settings_action: QAction | None = None
+        self.settings_dialog = None
+        self._settings_notes_shown: dict[str, tuple[str, ...]] = {}
         self.undefined_dialogs: dict[str, object] = {}  # view id -> report
         self.versification_menu: QMenu | None = None
         self.versification_actions: dict[str | None, QAction] = {}
@@ -102,14 +104,14 @@ class EnvironmentController:
 
     # --- resolution -------------------------------------------------------
 
-    def _entry_for(self, document: "Document"):
+    def _entry_for(self, document: Document):
         service = self._window._service
         if service is None:
             return None
         entry = service.documents.find_path(document.path)
         return entry if entry is not None and entry.document is document else None
 
-    def extension_environment_key(self, document: "Document") -> str:
+    def extension_environment_key(self, document: Document) -> str:
         """The environment the document's extension gives it, or Plain Text
         when that environment needs a project the file isn't in (T1)."""
 
@@ -117,13 +119,13 @@ class EnvironmentController:
             document.path, self._window._settings.syntax_extension_overrides
         )
 
-    def environment_override_for(self, document: "Document") -> str | None:
+    def environment_override_for(self, document: Document) -> str | None:
         entry = self._entry_for(document)
         if entry is not None:
             return entry.environment_override
         return self._standalone_overrides.get(document)
 
-    def environment_key_for(self, document: "Document") -> str:
+    def environment_key_for(self, document: Document) -> str:
         """The document's pinned environment, else its extension's.
 
         Computed from the current extension mapping every time (rather than
@@ -144,7 +146,7 @@ class EnvironmentController:
         return key
 
     def set_document_environment(
-        self, environment_key: str | None, view: "UNITITextView | None" = None, *, move: bool = True
+        self, environment_key: str | None, view: UNITITextView | None = None, *, move: bool = True
     ) -> None:
         """Pin the active document to `environment_key`; `None` follows its extension.
 
@@ -196,20 +198,20 @@ class EnvironmentController:
             if not in_environment_window or window.environment_window[0] != key:
                 window.move_to_environment_window(view)
 
-    def active_for(self, document: "Document") -> ActiveEnvironment:
+    def active_for(self, document: Document) -> ActiveEnvironment:
         return self._window._file_environment_manager.active_for(
             document, self.environment_key_for(document)
         )
 
-    def descriptor_for(self, document: "Document") -> EnvironmentDescriptor:
+    def descriptor_for(self, document: Document) -> EnvironmentDescriptor:
         return descriptor_for_key(self.environment_key_for(document))
 
-    def is_plain_mode(self, view: "UNITITextView") -> bool:
+    def is_plain_mode(self, view: UNITITextView) -> bool:
         """Whether `view` is in Plain Text Mode (chosen, or a failed activation)."""
 
         return view.environment_plain_mode or self.active_for(view.document).failed
 
-    def default_profile_for(self, document: "Document") -> SyntaxProfile:
+    def default_profile_for(self, document: Document) -> SyntaxProfile:
         """The profile a new view of `document` renders with."""
 
         if self.active_for(document).failed:
@@ -217,7 +219,7 @@ class EnvironmentController:
         return self.descriptor_for(document).profile
 
     def effective_profile(
-        self, view: "UNITITextView", choice_key: str | None = None, *, use_view_choice: bool = True
+        self, view: UNITITextView, choice_key: str | None = None, *, use_view_choice: bool = True
     ) -> SyntaxProfile:
         """Plain Text Mode, else the per-view override, else the environment's profile."""
 
@@ -228,25 +230,25 @@ class EnvironmentController:
             return PROFILES_BY_KEY.get(key, PLAIN_TEXT)
         return self.descriptor_for(view.document).profile
 
-    def commands_for(self, view: "UNITITextView | None") -> tuple[EnvironmentCommand, ...]:
+    def commands_for(self, view: UNITITextView | None) -> tuple[EnvironmentCommand, ...]:
         if view is None:
             return ()
         return environment_commands(self.active_for(view.document).environment)
 
-    def command_available(self, command_id: str, view: "UNITITextView | None" = None) -> bool:
+    def command_available(self, command_id: str, view: UNITITextView | None = None) -> bool:
         view = view if view is not None else self._window.current_view
         if view is None or not view.isEnabled() or self.is_plain_mode(view):
             return False
         return any(command.command_id == command_id for command in self.commands_for(view))
 
-    def offers_host_feature(self, view: "UNITITextView | None", feature: str) -> bool:
+    def offers_host_feature(self, view: UNITITextView | None, feature: str) -> bool:
         if view is None or self.is_plain_mode(view):
             return False
         return any(command.host_feature == feature for command in self.commands_for(view))
 
     # --- Plain Text Mode --------------------------------------------------
 
-    def set_plain_mode(self, enabled: bool, view: "UNITITextView | None" = None) -> None:
+    def set_plain_mode(self, enabled: bool, view: UNITITextView | None = None) -> None:
         view = view if view is not None else self._window.current_view
         if view is None:
             return
@@ -304,7 +306,7 @@ class EnvironmentController:
         self.document_environment_menu.addSeparator()
         self.document_environment_actions[None] = by_extension
         for descriptor in ENVIRONMENTS:
-            action = QAction(descriptor.label, window)
+            action = QAction(descriptor.short_label, window)
             action.setCheckable(True)
             action.triggered.connect(
                 lambda _checked=False, key=descriptor.key: self.set_document_environment(key)
@@ -338,8 +340,6 @@ class EnvironmentController:
         }
         for local_id, action in self._slot_actions.items():
             action.setEnabled(local_id in available and self.command_available(local_id, view))
-        # The window re-syncs Markdown Preview itself afterwards (it stays
-        # enabled while a preview is open, to allow closing it).
         for feature, action in self._host_actions.items():
             action.setEnabled(self.offers_host_feature(view, feature))
         self._sync_plain_mode_action(view)
@@ -353,7 +353,7 @@ class EnvironmentController:
             menu.addMenu(self.document_environment_menu)
         menu.addAction(self.assignment_action)
 
-    def _add_view_switcher(self, menu: QMenu, view: "UNITITextView") -> None:
+    def _add_view_switcher(self, menu: QMenu, view: UNITITextView) -> None:
         """"View As" block: the tab's mode — Plain Text (the Source editor)
         or one of the environment's rich views shown in its place (SFM:
         Standard, Preview; ADR-0017)."""
@@ -381,7 +381,7 @@ class EnvironmentController:
             self._owned_command_actions.append(action)
             self.view_actions[key] = action
 
-    def _sync_plain_mode_action(self, view: "UNITITextView | None") -> None:
+    def _sync_plain_mode_action(self, view: UNITITextView | None) -> None:
         action = self.plain_mode_action
         if action is None:
             return
@@ -392,9 +392,9 @@ class EnvironmentController:
         action.blockSignals(blocked)
         action.setEnabled(bool(applicable and not failed))
 
-    def _sync_document_environment_menu(self, view: "UNITITextView") -> None:
+    def _sync_document_environment_menu(self, view: UNITITextView) -> None:
         override = self.environment_override_for(view.document)
-        extension_label = descriptor_for_key(self.extension_environment_key(view.document)).label
+        extension_label = descriptor_for_key(self.extension_environment_key(view.document)).short_label
         self.document_environment_actions[None].setText(f"By Extension ({extension_label})")
         selected = self.document_environment_actions.get(
             override if override in ENVIRONMENTS_BY_KEY else None
@@ -406,19 +406,19 @@ class EnvironmentController:
                 # USFM assumes a Paratext project (T1).
                 available = environment_available(key, view.document.path)
                 action.setEnabled(available)
-                label = descriptor_for_key(key).label
+                label = descriptor_for_key(key).short_label
                 action.setText(label if available else f"{label} (needs a Paratext project)")
 
-    def _populate_for_view(self, menu: QMenu, view: "UNITITextView") -> None:
+    def _populate_for_view(self, menu: QMenu, view: UNITITextView) -> None:
         descriptor = self.descriptor_for(view.document)
         active = self.active_for(view.document)
         plain = self.is_plain_mode(view)
         is_plain_environment = descriptor.key == PLAIN_ENVIRONMENT_KEY
         menu.menuAction().setText(
-            descriptor.label + (" (Plain Text)" if plain and not is_plain_environment else "")
+            descriptor.short_label + (" (Plain Text)" if plain and not is_plain_environment else "")
         )
         if active.failed:
-            self._failed_action.setText(f"{descriptor.label} failed to load — showing Plain Text")
+            self._failed_action.setText(f"{descriptor.short_label} failed to load — showing Plain Text")
             menu.addAction(self._failed_action)
             menu.addSeparator()
         commands = self.commands_for(view)
@@ -453,7 +453,7 @@ class EnvironmentController:
         menu.addSeparator()
         menu.addAction(self.plain_mode_action)
 
-    def _add_window_entries(self, menu: QMenu, view: "UNITITextView", environment_key: str) -> None:
+    def _add_window_entries(self, menu: QMenu, view: UNITITextView, environment_key: str) -> None:
         """Environment window (ADR-0017) and, for scripture, reference sync."""
 
         from uniti.ui.environment_window import REFERENCE_ENVIRONMENTS
@@ -468,14 +468,6 @@ class EnvironmentController:
         menu.addAction(move)
         self._owned_command_actions.append(move)
         self.move_to_window_action = move
-        self.rename_window_action = None
-        if window.environment_window is not None:
-            rename = QAction("Rename Window…", window)
-            rename.setToolTip(f"Rename {window.environment_window_name()}")
-            rename.triggered.connect(lambda _checked=False: window.rename_environment_window())
-            menu.addAction(rename)
-            self._owned_command_actions.append(rename)
-            self.rename_window_action = rename
         if environment_key in REFERENCE_ENVIRONMENTS:
             menu.addAction(window._chapter_view.action)
             menu.addAction(window._book_lock.action)
@@ -492,8 +484,50 @@ class EnvironmentController:
         menu.addAction(configuration)
         self._owned_command_actions.append(configuration)
         self.configuration_action = configuration
+        settings = QAction("Environment Settings…", window)
+        settings.setToolTip("This environment's settings: syntax, Format Document and more")
+        settings.triggered.connect(lambda _checked=False, view=view: self.show_environment_settings(view))
+        menu.addAction(settings)
+        self._owned_command_actions.append(settings)
+        self.settings_action = settings
+        self._note_settings_problems(environment_key)
 
-    def show_configuration_files(self, view: "UNITITextView | None" = None):
+    def _note_settings_problems(self, environment_key: str) -> None:
+        """What was ignored in the environment's `settings.json`, once in the
+        status bar (N31)."""
+
+        from uniti.core.environments.settings import environment_settings
+
+        notes = environment_settings(environment_key).notes
+        if notes and self._settings_notes_shown.get(environment_key) != notes:
+            self._settings_notes_shown[environment_key] = notes
+            label = descriptor_for_key(environment_key).short_label
+            self._window.statusBar().showMessage(f"{label} settings: " + "; ".join(notes), 8000)
+
+    def show_environment_settings(self, view: UNITITextView | None = None):
+        """Environment Settings… for `view`'s environment (N31)."""
+
+        from uniti.core.environments.settings import environment_settings
+        from uniti.ui.environment_settings import EnvironmentSettingsDialog
+
+        view = view if view is not None else self._window.current_view
+        if view is None:
+            return None
+        descriptor = self.descriptor_for(view.document)
+        if self.settings_dialog is not None:
+            self.settings_dialog.close()
+        self.settings_dialog = EnvironmentSettingsDialog(
+            self._window,
+            descriptor.key,
+            descriptor.short_label,
+            environment_settings(descriptor.key),
+            on_saved=lambda _settings, key=descriptor.key: self._window.environment_settings_changed(key),
+        )
+        self.settings_dialog.show()
+        self.settings_dialog.raise_()
+        return self.settings_dialog
+
+    def show_configuration_files(self, view: UNITITextView | None = None):
         """Configuration Files… for `view`'s environment (round 2 R8)."""
 
         from uniti.ui.configuration_files import ConfigurationFilesDialog
@@ -510,13 +544,13 @@ class EnvironmentController:
 
     # --- versification (plan P4) ---------------------------------------------
 
-    def versification_override_for(self, document: "Document") -> str | None:
+    def versification_override_for(self, document: Document) -> str | None:
         entry = self._entry_for(document)
         if entry is not None:
             return entry.versification
         return self._standalone_versifications.get(document)
 
-    def versification_for(self, document: "Document"):
+    def versification_for(self, document: Document):
         """The `TextVersification` `document` uses: its own choice, else its
         project's, else English."""
 
@@ -524,7 +558,7 @@ class EnvironmentController:
 
         return versification_for(document.path, self.versification_override_for(document))
 
-    def set_versification(self, stem: str | None, view: "UNITITextView | None" = None) -> None:
+    def set_versification(self, stem: str | None, view: UNITITextView | None = None) -> None:
         """Give `view`'s text its own versification (`None`: its project's,
         or English)."""
 
@@ -544,7 +578,7 @@ class EnvironmentController:
         self._window.statusBar().showMessage(message, 5000)
         self.refresh()
 
-    def _versification_menu(self, view: "UNITITextView") -> QMenu:
+    def _versification_menu(self, view: UNITITextView) -> QMenu:
         """An exclusive "Versification" picker, like Environment for This Document."""
 
         from uniti.core.environments.sfm.paratext_project import project_for_file
@@ -599,7 +633,7 @@ class EnvironmentController:
         self.versification_menu = menu
         return menu
 
-    def _show_versification_folder(self, view: "UNITITextView") -> None:
+    def _show_versification_folder(self, view: UNITITextView) -> None:
         dialog = self.show_configuration_files(view)
         if dialog is not None:
             dialog.select_role("Your versification files")
@@ -654,7 +688,7 @@ class EnvironmentController:
 
     # --- undefined markup (round 2 R7) ---------------------------------------
 
-    def undefined_markup_for(self, view: "UNITITextView") -> "ShowUndefinedMarkup | None":
+    def undefined_markup_for(self, view: UNITITextView) -> ShowUndefinedMarkup | None:
         """Run `view`'s environment's undefined-markup check, if it has one."""
 
         if not self.command_available(UNDEFINED_MARKUP_COMMAND, view):
@@ -670,7 +704,7 @@ class EnvironmentController:
             return None
         return result if isinstance(result, ShowUndefinedMarkup) else None
 
-    def report_undefined_on_open(self, view: "UNITITextView") -> object | None:
+    def report_undefined_on_open(self, view: UNITITextView) -> object | None:
         """A file was just opened: pop the report up if anything is undefined."""
 
         result = self.undefined_markup_for(view)
@@ -678,7 +712,7 @@ class EnvironmentController:
             return None
         return self.show_undefined_markup(view, result)
 
-    def show_undefined_markup(self, view: "UNITITextView", result: "ShowUndefinedMarkup"):
+    def show_undefined_markup(self, view: UNITITextView, result: ShowUndefinedMarkup):
         from uniti.ui.undefined_markup_dialog import UndefinedMarkupDialog
 
         dialog = self.undefined_dialogs.get(view.view_id)
@@ -706,10 +740,10 @@ class EnvironmentController:
             else:
                 self.undefined_dialogs.pop(view_id, None)
 
-    def navigate_view(self, view: "UNITITextView", offset: int) -> None:
+    def navigate_view(self, view: UNITITextView, offset: int) -> None:
         self._navigate(view.view_id, offset)
 
-    def _apply(self, view: "UNITITextView", result: CommandResult, revision: int) -> None:
+    def _apply(self, view: UNITITextView, result: CommandResult, revision: int) -> None:
         document = view.document
         if isinstance(result, ReplaceDocumentText):
             if document.revision != revision or not view.isEnabled():
@@ -744,7 +778,7 @@ class EnvironmentController:
             }.get(result.level, QMessageBox.information)
             show(self._window, result.title, result.text)
 
-    def save_text_file(self, view: "UNITITextView", result: SaveTextFile, path=None) -> bool:
+    def save_text_file(self, view: UNITITextView, result: SaveTextFile, path=None) -> bool:
         """Host side of `SaveTextFile`: ask for a path (unless given), then
         write atomically (temp file + replace)."""
 
@@ -802,7 +836,7 @@ class EnvironmentController:
                 self._window,
                 "Load Stylesheet",
                 str(view.document.path.parent),
-                "Stylesheets (*.sty);;All Files (*)",
+                getattr(environment, "stylesheet_file_filter", "Stylesheets (*.sty);;All Files (*)"),
             )
             if not chosen:
                 return False
@@ -816,7 +850,7 @@ class EnvironmentController:
         self.configuration_changed()
         return True
 
-    def show_findings(self, view: "UNITITextView", result: ShowFindings) -> "EnvironmentFindingsDialog":
+    def show_findings(self, view: UNITITextView, result: ShowFindings) -> EnvironmentFindingsDialog:
         from uniti.ui.environment_findings_dialog import EnvironmentFindingsDialog
 
         view_id = view.view_id

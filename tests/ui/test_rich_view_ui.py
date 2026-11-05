@@ -10,13 +10,13 @@ if importlib.util.find_spec("PySide6") is None:  # pragma: no cover
     pytest.skip("PySide6 is not installed", allow_module_level=True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtTest import QTest  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from usfm_project_fixture import in_project
 
-from usfm_project_fixture import in_project  # noqa: E402
-from uniti.app.settings import SettingsStore  # noqa: E402
-from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
+from uniti.app.settings import SettingsStore
+from uniti.ui.main_window import UNITIMainWindow
 
 _USFM = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the \\bd beginning\\bd* God created.\n"
 
@@ -249,20 +249,6 @@ def test_standard_view_refuses_edits_while_the_source_is_saving(window, tmp_path
     view.setEnabled(True)
     QTest.keyClicks(pane.editor, "s")
     assert "\\bd beginnings\\bd*" in _source(view)
-
-
-def test_opening_a_rich_view_keeps_an_open_markdown_preview_closable(window, tmp_path: Path, app):
-    _open(window, tmp_path, "notes.md", "# Hello\n")
-    window.toggle_markdown_preview()
-    assert window._markdown_preview is not None
-    _open(window, tmp_path, "book.usfm", _USFM)
-
-    window._environment.view_actions["sfm.preview"].trigger()
-
-    assert window._rich_views.pane is not None
-    assert window._markdown_preview_action.isEnabled() is True
-    window._environment.view_actions[None].trigger()
-    assert window._markdown_preview_action.isEnabled() is True
 
 
 def _select_in_source(view, start: int, end: int) -> None:
@@ -639,3 +625,34 @@ def test_markdown_rendered_has_no_command_buttons_but_keeps_its_commands(window,
     assert pane.command_bar.count() == 0
     labels = [action.text() for action in pane.editor.context_menu().actions()]
     assert "Bold" in labels and "Italic" in labels
+
+
+def test_markdown_preview_menu_is_grouped_by_type(window, tmp_path: Path):
+    """N28: character styles, then paragraph styles with a Headings
+    submenu (the caret's level ticked), then Insert Table…; no Document
+    Group (N30)."""
+
+    _open(window, tmp_path, "notes.md", "## Title\n\nSome text\n")
+    window._rich_views.show("markdown.rendered")
+    pane = window._rich_views.pane
+    cursor = pane.editor.textCursor()
+    cursor.setPosition(2)  # in "Title"
+    pane.editor.setTextCursor(cursor)
+
+    menu = pane.editor.context_menu()
+    entries = ["-" if action.isSeparator() else action.text() for action in menu.actions()]
+    commands = entries[entries.index("-") :]
+    assert commands[:18] == [
+        "-", "Bold", "Italic", "Strikethrough", "Superscript", "Subscript", "Code", "Remove Formatting",
+        "-", "Headings", "Quote", "Bullet List", "Numbered List", "Task List", "Check or Uncheck Task", "Code Block",
+        "-", "Insert Table…",
+    ]
+    assert "Document Group" not in entries
+    bold = next(action for action in menu.actions() if action.text() == "Bold")
+    assert not bold.shortcut().isEmpty()
+    headings = next(action for action in menu.actions() if action.text() == "Headings").menu()
+    ticked = [action.text() for action in headings.actions() if action.isChecked()]
+    assert ticked == ["H2"]
+
+    next(action for action in headings.actions() if action.text() == "H1").trigger()
+    assert _source(window.current_view) == "# Title\n\nSome text\n"

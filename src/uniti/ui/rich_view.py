@@ -21,6 +21,7 @@ class (footnotes, cross references, …) from `Projection.notes`.
 from __future__ import annotations
 
 import bisect
+import html
 import logging
 import weakref
 from collections.abc import Callable
@@ -54,6 +55,7 @@ from PySide6.QtWidgets import (
 )
 
 from uniti.core.document import Document
+from uniti.core.environments.sfm.views import NO_CATEGORY, source_note_categories
 from uniti.core.resource_profile import ResourceProfile
 from uniti.core.rich_views.editing import EditPlan, EditRejected, plan_view_edit
 from uniti.core.rich_views.projection import Projection
@@ -140,7 +142,7 @@ class RichPalette:
     spelling_unknown: QColor = field(default_factory=lambda: QColor("#9a6700"))
 
     @classmethod
-    def from_tokens(cls, tokens: EditorThemeTokens) -> "RichPalette":
+    def from_tokens(cls, tokens: EditorThemeTokens) -> RichPalette:
         tag = QColor(tokens.syntax.get("keyword", tokens.text))
         return cls(
             base=QColor(tokens.base),
@@ -156,7 +158,7 @@ class RichPalette:
         )
 
     @classmethod
-    def from_widget_palette(cls, palette: QPalette) -> "RichPalette":
+    def from_widget_palette(cls, palette: QPalette) -> RichPalette:
         base = palette.color(QPalette.ColorRole.Base)
         text = palette.color(QPalette.ColorRole.Text)
         tag = QColor("#8ab4f8") if _luminance(base) < 0.5 else QColor("#1a56db")
@@ -203,10 +205,21 @@ def char_format(attrs, base: QFont, palette: RichPalette) -> QTextCharFormat:
         fmt.setFontUnderline(True)
     if attrs.get("superscript") == "yes":
         fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSuperScript)
+    elif attrs.get("subscript") == "yes":
+        fmt.setVerticalAlignment(QTextCharFormat.VerticalAlignment.AlignSubScript)
+    if attrs.get("strikeout") == "yes":
+        fmt.setFontStrikeOut(True)
     if attrs.get("smallcaps") == "yes":
         fmt.setFontCapitalization(QFont.Capitalization.SmallCaps)
     if attrs.get("monospace") == "yes":
         fmt.setFontFamilies(_MONOSPACE)
+    elif attrs.get("font_family"):
+        # A stylesheet's font-family list; a generic `monospace` in it is
+        # UNITI's monospace families, other generic names are left to Qt.
+        families: list[str] = []
+        for family in attrs["font_family"].split(","):
+            families.extend(_MONOSPACE if family.strip().lower() == "monospace" else [family.strip()])
+        fmt.setFontFamilies(families)
     scale = _float(attrs.get("font_scale"), 1.0)
     if abs(scale - 1.0) > 0.01 and base.pointSizeF() > 0:
         fmt.setFontPointSize(base.pointSizeF() * scale)
@@ -215,6 +228,11 @@ def char_format(attrs, base: QFont, palette: RichPalette) -> QTextCharFormat:
         fmt.setForeground(QBrush(readable(QColor(color), palette.base)))
     if attrs.get("muted") == "yes":
         fmt.setForeground(QBrush(palette.muted))
+    background = attrs.get("background")
+    if background and QColor(background).isValid():
+        # A wash of the colour over the theme's base, so text stays readable
+        # in a dark theme too.
+        fmt.setBackground(QBrush(_blend(palette.base, QColor(background), 0.45)))
     return fmt
 
 
@@ -483,7 +501,7 @@ PROJECTIONS = ProjectionCache()
 class _RichEditor(QTextEdit):
     """QTextEdit whose every modification is rerouted to the owner."""
 
-    def __init__(self, owner: "RichViewPane") -> None:
+    def __init__(self, owner: RichViewPane) -> None:
         super().__init__(owner)
         self._owner = owner
         self.setAcceptRichText(False)
@@ -503,7 +521,7 @@ class _RichEditor(QTextEdit):
         )
     )
 
-    def event(self, event) -> bool:  # noqa: A003 - Qt override
+    def event(self, event) -> bool:
         if event.type() == QEvent.Type.ShortcutOverride and any(event.matches(key) for key in self._OWN_KEYS):
             event.accept()
             return True
@@ -511,13 +529,13 @@ class _RichEditor(QTextEdit):
             return True
         return super().event(event)
 
-    def focusInEvent(self, event) -> None:  # noqa: N802 - Qt override
+    def focusInEvent(self, event) -> None:
         super().focusInEvent(event)
         # The tab's Source editor never sees focus while this covers it;
         # tell the host so the pane tree still activates the right tab.
         self._owner.focused.emit()
 
-    def wheelEvent(self, event) -> None:  # noqa: N802 - Qt override
+    def wheelEvent(self, event) -> None:
         # Ctrl+wheel zooms the Source editor (and so this view with it)
         # rather than QTextEdit's own zoom, which only rescales text that
         # has no explicit size — headings and notes would stay put.
@@ -529,7 +547,7 @@ class _RichEditor(QTextEdit):
             return
         super().wheelEvent(event)
 
-    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+    def keyPressEvent(self, event) -> None:
         owner = self._owner
         if event.matches(QKeySequence.StandardKey.ZoomIn):
             owner.zoomRequested.emit(1)
@@ -578,12 +596,12 @@ class _RichEditor(QTextEdit):
         super().keyPressEvent(event)  # navigation, selection
         owner.step_past_isolates(before)
 
-    def inputMethodEvent(self, event) -> None:  # noqa: N802
+    def inputMethodEvent(self, event) -> None:
         if event.commitString():
             self._owner.type_text(event.commitString())
         event.accept()
 
-    def createMimeDataFromSelection(self) -> QMimeData:  # noqa: N802
+    def createMimeDataFromSelection(self) -> QMimeData:
         """Copy the selection as text; Hyphenate Preview's soft hyphens, the
         isolates around Standard's tags in a right-to-left paragraph and those
         around a character style's `\\Direction` are the view's, not the
@@ -603,14 +621,14 @@ class _RichEditor(QTextEdit):
             data.setText(text)
         return data
 
-    def insertFromMimeData(self, source: QMimeData) -> None:  # noqa: N802
+    def insertFromMimeData(self, source: QMimeData) -> None:
         if source.hasText():
             self._owner.type_text(source.text())
 
-    def canInsertFromMimeData(self, source: QMimeData) -> bool:  # noqa: N802
+    def canInsertFromMimeData(self, source: QMimeData) -> bool:
         return source.hasText()
 
-    def contextMenuEvent(self, event) -> None:  # noqa: N802
+    def contextMenuEvent(self, event) -> None:
         self._owner.context_source_offset = self._owner.source_offset_at(event.pos())
         self.context_menu().exec(event.globalPos())
 
@@ -621,14 +639,39 @@ class _RichEditor(QTextEdit):
         menu.addAction("Cut", self._owner.cut).setEnabled(editable and self.textCursor().hasSelection())
         menu.addAction("Copy", self.copy).setEnabled(self.textCursor().hasSelection())
         menu.addAction("Paste", self._owner.paste).setEnabled(editable)
-        if self._owner.commands:
-            menu.addSeparator()
-        for command in self._owner.commands:
-            menu.addAction(command.label, lambda command_id=command.command_id: self._owner.run_view_command(command_id))
+        self._add_command_entries(menu)
         hook = self._owner.context_menu_hook
         if hook is not None:
             hook(menu)  # the host's entries (Document Group)
         return menu
+
+    def _add_command_entries(self, menu: QMenu) -> None:
+        """The view's commands, one block per `ViewCommand.group` (N28);
+        a `submenu` command lists its choices with the current one ticked."""
+
+        owner = self._owner
+        group: str | None = None  # None: before the first command
+        for command in owner.commands:
+            if command.group != group:
+                menu.addSeparator()
+                group = command.group
+            if command.submenu and command.choices is not None:
+                submenu = menu.addMenu(command.label.rstrip("…"))
+                current = owner.current_choice(command)
+                for choice in command.choices():
+                    action = submenu.addAction(
+                        choice, lambda c=command.command_id, a=choice: owner.run_view_command(c, a)
+                    )
+                    action.setCheckable(True)
+                    action.setChecked(choice == current)
+                    action.setEnabled(owner.editable)
+                continue
+            action = menu.addAction(command.label, lambda c=command.command_id: owner.run_view_command(c))
+            if command.shortcut:
+                # Shown in the menu's shortcut column; the editor's key
+                # handler, not this action, runs it.
+                action.setShortcut(QKeySequence(command.shortcut))
+                action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
 
 
 class _NotesEditor(QTextEdit):
@@ -637,9 +680,9 @@ class _NotesEditor(QTextEdit):
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
-        self.owner: "_NoteSectionView | None" = None
+        self.owner: _NoteSectionView | None = None
 
-    def createMimeDataFromSelection(self) -> QMimeData:  # noqa: N802 - Qt override
+    def createMimeDataFromSelection(self) -> QMimeData:
         data = super().createMimeDataFromSelection()
         owner = self.owner
         if owner is None or owner.section is None or not owner.view_only:
@@ -658,7 +701,7 @@ class _NotesEditor(QTextEdit):
 class _NoteSectionView(QWidget):
     """One note class (Footnotes, Cross References, …) of the notes frame."""
 
-    def __init__(self, owner: "RichViewPane") -> None:
+    def __init__(self, owner: RichViewPane) -> None:
         super().__init__(owner)
         self._owner = owner
         self.section = None
@@ -666,6 +709,13 @@ class _NoteSectionView(QWidget):
         self.view_only: frozenset[int] = frozenset()  # view positions of generated soft hyphens
         self.title = QLabel(self)
         self.title.setContentsMargins(6, 6, 6, 2)
+        self.categories = QLabel(self)
+        self.categories.setContentsMargins(6, 6, 6, 2)
+        self.categories.setTextFormat(Qt.TextFormat.RichText)
+        self.categories.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse)
+        self.categories.linkActivated.connect(self._category_clicked)
+        self.categories.hide()
+        self._category_state: dict[str, bool] = {}
         self.editor = _NotesEditor(self)
         self.editor.owner = self
         self.editor.setReadOnly(True)
@@ -674,11 +724,41 @@ class _NoteSectionView(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(self.title)
+        self.strip = QWidget(self)
+        self.strip.setAutoFillBackground(True)
+        header = QHBoxLayout(self.strip)
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(0)
+        header.addWidget(self.title)
+        header.addWidget(self.categories, 1)
+        layout.addWidget(self.strip)
         layout.addWidget(self.editor, 1)
 
-    def show_section(self, section, font: QFont, palette: "RichPalette") -> None:
+    def show_categories(self, categories: list[tuple[str, str, bool]]) -> None:
+        """The Footnotes title line's category toggles: (key, label, shown),
+        space-separated; a hidden category is greyed. Empty: no toggles."""
+
+        self._category_state = {key: shown for key, _label, shown in categories}
+        palette = self.palette()
+        on = palette.color(QPalette.ColorRole.WindowText).name()
+        off = palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.WindowText).name()
+        parts = [
+            f'<a href="{html.escape(key, quote=True)}" style="text-decoration:none;'
+            f'{f"color:{on};font-weight:600;" if shown else f"color:{off};"}">{html.escape(label)}</a>'
+            for key, label, shown in categories
+        ]
+        self.categories.setText('<span style="font-size:80%">[ ' + " ".join(parts) + " ]</span>")
+        self.categories.setVisible(bool(parts))
+
+    def _category_clicked(self, key: str) -> None:
+        if key in self._category_state:
+            self._owner.noteCategoryToggled.emit(key, not self._category_state[key])
+
+    def show_section(self, section, font: QFont, palette: RichPalette) -> None:
         self.section = section
+        strip_palette = self.strip.palette()
+        strip_palette.setColor(QPalette.ColorRole.Window, palette.tag_background)
+        self.strip.setPalette(strip_palette)
         self.title.setText(section.label)
         self.offsets = Utf16Offsets(section.projection.text)
         self.view_only = frozenset(section.projection.source_map.view_only_positions(0, len(section.projection.text)))
@@ -752,6 +832,7 @@ class RichViewPane(QWidget):
     providerChangeRequested = Signal(str)
     zoomRequested = Signal(int)  # +1 zoom in, -1 zoom out
     focused = Signal()
+    noteCategoryToggled = Signal(str, bool)  # footnote category, shown
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -775,6 +856,7 @@ class RichViewPane(QWidget):
         self.context_menu_hook: Callable[[QMenu], None] | None = None
         # The source offset under the right-click, for the entries about the word there.
         self.context_source_offset: int | None = None
+        self._shown_notes: tuple[str, ...] = ()
         self._providers: tuple[EditorViewProvider, ...] = ()
         self._remove_listener: Callable[[], None] | None = None
         self._applying = False
@@ -948,7 +1030,7 @@ class RichViewPane(QWidget):
         assert self.document is not None
         return self.document.read(0, self.document.total_chars())
 
-    def showEvent(self, event) -> None:  # noqa: N802 - Qt override
+    def showEvent(self, event) -> None:
         super().showEvent(event)
         if self._stale:
             self.refresh()
@@ -988,6 +1070,12 @@ class RichViewPane(QWidget):
             self.editor.setPlainText("This view could not display the document. The Source editor is unaffected.")
             self.editor.setReadOnly(True)
             return
+        notes = tuple(getattr(self.provider, "notes", ()) or ())
+        if notes and notes != self._shown_notes:
+            # What a stylesheet has that the view ignores, once (N27).
+            shown = "; ".join(notes[:3]) + (f"; and {len(notes) - 3} more" if len(notes) > 3 else "")
+            self.status.setText(f"Stylesheets: {shown}")
+        self._shown_notes = notes
         scroll = self.editor.verticalScrollBar().value()
         self._syncing_caret = True
         try:
@@ -1076,6 +1164,23 @@ class RichViewPane(QWidget):
         assert self._palette is not None
         for widget, section in zip(self.note_sections, sections):
             widget.show_section(section, self.editor.font(), self._palette)
+            widget.show_categories(self._category_toggles() if section.label == "Footnotes" else [])
+
+    def _category_toggles(self) -> list[tuple[str, str, bool]]:
+        """Every category the book's notes use (hidden ones included), with
+        "None" last, each with whether Preview shows it."""
+
+        if not hasattr(self.provider, "project_filtered"):
+            return []
+        found = list(source_note_categories(self.source_text()))
+        found += sorted(category for category in self._hidden_categories if category not in found)
+        found.sort(key=lambda category: category == NO_CATEGORY)
+        if not found:
+            return []
+        return [
+            (category, "None" if category == NO_CATEGORY else category, category not in self._hidden_categories)
+            for category in found
+        ]
 
     def note_activated(self, source: int) -> None:
         """A click in the notes frame: move the caret to that note."""
@@ -1199,7 +1304,7 @@ class RichViewPane(QWidget):
         if self._spelling is not None and not self._spelling_timer.isActive():
             self._spelling_timer.start()
 
-    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+    def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._schedule_spelling()
 
@@ -1520,6 +1625,19 @@ class RichViewPane(QWidget):
             self.document.redo()
             self.refresh()
             self._notify_applied()
+
+    def current_choice(self, command: ViewCommand) -> str | None:
+        """The choice of `command` in effect at the caret, for its submenu's tick."""
+
+        if command.current is None or self.projection is None or self.document is None:
+            return None
+        start, end = self._selection()
+        source_start, _source_end = self.projection.source_map.view_selection_to_source(start, end)
+        try:
+            return command.current(self.source_text(), source_start)
+        except Exception:  # an environment must never break the menu
+            logger.exception("view command %r: current choice failed", command.command_id)
+            return None
 
     def run_view_command(self, command_id: str, argument: str | None = None) -> bool:
         command = next((c for c in self.commands if c.command_id == command_id), None)

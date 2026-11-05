@@ -1,0 +1,38 @@
+/* markdown.css - how UNITI's Markdown Preview looks (built in, read-only).
+ *
+ * Change it in your own uniti.css (Environments/Markdown/uniti.css), in a
+ * uniti.css next to the document, or in the stylesheets the document's
+ * front matter names:
+ *
+ *   ---
+ *   stylesheet: [notes.css, print.css]
+ *   ---
+ *
+ * Later stylesheets win, property by property. Preview reads a subset of
+ * CSS: element selectors only (h1-h6, p, strong, em, del, mark, sup, sub,
+ * code, pre, blockquote, a, ul, ol, li, table, th, td, hr, dt, dd), and the
+ * properties font-family, font-size (em, %, px, pt), font-weight,
+ * font-style, text-decoration, color, background-color, margin-left,
+ * margin-top and text-align. "color: GrayText" is the theme's muted text.
+ */
+
+h1 { font-weight: bold; font-size: 1.8em; margin-top: 6px; }
+h2 { font-weight: bold; font-size: 1.5em; margin-top: 6px; }
+h3 { font-weight: bold; font-size: 1.25em; margin-top: 6px; }
+h4 { font-weight: bold; font-size: 1.1em; margin-top: 6px; }
+h5 { font-weight: bold; font-size: 1em; margin-top: 6px; }
+h6 { font-weight: bold; font-size: 0.95em; margin-top: 6px; }
+
+strong { font-weight: bold; }
+em { font-style: italic; }
+del { text-decoration: line-through; }
+mark { background-color: #ffe066; }
+code { font-family: monospace; }
+a { text-decoration: underline; color: #1a56db; }
+
+pre { font-family: monospace; margin-left: 0.25in; }
+blockquote { font-style: italic; color: GrayText; margin-left: 0.3in; }
+table { font-family: monospace; }
+
+dt { font-weight: bold; }
+dd { margin-left: 0.3in; }

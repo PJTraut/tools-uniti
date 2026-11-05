@@ -3,7 +3,7 @@
 2026-10-07 field test: "undock from MAIN panel, create 'environment panel',
 move text file to the 'environment panel'". An environment window is an
 ordinary UNITI window (tabs, splits, Find/Replace, save, session — all
-unchanged) that belongs to one environment, e.g. "SFM-1", and carries that
+unchanged) that belongs to one environment, e.g. "SFM/1", and carries that
 environment's frame: an `EnvironmentBar` toolbar with the window's name,
 the Plain Text / Standard / Preview mode switch and, for USFM, a Book /
 Chapter / Verse selector.
@@ -21,10 +21,19 @@ import weakref
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QActionGroup, QColor, QIcon
+from PySide6.QtCore import QObject, QPoint, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QAction,
+    QActionGroup,
+    QColor,
+    QFont,
+    QKeySequence,
+    QPainter,
+    QPalette,
+)
 from PySide6.QtWidgets import (
     QComboBox,
+    QFrame,
     QLabel,
     QMenu,
     QMessageBox,
@@ -33,17 +42,20 @@ from PySide6.QtWidgets import (
     QStyleOptionComboBox,
     QToolBar,
     QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 
 from uniti.core.environments.catalog import descriptor_for_key
-from uniti.core.environments.sfm.paratext_project import ParatextProject, project_for_file
+from uniti.core.environments.sfm.paratext_project import (
+    ParatextProject,
+    project_for_file,
+)
 from uniti.core.environments.sfm.references import (
     ID_PROBE_BYTES,
     BookHeader,
     Reference,
     ReferenceMap,
-    Verse,
     book_header,
     book_header_for_path,
 )
@@ -57,6 +69,9 @@ if TYPE_CHECKING:
 
 # Environments whose documents carry \\id / \\c / \\v references.
 REFERENCE_ENVIRONMENTS = frozenset({"usfm"})
+STEP_WIDTH = 16  # the stacked ▲ ▼ beside each of Book, Chapter and Verse
+STEP_HEIGHT = 12
+FRONT = "0"  # chapter and verse shown for the front matter, and verse for a chapter heading
 _SYNC_DELAY_MS = 120
 
 
@@ -66,7 +81,7 @@ class ReferenceMaps:
     def __init__(self) -> None:
         self._maps: weakref.WeakKeyDictionary[Document, tuple[int, ReferenceMap]] = weakref.WeakKeyDictionary()
 
-    def for_document(self, document: "Document") -> ReferenceMap | None:
+    def for_document(self, document: Document) -> ReferenceMap | None:
         from uniti.core.resource_profile import ResourceProfile
 
         if not ResourceProfile(size_bytes=document.source.size).allow_full_parse:
@@ -90,9 +105,9 @@ class ReferenceSync(QObject):
 
     _busy = 0
     _shared_highlights: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
-    _instances: "weakref.WeakSet[ReferenceSync]" = weakref.WeakSet()
+    _instances: weakref.WeakSet[ReferenceSync] = weakref.WeakSet()
 
-    def __init__(self, window: "UNITIMainWindow") -> None:
+    def __init__(self, window: UNITIMainWindow) -> None:
         super().__init__(window)
         self._window = window
         self.maps = ReferenceMaps()
@@ -135,7 +150,7 @@ class ReferenceSync(QObject):
         service = self._window._service
         return [self._window] if service is None else [window for _window_id, window in service.windows.items]
 
-    def _window_of(self, view: "UNITITextView"):
+    def _window_of(self, view: UNITITextView):
         service = self._window._service
         window = None if service is None else service.windows.window_for_view(view.view_id)
         return window if window is not None else self._window
@@ -147,20 +162,20 @@ class ReferenceSync(QObject):
 
     # --- helpers -------------------------------------------------------------
 
-    def _environment_key(self, view: "UNITITextView") -> str | None:
+    def _environment_key(self, view: UNITITextView) -> str | None:
         environment = self._window._environment
         if environment.is_plain_mode(view):
             return None
         return environment.environment_key_for(view.document)
 
-    def _group_of(self, view: "UNITITextView") -> str | None:
+    def _group_of(self, view: UNITITextView) -> str | None:
         service = self._window._service
         if service is None:
             return None
         entry = service.documents.entry_for_view(view.view_id)
         return None if entry is None else entry.group_id
 
-    def _visible_views(self) -> list["UNITITextView"]:
+    def _visible_views(self) -> list[UNITITextView]:
         """The tab shown in each split of every window."""
 
         from uniti.ui.text_view import UNITITextView
@@ -182,7 +197,7 @@ class ReferenceSync(QObject):
 
     # --- sync ------------------------------------------------------------------
 
-    def schedule(self, view: "UNITITextView") -> None:
+    def schedule(self, view: UNITITextView) -> None:
         """The caret moved in `view`; sync shortly if it is the active tab."""
 
         self._release_pin_if_left(view)
@@ -197,7 +212,7 @@ class ReferenceSync(QObject):
             return
         self.sync_from(view)
 
-    def sync_from(self, source: "UNITITextView") -> int:
+    def sync_from(self, source: UNITITextView) -> int:
         """Bring the other splits to `source`'s reference; returns how many moved.
 
         Plan P5: the reference is mapped into each text's own
@@ -308,7 +323,7 @@ class ReferenceSync(QObject):
 
     def _targets(
         self, source, source_leaf, group: str, book: str, missing: list[str], unsaved: list[str]
-    ) -> list["UNITITextView"]:
+    ) -> list[UNITITextView]:
         """Per other split showing a text of `group`: its shown tab when it
         has `book`; else another tab of that split that does (then shown);
         else, for a Paratext project text, the project's file of `book`
@@ -359,10 +374,10 @@ class ReferenceSync(QObject):
                 missing.append(shown.document.path.name)
         return targets
 
-    def _in_group(self, view: "UNITITextView", group: str) -> bool:
+    def _in_group(self, view: UNITITextView, group: str) -> bool:
         return self._group_of(view) == group and self._environment_key(view) in REFERENCE_ENVIRONMENTS
 
-    def _open_in_split(self, shown: "UNITITextView", path: Path, source: "UNITITextView", group: str):
+    def _open_in_split(self, shown: UNITITextView, path: Path, source: UNITITextView, group: str):
         """Open `path` in `shown`'s split, in `shown`'s view mode and group,
         without a popup and without taking activation from `source`."""
 
@@ -397,13 +412,13 @@ class ReferenceSync(QObject):
             return None
         return opened
 
-    def _matches(self, view: "UNITITextView", group: str, book: str) -> bool:
+    def _matches(self, view: UNITITextView, group: str, book: str) -> bool:
         if self._group_of(view) != group or self._environment_key(view) not in REFERENCE_ENVIRONMENTS:
             return False
         reference_map = self.maps.for_document(view.document)
         return reference_map is not None and reference_map.book == book
 
-    def _show_tab(self, leaf, view: "UNITITextView", source: "UNITITextView") -> None:
+    def _show_tab(self, leaf, view: UNITITextView, source: UNITITextView) -> None:
         # Selecting a tab activates its split; hand activation straight back.
         self._syncing = True
         try:
@@ -412,7 +427,7 @@ class ReferenceSync(QObject):
         finally:
             self._syncing = False
 
-    def _move(self, view: "UNITITextView", offset: int) -> None:
+    def _move(self, view: UNITITextView, offset: int) -> None:
         document = view.document
         view.state.move_to(max(0, min(offset, document.total_chars())))
         view._state_changed()
@@ -424,7 +439,7 @@ class ReferenceSync(QObject):
         if pane is not None:
             pane.scroll_to_source(offset)
 
-    def _highlight(self, view: "UNITITextView", source_range: tuple[int, int]) -> None:
+    def _highlight(self, view: UNITITextView, source_range: tuple[int, int]) -> None:
         start, end = source_range
         document = view.document
         first = document.line_for_char(start)
@@ -436,7 +451,7 @@ class ReferenceSync(QObject):
             pane.set_highlight(source_range)
         self._highlighted[view] = source_range
 
-    def _unhighlight(self, view: "UNITITextView") -> None:
+    def _unhighlight(self, view: UNITITextView) -> None:
         self._highlighted.pop(view, None)
         view.set_line_highlights()
         pane = self._window_of(view)._rich_views.pane_for(view)
@@ -451,7 +466,7 @@ class ReferenceSync(QObject):
             if view not in pinned:
                 self._unhighlight(view)
 
-    def restore_highlight(self, view: "UNITITextView") -> None:
+    def restore_highlight(self, view: UNITITextView) -> None:
         """A rich pane was just built for `view`: give it the view's highlight."""
 
         source_range = self._highlighted.get(view)
@@ -461,7 +476,7 @@ class ReferenceSync(QObject):
 
     # --- jumps (R4) -----------------------------------------------------------------
 
-    def navigate_to(self, view: "UNITITextView", offset: int) -> None:
+    def navigate_to(self, view: UNITITextView, offset: int) -> None:
         """Jump to `offset` (Book/Chapter/Verse, Go to Chapter:Verse) and, when
         it starts a verse or chapter, highlight that verse — or the chapter
         line — in every view mode until the caret leaves it."""
@@ -474,7 +489,7 @@ class ReferenceSync(QObject):
             self._pinned = (weakref.ref(view), *target)
         view.setFocus()
 
-    def _range_at(self, view: "UNITITextView", offset: int) -> tuple[int, int] | None:
+    def _range_at(self, view: UNITITextView, offset: int) -> tuple[int, int] | None:
         if self._environment_key(view) not in REFERENCE_ENVIRONMENTS:
             return None
         reference_map = self.maps.for_document(view.document)
@@ -490,7 +505,7 @@ class ReferenceSync(QObject):
             return offset, max(offset + 1, end)
         return None
 
-    def _pinned_view(self) -> "UNITITextView | None":
+    def _pinned_view(self) -> UNITITextView | None:
         if self._pinned is None:
             return None
         view = self._pinned[0]()
@@ -498,7 +513,7 @@ class ReferenceSync(QObject):
             return None
         return view
 
-    def _release_pin_if_left(self, view: "UNITITextView") -> None:
+    def _release_pin_if_left(self, view: UNITITextView) -> None:
         if self._pinned is not None and self._pinned[0]() is view and self._pinned_view() is None:
             self._unpin()
 
@@ -511,10 +526,126 @@ class ReferenceSync(QObject):
             self._unhighlight(view)
 
 
+
+_GROUP_BUTTON_STYLE = "QToolButton::menu-indicator { image: none; }"
+
+
+class _GroupButton(QToolButton):
+    """The toolbar's "[name]", in the group's colour (field test,
+    2026-10-31)."""
+
+    def set_group(self, name: str, color: str | None = None) -> None:
+        self.setText(f"[{name}]")
+        rule = "" if color is None else f"QToolButton {{ color: {color}; }} "
+        self.setStyleSheet(rule + _GROUP_BUTTON_STYLE)
+
+
+class _GroupRow(QWidget):
+    """One row of the group pop-up: the name in the group's colour, a tick
+    when it is the current group."""
+
+    clicked = Signal()
+
+    def __init__(
+        self, text: str, color: str | None, checked: bool, parent: QWidget | None = None, shortcut: str = ""
+    ) -> None:
+        super().__init__(parent)
+        self._text = text
+        self._color = color
+        self._checked = checked
+        self.shortcut = shortcut  # the row's hotkey, shown greyed at the right (N30)
+        self.setMouseTracking(True)
+        self.setMinimumHeight(self.fontMetrics().height() + 8)
+
+    def sizeHint(self) -> QSize:
+        metrics = self.fontMetrics()
+        width = metrics.horizontalAdvance(self._text) + 48
+        if self.shortcut:
+            width += metrics.horizontalAdvance(self.shortcut) + 24
+        return QSize(width, metrics.height() + 8)
+
+    def enterEvent(self, event) -> None:
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self.update()
+        super().leaveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(event.position().toPoint()):
+            self.clicked.emit()
+            return
+        super().mouseReleaseEvent(event)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        palette = self.palette()
+        hovered = self.underMouse()
+        if hovered:
+            painter.fillRect(self.rect(), palette.highlight())
+        if self._color is not None and not hovered:
+            painter.setPen(QColor(self._color))
+        else:
+            painter.setPen(palette.highlightedText().color() if hovered else palette.text().color())
+        if self._checked:
+            painter.drawText(self.rect().adjusted(10, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, "\u2713")
+        painter.drawText(self.rect().adjusted(30, 0, -10, 0), Qt.AlignmentFlag.AlignVCenter, self._text)
+        if self.shortcut:
+            if not hovered:
+                painter.setPen(palette.color(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text))
+            painter.drawText(
+                self.rect().adjusted(0, 0, -10, 0),
+                Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+                self.shortcut,
+            )
+
+
+class _GroupPopup(QFrame):
+    """The group pop-up: a plain Qt pop-up, not a native menu (a native macOS
+    menu crashed when its actions changed under a click, field test,
+    2026-10-31). Built fresh each time it opens, so nothing in it changes
+    while a click is running; a pick closes it first and is delivered
+    afterwards."""
+
+    def __init__(self, entries, current, manage, picked, parent: QWidget) -> None:
+        super().__init__(parent, Qt.WindowType.Popup)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
+        layout.setSpacing(0)
+        self._picked = picked
+        self.rows: list[_GroupRow] = []
+        for position, (name, data, color) in enumerate(entries):
+            # Ungrouped is Ctrl+Alt+0, the first nine groups Ctrl+Alt+1\u20269.
+            shortcut = (
+                QKeySequence(f"Ctrl+Alt+{position}").toString(QKeySequence.SequenceFormat.NativeText)
+                if position < 10
+                else ""
+            )
+            self._add_row(layout, name, data, color, data == current, shortcut)
+        rule = QFrame(self)
+        rule.setFrameShape(QFrame.Shape.HLine)
+        layout.addWidget(rule)
+        self._add_row(layout, "Manage Groups\u2026", manage, None, False)
+
+    def _add_row(self, layout, text, data, color, checked, shortcut: str = "") -> None:
+        row = _GroupRow(text, color, checked, self, shortcut)
+        self.rows.append(row)
+        row.clicked.connect(lambda data=data: self._pick(data))
+        layout.addWidget(row)
+
+    def _pick(self, data) -> None:
+        picked = self._picked
+        self.hide()
+        self.deleteLater()
+        QTimer.singleShot(0, lambda: picked(data))
+
+
 class EnvironmentBar(QToolBar):
     """The environment frame of an environment window."""
 
-    def __init__(self, window: "UNITIMainWindow", environment_key: str, slot: int) -> None:
+    def __init__(self, window: UNITIMainWindow, environment_key: str, slot: int) -> None:
         super().__init__("Environment", window)
         self.setObjectName("environmentBar")
         self.setMovable(False)
@@ -522,6 +653,9 @@ class EnvironmentBar(QToolBar):
         self.environment_key = environment_key
         self.slot = slot
         self._updating = False
+        self._group_entries: list[tuple[str, str | None, str | None]] = []
+        self._group_popup: _GroupPopup | None = None
+        self._current_group: str | None = None
         # `open_book`'s answers about the book it leaves (view id -> "keep"
         # or "discard"), so `keep_one_book` doesn't ask twice.
         self._leaving: dict[str, str] = {}
@@ -530,31 +664,27 @@ class EnvironmentBar(QToolBar):
         self._books: tuple[tuple[str, Path], ...] = ()
         self._map: ReferenceMap | None = None
 
-        # The window's name ("SFM-1"); click to rename it (round 3 T3, D4).
-        self.title = QToolButton(self)
-        self.title.setAutoRaise(True)
+        # The window's name ("SFM/1"): a label, no longer renamed (field
+        # test, 2026-10-31).
+        self.title = QLabel(self)
+        self.title.setContentsMargins(6, 0, 6, 0)
         self.title.setAccessibleName("Window name")
-        self.title.setToolTip("This window's name. Click to rename it.")
-        self.title.clicked.connect(lambda _checked=False: window.rename_environment_window())
+        self.title.setToolTip("This window's name.")
         self.addWidget(self.title)
         # The current file's document group: side-by-side sync works within
         # a group.
         # A button like the window's name (field test, 2026-10-26): it shows
         # the group; clicking it lists the groups.
-        self.group = QToolButton(self)
+        self.group = _GroupButton(self)
         self.group.setAccessibleName("Group")
         self.group.setToolTip(
             "The current file's document group. Side-by-side sync works within a group."
         )
         self.group.setAutoRaise(True)
-        self.group.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self.group.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-        self.group.setMenu(QMenu(self.group))
-        self.group.setStyleSheet("QToolButton::menu-indicator { image: none; }")
-        self.group.setMinimumWidth(round(8 * self.group.fontMetrics().horizontalAdvance("M")))
-        group_label = QLabel("Group", self)
-        group_label.setContentsMargins(6, 0, 3, 0)
-        self.addWidget(group_label)
+        self.group.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.group.clicked.connect(self._show_group_popup)
+        self.group.setStyleSheet(_GROUP_BUTTON_STYLE)
+        self.group.setMinimumWidth(round(5 * self.group.fontMetrics().horizontalAdvance("M")))
         self.addWidget(self.group)
         self.project_label = QLabel(self)
         self.project_label.setContentsMargins(10, 0, 6, 0)
@@ -569,19 +699,30 @@ class EnvironmentBar(QToolBar):
         self.book = _BookCombo(self)
         self.book.setAccessibleName("Book")
         self.book.activated.connect(self._book_chosen)
-        self.chapter = QComboBox(self)
+        self.chapter = _NumberCombo(self)
         self.chapter.setAccessibleName("Chapter")
         self.chapter.activated.connect(self._chapter_chosen)
-        self.verse = QComboBox(self)
+        self.verse = _NumberCombo(self)
         self.verse.setAccessibleName("Verse")
         self.verse.activated.connect(self._verse_chosen)
         # Fixed display widths: the book's id and header, and up to three
         # digits of chapter and verse.
         for combo, ems in ((self.book, BOOK_EMS), (self.chapter, NUMBER_EMS), (self.verse, NUMBER_EMS)):
-            _fix_display_width(combo, ems)
             # A short list with a scrollbar (field test, 2026-10-26): not the
             # native pop-up that stretches over a 150-chapter Psalms list.
-            combo.setStyleSheet("QComboBox { combobox-popup: 0; }")
+            # No drop-down arrow inside the box: the stacked carets beside it
+            # step the list, and a click on the box opens it. The border rule
+            # makes the style sheet draw the box itself; without it the native
+            # style (macOS) keeps drawing its own up/down chevron.
+            combo.setStyleSheet(
+                "QComboBox { combobox-popup: 0; border: 1px solid palette(mid); border-radius: 3px;"
+                " padding: 1px 6px; background: palette(base); }"
+                " QComboBox:disabled { color: palette(mid); }"
+                " QComboBox::drop-down { width: 0; border: none; }"
+                " QComboBox::down-arrow { image: none; width: 0; }"
+            )
+            combo.ensurePolished()
+            _fix_display_width(combo, ems)
             combo.setMaxVisibleItems(POPUP_ITEMS)
         self._steppers: dict[QComboBox, tuple[QToolButton, QToolButton]] = {}
         if references:
@@ -591,6 +732,7 @@ class EnvironmentBar(QToolBar):
             self.addWidget(spacer)
             self.addAction(window._reference_sync.action)
             self.addSeparator()
+            tags: list[QWidget] = []
             for text, combo in (("Book", self.book), ("Chapter", self.chapter), ("Verse", self.verse)):
                 if combo is self.book:
                     # The lock before the Book list stands for "Book" and is
@@ -600,11 +742,13 @@ class EnvironmentBar(QToolBar):
                     abbreviation.setContentsMargins(6, 0, 3, 0)
                     abbreviation.setToolTip("Book")
                     self.addWidget(abbreviation)
+                    tags.append(abbreviation)
                     self.lock_toggle = QToolButton(self)
                     self.lock_toggle.setDefaultAction(window._book_lock.action)
                     self.lock_toggle.setAutoRaise(True)
                     self.lock_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
                     self.addWidget(self.lock_toggle)
+                    tags.append(self.lock_toggle)
                 elif combo is self.chapter:
                     # "Chapter" is also the Show One Chapter toggle: no
                     # extra button on a toolbar that must stay short.
@@ -613,15 +757,22 @@ class EnvironmentBar(QToolBar):
                     self.chapter_toggle.setAutoRaise(True)
                     self.chapter_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
                     self.addWidget(self.chapter_toggle)
+                    tags.append(self.chapter_toggle)
                 else:
                     label = QLabel("VS", self)
                     label.setContentsMargins(6, 0, 3, 0)
                     label.setToolTip(text)
                     self.addWidget(label)
-                previous, following = self._make_steppers(combo)
-                self.addWidget(previous)
+                    tags.append(label)
                 self.addWidget(combo)
-                self.addWidget(following)
+                self.addWidget(self._make_steppers(combo))
+            # BK, CH and VS: one font, size and weight (a label, a toggle
+            # button and a lock button would otherwise each draw their own).
+            tag_font = QFont(self.font())
+            tag_font.setBold(False)
+            for tag in tags:
+                tag.setFont(tag_font)
+                tag.setStyleSheet(f"font-size: {tag_font.pointSizeF():g}pt; font-weight: normal;")
         else:
             for combo in (self.book, self.chapter, self.verse):
                 combo.hide()
@@ -629,24 +780,29 @@ class EnvironmentBar(QToolBar):
 
     # --- state -------------------------------------------------------------------
 
-    def _make_steppers(self, combo: QComboBox) -> tuple[QToolButton, QToolButton]:
-        """"−" and "+" around `combo`: the previous and the next item of its
-        list (Book GEN + is EXO, Chapter 3 − is 2)."""
+    def _make_steppers(self, combo: QComboBox) -> QWidget:
+        """Up and down carets stacked at the right of `combo`, like a spin
+        box: up is the next item of its list (Book GEN ▲ is EXO), down the
+        previous one (Chapter 3 ▼ is 2)."""
 
-        buttons = []
-        for text, delta, name in (("−", -1, "Previous"), ("+", 1, "Next")):
-            button = QToolButton(self)
-            button.setText(text)
+        stack = QWidget(self)
+        layout = QVBoxLayout(stack)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        buttons = {}
+        for arrow, delta, name in ((Qt.ArrowType.UpArrow, 1, "Next"), (Qt.ArrowType.DownArrow, -1, "Previous")):
+            button = QToolButton(stack)
+            button.setArrowType(arrow)
             button.setAutoRaise(True)
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-            button.setFixedWidth(round(1.3 * button.fontMetrics().horizontalAdvance("M")))  # the toolbar must stay short
+            button.setFixedSize(STEP_WIDTH, STEP_HEIGHT)  # the toolbar must stay short
             button.setAccessibleName(f"{name} {combo.accessibleName()}")
             button.setToolTip(f"{name} {combo.accessibleName().lower()}")
             button.clicked.connect(lambda _checked=False, combo=combo, delta=delta: self.step(combo, delta))
-            buttons.append(button)
-        self._steppers[combo] = (buttons[0], buttons[1])
-        return buttons[0], buttons[1]
+            layout.addWidget(button)
+            buttons[delta] = button
+        self._steppers[combo] = (buttons[-1], buttons[1])
+        return stack
 
     def step(self, combo: QComboBox, delta: int) -> bool:
         """Move `combo` to the previous (-1) or next (+1) item and act on it
@@ -666,7 +822,7 @@ class EnvironmentBar(QToolBar):
             previous.setEnabled(combo.isEnabled() and combo.currentIndex() > 0)
             following.setEnabled(combo.isEnabled() and combo.currentIndex() < combo.count() - 1)
 
-    def _view(self) -> "UNITITextView | None":
+    def _view(self) -> UNITITextView | None:
         view = self._window.current_view
         if view is None:
             return None
@@ -706,7 +862,6 @@ class EnvironmentBar(QToolBar):
 
     # --- group ---------------------------------------------------------------------
 
-    _NEW_GROUP = "\0new"
     _MANAGE_GROUPS = "\0manage"
 
     def _entry(self):
@@ -718,56 +873,53 @@ class EnvironmentBar(QToolBar):
 
     def _refresh_group_choices(self) -> None:
         window = self._window
-        swatch = window._groups_and_recent_files._group_swatch_icon
         entry = self._entry()
         current = None if entry is None else entry.group_id
-        menu = self.group.menu()
-        menu.clear()
-        shown, shown_icon = "Ungrouped", QIcon()
-        choices = [("Ungrouped", None, QIcon())]
-        choices += [(group.name, group.id, swatch(group.color)) for group in window.groups_for(self.environment_key)]
-        for name, data, icon in choices:
-            action = menu.addAction(icon, name)
-            action.setCheckable(True)
-            action.setChecked(data == current)
-            action.triggered.connect(lambda _checked=False, data=data: self._group_chosen(data))
-            if data == current:
-                shown, shown_icon = name, icon
-        menu.addSeparator()
-        menu.addAction("New Group…").triggered.connect(lambda _checked=False: self._group_chosen(self._NEW_GROUP))
-        menu.addAction("Manage Groups…").triggered.connect(lambda _checked=False: self._group_chosen(self._MANAGE_GROUPS))
-        self.group.setText(shown)
-        self.group.setIcon(shown_icon)
+        groups = window.groups_for(self.environment_key)
+        shown, color = "Ungrouped", None
+        for group in groups:
+            if group.id == current:
+                shown, color = group.name, group.color
+        # "[A]" next to the window's name, in the group's colour.
+        self.group.set_group(shown, color)
         self.group.setEnabled(entry is not None)
+        self._group_entries = [("Ungrouped", None, None)] + [(g.name, g.id, g.color) for g in groups]
+        self._current_group = current
+        # Ctrl+Alt+0…9 are the window's own actions (every window has them,
+        # N30); the pop-up only shows them.
+
+    def _show_group_popup(self) -> None:
+        popup = _GroupPopup(
+            self._group_entries, self._current_group, self._MANAGE_GROUPS, self._group_chosen, self.group
+        )
+        self._group_popup = popup
+        popup.move(self.group.mapToGlobal(QPoint(0, self.group.height())))
+        popup.show()
 
     def group_choices(self) -> list[str]:
-        """The group menu's entries, in order."""
+        """The group pop-up's entries, in order."""
 
-        return [action.text() for action in self.group.menu().actions() if action.text()]
+        return [name for name, _data, _color in self._group_entries] + ["Manage Groups…"]
 
     def choose_group(self, text: str) -> bool:
-        """Pick the group menu's entry `text`, as a click would."""
+        """Pick the group pop-up's entry `text`, as a click would."""
 
-        for action in self.group.menu().actions():
-            if action.text() == text:
-                action.trigger()
+        if text == "Manage Groups…":
+            self._group_chosen(self._MANAGE_GROUPS)
+            return True
+        for name, data, _color in self._group_entries:
+            if name == text:
+                self._group_chosen(data)
                 return True
         return False
 
     def _group_chosen(self, data) -> None:
         window = self._window
         if data == self._MANAGE_GROUPS:
-            self._refresh_group_choices()
             window.show_document_group_editor(self.environment_key)
             return
         entry = self._entry()
         if entry is None:
-            self._refresh_group_choices()
-            return
-        if data == self._NEW_GROUP:
-            # Created in this environment and given to the current file.
-            if window._groups_and_recent_files.new_group_for(entry.document_id) is None:
-                self._refresh_group_choices()
             return
         window._set_document_group(entry.document_id, data)
 
@@ -815,7 +967,7 @@ class EnvironmentBar(QToolBar):
 
     # --- book / chapter / verse ---------------------------------------------------
 
-    def _book_entries(self, view: "UNITITextView", *, rescan: bool) -> list[tuple[str, Path]]:
+    def _book_entries(self, view: UNITITextView, *, rescan: bool) -> list[tuple[str, Path]]:
         """(label, path) per book: the project's books (plan P3). USFM
         assumes a project (round 3 T1), so a file outside one lists none."""
 
@@ -889,7 +1041,10 @@ class EnvironmentBar(QToolBar):
         self._updating = True
         try:
             self.chapter.clear()
-            if self._map is not None:
+            if self._map is not None and self._map.chapters:
+                # Chapter 0 is the front matter, before the first \c (as in Paratext).
+                if all(chapter.label != FRONT for chapter in self._map.chapters):
+                    self.chapter.addItem(FRONT, FRONT)
                 for chapter in self._map.chapters:
                     self.chapter.addItem(chapter.label, chapter.label)
             self.chapter.setEnabled(self.chapter.count() > 0)
@@ -901,11 +1056,20 @@ class EnvironmentBar(QToolBar):
     def _fill_verses(self, chapter: str | None) -> None:
         self.verse.clear()
         if self._map is not None and chapter is not None:
-            for verse in self._map.verses_in(chapter):
+            # Verse 0 is the chapter's heading, between its \c and its first
+            # \v; in the front matter it is the start of the text.
+            verses = self._map.verses_in(chapter)
+            if not verses or verses[0].label != FRONT:
+                self.verse.addItem(FRONT, self._heading_start(chapter))
+            for verse in verses:
                 self.verse.addItem(verse.label, verse.start)
         self.verse.setEnabled(self.verse.count() > 0)
 
-    def follow_caret(self, view: "UNITITextView | None") -> None:
+    def _heading_start(self, chapter: str) -> int:
+        start = None if self._map is None else self._map.chapter_start(chapter)
+        return 0 if start is None else start
+
+    def follow_caret(self, view: UNITITextView | None) -> None:
         """Show the reference at the caret (without navigating)."""
 
         if self.environment_key not in REFERENCE_ENVIRONMENTS or view is None or view is not self._view():
@@ -917,14 +1081,21 @@ class EnvironmentBar(QToolBar):
         if reference_map is None:
             return
         reference = reference_map.reference_at(view.state.cursor)
+        chapter = FRONT if reference.chapter is None and self.chapter.count() else reference.chapter
         self._updating = True
         try:
-            index = self.chapter.findData(reference.chapter)
+            index = self.chapter.findData(chapter)
             if index != self.chapter.currentIndex() or self.verse.count() == 0:
                 self.chapter.setCurrentIndex(index)
-                self._fill_verses(reference.chapter)
+                self._fill_verses(chapter)
             verse = reference_map.find(reference.chapter, reference.verse)
-            self.verse.setCurrentIndex(-1 if verse is None else self.verse.findData(verse.start))
+            if verse is not None:
+                shown = self.verse.findData(verse.start)
+            elif chapter is not None and self.verse.count():
+                shown = 0  # verse 0: the front matter, or a chapter's heading
+            else:
+                shown = -1
+            self.verse.setCurrentIndex(shown)
         finally:
             self._updating = False
         self._refresh_steppers()
@@ -944,7 +1115,7 @@ class EnvironmentBar(QToolBar):
             self._fill_verses(chapter)
         finally:
             self._updating = False
-        self._navigate(self._map.chapter_start(chapter))
+        self._navigate(self._heading_start(chapter))
 
     def _verse_chosen(self, index: int) -> None:
         if not self._updating:
@@ -957,7 +1128,7 @@ class EnvironmentBar(QToolBar):
         if isinstance(path, str):
             self.open_book(Path(path))
 
-    def open_book(self, path: Path) -> "UNITITextView | None":
+    def open_book(self, path: Path) -> UNITITextView | None:
         """Show the book at `path` here, in the current tab's mode and group.
 
         In a USFM window the tab is the project's (round 3 T4): the book is
@@ -1009,7 +1180,7 @@ class EnvironmentBar(QToolBar):
                 shown = next((book for book in books if book.view_id == leaf.selected_view_id), books[0])
                 self.keep_one_book(shown, ask=False)
 
-    def keep_one_book(self, shown: "UNITITextView", *, ask: bool = True) -> None:
+    def keep_one_book(self, shown: UNITITextView, *, ask: bool = True) -> None:
         """A project has one open book per tab: close the other books open
         in `shown`'s tab, asking about unsaved changes (book-lock plan D4)
         unless the question was just answered (`open_book`). A book whose
@@ -1038,7 +1209,7 @@ class EnvironmentBar(QToolBar):
         finally:
             self._keeping = False
 
-    def _show_book(self, path: Path) -> "UNITITextView | None":
+    def _show_book(self, path: Path) -> UNITITextView | None:
         window = self._window
         previous = window.current_view
         mode = window._rich_views.key_for(previous)
@@ -1078,7 +1249,7 @@ class EnvironmentBar(QToolBar):
             return opened  # open elsewhere: the service focused that window
         return self._finish_open(opened, mode, group_id)
 
-    def _finish_open(self, opened: "UNITITextView", mode: str | None, group_id: str | None) -> "UNITITextView":
+    def _finish_open(self, opened: UNITITextView, mode: str | None, group_id: str | None) -> UNITITextView:
         window = self._window
         service = window._service
         if service is not None and group_id is not None:
@@ -1093,7 +1264,7 @@ class EnvironmentBar(QToolBar):
             window._reference_sync.sync_from(opened)
         return opened
 
-    def _leave_book(self, view: "UNITITextView") -> str | None:
+    def _leave_book(self, view: UNITITextView) -> str | None:
         """Before another book replaces `view` in its tab: "keep" (saved, or
         another view still shows it), "discard", or None to stay (D4)."""
 
@@ -1142,17 +1313,35 @@ def _fix_display_width(combo: QComboBox, ems: float) -> None:
     combo.initStyleOption(option)
     contents = QSize(round(ems * metrics.horizontalAdvance("M")), metrics.height())
     size = combo.style().sizeFromContents(QStyle.ContentsType.CT_ComboBox, option, contents, combo)
-    combo.setFixedWidth(size.width())
+    # The style sheet's padding and border (6px + 1px a side) must fit too;
+    # the style's own estimate has come out a digit short on macOS.
+    combo.setFixedWidth(max(size.width(), contents.width() + 2 * (6 + 1) + 4))
+
+
+class _NumberCombo(QComboBox):
+    """A Chapter or Verse box whose list is as wide as its widest number and
+    its scrollbar, no wider (field test, 2026-10-31: the box's own width
+    left room for one digit, then for far more than three)."""
+
+    def showPopup(self) -> None:
+        super().showPopup()
+        view = self.view()
+        scrollbar = self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, view)
+        metrics = self.fontMetrics()
+        widest = max([metrics.horizontalAdvance("000")] + [metrics.horizontalAdvance(self.itemText(i)) for i in range(self.count())])
+        text = widest + 16
+        container = view.window()
+        container.setFixedWidth(text + (scrollbar if self.count() > self.maxVisibleItems() else 0) + 2 * view.frameWidth() + 8)
 
 
 class _BookCombo(QComboBox):
     """Re-reads the book list each time it opens (files come and go)."""
 
-    def __init__(self, bar: "EnvironmentBar") -> None:
+    def __init__(self, bar: EnvironmentBar) -> None:
         super().__init__(bar)
         self._bar = bar
 
-    def showPopup(self) -> None:  # noqa: N802 - Qt override
+    def showPopup(self) -> None:
         self._bar._refresh_books(rescan=True)
         super().showPopup()
 
@@ -1166,7 +1355,7 @@ class _BookCombo(QComboBox):
         menu.addAction(window._book_lock.action)
         return menu
 
-    def contextMenuEvent(self, event) -> None:  # noqa: N802 - Qt override
+    def contextMenuEvent(self, event) -> None:
         self.lock_menu().popup(event.globalPos())
 
 
@@ -1177,7 +1366,7 @@ def _same_path(first: Path, second: Path) -> bool:
         return first == second
 
 
-def _same_project(view: "UNITITextView", project: ParatextProject) -> bool:
+def _same_project(view: UNITITextView, project: ParatextProject) -> bool:
     other = project_for_file(view.document.path)
     return other is not None and _same_path(other.folder, project.folder)
 
@@ -1189,4 +1378,4 @@ def _resolved(path: Path) -> Path:
         return Path(path)
 
 
-__all__ = ["EnvironmentBar", "REFERENCE_ENVIRONMENTS", "ReferenceMaps", "ReferenceSync"]
+__all__ = ["REFERENCE_ENVIRONMENTS", "EnvironmentBar", "ReferenceMaps", "ReferenceSync"]

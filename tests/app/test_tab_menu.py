@@ -9,12 +9,11 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from usfm_project_fixture import ensure_project  # noqa: E402
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
+from PySide6.QtCore import Qt
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
-from PySide6.QtCore import Qt  # noqa: E402
-
-from uniti.ui.grouped_tabs import visible_tab_texts  # noqa: E402
+from uniti.ui.grouped_tabs import visible_tab_texts
 
 _GEN = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning.\n"
 _EXO = "\\id EXO\n\\c 1\n\\p\n\\v 1 These are the names.\n"
@@ -51,7 +50,7 @@ def _action(menu, text: str):
 
 
 def _window_with_two_projects(service, tmp_path: Path):
-    """SFM-1 with an NIV tab (GEN) and a CARS tab (GEN)."""
+    """SFM/1 with an NIV tab (GEN) and a CARS tab (GEN)."""
 
     niv = _project(tmp_path / "niv", "NIV")
     cars = _project(tmp_path / "cars", "CARS")
@@ -144,14 +143,14 @@ def test_a_tab_moves_between_windows_and_docks_back(desktop, tmp_path: Path):
     _action(_submenu(window.tab_menu(genesis.view_id), "Window"), "Move to New Window").trigger()
 
     usfm_b = service.windows.window_for_view(genesis.view_id)
-    assert usfm_b is not window and usfm_b.environment_window_name() == "SFM-2"
+    assert usfm_b is not window and usfm_b.environment_window_name() == "SFM/2"
     assert visible_tab_texts(usfm_b._panes.leaf_for_view(genesis.view_id)) == ["NIV"]
     assert usfm_b.current_view is genesis
 
-    # From SFM-2, the menu offers SFM-1; moving there again merges with
+    # From SFM/2, the menu offers SFM/1; moving there again merges with
     # whatever tab of the project is there (here: none, so its own tab).
     window_menu = _submenu(usfm_b.tab_menu(genesis.view_id), "Window")
-    assert "Move to SFM-1" in _texts(window_menu)
+    assert "Move to SFM/1" in _texts(window_menu)
     assert _action(window_menu, "Dock").isEnabled()
 
     _action(window_menu, "Dock").trigger()
@@ -163,7 +162,7 @@ def test_moving_a_book_into_a_window_with_its_project_replaces_the_projects_book
     window, genesis, other = _window_with_two_projects(service, tmp_path)
     usfm_b = service.new_environment_window("usfm")
     niv = tmp_path / "niv"
-    # A second NIV book in SFM-2: open a third book there.
+    # A second NIV book in SFM/2: open a third book there.
     (niv / "03LEV.usfm").write_text("\\id LEV\n\\c 1\n\\p\n\\v 1 Leviticus.\n", encoding="utf-8")
     leviticus = usfm_b.open_path(niv / "03LEV.usfm")
     assert service.windows.window_for_view(leviticus.view_id) is usfm_b

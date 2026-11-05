@@ -209,11 +209,16 @@ def reformat_commands(reformatter_key: str) -> Sequence[EnvironmentCommand]:
                     "offered above that size.",
                     level="warning",
                 )
-            action = reformatter.minify if minify else reformatter.format
-            assert action is not None
             text = document_text(context)
             try:
-                return ReplaceDocumentText(action(text))
+                if minify:
+                    assert reformatter.minify is not None
+                    return ReplaceDocumentText(reformatter.minify(text))
+                # Format Document follows the environment's settings (N31).
+                from .environments.settings import environment_settings
+
+                options = environment_settings(reformatter_key).as_dict()
+                return ReplaceDocumentText(reformatter.format(text, options))
             except ReformatFailure as exc:
                 error = exc.error
                 location = (
@@ -234,17 +239,17 @@ def reformat_commands(reformatter_key: str) -> Sequence[EnvironmentCommand]:
 
 
 __all__ = [
+    "UNDEFINED_MARKUP_COMMAND",
     "CommandResult",
     "CommandRunner",
     "EnvironmentCommand",
     "NavigateTo",
     "ReplaceDocumentText",
+    "SaveTextFile",
     "ShowFindings",
     "ShowMessage",
     "ShowStyleInspector",
     "ShowUndefinedMarkup",
-    "SaveTextFile",
-    "UNDEFINED_MARKUP_COMMAND",
     "document_text",
     "environment_commands",
     "reformat_commands",

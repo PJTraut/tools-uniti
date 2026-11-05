@@ -26,7 +26,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from uniti.core.environment import Environment, PlainEnvironment
-from uniti.core.syntax_profiles import DEFAULT_EXTENSION_PROFILES, PROFILES_BY_KEY, SyntaxProfile, canonical_key
+from uniti.core.syntax_profiles import (
+    DEFAULT_EXTENSION_PROFILES,
+    PROFILES_BY_KEY,
+    SyntaxProfile,
+    canonical_key,
+)
 
 from .delimited_environment import CsvEnvironment, TsvEnvironment
 from .json_environment import JsonEnvironment
@@ -43,7 +48,7 @@ PROJECT_ENVIRONMENTS = frozenset({"usfm"})
 _EXTENSION_RE = re.compile(r"[a-z0-9_-]{1,32}")
 
 
-# The compact names window titles use: "SFM-1", "MD-2" (field test,
+# The compact names window titles use: "SFM/1", "MD/2" (field test,
 # 2026-10-26). "SFM" is only a short label for USFM; there is no separate SFM
 # environment (R5). Menus and tooltips keep the full label.
 SHORT_LABELS = {
@@ -211,11 +216,11 @@ def overrides_for_assignments(
 __all__ = [
     "ENVIRONMENTS",
     "ENVIRONMENTS_BY_KEY",
-    "EnvironmentDescriptor",
-    "ExtensionAssignmentError",
     "MAX_EXTENSION_OVERRIDES",
     "PLAIN_ENVIRONMENT_KEY",
     "PROJECT_ENVIRONMENTS",
+    "EnvironmentDescriptor",
+    "ExtensionAssignmentError",
     "descriptor_for_key",
     "environment_available",
     "environment_key_for_extension",

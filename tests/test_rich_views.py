@@ -17,7 +17,12 @@ from uniti.core.environments.sfm.semantic import (
 )
 from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, build_layers
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
-from uniti.core.environments.sfm.views import SfmPreviewView, SfmStandardView, presentation_attrs, sty_color
+from uniti.core.environments.sfm.views import (
+    SfmPreviewView,
+    SfmStandardView,
+    presentation_attrs,
+    sty_color,
+)
 from uniti.core.rich_views import (
     EditRejected,
     ProjectionBuilder,
@@ -284,7 +289,7 @@ def test_markdown_rendered_view_hides_syntax_and_formats():
     spans = {(s.marker, projection.text[s.view_start : s.view_end]) for s in projection.spans}
     assert {("strong", "bold"), ("em", "it"), ("code", "code"), ("link", "link")} <= spans
     blocks = {b.marker for b in projection.blocks}
-    assert {"h1", "quote", "code"} <= blocks
+    assert {"h1", "quote", "pre"} <= blocks  # the fenced block is CSS `pre` (N27)
 
 
 def test_markdown_bullet_is_protected_and_enter_continues_lists():

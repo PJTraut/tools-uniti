@@ -7,7 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from uniti.app.environment_window_names import EnvironmentWindowNames, default_window_name
+from uniti.app.environment_window_names import (
+    EnvironmentWindowNames,
+    default_window_name,
+)
 
 
 def test_default_names_are_numbers_without_zero():

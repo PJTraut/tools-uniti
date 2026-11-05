@@ -23,6 +23,13 @@ class ViewCommand:
     *source* offsets and returns an `EditPlan` (or raises `EditRejected`).
     `choices`, when set, makes the host ask the user to pick an argument;
     `prompt`, when set, asks for free text instead.
+
+    `group` ("character", "paragraph", "insert" …) sorts the right-click
+    menu into blocks, one per group, in the order the commands are given
+    (N28). Commands without a group are listed flat, as before.
+    `submenu` shows `choices` as the rows of a submenu instead of a pick
+    list; `current(source, offset)`, when set, names the choice in effect
+    at the caret, which the submenu ticks.
     """
 
     command_id: str
@@ -31,6 +38,9 @@ class ViewCommand:
     shortcut: str = ""
     choices: Callable[[], tuple[str, ...]] | None = None
     prompt: str | None = None
+    group: str = ""
+    submenu: bool = False
+    current: Callable[[str, int], str | None] | None = None
 
 
 class EditorViewProvider(Protocol):

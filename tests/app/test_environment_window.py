@@ -9,11 +9,14 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from usfm_project_fixture import RUSSIAN_PSALMS_VRS, ensure_project, in_project  # noqa: E402
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import RUSSIAN_PSALMS_VRS, ensure_project, in_project
 
-from uniti.app.document_groups import DocumentGroup  # noqa: E402
-from uniti.app.session_runtime import ENVIRONMENT_WINDOW_EXTRA, environment_window_identity  # noqa: E402
+from uniti.app.document_groups import DocumentGroup
+from uniti.app.session_runtime import (
+    ENVIRONMENT_WINDOW_EXTRA,
+    environment_window_identity,
+)
 
 _GEN_A = "\\id GEN A\n\\c 1\n\\p\n\\v 1 Alpha one.\n\\v 2 Alpha two.\n\\c 2\n\\p\n\\v 1 Alpha again.\n"
 _GEN_B = "\\id GEN B\n\\c 1\n\\p\n\\v 1 Beta one.\n\n\n\\v 2 Beta two.\n\\c 2\n\\p\n\\v 1 Beta again.\n"
@@ -47,7 +50,7 @@ def _group(window, service, view, group_id: str) -> None:
 
 
 def test_environment_windows_are_named_per_environment_not_per_group(desktop, tmp_path: Path):
-    """Round 3 T3: "SFM-1", "SFM-2" … hold files of any group."""
+    """Round 3 T3: "SFM/1", "SFM/2" … hold files of any group."""
 
     app, service = desktop
     main = service.new_window()
@@ -61,10 +64,10 @@ def test_environment_windows_are_named_per_environment_not_per_group(desktop, tm
     usfm_a = main.move_to_environment_window(first)
     assert usfm_a is not main
     assert usfm_a.environment_window == ("usfm", 0)
-    assert usfm_a.environment_window_name() == "SFM-1"
+    assert usfm_a.environment_window_name() == "SFM/1"
     assert usfm_a.current_view is first
     assert usfm_a._environment_bar is not None
-    assert usfm_a.windowTitle() == "UNITI — SFM-1 — TST — 01GEN.usfm"
+    assert usfm_a.windowTitle() == "UNITI — SFM/1 — TST — 01GEN.usfm"
     # The tab's own mode selector moves to the window's toolbar.
     assert usfm_a._rich_views.pane_mode_selector is False
 
@@ -73,9 +76,9 @@ def test_environment_windows_are_named_per_environment_not_per_group(desktop, tm
     assert main.move_to_environment_window(third) is usfm_a
     assert service.documents.entry_for_view(third.view_id).group_id == "B"
 
-    # A second window is "SFM-2"; a slot can be asked for.
+    # A second window is "SFM/2"; a slot can be asked for.
     usfm_b = service.new_environment_window("usfm")
-    assert usfm_b.environment_window == ("usfm", 1) and usfm_b.environment_window_name() == "SFM-2"
+    assert usfm_b.environment_window == ("usfm", 1) and usfm_b.environment_window_name() == "SFM/2"
     assert usfm_a.move_to_environment_window(third, slot=1) is usfm_b
     # A book of a project already shown somewhere goes to that window, even
     # when another USFM window is more recent.
@@ -172,7 +175,7 @@ def test_book_selector_lists_a_projects_books_and_opens_them_into_the_group(desk
     # The id and the \h line; a book without \h (GEN here) shows its id
     # alone, even though BookNames.xml names it.
     assert [bar.book.itemText(index) for index in range(bar.book.count())] == ["GEN", "EXO Exodus"]
-    assert window.windowTitle() == "UNITI — SFM-1 — NIV11 — 01GENNIV11.SFM"
+    assert window.windowTitle() == "UNITI — SFM/1 — NIV11 — 01GENNIV11.SFM"
     assert "NIV11" in bar.project_label.text()
     assert "New International Version" not in bar.project_label.toolTip()  # the short name only
 
@@ -196,17 +199,17 @@ def test_chapter_and_verse_selectors_navigate_and_follow_the_caret(desktop, tmp_
     view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
     window = main.move_to_environment_window(view)
     bar = window._environment_bar
-    assert [bar.chapter.itemText(i) for i in range(bar.chapter.count())] == ["1", "2"]
+    assert [bar.chapter.itemText(i) for i in range(bar.chapter.count())] == ["0", "1", "2"]
+
+    bar.chapter.setCurrentIndex(2)
+    bar._chapter_chosen(2)
+    assert view.state.cursor == _GEN_A.index("\\c 2")
+    assert [bar.verse.itemText(i) for i in range(bar.verse.count())] == ["0", "1"]
 
     bar.chapter.setCurrentIndex(1)
     bar._chapter_chosen(1)
-    assert view.state.cursor == _GEN_A.index("\\c 2")
-    assert [bar.verse.itemText(i) for i in range(bar.verse.count())] == ["1"]
-
-    bar.chapter.setCurrentIndex(0)
-    bar._chapter_chosen(0)
-    bar.verse.setCurrentIndex(1)
-    bar._verse_chosen(1)
+    bar.verse.setCurrentIndex(2)
+    bar._verse_chosen(2)
     assert view.state.cursor == _GEN_A.index("\\v 2")
 
     # Moving the caret updates the selectors without navigating.
@@ -342,7 +345,7 @@ def test_plain_text_files_get_an_environment_window(desktop, tmp_path: Path):
     window = main.move_to_environment_window(view)
 
     assert window.environment_window == ("plain_text", 0)
-    assert window.windowTitle() == "UNITI — TXT-1 — notes.txt"
+    assert window.windowTitle() == "UNITI — TXT/1 — notes.txt"
     bar = window._environment_bar
     assert list(bar.mode_actions) == [None, "(no preview)"]  # no rich views for plain text: Preview is shown disabled
     assert not bar.mode_actions["(no preview)"].isEnabled()
@@ -394,7 +397,7 @@ def test_an_unknown_extension_asks_before_it_is_pinned(desktop, tmp_path: Path):
     entry = service.documents.entry_for_view(opened.view_id)
     assert entry.environment_override == "markdown"
     assert window._environment.environment_key_for(opened.document) == "markdown"
-    assert window._environment.menu.title() == "Markdown"
+    assert window._environment.menu.title() == "MD"
 
 
 def test_a_projects_file_of_any_extension_opens_in_usfm_without_a_question(desktop, tmp_path: Path):
@@ -471,17 +474,49 @@ def _lines_of(view, start: int, end: int) -> set[int]:
     return set(range(document.line_for_char(start), document.line_for_char(end - 1) + 1))
 
 
+def test_front_matter_and_chapter_headings_show_zero(desktop, tmp_path: Path):
+    """As in Paratext: chapter 0 and verse 0 before the first \\c, and verse 0
+    between a \\c and its first \\v."""
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+
+    view.state.move_to(0)
+    view._state_changed()
+    assert (bar.chapter.currentText(), bar.verse.currentText()) == ("0", "0")
+    assert [bar.verse.itemText(i) for i in range(bar.verse.count())] == ["0"]
+
+    view.state.move_to(_GEN_A.index("\\c 2") + 1)
+    view._state_changed()
+    assert (bar.chapter.currentText(), bar.verse.currentText()) == ("2", "0")
+
+    view.state.move_to(_GEN_A.index("\\v 1", _GEN_A.index("\\c 2")) + 1)
+    view._state_changed()
+    assert (bar.chapter.currentText(), bar.verse.currentText()) == ("2", "1")
+
+    # Choosing 0 goes to the heading (the \\c line), or the start of the text.
+    bar.verse.setCurrentIndex(0)
+    bar._verse_chosen(0)
+    assert view.state.cursor == _GEN_A.index("\\c 2")
+    bar.chapter.setCurrentIndex(0)
+    bar._chapter_chosen(0)
+    assert view.state.cursor == 0
+
+
 def test_choosing_a_verse_highlights_it_in_every_mode(desktop, tmp_path: Path):
     app, service = desktop
     main = service.new_window()
     view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
     window = main.move_to_environment_window(view)
     bar = window._environment_bar
-    bar.chapter.setCurrentIndex(0)
-    bar._chapter_chosen(0)
+    bar.chapter.setCurrentIndex(1)
+    bar._chapter_chosen(1)
 
-    bar.verse.setCurrentIndex(1)
-    bar._verse_chosen(1)
+    bar.verse.setCurrentIndex(2)
+    bar._verse_chosen(2)
 
     verse_start = _GEN_A.index("\\v 2")
     verse_end = _GEN_A.index("\\c 2")
@@ -505,8 +540,8 @@ def test_choosing_a_chapter_highlights_its_line(desktop, tmp_path: Path):
     window = main.move_to_environment_window(view)
     bar = window._environment_bar
 
-    bar.chapter.setCurrentIndex(1)
-    bar._chapter_chosen(1)
+    bar.chapter.setCurrentIndex(2)
+    bar._chapter_chosen(2)
 
     chapter = _GEN_A.index("\\c 2")
     assert view.state.cursor == chapter
@@ -559,6 +594,9 @@ def answer(monkeypatch):
 
     Answer.asked = []
     monkeypatch.setattr(open_mode, "prompt_open_mode", prompt)
+    # These tests exercise the dialog with USFM files, which really open
+    # without one: ask for them too.
+    monkeypatch.setattr(open_mode, "project_file_mode", lambda: None)
     return Answer
 
 
@@ -585,7 +623,7 @@ def test_opening_as_plain_text_has_no_extended_features(desktop, tmp_path: Path,
     assert service.windows.window_for_view(view.view_id) is main
     assert service.documents.entry_for_view(view.view_id).environment_override == "plain_text"
     assert view.syntax_profile.key == "plain_text"
-    assert main._environment.menu.title() == "Plain Text"
+    assert main._environment.menu.title() == "TXT"
     assert main._rich_views.providers_for(view) == ()
     assert main._environment.command_available("go_to", view) is False
 
@@ -938,8 +976,69 @@ def test_the_group_dropdown_shows_the_current_files_group(desktop, tmp_path: Pat
     window = main.move_to_environment_window(view)
     bar = window._environment_bar
 
-    assert bar.group_choices() == ["Ungrouped", "A", "B", "C", "New Group…", "Manage Groups…"]
-    assert bar.group.text() == "Ungrouped"
+    assert bar.group_choices() == ["Ungrouped", "A", "B", "C", "Manage Groups…"]
+    assert bar.group.text() == "[Ungrouped]"
+
+
+def test_the_group_dropdown_has_ctrl_alt_digit_shortcuts(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+
+    # The window's own Ctrl+Alt+0…9 (N30: every window has them, so the
+    # toolbar adds none of its own; two actions on one key would cancel).
+    keys = [a.shortcut().toString() for a in window.group_shortcut_actions]
+    assert keys == [f"Ctrl+Alt+{n}" for n in range(10)]
+    window._select_view(view)
+    window.group_shortcut_actions[2].trigger()
+    assert service.documents.entry_for_view(view.view_id).group_id == "B"
+    bar.refresh()
+    assert bar.group.text() == "[B]"
+    shortcuts = [a for a in window.actions() if a.shortcut().toString() == "Ctrl+Alt+2"]
+    assert len(shortcuts) == 1  # not added again by the toolbar
+
+    # The pop-up shows each row's key.
+    bar._show_group_popup()
+    rows = bar._group_popup.rows
+    assert [bool(row.shortcut) for row in rows] == [True, True, True, True, False]  # Manage Groups… has none
+    bar._group_popup.hide()
+
+
+def test_a_grouped_file_is_tinted_with_its_group_in_every_window(desktop, tmp_path: Path):
+    """N29: no mark before the tab's name; the tab is tinted with the
+    group's colour in the main window and the environment window, and the
+    toolbar shows "[A]"."""
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    _group(main, service, view, "A")
+    color = main._group_by_id("A", "usfm").color
+    leaf = main._panes.leaf_for_view(view.view_id)
+    assert leaf.tabs.tabIcon(leaf.index_of(view.view_id)).isNull()
+    assert leaf.tabBar().tab_tint(view.view_id) == color
+
+    window = main.move_to_environment_window(view)
+    leaf = window._panes.leaf_for_view(view.view_id)
+    assert leaf.tabs.tabIcon(leaf.index_of(view.view_id)).isNull()
+    assert leaf.tabBar().tab_tint(view.view_id) == color
+    assert window._environment_bar.group.text() == "[A]"
+
+
+def test_a_markdown_tab_is_tinted_with_its_group_in_its_environment_window(desktop, tmp_path: Path):
+    """N29: the tint is not only SFM's."""
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "notes.md", "# Notes\n"))
+    window = main.move_to_environment_window(view)
+    _group(window, service, view, "B")
+    leaf = window._panes.leaf_for_view(view.view_id)
+    assert leaf.tabBar().tab_tint(view.view_id) == window._group_by_id("B", "markdown").color
+    window._set_document_group(service.documents.entry_for_view(view.view_id).document_id, None)
+    assert leaf.tabBar().tab_tint(view.view_id) is None
 
 
 def test_choosing_a_group_sets_the_current_files_group_only(desktop, tmp_path: Path):
@@ -958,53 +1057,46 @@ def test_choosing_a_group_sets_the_current_files_group_only(desktop, tmp_path: P
     assert service.documents.entry_for_view(left.view_id).group_id == "A"
     assert service.documents.entry_for_view(right.view_id).group_id is None
     assert all(service.windows.window_for_view(v.view_id) is window for v in (left, right))
-    assert window._environment_bar.group.text() == "A"
+    assert window._environment_bar.group.text() == "[A]"
     window._select_view(right)
-    assert window._environment_bar.group.text() == "Ungrouped"
-    assert window.windowTitle().startswith("UNITI — SFM-1")
+    assert window._environment_bar.group.text() == "[Ungrouped]"
+    assert window.windowTitle().startswith("UNITI — SFM/1")
 
 
-def test_new_group_from_the_dropdown(desktop, tmp_path: Path, monkeypatch):
-    from PySide6.QtWidgets import QInputDialog
-
+def test_the_group_dropdown_has_no_new_group_entry_and_no_colour(desktop, tmp_path: Path):
     app, service = desktop
     main = service.new_window()
     view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
     window = main.move_to_environment_window(view)
-    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("Translators", True))
+    bar = window._environment_bar
 
-    _choose_group(window._environment_bar, "New Group…")
-
-    group_id = service.documents.entry_for_view(view.view_id).group_id
-    assert window._group_by_id(group_id, "usfm").name == "Translators"
-    assert window._environment_bar.group.text() == "Translators"
+    assert "New Group…" not in bar.group_choices()  # Manage Groups… makes groups
 
 
 # --- Round 3 T3: window names ---------------------------------------------------------
 
 
-def test_a_window_can_be_renamed_and_keeps_its_name(desktop, tmp_path: Path, monkeypatch):
-    from PySide6.QtWidgets import QInputDialog
-
+def test_a_window_name_is_a_label_and_a_stored_name_is_kept(desktop, tmp_path: Path, monkeypatch):
     app, service = desktop
     main = service.new_window()
     view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
     window = main.move_to_environment_window(view)
     window._environment.refresh()
-    assert window._environment.rename_window_action is not None
-    monkeypatch.setattr(QInputDialog, "getText", lambda *args, **kwargs: ("Compare", True))
+    # No way to rename it from the window any more (field test, 2026-10-31):
+    # the name is a label and the environment menu has no "Rename Window…".
+    assert not hasattr(window._environment, "rename_window_action")
+    assert not window._environment_bar.title.isEnabled() or not hasattr(window._environment_bar.title, "clicked")
+    assert window.rename_environment_window("Compare")  # a name saved before still loads
 
-    window._environment.rename_window_action.trigger()
-
-    assert window.environment_window_name() == "SFM-Compare"
-    assert window._environment_bar.title.text() == "SFM-Compare"
-    assert window.windowTitle().startswith("UNITI — SFM-Compare — TST")
+    assert window.environment_window_name() == "SFM/Compare"
+    assert window._environment_bar.title.text() == "SFM/Compare"
+    assert window.windowTitle().startswith("UNITI — SFM/Compare — TST")
     # The name belongs to the slot: saved with the environment's settings.
     saved = tmp_path / "Environments" / "USFM" / "windows.json"
     assert saved.is_file() and "Compare" in saved.read_text(encoding="utf-8")
-    # A second window is still "SFM-2"; Plain Text windows have their own names.
-    assert service.new_environment_window("usfm").environment_window_name() == "SFM-2"
-    assert service.new_environment_window("plain_text").environment_window_name() == "TXT-1"
+    # A second window is still "SFM/2"; Plain Text windows have their own names.
+    assert service.new_environment_window("usfm").environment_window_name() == "SFM/2"
+    assert service.new_environment_window("plain_text").environment_window_name() == "TXT/1"
     # Names stay different.
     from PySide6.QtWidgets import QMessageBox
 
@@ -1047,7 +1139,7 @@ def test_a_usfm_file_outside_a_project_opens_as_plain_text(desktop, tmp_path: Pa
     assert answer.asked == []  # no "Open in USFM Environment?" question
     assert service.windows.window_for_view(view.view_id) is main
     assert main._environment.environment_key_for(view.document) == "plain_text"
-    assert main._environment.menu.title() == "Plain Text"
+    assert main._environment.menu.title() == "TXT"
     assert main._rich_views.providers_for(view) == ()
     assert main.statusBar().currentMessage() == "01GEN.usfm isn't in a Paratext project: opened as plain text"
     assert service.environment_window_for("usfm", None) is None
@@ -1080,7 +1172,7 @@ def test_usfm_is_not_offered_for_a_file_outside_a_project(desktop, tmp_path: Pat
     environment.refresh()
 
     action = environment.document_environment_actions["usfm"]
-    assert not action.isEnabled() and action.text() == "USFM (needs a Paratext project)"
+    assert not action.isEnabled() and action.text() == "SFM (needs a Paratext project)"
 
     environment.set_document_environment("usfm", view)
 
@@ -1161,8 +1253,8 @@ def test_the_steppers_move_to_the_previous_and_next_item(desktop, tmp_path: Path
     window = main.move_to_environment_window(view)
     bar = window._environment_bar
     previous, following = bar._steppers[bar.chapter]
-    # The caret is before chapter 1 (the \\id line): nothing is chosen yet.
-    assert bar.chapter.currentText() == ""
+    # The caret is before chapter 1 (the \\id line): the front matter, "0".
+    assert bar.chapter.currentText() == "0"
     assert not previous.isEnabled() and following.isEnabled()
 
     assert bar.step(bar.chapter, 1) is True
@@ -1182,9 +1274,8 @@ def test_markdown_text_view_formats_with_the_bold_and_italic_shortcuts(desktop, 
     """Field test, 2026-10-26 (N8b): Cmd/Ctrl+B and +I wrap the selection in
     a Markdown file's text view; other environments leave the keys alone."""
 
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QEvent, Qt
     from PySide6.QtGui import QKeyEvent
-    from PySide6.QtCore import QEvent
 
     app, service = desktop
     main = service.new_window()
@@ -1202,3 +1293,170 @@ def test_markdown_text_view_formats_with_the_bold_and_italic_shortcuts(desktop, 
     view.state.move_to(0)
     press(view, Qt.Key.Key_I)  # nothing selected: an empty pair, caret between
     assert view.document.read(0, view.document.total_chars()).startswith("**Some") and view.state.cursor == 1
+
+
+
+def _open_dialog_choosing(window, path: Path, monkeypatch) -> None:
+    from PySide6.QtWidgets import QFileDialog
+
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", staticmethod(lambda *args, **kwargs: (str(path), "")))
+    window.open_dialog()
+
+
+def test_file_open_in_an_environment_window_asks_for_a_file_of_its_environment(
+    desktop, tmp_path: Path, answer, monkeypatch
+):
+    from uniti.ui.open_mode import OpenMode
+
+    app, service = desktop
+    main = service.new_window()
+    answer.mode = OpenMode.HERE
+    genesis = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(genesis)
+    answer.asked.clear()
+
+    answer.mode = OpenMode.ENVIRONMENT  # the environment: into this window
+    exodus = _write(tmp_path, "02EXO.SFM", _EXO)
+    _open_dialog_choosing(window, exodus, monkeypatch)
+    assert answer.asked == [("02EXO.SFM", "USFM", 1)]
+    assert service.documents.find_path(exodus) is not None
+
+    answer.mode = OpenMode.PLAIN_TEXT  # plain text: an ordinary window
+    leviticus = _write(tmp_path, "03LEV.sfm", _EXO)
+    _open_dialog_choosing(window, leviticus, monkeypatch)
+    entry = service.documents.find_path(leviticus)
+    assert entry is not None and entry.environment_override == "plain_text"
+
+    answer.mode = None  # cancel: nothing opens
+    numbers = _write(tmp_path, "04NUM.sfm", _EXO)
+    _open_dialog_choosing(window, numbers, monkeypatch)
+    assert service.documents.find_path(numbers) is None
+
+
+@pytest.mark.parametrize(
+    ("name", "label", "text"),
+    [("notes.md", "MD", "# T\n"), ("data.json", "JSON", "{}"), ("t.yaml", "YAML", "a: 1\n"), ("d.csv", "CSV", "a,b\n"), ("p.xml", "XML", "<a/>")],
+)
+def test_every_environment_asks_in_an_ordinary_window_and_in_its_own(
+    desktop, tmp_path: Path, answer, monkeypatch, name, label, text
+):
+    from uniti.ui.open_mode import OpenMode
+
+    app, service = desktop
+    main = service.new_window()
+    answer.mode = OpenMode.ENVIRONMENT
+    first = tmp_path / name
+    first.write_text(text, encoding="utf-8")
+    view = main.open_path(first)
+    assert [(asked[0], asked[2]) for asked in answer.asked] == [(name, 1)], answer.asked
+    window = service.windows.window_for_view(view.view_id)
+    assert window.environment_window is not None
+
+    answer.asked.clear()
+    second = tmp_path / ("2" + name)
+    second.write_text(text, encoding="utf-8")
+    _open_dialog_choosing(window, second, monkeypatch)
+    assert [asked[0] for asked in answer.asked] == ["2" + name]
+
+
+def test_a_project_file_opens_in_its_sfm_window_without_a_question_but_markdown_asks(
+    desktop, tmp_path: Path, monkeypatch
+):
+    from uniti.ui import open_mode
+    from uniti.ui.open_mode import OpenMode
+
+    app, service = desktop
+    asked = []
+    # The suite's defaults skip the question for everything; put the real rule back.
+    monkeypatch.setattr(open_mode, "project_file_mode", lambda: OpenMode.ENVIRONMENT)
+    monkeypatch.setattr(open_mode, "prompt_open_mode", lambda parent, path, label, count=1: asked.append(path.name) or OpenMode.ENVIRONMENT)
+    main = service.new_window()
+
+    book = main.open_path(_write(tmp_path, "01GEN.SFM", _GEN_A))
+    notes = tmp_path / "notes.md"
+    notes.write_text("# T\n", encoding="utf-8")
+    main.open_path(notes)
+
+    assert asked == ["notes.md"]  # a project's book goes to its SFM window unasked
+    assert service.windows.window_for_view(book.view_id).environment_window == ("usfm", 0)
+
+
+def test_the_group_button_pop_up_and_manage_list_show_group_colours(desktop, tmp_path: Path):
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+    colours = {group.name: group.color for group in main.groups_for("usfm")}
+
+    _choose_group(bar, "A")
+    app.processEvents()
+
+    assert bar.group.text() == "[A]"
+    assert colours["A"] in bar.group.styleSheet()
+    assert {name: color for name, _data, color in bar._group_entries} == {"Ungrouped": None, **colours}
+    _choose_group(bar, "Ungrouped")
+    app.processEvents()
+    assert colours["A"] not in bar.group.styleSheet()
+
+
+def test_a_project_book_already_open_in_an_ordinary_window_moves_to_its_sfm_window(
+    desktop, tmp_path: Path, monkeypatch
+):
+    from uniti.ui import open_mode
+
+    monkeypatch.setattr(open_mode, "project_file_mode", lambda: open_mode.OpenMode.ENVIRONMENT)
+    app, service = desktop
+    main = service.new_window()
+    path = _write(tmp_path, "01GEN.usfm", _GEN_A)
+    main.open_path(path, open_mode=open_mode.OpenMode.HERE)
+    assert [w.environment_window for _i, w in service.windows.items] == [None]
+
+    view = main.open_path(path)
+
+    assert view is not None
+    assert service.windows.window_for_view(view.view_id).environment_window == ("usfm", 0)
+
+
+def test_clicking_a_pop_up_row_assigns_the_group_after_the_pop_up_has_closed(desktop, tmp_path: Path):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+
+    bar._show_group_popup()
+    popup = bar._group_popup
+    row = next(r for r in popup.findChildren(type(popup.layout().itemAt(0).widget())) if r._text == "B")
+    QTest.mouseClick(row, Qt.MouseButton.LeftButton, pos=QPoint(10, 10))
+
+    assert not popup.isVisible()
+    assert service.documents.entry_for_view(view.view_id).group_id is None  # delivered after the click
+    app.processEvents()
+    assert service.documents.entry_for_view(view.view_id).group_id == "B"
+    assert bar.group.text() == "[B]"
+
+
+def test_manage_groups_opens_after_the_pop_up_has_closed(desktop, tmp_path: Path, monkeypatch):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    app, service = desktop
+    main = service.new_window()
+    view = main.open_path(_write(tmp_path, "01GEN.usfm", _GEN_A))
+    window = main.move_to_environment_window(view)
+    bar = window._environment_bar
+    opened = []
+    monkeypatch.setattr(window, "show_document_group_editor", lambda key: opened.append(key))
+
+    bar._show_group_popup()
+    popup = bar._group_popup
+    row = next(r for r in popup.findChildren(type(popup.layout().itemAt(0).widget())) if r._text.startswith("Manage"))
+    QTest.mouseClick(row, Qt.MouseButton.LeftButton, pos=QPoint(10, 10))
+    assert opened == []
+    app.processEvents()
+
+    assert opened == ["usfm"]

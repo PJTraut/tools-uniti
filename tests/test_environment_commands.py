@@ -27,7 +27,6 @@ from uniti.core.environments import (
 )
 from uniti.core.environments.catalog import ENVIRONMENTS
 from uniti.core.environments.delimited_environment import column_count_findings
-from uniti.core.environments.markdown_environment import MARKDOWN_PREVIEW_FEATURE
 from uniti.core.resource_profile import ENVIRONMENT_LARGE_FILE_BYTES, ResourceProfile
 
 _USFM = (
@@ -127,10 +126,13 @@ def test_validate_command_wraps_any_validate_method(tmp_path: Path):
     assert result == ShowFindings("Validate Document", ())
 
 
-def test_markdown_declares_preview_as_a_host_feature_plus_format():
+def test_markdown_declares_format_and_load_stylesheet():
+    """The read-only preview side pane was retired (Q7, 2026-11-05); Load
+    Stylesheet… layers a CSS file on Preview (N27)."""
+
     commands = environment_commands(MarkdownEnvironment())
-    assert commands[0].host_feature == MARKDOWN_PREVIEW_FEATURE and commands[0].run is None
-    assert [c.command_id for c in commands] == ["preview", "format"]
+    assert [c.command_id for c in commands] == ["format", "import_stylesheet"]
+    assert commands[1].host_feature is not None and commands[1].run is None
 
 
 @pytest.mark.parametrize(
@@ -160,8 +162,8 @@ def test_csv_column_counts_respect_quoted_fields():
     text = 'a,b,c\n1,"x,y",3\n4,5\n6,"multi\nline",7\n8,9,10,11\n'
     findings = column_count_findings(text, ",", "csv")
     assert [f.message for f in findings] == [
-        "row 3 has 2 fields; expected 3",
-        "row 6 has 4 fields; expected 3",
+        "row 3 has 2 fields; the header has 3",
+        "row 6 has 4 fields; the header has 3",
     ]
     assert text[findings[0].start : findings[0].end] == "4,5"
 
@@ -170,7 +172,7 @@ def test_csv_column_counts_respect_quoted_fields():
 def test_csv_column_count_ranges_follow_every_line_ending(newline: str):
     text = newline.join(["a,b", "c,d", "e,f,g", "h,i"]) + newline
     findings = column_count_findings(text, ",", "csv")
-    assert [f.message for f in findings] == ["row 3 has 3 fields; expected 2"]
+    assert [f.message for f in findings] == ["row 3 has 3 fields; the header has 2"]
     assert text[findings[0].start : findings[0].end] == "e,f,g"
 
 

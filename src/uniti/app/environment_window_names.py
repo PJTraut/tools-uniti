@@ -2,7 +2,7 @@
 
 An environment window is (environment, slot): slot 0 is the environment's
 first window, 1 its second, and so on. By default a slot is named by a
-number (1, 2, … 9), so the windows are "SFM-1", "SFM-2"; an
+number (1, 2, … 9), so the windows are "SFM/1", "SFM/2"; an
 environment has at most nine windows (field test 2026-10-26).
 The user can rename a slot; the name then belongs to that slot for that
 environment. Renamed slots are stored as `windows.json` in the environment's
@@ -20,7 +20,7 @@ from .atomic_json import atomic_write_json
 WINDOWS_FILE = "windows.json"
 MAX_NAME_LENGTH = 32
 MAX_SLOTS = 256
-MAX_ENV_WINDOWS = 9  # windows per environment: "SFM-1" … "SFM-9" (field test 2026-10-26)
+MAX_ENV_WINDOWS = 9  # windows per environment: "SFM/1" … "SFM/9" (field test 2026-10-26)
 MAX_BYTES = 64 * 1024
 
 
@@ -131,10 +131,10 @@ class EnvironmentWindowNames:
 
 
 __all__ = [
-    "EnvironmentWindowNames",
-    "MAX_NAME_LENGTH",
     "MAX_ENV_WINDOWS",
+    "MAX_NAME_LENGTH",
     "WINDOWS_FILE",
+    "EnvironmentWindowNames",
     "default_window_name",
     "validate_window_name",
 ]

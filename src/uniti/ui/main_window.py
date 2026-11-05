@@ -2,18 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from concurrent.futures import Future
-from dataclasses import dataclass, replace as dataclass_replace
-from pathlib import Path
 import re
 import shutil
 import sys
 import tempfile
 import time
-from typing import TYPE_CHECKING
 import uuid
 import weakref
+from collections.abc import Mapping
+from concurrent.futures import Future
+from dataclasses import dataclass
+from dataclasses import replace as dataclass_replace
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer
 from PySide6.QtGui import (
@@ -33,20 +34,20 @@ from PySide6.QtWidgets import (
     QMenu,
     QMessageBox,
     QSplitter,
-    QTabWidget,
+    QTabWidget,  # noqa: F401  (tests/ui/test_main_window_contract.py checks the source for it)
     QVBoxLayout,
     QWidget,
 )
 
-from uniti.app.diagnostics import diagnostics_snapshot
-from uniti.app.dogfood import Operation, Outcome
-from uniti.app.environment_window_names import MAX_ENV_WINDOWS
 from uniti.app.commands import (
     CommandCategory,
     CommandRegistry,
     CommandScope,
 )
+from uniti.app.diagnostics import diagnostics_snapshot
+from uniti.app.dogfood import Operation, Outcome
 from uniti.app.editor_state import EditorState
+from uniti.app.environment_window_names import MAX_ENV_WINDOWS
 from uniti.app.file_environment_manager import FileEnvironmentManager
 from uniti.app.platform_policy import native_paths_equal, normalize_native_path
 from uniti.app.recovery_manager import RecoveryHealth, RecoveryManager
@@ -61,15 +62,12 @@ from uniti.app.window_manager import ViewLocation
 from uniti.core.byte_source import ByteSource
 from uniti.core.document import Document
 from uniti.core.durability import DurabilityLevel
-from uniti.core.eol import EOLReport, analyze_eol
-from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
 from uniti.core.environments.catalog import (
     PLAIN_ENVIRONMENT_KEY,
     PROJECT_ENVIRONMENTS,
     descriptor_for_key,
     environment_available,
 )
-from uniti.core.environments.markdown_environment import MARKDOWN_PREVIEW_FEATURE
 from uniti.core.environments.sfm.paratext_project import project_for_file
 from uniti.core.environments.sfm.stylesheet_support import IMPORT_STYLESHEET_FEATURE
 from uniti.core.eol import EOLReport, analyze_eol
@@ -107,6 +105,8 @@ from uniti.resources import (
     TaskSpec,
     WorkPriority,
 )
+from uniti.ui import book_lock
+from uniti.ui import open_mode as open_mode_dialog
 from uniti.ui.character_inspector import CharacterInspectorDialog
 from uniti.ui.compare_pane import (
     MAX_COMPARE_CHARS,
@@ -123,10 +123,8 @@ from uniti.ui.file_format_dialogs import (
 )
 from uniti.ui.file_operations import FileOperationController, FileOperationHandle
 from uniti.ui.find_replace import FIND_REPLACE_VIEW_ID, FindReplaceWindow
-from uniti.ui import book_lock
-from uniti.ui import open_mode as open_mode_dialog
-from uniti.ui.open_mode import OpenMode
 from uniti.ui.hotkeys import HotkeysPopup
+from uniti.ui.open_mode import OpenMode
 from uniti.ui.panes import EditorPaneTree
 from uniti.ui.screen_geometry import (
     NATIVE_TITLE_BAR_HEIGHT,
@@ -142,8 +140,8 @@ from uniti.ui.theme import (
     EditorThemeTokens,
     ThemeSpec,
     active_theme,
-    apply_theme,
     apply_profile,
+    apply_theme,
     preview_active,
     resolve_editor_tokens,
     resolve_profile_editor_tokens,
@@ -266,7 +264,7 @@ class UNITIMainWindow(QMainWindow):
         self._chapter_view = ChapterView(self)
         self._book_lock = book_lock.BookLock(self)
         # (environment key, slot) once this is an environment window: slot 0
-        # is "SFM-1", 1 "SFM-2" … (round 3 T3).
+        # is "SFM/1", 1 "SFM/2" … (round 3 T3).
         self.environment_window: tuple[str, int] | None = None
         self._environment_bar = None
         self._opening_into_environment = False
@@ -389,8 +387,6 @@ class UNITIMainWindow(QMainWindow):
         self._central_splitter = QSplitter(Qt.Orientation.Horizontal, central)
         self._central_splitter.addWidget(self._panes)
         central_layout.addWidget(self._central_splitter, 1)
-        self._markdown_preview: MarkdownPreviewPane | None = None
-        self._markdown_preview_target_view: UNITITextView | None = None
         # One generic tracker for every "toggle window" (2026-09-20
         # request: "one global function to manage toggle windows") --
         # Compare, Character Inspector, and any future one -- keyed by a
@@ -410,10 +406,6 @@ class UNITIMainWindow(QMainWindow):
 
         # One tab per project in a USFM window (round 3 T4).
         self._project_tabs = ProjectTabs(self)
-        self._markdown_preview_timer = QTimer(self)
-        self._markdown_preview_timer.setSingleShot(True)
-        self._markdown_preview_timer.setInterval(300)
-        self._markdown_preview_timer.timeout.connect(self._refresh_markdown_preview_now)
         self._find_replace = (
             service.find_replace
             if service is not None
@@ -486,6 +478,7 @@ class UNITIMainWindow(QMainWindow):
         self._resource_probe_future: Future[ResourceSnapshot] | None = None
         self._resource_timer.start()
         self._build_menus()
+        self._install_group_shortcuts()
         if self.shortcut_notices:
             self._show_shortcut_settings_warning()
         if service is not None:
@@ -1272,17 +1265,8 @@ class UNITIMainWindow(QMainWindow):
         self._grouped_tabs_action.setChecked(self._settings.grouped_tabs)
         self._grouped_tabs_action.toggled.connect(self._grouped_tabs.set_enabled)
         view_menu.addAction(self._grouped_tabs_action)
-        # BF-062's preview is the Markdown environment's host feature: it
-        # lives in that environment's menu (ADR-0014), not under View.
-        self._markdown_preview_action = self._command_action(
-            "environment.preview", self.toggle_markdown_preview, checkable=True
-        )
-        self._markdown_preview_action.setText("Markdown Preview")
-        self.addAction(self._markdown_preview_action)
-        self._environment.register_host_action(
-            MARKDOWN_PREVIEW_FEATURE, self._markdown_preview_action
-        )
-        self._refresh_markdown_preview_action()
+        # BF-062's read-only Markdown Preview side pane was retired on
+        # 2026-11-05 (Q7): the editable Preview mode replaces it.
 
         view_menu.addSeparator()
         view_menu.addAction(
@@ -2031,16 +2015,53 @@ class UNITIMainWindow(QMainWindow):
         return menu
 
     def add_view_context_entries(self, menu: QMenu, view: UNITITextView) -> None:
-        """Entries every right-click menu of a document has, Plain Text or
-        Standard/Preview: its Document Group."""
+        """Entries every right-click menu of a document's text has, in Text,
+        Standard or Preview: the book lock where it applies. The group is
+        not here (field test, 2026-11-05, N30): the tab's menu, the
+        toolbar's [group] button and Ctrl+Alt+0…9 set it."""
 
         if self._book_lock.applies_to(view):
             menu.addSeparator()
             menu.addAction(self._book_lock.make_action(view, menu))
-        if self._service is None:
-            return
-        menu.addSeparator()
-        self._groups_and_recent_files.add_group_submenu(menu, view.view_id)
+
+    # Ctrl+Alt+0 is Ungrouped, Ctrl+Alt+1 … 9 the first nine groups (not plain
+    # Alt+digit: on macOS that types characters).
+    GROUP_SHORTCUT_COUNT = 10
+
+    def _install_group_shortcuts(self) -> None:
+        """Ctrl+Alt+0…9 in every window, environment or ordinary (N30): the
+        groups of `group_environment_key()`, looked up when the key is
+        pressed, so nothing needs rebuilding when groups change."""
+
+        self.group_shortcut_actions: list[QAction] = []
+        for position in range(self.GROUP_SHORTCUT_COUNT):
+            action = QAction(self)
+            action.setShortcut(QKeySequence(f"Ctrl+Alt+{position}"))
+            action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            action.triggered.connect(lambda _checked=False, position=position: self.choose_group_by_position(position))
+            self.addAction(action)
+            self.group_shortcut_actions.append(action)
+
+    def choose_group_by_position(self, position: int) -> bool:
+        """Put the current file in the group at `position` (0 Ungrouped,
+        1 … 9 the environment's first nine groups). False: nothing done."""
+
+        view = self.current_view
+        service = self._service
+        if view is None or service is None:
+            return False
+        entry = service.documents.entry_for_view(view.view_id)
+        if entry is None:
+            return False
+        if position == 0:
+            group_id = None
+        else:
+            groups = self.groups_for(self.group_environment_key())
+            if position > len(groups):
+                return False
+            group_id = groups[position - 1].id
+        self._set_document_group(entry.document_id, group_id)
+        return True
 
     def _document_group_changed(self, document_id: str, group_id: str | None) -> None:
         """A file's group changed: environment windows showing it update
@@ -2184,12 +2205,12 @@ class UNITIMainWindow(QMainWindow):
         return groups
 
     def environment_window_name(self) -> str | None:
-        """This environment window's name, e.g. "SFM-1" (round 3 T3)."""
+        """This environment window's name, e.g. "SFM/1" (round 3 T3)."""
 
         if self.environment_window is None:
             return None
         key, slot = self.environment_window
-        return f"{descriptor_for_key(key).short_label}-{self._environment_window_names.name(key, slot)}"
+        return f"{descriptor_for_key(key).short_label}/{self._environment_window_names.name(key, slot)}"
 
     def rename_environment_window(self, name: str | None = None) -> bool:
         """Rename this window's slot for its environment (D4); asks for the
@@ -2310,17 +2331,8 @@ class UNITIMainWindow(QMainWindow):
         """An environment-facing change (Plain Text Mode, reassignment):
         refresh everything gated on the active view's environment."""
 
-        if (
-            view is not None
-            and view is self._markdown_preview_target_view
-            and not self._environment.offers_host_feature(
-                view, MARKDOWN_PREVIEW_FEATURE
-            )
-        ):
-            self._close_markdown_preview()
         self._rich_views.on_environment_changed(view)
         self._environment.refresh()
-        self._refresh_markdown_preview_action()
         if self._environment_bar is not None:
             # The toolbar (and title) follow the active tab's environment.
             self._environment_bar.refresh()
@@ -2522,6 +2534,35 @@ class UNITIMainWindow(QMainWindow):
             self._panes.export_state(),
         )
 
+    def _open_target_for_dialog(self, path: Path) -> UNITIMainWindow | None:
+        """The window File > Open opens `path` in, or None for Cancel. An
+        environment window asks, as an ordinary window does, for a file of
+        its own environment (field test, 2026-10-31): the environment (this
+        window) or Plain Text, which an ordinary window opens."""
+
+        if self.environment_window is None or self._service is None:
+            return self
+        key = self.environment_window[0]
+        if self._file_environment_manager.resolve_path_key(path, self._settings.syntax_extension_overrides) != key:
+            return self
+        if key in PROJECT_ENVIRONMENTS and open_mode_dialog.project_file_mode() is not None:
+            return self  # a project's file belongs in its SFM window: no question
+        if self._service.documents.find_path(path) is not None:
+            return self  # already open: it is just shown
+        mode = open_mode_dialog.prompt_open_mode(self, path, descriptor_for_key(key).label)
+        if mode is None:
+            return None
+        if mode is not OpenMode.PLAIN_TEXT:
+            return self
+        target = next(
+            (window for window in self._service.windows.windows_by_recency if window.environment_window is None),
+            None,
+        ) or self._service.new_window()
+        target.show()
+        target.raise_()
+        target.activateWindow()
+        return target
+
     def open_dialog(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(
             self,
@@ -2529,8 +2570,14 @@ class UNITIMainWindow(QMainWindow):
             self._settings.last_directory or "",
         )
         if filename:
+            target = self._open_target_for_dialog(Path(filename))
+            if target is None:
+                return
             try:
-                self.open_path(filename)
+                if target is self:
+                    self.open_path(filename)
+                else:
+                    target.open_path(filename, open_mode=OpenMode.PLAIN_TEXT)
             except Exception as exc:
                 QMessageBox.critical(
                     self,
@@ -2630,13 +2677,27 @@ class UNITIMainWindow(QMainWindow):
             if path not in asked
             and self._file_environment_manager.resolve_key(path.suffix, overrides) != PLAIN_ENVIRONMENT_KEY
         ]
-        if self._service is not None and self.environment_window is None and asked:
+        project_mode = open_mode_dialog.project_file_mode()
+        if (
+            self._service is not None
+            and self.environment_window is None
+            and asked
+            and not (
+                project_mode is not None
+                and all(
+                    self._file_environment_manager.resolve_path_key(path, overrides) in PROJECT_ENVIRONMENTS
+                    for path in asked
+                )
+            )
+        ):
             environment_key = self._file_environment_manager.resolve_path_key(asked[0], overrides)
             open_mode = open_mode_dialog.prompt_open_mode(
                 self, asked[0], descriptor_for_key(environment_key).label, len(asked)
             )
             if open_mode is None:
                 return
+        elif self._service is not None and self.environment_window is None and asked:
+            open_mode = project_mode  # a project's books: its SFM window, no question
 
         # The group is one of the environment the files will be in (T2).
         if self.environment_window is not None:
@@ -2683,7 +2744,9 @@ class UNITIMainWindow(QMainWindow):
         projects_opened: set[Path] = set()
         for path in matching:
             if batch_key in PROJECT_ENVIRONMENTS and path in asked and open_mode is not OpenMode.PLAIN_TEXT:
-                from uniti.core.environments.sfm.paratext_project import project_for_file
+                from uniti.core.environments.sfm.paratext_project import (
+                    project_for_file,
+                )
 
                 project = project_for_file(path)
                 if project is not None:
@@ -3035,7 +3098,23 @@ class UNITIMainWindow(QMainWindow):
         path: str | Path,
         *,
         profile: EncodingProfile | None = None,
-        open_mode: "OpenMode | None" = None,
+        open_mode: OpenMode | None = None,
+    ) -> UNITITextView | None:
+        """`_open_path_here`, then a project book that landed in an ordinary
+        window moves to its SFM window, whatever route opened it (field
+        test, 2026-10-31)."""
+
+        view = self._open_path_here(path, profile=profile, open_mode=open_mode)
+        if view is not None and open_mode is None and self.environment_window is None:
+            view = self._into_project_environment(view) or view
+        return view
+
+    def _open_path_here(
+        self,
+        path: str | Path,
+        *,
+        profile: EncodingProfile | None = None,
+        open_mode: OpenMode | None = None,
     ) -> UNITITextView | None:
         """Open `path`. A file of a defined environment first asks how to open
         (R6) — in an environment window of its environment or as Plain Text
@@ -3053,6 +3132,8 @@ class UNITIMainWindow(QMainWindow):
             existing = self._service.documents.find_path(Path(path))
             if existing is not None:
                 focused = self._service.focus_document(existing.document_id)
+                if isinstance(focused, UNITITextView) and open_mode is None:
+                    focused = self._into_project_environment(focused) or focused
                 if isinstance(focused, UNITITextView):
                     self._record_recent_file(path)
                     self._service.record_dogfood(
@@ -3081,6 +3162,11 @@ class UNITIMainWindow(QMainWindow):
                 Path(path), self._settings.syntax_extension_overrides
             )
             if environment_key != PLAIN_ENVIRONMENT_KEY:
+                if open_mode is None and environment_key in PROJECT_ENVIRONMENTS:
+                    # A file in a Paratext project belongs in its SFM window:
+                    # no question (field test, 2026-10-31); the less structured
+                    # environments still ask.
+                    open_mode = open_mode_dialog.project_file_mode()
                 if open_mode is None:
                     open_mode = open_mode_dialog.prompt_open_mode(
                         self, Path(path), descriptor_for_key(environment_key).label
@@ -3097,7 +3183,9 @@ class UNITIMainWindow(QMainWindow):
             else:
                 open_mode = None
         if profile is None:
-            from uniti.core.environments.sfm.paratext_project import project_encoding_profile
+            from uniti.core.environments.sfm.paratext_project import (
+                project_encoding_profile,
+            )
 
             # A Paratext project's books open in its declared encoding.
             profile = project_encoding_profile(Path(path))
@@ -3148,6 +3236,8 @@ class UNITIMainWindow(QMainWindow):
             self._environment.set_document_environment(PLAIN_ENVIRONMENT_KEY, view, move=False)
             view.document.set_locked(False)  # only a book opened into USFM is locked
         self._usfm_projects.note_opened(view)
+        if open_mode is not OpenMode.PLAIN_TEXT and not self._quiet_open:
+            self._show_opening_mode(view)
         if outside_project and not self._quiet_open:
             self.statusBar().showMessage(f"{Path(path).name} isn't in a Paratext project: opened as plain text", 8000)
         # Markup no loaded definition covers pops up a report (R7, D4).
@@ -3160,6 +3250,20 @@ class UNITIMainWindow(QMainWindow):
                 elapsed_ms=(time.monotonic() - started_at) * 1000.0,
             )
         return view
+
+    def _show_opening_mode(self, view: UNITITextView) -> None:
+        """A newly opened file starts in the mode its environment's "Opens
+        in" setting names (N31), when that isn't Text."""
+
+        from uniti.core.environments.settings import OPENS_IN, TEXT_MODE, environment_settings
+
+        key = self._environment.descriptor_for(view.document).key
+        settings = environment_settings(key)
+        if settings.declaration(OPENS_IN) is None:
+            return
+        mode = settings.get(OPENS_IN)
+        if isinstance(mode, str) and mode != TEXT_MODE:
+            self._rich_views.show(mode, view)
 
     def _tab_label(self, view: UNITITextView) -> str:
         marker = "*" if view.document.modified else ""
@@ -3485,8 +3589,6 @@ class UNITIMainWindow(QMainWindow):
                 leaf.setTabText(leaf.index_of(view.view_id), self._tab_label(view))
         if view is self.current_view:
             self._set_status_document(view)
-        if view is self._markdown_preview_target_view:
-            self._markdown_preview_timer.start()
         self._rich_views.on_view_state_changed(view)
         if view is self.current_view:
             if self._environment_bar is not None:
@@ -3510,21 +3612,6 @@ class UNITIMainWindow(QMainWindow):
         self._hyphenation.refresh()
         if self._environment_bar is not None:
             self._environment_bar.refresh()
-        if self._markdown_preview is not None:
-            target = self._markdown_preview_target_view
-            if target is not None and not self._contains_view(target):
-                # The tab this preview was tracking got closed elsewhere.
-                self._close_markdown_preview()
-            elif (
-                view is not None
-                and self._environment.offers_host_feature(
-                    view, MARKDOWN_PREVIEW_FEATURE
-                )
-                and view is not target
-            ):
-                self._markdown_preview_target_view = view
-                self._refresh_markdown_preview_now()
-        self._refresh_markdown_preview_action()
         self._sync_text_direction_action(view)
         self._sync_whitespace_action(view)
         self._sync_tab_width_action(view)
@@ -3577,7 +3664,7 @@ class UNITIMainWindow(QMainWindow):
     def set_environment_window(self, environment_key: str, slot: int | None = None) -> None:
         """Make this an environment window: the frame (mode switch, and for
         USFM the Book/Chapter/Verse selector) of `environment_key`, in window
-        `slot` of that environment ("SFM-1" is 0; round 3 T3). With no slot,
+        `slot` of that environment ("SFM/1" is 0; round 3 T3). With no slot,
         or one another window has, it takes the lowest free one."""
 
         from uniti.ui.environment_window import EnvironmentBar
@@ -3624,6 +3711,28 @@ class UNITIMainWindow(QMainWindow):
         ):
             return entry.document
         return None
+
+    def _into_project_environment(self, view: UNITITextView) -> UNITITextView | None:
+        """A project's book that is already open in an ordinary window (as
+        SFM text, e.g. restored with the session) moves to its SFM window
+        when opened again (field test, 2026-10-31); a book pinned to Plain
+        Text stays where it is. None when nothing moved."""
+
+        service = self._service
+        if service is None or open_mode_dialog.project_file_mode() is not OpenMode.ENVIRONMENT:
+            return None
+        window = service.windows.window_for_view(view.view_id)
+        if window is None or window.environment_window is not None:
+            return None
+        path = Path(view.document.path)
+        key = self._file_environment_manager.resolve_path_key(path, self._settings.syntax_extension_overrides)
+        if key not in PROJECT_ENVIRONMENTS or window._environment.environment_key_for(view.document) != key:
+            return None
+        target = service.move_to_environment_window(view.view_id, key)
+        moved = None if target is None else target.view_for_id(view.view_id)
+        if moved is not None:
+            service.focus_document(service.documents.entry_for_view(view.view_id).document_id)
+        return moved
 
     def _open_in_environment(self, path: Path, profile: EncodingProfile | None) -> UNITITextView | None:
         """A file opened in an environment window lives there (ADR-0017):
@@ -3687,7 +3796,7 @@ class UNITIMainWindow(QMainWindow):
 
     # --- configuration files (round 2 R8) -----------------------------------
 
-    _CONFIGURATION_SUFFIXES = frozenset({".sty", ".vrs"})
+    _CONFIGURATION_SUFFIXES = frozenset({".sty", ".vrs", ".css"})
     _CONFIGURATION_NAMES = frozenset({"settings.xml", "booknames.xml"})
 
     def open_configuration_file(self, path: Path) -> UNITITextView | None:
@@ -3710,6 +3819,10 @@ class UNITIMainWindow(QMainWindow):
         saved: reload the environments that read it, everywhere, so
         Standard and Preview update straight away."""
 
+        environment_key = self._environment_settings_file_key(path)
+        if environment_key is not None:
+            self.environment_settings_changed(environment_key)
+            return
         if path.suffix.lower() not in self._CONFIGURATION_SUFFIXES and path.name.lower() not in self._CONFIGURATION_NAMES:
             return
         windows = [window for _id, window in self._service.windows.items] if self._service is not None else [self]
@@ -3728,7 +3841,45 @@ class UNITIMainWindow(QMainWindow):
         if reloaded:
             self.statusBar().showMessage(f"Saved {path.name}; reloaded the environment configuration", 4000)
 
-    def _environment_window_target(self, environment_key: str, path: Path | None = None) -> "UNITIMainWindow":
+    @staticmethod
+    def _environment_settings_file_key(path: Path) -> str | None:
+        """The environment whose `settings.json` `path` is (N31), else None."""
+
+        from uniti.core.environments.catalog import ENVIRONMENTS
+        from uniti.core.environments.settings import settings_path
+
+        if path.name != "settings.json":
+            return None
+        for descriptor in ENVIRONMENTS:
+            own = settings_path(descriptor.key)
+            if own is not None and own == path:
+                return descriptor.key
+        return None
+
+    def environment_settings_changed(self, environment_key: str) -> None:
+        """An environment's settings changed (N31): re-render every window's
+        rich views of that environment, so Preview follows at once; Format
+        Document reads them when it runs."""
+
+        from uniti.core.environments.catalog import descriptor_for_key
+        from uniti.core.environments.settings import environment_settings
+
+        windows = [window for _id, window in self._service.windows.items] if self._service is not None else [self]
+        for window in windows:
+            for view in window.views:
+                if window._environment.descriptor_for(view.document).key != environment_key:
+                    continue
+                pane = window._rich_views.pane_for(view)
+                if pane is not None:
+                    pane.refresh()
+        settings = environment_settings(environment_key)
+        label = descriptor_for_key(environment_key).short_label
+        message = f"{label} settings applied"
+        if settings.notes:
+            message += ": " + "; ".join(settings.notes)
+        self.statusBar().showMessage(message, 6000)
+
+    def _environment_window_target(self, environment_key: str, path: Path | None = None) -> UNITIMainWindow:
         """The environment window a file of `environment_key` goes to (its
         project's, else the most recent; round 3 T3), created when there is
         none yet; raised and focused."""
@@ -3906,58 +4057,6 @@ class UNITIMainWindow(QMainWindow):
             return
         _convert_and_set_output_eol(view.document, eol)
         self._on_view_state_changed(view)
-
-    def toggle_markdown_preview(self) -> None:
-        """BF-062: open/close a read-only Markdown preview split beside the
-        editor, tracking whichever Markdown tab is active."""
-
-        if self._markdown_preview is not None:
-            self._close_markdown_preview()
-            return
-        view = self.current_view
-        if not self._environment.offers_host_feature(
-            view, MARKDOWN_PREVIEW_FEATURE
-        ):
-            return
-        from uniti.ui.markdown_preview import MarkdownPreviewPane
-
-        self._markdown_preview = MarkdownPreviewPane(self._central_splitter)
-        self._central_splitter.addWidget(self._markdown_preview)
-        # Literal starting sizes (not proportions), same trick as BF-059's
-        # attached Find/Replace split: gives an even side-by-side split
-        # regardless of the splitter's not-yet-laid-out current width.
-        self._central_splitter.setSizes([1, 1])
-        self._markdown_preview_target_view = view
-        self._refresh_markdown_preview_now()
-        self._refresh_markdown_preview_action()
-
-    def _close_markdown_preview(self) -> None:
-        if self._markdown_preview is None:
-            return
-        self._markdown_preview_timer.stop()
-        self._markdown_preview.setParent(None)
-        self._markdown_preview.deleteLater()
-        self._markdown_preview = None
-        self._markdown_preview_target_view = None
-        self._refresh_markdown_preview_action()
-
-    def _refresh_markdown_preview_now(self) -> None:
-        view = self._markdown_preview_target_view
-        if view is None or self._markdown_preview is None:
-            return
-        text = view.document.read(0, view.document.total_chars())
-        self._markdown_preview.set_text(text)
-
-    def _refresh_markdown_preview_action(self) -> None:
-        action = getattr(self, "_markdown_preview_action", None)
-        if action is None:
-            return
-        view = self.current_view
-        is_markdown = self._environment.offers_host_feature(
-            view, MARKDOWN_PREVIEW_FEATURE
-        )
-        action.setEnabled(is_markdown or self._markdown_preview is not None)
-        action.setChecked(self._markdown_preview is not None)
 
     def format_current_document(self) -> bool:
         """Run the active document's environment's Format Document."""

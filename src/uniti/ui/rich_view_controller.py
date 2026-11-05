@@ -25,7 +25,10 @@ from PySide6.QtWidgets import QApplication
 from uniti.app.editor_state import EditorStateSnapshot
 from uniti.core.environments.sfm.paratext_project import project_for_file
 from uniti.core.environments.sfm.views import SfmPreviewView
-from uniti.core.rich_views.provider import EditorViewProvider, environment_view_providers
+from uniti.core.rich_views.provider import (
+    EditorViewProvider,
+    environment_view_providers,
+)
 
 if TYPE_CHECKING:
     from uniti.ui.main_window import UNITIMainWindow
@@ -36,11 +39,11 @@ if TYPE_CHECKING:
 class _Fitter(QObject):
     """Keeps each pane covering its Source editor as the editor resizes."""
 
-    def __init__(self, controller: "RichViewController") -> None:
+    def __init__(self, controller: RichViewController) -> None:
         super().__init__()
         self._controller = controller
 
-    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt override
+    def eventFilter(self, watched, event) -> bool:
         if event.type() in (QEvent.Type.Resize, QEvent.Type.Show):
             pane = self._controller._panes.get(getattr(watched, "view_id", None))
             if pane is not None and pane.target_view is watched:
@@ -49,7 +52,7 @@ class _Fitter(QObject):
 
 
 class RichViewController:
-    def __init__(self, window: "UNITIMainWindow") -> None:
+    def __init__(self, window: UNITIMainWindow) -> None:
         self._window = window
         self._panes: dict[str, RichViewPane] = {}  # view id -> its pane
         self._appearance_slots: dict[str, object] = {}
@@ -61,20 +64,20 @@ class RichViewController:
 
     # --- lookup -----------------------------------------------------------------
 
-    def pane_for(self, view: "UNITITextView | None") -> "RichViewPane | None":
+    def pane_for(self, view: UNITITextView | None) -> RichViewPane | None:
         if view is None:
             return None
         pane = self._panes.get(view.view_id)
         return pane if pane is not None and pane.target_view is view else None
 
     @property
-    def pane(self) -> "RichViewPane | None":
+    def pane(self) -> RichViewPane | None:
         """The current tab's pane, if it is in a rich mode."""
 
         return self.pane_for(self._window.current_view)
 
     @property
-    def target_view(self) -> "UNITITextView | None":
+    def target_view(self) -> UNITITextView | None:
         pane = self.pane
         return None if pane is None else pane.target_view
 
@@ -82,7 +85,7 @@ class RichViewController:
     def current_key(self) -> str | None:
         return self.key_for(self._window.current_view)
 
-    def key_for(self, view: "UNITITextView | None") -> str | None:
+    def key_for(self, view: UNITITextView | None) -> str | None:
         """The rich mode `view` is showing now (None: Plain Text)."""
 
         pane = self.pane_for(view)
@@ -102,7 +105,7 @@ class RichViewController:
             menu.addAction(export.action)
         self._window.add_view_context_entries(menu, view)
 
-    def providers_for(self, view: "UNITITextView | None") -> tuple[EditorViewProvider, ...]:
+    def providers_for(self, view: UNITITextView | None) -> tuple[EditorViewProvider, ...]:
         environment = self._window._environment
         if view is None or environment.is_plain_mode(view):
             return ()
@@ -110,7 +113,7 @@ class RichViewController:
 
     # --- mode changes -------------------------------------------------------------
 
-    def show(self, provider_key: str, view: "UNITITextView | None" = None) -> bool:
+    def show(self, provider_key: str, view: UNITITextView | None = None) -> bool:
         view = view if view is not None else self._window.current_view
         providers = self.providers_for(view)
         if view is None or not any(provider.key == provider_key for provider in providers):
@@ -142,7 +145,7 @@ class RichViewController:
         return True
 
     @staticmethod
-    def direction_for(view: "UNITITextView | None") -> str | None:
+    def direction_for(view: UNITITextView | None) -> str | None:
         """The reading direction a rich view gives `view`'s paragraphs
         (text direction plan W-D2): the tab's Auto / Left-to-Right /
         Right-to-Left choice, else its Paratext project's `LeftToRight`
@@ -158,7 +161,7 @@ class RichViewController:
             return None
         return "rtl" if project.right_to_left else "ltr"
 
-    def direction_status(self, view: "UNITITextView | None") -> tuple[str, str]:
+    def direction_status(self, view: UNITITextView | None) -> tuple[str, str]:
         """What the status bar says about `view`'s reading direction: the
         label (`RTL`, `LTR`, `Auto`; with the project's when the tab's
         choice overrides a different one) and a tooltip naming its source.
@@ -194,7 +197,7 @@ class RichViewController:
             )
         return "Auto", f"Text direction: each paragraph's first letter decides ({menu} is Auto, and no project sets one)." + styles
 
-    def apply_direction(self, view: "UNITITextView | None") -> None:
+    def apply_direction(self, view: UNITITextView | None) -> None:
         """Make `view`'s pane lay out with its current direction;
         idempotent (the pane re-renders only when it changed)."""
 
@@ -202,7 +205,7 @@ class RichViewController:
         if pane is not None:
             pane.set_direction(self.direction_for(view))
 
-    def close(self, view: "UNITITextView | None" = None) -> None:
+    def close(self, view: UNITITextView | None = None) -> None:
         """Plain Text for `view` (default: the current tab): forget its choice."""
 
         view = view if view is not None else self._window.current_view
@@ -215,13 +218,13 @@ class RichViewController:
             view.setFocus()
         self._refresh_window_actions()
 
-    def set_mode(self, key: str | None, view: "UNITITextView | None" = None) -> bool:
+    def set_mode(self, key: str | None, view: UNITITextView | None = None) -> bool:
         if key is None:
             self.close(view)
             return True
         return self.show(key, view)
 
-    def sync(self, view: "UNITITextView | None") -> None:
+    def sync(self, view: UNITITextView | None) -> None:
         """Make `view`'s pane match its saved choice and environment."""
 
         if view is None or view.view_id in self._showing:
@@ -234,7 +237,7 @@ class RichViewController:
             self._remove(view)
             self._refresh_window_actions()
 
-    def forget(self, view: "UNITITextView") -> None:
+    def forget(self, view: UNITITextView) -> None:
         """`view` leaves this window (closed or transferred): drop its pane,
         keep its choice (the receiving window rebuilds it)."""
 
@@ -251,7 +254,7 @@ class RichViewController:
             if pane is not None and pane.stale and pane.isVisible():
                 pane.refresh()
 
-    def _ensure_pane(self, view: "UNITITextView") -> "RichViewPane":
+    def _ensure_pane(self, view: UNITITextView) -> RichViewPane:
         pane = self.pane_for(view)
         if pane is not None:
             return pane
@@ -265,13 +268,14 @@ class RichViewController:
         pane.closeRequested.connect(lambda: self.close(view))
         pane.providerChangeRequested.connect(lambda key: self.show(key, view))
         pane.zoomRequested.connect(lambda direction: self._zoom_source(view, direction))
+        pane.noteCategoryToggled.connect(lambda category, shown: self._window._note_categories.set_shown(view, category, shown))
         pane.focused.connect(lambda: view.viewFocused.emit(view.view_id))
         pane.document_applied = lambda: self._after_rich_edit(view)
         pane.can_edit = view.isEnabled
         # The window the pane is in now (a tab can move between windows).
         pane.is_live = lambda: getattr(pane.window(), "is_live_window", True)
         pane.context_menu_hook = lambda menu: self._context_entries(menu, view, pane)
-        slot = lambda: self._sync_appearance(view)  # noqa: E731
+        slot = lambda: self._sync_appearance(view)
         view.appearanceChanged.connect(slot)
         self._appearance_slots[view.view_id] = slot
         view.installEventFilter(self._fitter)
@@ -282,7 +286,7 @@ class RichViewController:
         # focus given to the tab (activation, Go To, transfer) lands in it.
         return pane
 
-    def _remove(self, view: "UNITITextView") -> None:
+    def _remove(self, view: UNITITextView) -> None:
         pane = self._panes.get(view.view_id)
         if pane is None or pane.target_view is not view:
             return
@@ -303,12 +307,12 @@ class RichViewController:
 
     # --- appearance -------------------------------------------------------------------
 
-    def _appearance(self, view: "UNITITextView", provider_key: str, providers):
+    def _appearance(self, view: UNITITextView, provider_key: str, providers):
         from uniti.ui.rich_view import RichPalette
 
         return self._font_for(provider_key, providers, view), RichPalette.from_tokens(view.theme_tokens)
 
-    def _sync_appearance(self, view: "UNITITextView") -> None:
+    def _sync_appearance(self, view: UNITITextView) -> None:
         pane = self.pane_for(view)
         key = self.key_for(view)
         if pane is None or key is None:
@@ -337,7 +341,7 @@ class RichViewController:
             pane.set_mode_selector_visible(visible)
 
     @staticmethod
-    def _zoom_source(view: "UNITITextView", direction: int) -> None:
+    def _zoom_source(view: UNITITextView, direction: int) -> None:
         if view.isEnabled():
             view.zoom_in() if direction > 0 else view.zoom_out()
 
@@ -345,22 +349,20 @@ class RichViewController:
 
     def _refresh_window_actions(self) -> None:
         # `refresh()` gates host-feature actions on the current view's
-        # environment; re-sync Markdown Preview so an open preview stays
-        # closable when the current tab isn't Markdown.
+        # environment.
         self._window._environment.refresh()
-        self._window._refresh_markdown_preview_action()
         self._window._refresh_status_direction()
         environment_bar = getattr(self._window, "_environment_bar", None)
         if environment_bar is not None:
             environment_bar.refresh()
 
-    def _after_rich_edit(self, edited: "UNITITextView") -> None:
+    def _after_rich_edit(self, edited: UNITITextView) -> None:
         document = edited.document
         for view in self._window.views:
             if view.document is document:
                 view._state_changed()
 
-    def _push_caret_to_source(self, view: "UNITITextView", cursor: int, anchor: int) -> None:
+    def _push_caret_to_source(self, view: UNITITextView, cursor: int, anchor: int) -> None:
         if self._window.view_for_id(view.view_id) is not view:
             return
         self._pushing_caret = True
@@ -372,18 +374,18 @@ class RichViewController:
 
     # --- window events --------------------------------------------------------------------
 
-    def on_view_state_changed(self, view: "UNITITextView") -> None:
+    def on_view_state_changed(self, view: UNITITextView) -> None:
         pane = self.pane_for(view)
         if pane is not None and not self._pushing_caret:
             pane.show_source_caret(view.state.cursor, view.state.anchor)
 
-    def on_current_view_changed(self, view: "UNITITextView | None") -> None:
+    def on_current_view_changed(self, view: UNITITextView | None) -> None:
         """Panes are per tab, so a tab switch only has to build a restored
         tab's pane the first time it is shown."""
 
         self.sync(view)
 
-    def on_environment_changed(self, view: "UNITITextView | None") -> None:
+    def on_environment_changed(self, view: UNITITextView | None) -> None:
         """Plain Text Mode / reassignment / pinning changed environments."""
 
         # Reassigning extensions can change any tab's environment, not just

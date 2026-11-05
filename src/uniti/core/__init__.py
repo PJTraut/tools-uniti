@@ -1,21 +1,30 @@
 """Qt-independent UNITI text-engine primitives."""
 
 from .byte_source import ByteSource
-from .decoder import DecodeError, DecodedSpan, decode_span, iter_decoded_spans
-from .encoding import EncodingAssessment, EncodingInfo, detect_encoding
-from .file_identity import ExternalFileChangedError, FileIdentity
-from .eol import EOLAnalysisCancelled, EOLReport, analyze_eol
-from .offsets import OffsetCheckpoint, OffsetMapper
-from .lines import LineIndex
+from .decoder import DecodedSpan, DecodeError, decode_span, iter_decoded_spans
+from .document import Document, ReplacementPlanLimitError
 from .document_lines import (
     DocumentLineIndex,
     LineChunkDetail,
     LineChunkSummary,
     LineIndexBatch,
 )
+from .encoding import EncodingAssessment, EncodingInfo, detect_encoding
+from .eol import EOLAnalysisCancelled, EOLReport, analyze_eol
+from .file_identity import ExternalFileChangedError, FileIdentity
 from .index_jobs import LineNavigationResult, build_line_index_batch
-from .pieces import AnnotatedChunk, AnnotatedText, InvalidByteSpan, EditPiece, EditRef, EditStore, PieceTable, SourcePiece
-from .document import Document, ReplacementPlanLimitError
+from .lines import LineIndex
+from .offsets import OffsetCheckpoint, OffsetMapper
+from .pieces import (
+    AnnotatedChunk,
+    AnnotatedText,
+    EditPiece,
+    EditRef,
+    EditStore,
+    InvalidByteSpan,
+    PieceTable,
+    SourcePiece,
+)
 from .save_job import (
     DocumentSaveRequest,
     PreparedDocumentSave,
@@ -24,65 +33,70 @@ from .save_job import (
 from .snapshot import DocumentReadSnapshot, EditStoreSnapshot, PieceTableSnapshot
 from .streaming import atomic_copy_source
 from .text_format import (
-    EOLPolicy,
     EncodingProfile,
+    EOLPolicy,
     OutputFormat,
     encoding_profile,
     encoding_profiles,
     format_summary,
     profile_from_codec,
 )
-from .text_inspection import FormatPreview, TextFileInspection, inspect_source, preview_source
+from .text_inspection import (
+    FormatPreview,
+    TextFileInspection,
+    inspect_source,
+    preview_source,
+)
 
 __all__ = [
+    "AnnotatedChunk",
+    "AnnotatedText",
     "ByteSource",
     "DecodeError",
     "DecodedSpan",
+    "Document",
+    "DocumentLineIndex",
+    "DocumentReadSnapshot",
+    "DocumentSaveRequest",
+    "EOLAnalysisCancelled",
+    "EOLPolicy",
+    "EOLReport",
+    "EditPiece",
+    "EditRef",
+    "EditStore",
+    "EditStoreSnapshot",
     "EncodingAssessment",
     "EncodingInfo",
     "EncodingProfile",
-    "EOLPolicy",
-    "OutputFormat",
-    "FileIdentity",
     "ExternalFileChangedError",
-    "EOLReport",
-    "EOLAnalysisCancelled",
+    "FileIdentity",
     "FormatPreview",
-    "OffsetCheckpoint",
-    "OffsetMapper",
-    "LineIndex",
-    "DocumentLineIndex",
+    "InvalidByteSpan",
     "LineChunkDetail",
     "LineChunkSummary",
+    "LineIndex",
     "LineIndexBatch",
     "LineNavigationResult",
-    "AnnotatedText",
-    "AnnotatedChunk",
-    "InvalidByteSpan",
-    "EditRef",
-    "EditStore",
-    "SourcePiece",
-    "EditPiece",
+    "OffsetCheckpoint",
+    "OffsetMapper",
+    "OutputFormat",
     "PieceTable",
-    "TextFileInspection",
-    "Document",
-    "DocumentSaveRequest",
+    "PieceTableSnapshot",
     "PreparedDocumentSave",
     "ReplacementPlanLimitError",
-    "DocumentReadSnapshot",
-    "EditStoreSnapshot",
-    "PieceTableSnapshot",
-    "decode_span",
-    "iter_decoded_spans",
-    "build_line_index_batch",
+    "SourcePiece",
+    "TextFileInspection",
     "analyze_eol",
     "atomic_copy_source",
+    "build_line_index_batch",
+    "decode_span",
     "detect_encoding",
     "encoding_profile",
     "encoding_profiles",
     "format_summary",
     "inspect_source",
-    "profile_from_codec",
-    "preview_source",
+    "iter_decoded_spans",
     "prepare_document_save",
+    "preview_source",
+    "profile_from_codec",
 ]

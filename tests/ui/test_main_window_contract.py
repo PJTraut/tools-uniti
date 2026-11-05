@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 MAIN = Path("src/uniti/ui/main_window.py")
 SHORTCUT_POLICY = Path("src/uniti/ui/shortcut_policy.py")
 APPLICATION = Path("src/uniti/app/application.py")
@@ -184,10 +183,10 @@ def test_tools_menu_exports_selected_dogfood_path_and_confirms_clear(
 
     from uniti.app.dogfood import (
         CPUClass,
-        RAMClass,
         DogfoodRecorder,
         HostFacts,
         OSFamily,
+        RAMClass,
     )
     from uniti.app.dogfood_store import DogfoodStore
     from uniti.app.service import QuitChoice, UNITIService
@@ -656,7 +655,7 @@ def test_high_confidence_utf8_open_does_not_show_format_confirmation(
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication
 
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     source = tmp_path / "certain.txt"
     source.write_text("Hello, Привет\r\n", encoding="utf-8", newline="")
@@ -686,7 +685,7 @@ def test_low_confidence_open_requires_exact_profile_confirmation(
     from PySide6.QtWidgets import QApplication, QDialog
 
     from uniti.core.text_format import encoding_profile
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     source = tmp_path / "legacy.txt"
     source.write_bytes(b"Price \x96 10")
@@ -724,7 +723,7 @@ def test_cancelled_serious_open_creates_no_tab(tmp_path: Path, monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QDialog
 
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     source = tmp_path / "uncertain.txt"
     source.write_bytes(b"A\xffZ")
@@ -754,7 +753,7 @@ def test_explicit_profile_still_reports_malformed_preview(tmp_path: Path, monkey
     from PySide6.QtWidgets import QApplication, QDialog
 
     from uniti.core.text_format import encoding_profile
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     source = tmp_path / "malformed-utf8.txt"
     source.write_bytes(b"A\xffZ")
@@ -1272,7 +1271,7 @@ def test_compare_menu_opens_a_compare_pane_for_two_picked_documents(
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QDialog
 
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     class _StubPicker:
         def __init__(self, candidates, *, parent=None):
@@ -1358,7 +1357,7 @@ def test_compare_menu_rejects_comparing_a_document_with_itself(
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QDialog, QMessageBox
 
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     class _SameChoicePicker:
         def __init__(self, candidates, *, parent=None):
@@ -1410,7 +1409,7 @@ def test_compare_hotkey_toggles_open_and_closed(tmp_path: Path, monkeypatch):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QDialog
 
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     class _StubPicker:
         def __init__(self, candidates, *, parent=None):
@@ -1499,7 +1498,7 @@ def test_compare_remembers_size_and_zoom_across_reopens(tmp_path: Path, monkeypa
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QDialog
 
-    import uniti.ui.main_window as main_window
+    from uniti.ui import main_window
 
     class _StubPicker:
         def __init__(self, candidates, *, parent=None):
@@ -1650,12 +1649,12 @@ def test_format_document_actions_follow_the_active_documents_environment(
         assert environment.command_actions["minify"].isEnabled() is True
 
         md_view = window.open_path(md_path)
-        assert environment.menu.title() == "Markdown"
+        assert environment.menu.title() == "MD"
         assert environment.command_actions["format"].isEnabled() is True
         assert "minify" not in environment.command_actions
 
         window.open_path(txt_path)
-        assert environment.menu.title() == "Plain Text"
+        assert environment.menu.title() == "TXT"
         assert environment.command_actions == {}
         assert window.format_current_document() is False
 
@@ -2076,7 +2075,7 @@ def test_environment_assignment_editor_updates_settings_and_refreshes_open_views
         view = window.open_path(usj_path)
         assert view.syntax_profile is PLAIN_TEXT
 
-        assert window._environment.menu.title() == "Plain Text"
+        assert window._environment.menu.title() == "TXT"
 
         with patch(
             "uniti.ui.environment_assignment_editor.EnvironmentAssignmentEditor.exec",
@@ -2090,144 +2089,6 @@ def test_environment_assignment_editor_updates_settings_and_refreshes_open_views
         assert view.syntax_profile is JSON
         assert window._environment.menu.title() == "JSON"
         assert store.load().syntax_extension_overrides == {"usj": "json"}
-    finally:
-        window.close_all_documents(force=True)
-        window.close()
-
-
-def test_markdown_preview_toggle_opens_split_and_renders_current_document(
-    tmp_path: Path,
-):
-    if importlib.util.find_spec("PySide6") is None:
-        pytest.skip("PySide6 is not installed")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
-
-    from uniti.app.settings import SettingsStore
-    from uniti.ui.main_window import UNITIMainWindow
-
-    md_path = tmp_path / "doc.md"
-    md_path.write_text("# Hello", encoding="utf-8")
-    store = SettingsStore(tmp_path / "settings.json")
-    app = QApplication.instance() or QApplication([])
-    window = UNITIMainWindow(settings_store=store)
-    try:
-        window.open_path(md_path)
-        app.processEvents()
-
-        assert window._markdown_preview_action.isEnabled() is True
-        assert window._markdown_preview_action.isChecked() is False
-
-        window.toggle_markdown_preview()
-        app.processEvents()
-
-        assert window._markdown_preview is not None
-        assert window._markdown_preview_action.isChecked() is True
-        assert "Hello" in window._markdown_preview._browser.toPlainText()
-
-        window.toggle_markdown_preview()
-
-        assert window._markdown_preview is None
-        assert window._markdown_preview_action.isChecked() is False
-    finally:
-        window.close_all_documents(force=True)
-        window.close()
-
-
-def test_markdown_preview_disabled_for_non_markdown_document(tmp_path: Path):
-    if importlib.util.find_spec("PySide6") is None:
-        pytest.skip("PySide6 is not installed")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
-
-    from uniti.app.settings import SettingsStore
-    from uniti.ui.main_window import UNITIMainWindow
-
-    path = tmp_path / "doc.txt"
-    path.write_text("hello", encoding="utf-8")
-    store = SettingsStore(tmp_path / "settings.json")
-    app = QApplication.instance() or QApplication([])
-    window = UNITIMainWindow(settings_store=store)
-    try:
-        window.open_path(path)
-        app.processEvents()
-
-        assert window._markdown_preview_action.isEnabled() is False
-        window.toggle_markdown_preview()
-        assert window._markdown_preview is None
-    finally:
-        window.close_all_documents(force=True)
-        window.close()
-
-
-def test_markdown_preview_updates_on_edit_after_debounce(tmp_path: Path):
-    if importlib.util.find_spec("PySide6") is None:
-        pytest.skip("PySide6 is not installed")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
-
-    from uniti.app.settings import SettingsStore
-    from uniti.ui.main_window import UNITIMainWindow
-
-    md_path = tmp_path / "doc.md"
-    md_path.write_text("# Hello", encoding="utf-8")
-    store = SettingsStore(tmp_path / "settings.json")
-    app = QApplication.instance() or QApplication([])
-    window = UNITIMainWindow(settings_store=store)
-    try:
-        view = window.open_path(md_path)
-        window.toggle_markdown_preview()
-        app.processEvents()
-
-        view.state.move_to(view.document.total_chars())
-        view.state.insert_text(" World")
-        view._state_changed()
-        assert window._markdown_preview_timer.isActive()
-
-        window._markdown_preview_timer.timeout.emit()
-        app.processEvents()
-
-        assert "World" in window._markdown_preview._browser.toPlainText()
-    finally:
-        window.close_all_documents(force=True)
-        window.close()
-
-
-def test_markdown_preview_retargets_on_tab_switch_and_closes_when_target_closes(
-    tmp_path: Path,
-):
-    if importlib.util.find_spec("PySide6") is None:
-        pytest.skip("PySide6 is not installed")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    from PySide6.QtWidgets import QApplication
-
-    from uniti.app.settings import SettingsStore
-    from uniti.ui.main_window import UNITIMainWindow
-
-    first_path = tmp_path / "first.md"
-    second_path = tmp_path / "second.md"
-    first_path.write_text("# First", encoding="utf-8")
-    second_path.write_text("# Second", encoding="utf-8")
-    store = SettingsStore(tmp_path / "settings.json")
-    app = QApplication.instance() or QApplication([])
-    window = UNITIMainWindow(settings_store=store)
-    try:
-        first_view = window.open_path(first_path)
-        window.toggle_markdown_preview()
-        app.processEvents()
-        assert "First" in window._markdown_preview._browser.toPlainText()
-
-        second_view = window.open_path(second_path)
-        app.processEvents()
-        assert window._markdown_preview_target_view is second_view
-        assert "Second" in window._markdown_preview._browser.toPlainText()
-
-        window._select_view(second_view)
-        app.processEvents()
-        window.close_current()
-        app.processEvents()
-
-        assert window._markdown_preview is None
     finally:
         window.close_all_documents(force=True)
         window.close()
