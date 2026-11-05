@@ -60,6 +60,9 @@ class PreviewExport(QObject):
             self._window._hyphenation.rules_for(view),
             controller.direction_for(view),
         )
+        from uniti.core.numerals import numerals_for_path, with_numerals
+
+        projection = with_numerals(projection, numerals_for_path(document.path))
         project = project_for_file(document.path)
         stem = document.path.stem if document.path is not None else "Preview"
         project_name = (project.full_name or project.name) if project is not None else None

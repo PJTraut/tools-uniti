@@ -79,6 +79,7 @@ def test_menu_is_titled_after_the_active_environment(window, tmp_path: Path):
         "Previous Spelling Issue",
         "Hyphenate Preview",
         "Footnote Categories",
+        "Preview Numerals",
         "Sync Side-by-Side by Reference",
         "Versification",
         "Configuration Files…",

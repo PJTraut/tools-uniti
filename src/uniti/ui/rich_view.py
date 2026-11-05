@@ -1070,6 +1070,7 @@ class RichViewPane(QWidget):
             self.editor.setPlainText("This view could not display the document. The Source editor is unaffected.")
             self.editor.setReadOnly(True)
             return
+        projection = self._with_numerals(projection)
         notes = tuple(getattr(self.provider, "notes", ()) or ())
         if notes and notes != self._shown_notes:
             # What a stylesheet has that the view ignores, once (N27).
@@ -1275,6 +1276,16 @@ class RichViewPane(QWidget):
         self._hyphenation = rules
         if refresh and hasattr(self.provider, "project_filtered"):
             self.refresh()
+
+    def _with_numerals(self, projection: Projection) -> Projection:
+        """Preview shows its digits in the project's chosen numerals."""
+
+        from uniti.core.environments.sfm.views import SfmPreviewView
+        from uniti.core.numerals import numerals_for_path, with_numerals
+
+        if not isinstance(self.provider, SfmPreviewView):
+            return projection
+        return with_numerals(projection, numerals_for_path(getattr(self.document, "path", None)))
 
     def set_direction(self, direction: str | None, *, refresh: bool = True) -> None:
         """The reading direction of every paragraph (``"ltr"``, ``"rtl"``;

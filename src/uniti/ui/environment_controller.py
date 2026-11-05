@@ -476,6 +476,7 @@ class EnvironmentController:
             menu.addAction(window._spelling.previous_action)
             menu.addAction(window._hyphenation.action)
             menu.addMenu(window._note_categories.menu)
+            menu.addMenu(window._preview_numerals.menu)
             menu.addAction(window._reference_sync.action)
             menu.addMenu(self._versification_menu(view))
         configuration = QAction("Configuration Files…", window)
@@ -522,6 +523,9 @@ class EnvironmentController:
             descriptor.short_label,
             environment_settings(descriptor.key),
             on_saved=lambda _settings, key=descriptor.key: self._window.environment_settings_changed(key),
+            on_manage_files=(
+                (lambda *_checked, view=view: self.show_configuration_files(view)) if descriptor.key == "markdown" else None
+            ),
         )
         self.settings_dialog.show()
         self.settings_dialog.raise_()

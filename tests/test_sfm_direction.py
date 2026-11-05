@@ -14,6 +14,7 @@ from uniti.core.environments.sfm.views import (
     SfmPreviewView,
     SfmStandardView,
     layout_projection,
+    presentation_attrs,
 )
 from uniti.core.rich_views.source_map import ISOLATE, LRI, PDI, RLI, SegmentRole
 
@@ -426,3 +427,24 @@ def test_with_a_right_to_left_direction_the_tags_of_a_persian_book_are_isolated(
 
     projection = layout_projection(PERSIAN + "\\rem یادداشت\n", STYLES, "k", show_markers=True, direction="rtl")
     assert _isolates_around_every_tag(projection)
+
+
+def test_preview_shows_the_published_verse_number_in_place_of_the_v_number():
+    """`\\vp 1b\\vp*` replaces the `\\v` number in Preview; Standard keeps both."""
+
+    source = "\\id JHN\n\\c 1\n\\p\n\\v 1 \\vp 1b\\vp* In\n\\v 2-3 \\vp 2-3b\\vp* next\n\\v 4 plain\n"
+    preview = layout_projection(source, STYLES, "k", show_markers=False)
+    assert "11b" not in preview.text and "2-32-3b" not in preview.text
+    assert "1b In" in preview.text and "2-3b next" in preview.text
+    assert "4plain" in preview.text  # no \vp: the \v number stays
+    standard = layout_projection(source, STYLES, "k", show_markers=True)
+    assert "\\v 1 \\vp 1b\\vp*" in standard.text
+
+
+def test_preview_published_number_replaces_a_non_ascii_verse_number_and_takes_its_style():
+    source = "\\id JHN\n\\c 1\n\\p\n\\v \u06f1 \\vp \u06f1\u0628\\vp* text\n"
+    preview = layout_projection(source, STYLES, "k", show_markers=False)
+    assert "\u06f1\u06f1\u0628" not in preview.text
+    assert "\u06f1\u0628 text" in preview.text
+    vp = [s for s in preview.spans if s.marker == "vp"]
+    assert vp and all(dict(s.attrs) == presentation_attrs(STYLES, "v", block=False) for s in vp)

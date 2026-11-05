@@ -700,7 +700,18 @@ def layout_projection(
             if pending_number is not None:
                 digits = len(text) - len(text.lstrip("0123456789-abc"))
                 number_end = start + digits
-                if digits:
+                if (
+                    pending_number == "verse"
+                    and not show_markers
+                    and len(text.split()) == 1  # the number, whatever its digits
+                    and index + 1 < len(tokens)
+                    and _bare(tokens[index + 1].text) == "vp"
+                    and not is_closing(tokens[index + 1].text)
+                ):
+                    # Preview: a published verse number (`\vp 1b\vp*`) stands
+                    # in for the `\v` number, which isn't shown beside it.
+                    builder.hidden(token.end, "v")
+                elif digits:
                     view_start = builder.view_position
                     builder.text(number_end, source[start:number_end])
                     number_marker = "v" if pending_number == "verse" else "c"
@@ -760,7 +771,8 @@ def layout_projection(
                     add_span(
                         span_view_start,
                         builder.view_position,
-                        presentation_attrs(styles, span_marker, block=False),
+                        # Preview: the published number looks like the verse number it replaces.
+                        presentation_attrs(styles, "v" if span_marker == "vp" and not show_markers else span_marker, block=False),
                         span_marker,
                     )
                     break

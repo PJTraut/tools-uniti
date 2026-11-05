@@ -27,10 +27,15 @@ _ISOLATED = re.compile(f"{MARKER_PATTERN}|{RANGE_PATTERN}")
 def direction_for_text(
     text: str, default: Qt.LayoutDirection = Qt.LayoutDirection.LeftToRight
 ) -> Qt.LayoutDirection:
-    """The base direction a logical line's `ShapedWindow`s should share:
-    its first strong letter's, else `default` (a tag-only line takes the
-    book's direction, N39)."""
+    """The base direction a logical line's `ShapedWindow`s should share.
+    `default` is the book's direction (its predominant script). A
+    right-to-left book is a state: every line follows it, so a Latin-only
+    line (`\\id`, `\\rem`) sits with the rest rather than reading left to
+    right. In a left-to-right book a line follows its first strong letter,
+    else the book's direction."""
 
+    if default == Qt.LayoutDirection.RightToLeft:
+        return default
     found = first_strong_direction(text)
     if found is None:
         return default

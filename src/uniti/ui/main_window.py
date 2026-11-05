@@ -343,6 +343,9 @@ class UNITIMainWindow(QMainWindow):
         from uniti.ui.note_categories import NoteCategories
 
         self._note_categories = NoteCategories(self)
+        from uniti.ui.preview_numerals import PreviewNumerals
+
+        self._preview_numerals = PreviewNumerals(self)
         from uniti.ui.hyphenation import HyphenationController
 
         self._hyphenation = HyphenationController(self)
@@ -1776,6 +1779,7 @@ class UNITIMainWindow(QMainWindow):
             menu.addAction(self._spelling.make_action(view, menu))
             menu.addAction(self._hyphenation.make_action(view, menu))
             menu.addMenu(self._note_categories.make_menu(view, menu))
+            menu.addMenu(self._preview_numerals.make_menu(view, menu))
         split = menu.addMenu("Split")
         full = self._split_limit_reached()
         for label, orientation in (("Move to New Split Right", Qt.Orientation.Horizontal), ("Move to New Split Down", Qt.Orientation.Vertical)):

@@ -92,6 +92,10 @@ A USFM book is UTF-8 with CRLF line endings. A book that isn't (LF, CR or mixed 
 ## Footnote categories
 
 A note's categories are the words inside its `\cat … \cat*` (`\cat People Places\cat*` is in two); a note with none is in **None**. **USFM → Footnote Categories** (also on the tab's right-click menu) lists the book's categories and **None**, all checked. Unchecking one leaves the notes out of **Preview**, caller and body, when all of a note's categories are unchecked; the callers that remain number from a. **Show All** checks everything again.
+
+### Preview Numerals
+
+**USFM → Preview Numerals** (also on the tab's right-click menu) chooses the numerals **Preview** and the HTML export show for every digit: As written, Latin, Arabic-Indic (Hindi), Persian/Urdu, Devanagari, Bengali or Thai. It is a display choice only; the source and Standard keep the digits as written. The choice is **per project**; **All <language> Projects** sets a default for every project in a language (the project's language code in its settings), which a project follows when it has no choice of its own (**Language Default**). Stored in the user data folder (`Environments/USFM/project_numerals.json`).
 - **Per project tab,** like Check Spelling: it applies to every book of the tab and the books you open into it, and is saved with the session.
 - **Preview only.** Standard and Plain Text keep every note, since they show the source you edit.
 

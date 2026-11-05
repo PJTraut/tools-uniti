@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QLabel,
     QMessageBox,
+    QPushButton,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -46,6 +47,7 @@ class EnvironmentSettingsDialog(QDialog):
         environment_label: str,
         settings: EnvironmentSettings,
         on_saved: Callable[[EnvironmentSettings], None] | None = None,
+        on_manage_files: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(f"{environment_label} Settings")
@@ -53,6 +55,7 @@ class EnvironmentSettingsDialog(QDialog):
         self.settings = settings
         path = settings_path(environment_key)
         self._on_saved = on_saved
+        self.manage_files_button: QPushButton | None = None
         self.editors: dict[str, QWidget] = {}
 
         layout = QVBoxLayout(self)
@@ -97,6 +100,13 @@ class EnvironmentSettingsDialog(QDialog):
         restore = buttons.button(QDialogButtonBox.StandardButton.RestoreDefaults)
         restore.clicked.connect(lambda: self._show(self.settings.restored()))
         self.restore_button = restore
+        if on_manage_files is not None:
+            # N36: the environment's own files (Markdown: the CSS layers).
+            manage = QPushButton("Manage Stylesheets…", self)
+            manage.setToolTip("Open the configuration files: built-in, user and project CSS layers")
+            manage.clicked.connect(on_manage_files)
+            self.manage_files_button = manage
+            buttons.addButton(manage, QDialogButtonBox.ButtonRole.ActionRole)
         layout.addWidget(buttons)
 
     def _editor(self, setting: EnvironmentSetting) -> QWidget:

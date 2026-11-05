@@ -94,3 +94,22 @@ def test_a_bad_settings_file_is_noted_once(window, tmp_path: Path):
     window._environment._note_settings_problems("markdown")
     assert "MD settings" in window.statusBar().currentMessage()
     assert window._rich_views.key_for(view) is None
+
+
+def test_markdown_settings_link_to_the_stylesheet_files(window, tmp_path: Path):
+    """N36: MD's Environment Settings has a button that opens the CSS layers."""
+
+    view = _open_markdown(window, tmp_path)
+    dialog = window._environment.show_environment_settings(view)
+    assert dialog.manage_files_button is not None
+    dialog.manage_files_button.click()
+    assert window._environment.configuration_dialog is not None
+    assert window._environment.configuration_dialog.environment_key == "markdown"
+
+
+def test_plain_text_settings_have_no_stylesheet_button(window, tmp_path: Path):
+    path = tmp_path / "a.txt"
+    path.write_text("x\n", encoding="utf-8")
+    view = window.open_path(path, open_mode=OpenMode.HERE)
+    dialog = window._environment.show_environment_settings(view)
+    assert dialog.manage_files_button is None

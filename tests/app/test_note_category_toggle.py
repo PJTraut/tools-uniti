@@ -177,3 +177,22 @@ def test_the_footnotes_title_line_toggles_categories(desktop, tmp_path: Path):
 
     pane.note_sections[0]._category_clicked("aa")
     assert view.hidden_note_categories == frozenset()
+
+
+def test_preview_numerals_follow_the_project_then_the_language(desktop, tmp_path: Path):
+    from uniti.core.numerals import set_project_numerals
+
+    _app, service = desktop
+    folder = _project(tmp_path / "fa", "faTest")
+    window, view = _usfm_window(service, folder)
+    pane = _preview(window)
+    menu = window._preview_numerals.menu
+    menu.aboutToShow.emit()
+    assert any(a.text() == "Persian / Urdu (۰۱۲۳۴۵۶۷۸۹)" for a in menu.actions())
+    assert "1" in pane.editor.toPlainText()
+
+    window._preview_numerals.choose(view, "persian")
+    assert "۱" in pane.editor.toPlainText() and "1" not in pane.editor.toPlainText().split("\n")[1]
+    window._preview_numerals.choose(view, None)
+    assert "1" in pane.editor.toPlainText()
+    set_project_numerals("faTest", None)

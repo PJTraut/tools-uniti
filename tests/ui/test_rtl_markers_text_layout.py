@@ -70,7 +70,10 @@ def test_a_tag_only_line_takes_the_books_direction(qapp):
     assert direction_for_text("\\p") == Qt.LayoutDirection.LeftToRight
     assert direction_for_text("\\p", RTL) == RTL
     assert direction_for_text("\\c 1", RTL) == RTL
-    assert direction_for_text("\\rem Latin note", RTL) == Qt.LayoutDirection.LeftToRight  # its own letters decide
+    assert direction_for_text("\\rem Latin note", RTL) == RTL  # a right-to-left book is a state
+    assert direction_for_text("\\id MAT Latin", RTL) == RTL
+    assert direction_for_text("\\rem Latin note") == Qt.LayoutDirection.LeftToRight
+    assert direction_for_text(LINE) == RTL  # a left-to-right book still reads Persian lines by their letters
 
 
 def test_a_closing_marker_keeps_its_asterisk_on_its_right(qapp):
