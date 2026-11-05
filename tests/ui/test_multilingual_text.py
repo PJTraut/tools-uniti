@@ -687,7 +687,8 @@ def test_logical_eol_keeps_one_composition_owner(qapp, tmp_path, monkeypatch, te
             view.inputMethodEvent(QInputMethodEvent("한", []))
             view.viewport().repaint()
             caret = view._cursor_rectangle()
-            assert owners == pytest.approx([(caret.top(), caret.left())])
+            assert len(owners) == 1
+            assert owners[0] == pytest.approx((caret.top(), caret.left()))
         finally:
             view.close()
 
