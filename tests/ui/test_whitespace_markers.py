@@ -167,3 +167,40 @@ def test_space_marker_alpha_centroid_is_centered(app, tmp_path, font_scale, devi
         assert x_moment / total == pytest.approx((21.25 + 29.75) / 2, abs=0.2)
         assert y_moment / total == pytest.approx(13.25 + view._line_height / 2, abs=0.2)
         view.close()
+
+
+def test_the_eol_marker_of_a_latin_tag_in_a_right_to_left_row_sits_past_its_left_edge(app, tmp_path):
+    """N42: `\\ie` and `\\b` in a right-to-left view end at the text's right
+    edge in logical order, so the marker was drawn over the tag. It now sits
+    where the line's text stops on the left, like a Hebrew line's."""
+
+    from uniti.app.editor_state import EditorState
+    from uniti.core.document import Document
+    from uniti.ui.text_view import UNITITextView
+
+    path = tmp_path / "tags.txt"
+    path.write_bytes("\\ie\r\n\\b\r\nשלום\r\n".encode("utf-8"))
+    with Document.open(path, encoding="utf-8") as document:
+        view = UNITITextView(EditorState(document))
+        view.set_whitespace_mode("all")
+        view.set_text_direction_override("rtl")
+        view.resize(600, 300)
+        eol = []
+        view._paint_whitespace_marker = lambda painter, kind, label, x1, x2, y, **_kw: (
+            eol.append((y, x1)) if kind == "eol" else None
+        )
+        try:
+            view.show()
+            app.processEvents()
+            view.repaint()
+            app.processEvents()
+            by_row = dict(eol)
+            assert len(by_row) == 3
+            first, second, hebrew = (by_row[y] for y in sorted(by_row))
+            right_edge = view.viewport().width() - 15  # where the text starts, at the right margin
+            # The marker point is past the whole tag, not at its right edge
+            # (the old logical-end point, `right_edge`).
+            assert first <= right_edge - 8 and second <= right_edge - 4
+            assert hebrew < first
+        finally:
+            view.close()

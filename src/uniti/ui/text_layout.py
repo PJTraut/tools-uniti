@@ -10,23 +10,31 @@ property; callers are expected to detect it once per logical line (see
 to that line.
 """
 
+import re
 from bisect import bisect_left, bisect_right
 
 import regex
 from PySide6.QtCore import QPointF, Qt
 from PySide6.QtGui import QTextLayout, QTextOption
 
-from uniti.core.bidi import is_rtl_paragraph
+from uniti.core.bidi import MARKER_PATTERN, RANGE_PATTERN, first_strong_direction
+
+LRM = "\u200e"
+RLM = "\u200f"
+_ISOLATED = re.compile(f"{MARKER_PATTERN}|{RANGE_PATTERN}")
 
 
-def direction_for_text(text: str) -> Qt.LayoutDirection:
-    """The base direction a logical line's `ShapedWindow`s should share."""
+def direction_for_text(
+    text: str, default: Qt.LayoutDirection = Qt.LayoutDirection.LeftToRight
+) -> Qt.LayoutDirection:
+    """The base direction a logical line's `ShapedWindow`s should share:
+    its first strong letter's, else `default` (a tag-only line takes the
+    book's direction, N39)."""
 
-    return (
-        Qt.LayoutDirection.RightToLeft
-        if is_rtl_paragraph(text)
-        else Qt.LayoutDirection.LeftToRight
-    )
+    found = first_strong_direction(text)
+    if found is None:
+        return default
+    return Qt.LayoutDirection.RightToLeft if found == "rtl" else Qt.LayoutDirection.LeftToRight
 
 
 class Utf16Map:
@@ -85,6 +93,31 @@ class ShapedWindow:
             if preedit is None
             else text[: preedit[0]] + preedit[1] + text[preedit[0] :]
         )
+        # N40, N41: in a right-to-left line a backslash marker (`\\c`, `\\v`,
+        # `\\id`) is neutral at its start and would be reordered ("c 1\\"), and
+        # a number range (`1-3`, `2:3\u20135`) would read backwards. A
+        # right-to-left and a left-to-right mark before each (the first
+        # keeps a number just before it, as in `\u06f1\u06f4\\xt*`, from
+        # merging into the run), then a left-to-right
+        # and a right-to-left one after, in the layout's text only, make it
+        # a left-to-right run in a right-to-left context: the tag reads
+        # `\\c` and the number sits to its left. The mark just after the
+        # run keeps a closing `*` (`\\xt*`) in it; without it the `*` read to
+        # the left of the tag. (Isolates draw the same but give the caret
+        # wrong positions.) Not while composing: the preedit maps its own
+        # offsets.
+        self._inserts: tuple[int, ...] = ()
+        if direction == Qt.LayoutDirection.RightToLeft and preedit is None:
+            found = [m.span() for m in _ISOLATED.finditer(text)]
+            if found:
+                inserts, pieces, last = [], [], 0
+                for start, end in found:
+                    pieces += [text[last:start], RLM, LRM, text[start:end], LRM, RLM]
+                    inserts += [start, start, end, end]
+                    last = end
+                pieces.append(text[last:])
+                self._inserts = tuple(inserts)
+                display = "".join(pieces)
         self.mapping = Utf16Map(display)
         self.boundaries = tuple([0, *[m.end() for m in regex.finditer(r"\X", text)]])
         self.layout = QTextLayout(display, font)
@@ -140,10 +173,21 @@ class ShapedWindow:
             self.lines.append(line)
         self.layout.endLayout()
 
+    def _display_cp(self, cp):
+        """`cp` in the layout's text, which has isolates around each marker and range."""
+        return cp + bisect_right(self._inserts, cp) if self._inserts else cp
+
+    def _text_cp(self, display_cp):
+        """The text offset of a position in the layout's text."""
+        if not self._inserts:
+            return display_cp
+        before = sum(1 for index, at in enumerate(self._inserts) if at + index < display_cp)
+        return display_cp - before
+
     def unit_for_cp(self, cp):
         if self.preedit is not None and cp >= self.preedit[0]:
             cp += len(self.preedit[1])
-        return self.mapping.cp_to_u16(cp)
+        return self.mapping.cp_to_u16(self._display_cp(cp))
 
     def preedit_x(self, cp, row=0):
         if not self.lines:
@@ -179,7 +223,7 @@ class ShapedWindow:
     def cp_for_x(self, x, row=0):
         if not self.lines:
             return 0
-        cp = self.mapping.u16_to_cp(self.lines[row].xToCursor(x))
+        cp = self._text_cp(self.mapping.u16_to_cp(self.lines[row].xToCursor(x)))
         if self.preedit is not None and cp > self.preedit[0]:
             cp = max(self.preedit[0], cp - len(self.preedit[1]))
         i = bisect_left(self.boundaries, cp)
@@ -229,8 +273,8 @@ class ShapedWindow:
     def row_span(self, row=0):
         line = self.lines[row]
         return (
-            self.mapping.u16_to_cp(line.textStart()),
-            self.mapping.u16_to_cp(line.textStart() + line.textLength()),
+            self._text_cp(self.mapping.u16_to_cp(line.textStart())),
+            self._text_cp(self.mapping.u16_to_cp(line.textStart() + line.textLength())),
         )
 
     @property

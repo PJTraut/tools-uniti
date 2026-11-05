@@ -426,23 +426,21 @@ def _lock_action(menu, text):
     return next((action for action in _menu_actions(menu) if action.text() == text), None)
 
 
-def test_the_toolbar_button_unlocks_and_locks_the_shown_book(desktop, tmp_path: Path):
-    from PySide6.QtWidgets import QToolButton
-
+def test_the_lock_action_unlocks_and_locks_the_shown_book_and_the_toolbar_has_no_lock_button(desktop, tmp_path: Path):
     _app, service = desktop
     window, view = _usfm_window(service, _project(tmp_path / "niv"))
-    button = window._environment_bar.lock_toggle
+    assert not hasattr(window._environment_bar, "lock_toggle")  # N37: the lock icon beside BK is gone
 
     action = window._book_lock.action
-    assert isinstance(button, QToolButton) and button.text() == "🔒" and action.text() == "Unlock Project"
-    assert button.isEnabled()
-    button.click()
+    assert action.text() == "Unlock Project" and action.isEnabled()
+    button = action  # the action is what menus trigger
+    button.trigger()
     assert not view.document.locked and not view.read_only and action.text() == "Lock Project"
     window._rich_views.show("sfm.standard", view)
     assert window._rich_views.pane_for(view).editable is True  # Standard edits after unlocking
 
     view.document.insert(0, "\\rem edited\r\n")
-    button.click()  # locking with unsaved changes is allowed
+    button.trigger()  # locking with unsaved changes is allowed
     assert view.document.locked and view.document.modified and action.text() == "Unlock Project"
     assert window._rich_views.pane_for(view).editable is False
 

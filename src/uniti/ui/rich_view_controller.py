@@ -23,6 +23,7 @@ from PySide6.QtCore import QEvent, QObject
 from PySide6.QtWidgets import QApplication
 
 from uniti.app.editor_state import EditorStateSnapshot
+from uniti.core.bidi import dominant_direction
 from uniti.core.environments.sfm.paratext_project import project_for_file
 from uniti.core.environments.sfm.views import SfmPreviewView
 from uniti.core.rich_views.provider import (
@@ -157,9 +158,28 @@ class RichViewController:
         if choice in ("ltr", "rtl"):
             return choice
         project = project_for_file(view.document.path)
+        if project is not None and project.right_to_left:
+            return "rtl"
+        # Auto (N39): the project doesn't say right to left, so the text's
+        # own letters decide; a Persian book in a project whose
+        # `LeftToRight` was never changed still reads right to left.
+        if RichViewController.sniffed_direction(view) == "rtl":
+            return "rtl"
         if project is None or project.right_to_left is None:
             return None
-        return "rtl" if project.right_to_left else "ltr"
+        return "ltr"
+
+    SNIFF_CHARS = 20_000
+
+    @staticmethod
+    def sniffed_direction(view: UNITITextView) -> str | None:
+        """`dominant_direction` of the first `SNIFF_CHARS` of `view`'s text."""
+
+        try:
+            _start, text = next(view.document.iter_text(0, chunk_chars=RichViewController.SNIFF_CHARS), (0, ""))
+        except Exception:  # an unreadable document just has no detected direction
+            return None
+        return dominant_direction(text)
 
     def direction_status(self, view: UNITITextView | None) -> tuple[str, str]:
         """What the status bar says about `view`'s reading direction: the
@@ -189,6 +209,9 @@ class RichViewController:
                 label += f" (project {project_direction.upper()})"
                 tooltip += f" The project {project.name} is {words[project_direction]}."
             return label, tooltip + styles
+        if project_direction != "rtl" and self.sniffed_direction(view) == "rtl":
+            note = f" The project {project.name} says left to right." if project_direction == "ltr" else ""
+            return "RTL", f"Text direction: right to left, read from the text ({menu} is Auto).{note}" + styles
         if project_direction is not None:
             return (
                 project_direction.upper(),

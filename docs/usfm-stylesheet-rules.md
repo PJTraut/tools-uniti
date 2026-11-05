@@ -177,8 +177,8 @@ Each paragraph in Standard and Preview reads left to right or right to left. Its
 
 1. **`\Direction`** on the paragraph's style or on a rule: `LTR` or `RTL` (any case). `Auto` gives none, nor does anything else written there.
 2. The tab's **View → Text Direction** choice, when it isn't Auto.
-3. The Paratext project's own setting (`LeftToRight` in its `Settings.xml`), read again whenever the window is activated.
-4. The paragraph's first letter, when none of the above gives a direction (a file outside a project, with Auto).
+3. The Paratext project's own setting (`LeftToRight` in its `Settings.xml`), read again whenever the window is activated. With Auto, a book whose letters (the first 20,000 characters, markers left out) are mostly right to left reads right to left whatever the project says, so a Persian book in a project whose setting was never changed still works; the status-bar tooltip says it was read from the text.
+4. The paragraph's first letter, when none of the above gives a direction (a book with too few letters to judge).
 
 The status bar shows what 2 and 3 give the tab (`RTL`, `LTR`, `Auto`, or `LTR (project RTL)` when the tab's choice overrides the project's), and its tooltip names the source. A style's own `\Direction` is per paragraph or span, so it isn't shown there.
 

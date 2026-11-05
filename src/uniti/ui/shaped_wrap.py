@@ -3,12 +3,13 @@
 from collections import OrderedDict
 
 import regex
+from PySide6.QtCore import Qt
 
 from uniti.ui.text_layout import ShapedWindow, direction_for_text
 
 
 class ShapedRowProvider:
-    def __init__(self, document, font, width_px, tab_stop_px, *, direction_override=None):
+    def __init__(self, document, font, width_px, tab_stop_px, *, direction_override=None, default_direction=None):
         self.document, self.font = document, font
         self.width_px, self.tab_stop_px = width_px, tab_stop_px
         self.cache = OrderedDict()
@@ -26,6 +27,8 @@ class ShapedRowProvider:
         # first-strong-character detection entirely (see
         # `HorizontalLayouts.direction_override`'s matching comment).
         self.direction_override = direction_override
+        # A line with no strong letter (a tag-only line) takes this (N39).
+        self.default_direction = default_direction or Qt.LayoutDirection.LeftToRight
 
     def __call__(self, line, column):
         key = line, column
@@ -54,7 +57,7 @@ class ShapedRowProvider:
             self.directions[line] = (
                 self.direction_override
                 if self.direction_override is not None
-                else direction_for_text(text)
+                else direction_for_text(text, self.default_direction)
             )
         cached_direction = self.directions.get(line)
         if cached_direction is not None:
@@ -62,7 +65,7 @@ class ShapedRowProvider:
         elif self.direction_override is not None:
             direction = self.direction_override
         else:
-            direction = direction_for_text(text)
+            direction = direction_for_text(text, self.default_direction)
         shaped = ShapedWindow(
             text,
             self.font,

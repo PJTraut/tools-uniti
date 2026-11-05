@@ -39,6 +39,7 @@ from uniti.ui.bundled_fonts import ordered_families, register_bundled_fonts
 from uniti.ui.font_policy import resolve_editor_font
 from uniti.ui.horizontal_layout import HorizontalLayouts
 from uniti.ui.shaped_wrap import ShapedRowProvider
+from uniti.core.bidi import dominant_direction
 from uniti.ui.text_layout import ShapedWindow, Utf16Map, direction_for_text
 from uniti.ui.theme import EditorThemeTokens, active_theme
 from uniti.ui.whitespace import (
@@ -593,6 +594,7 @@ class UNITITextView(QAbstractScrollArea):
                 width,
                 self._cell_width * self._tab_width_chars,
                 direction_override=self._direction_override,
+                default_direction=self._book_direction(),
             )
             self._wrap_index = WrappedRowIndex(
                 self.document, columns, row_provider=provider
@@ -1329,6 +1331,7 @@ class UNITITextView(QAbstractScrollArea):
                 self.font(),
                 self._cell_width * self._tab_width_chars,
                 direction_override=self._direction_override,
+                default_direction=self._book_direction(),
             )
             self._horizontal_signature = signature
         result = self._horizontal_layouts.window(
@@ -1355,6 +1358,25 @@ class UNITITextView(QAbstractScrollArea):
             return True
         return following[:1] in {"\r", "\n"}
 
+    def _book_direction(self) -> Qt.LayoutDirection:
+        """What a line with no strong letter (`\\p`, `\\c 1`, `\\b`) reads as
+        in Auto: the book's own direction, from its first characters, so
+        tag-only lines sit with the Persian lines around them (N39)."""
+
+        key = (id(self.document), self.document.revision)
+        if getattr(self, "_book_direction_key", None) != key:
+            try:
+                _start, head = next(self.document.iter_text(0, chunk_chars=20_000), (0, ""))
+            except Exception:
+                head = ""
+            self._book_direction_value = (
+                Qt.LayoutDirection.RightToLeft
+                if dominant_direction(head) == "rtl"
+                else Qt.LayoutDirection.LeftToRight
+            )
+            self._book_direction_key = key
+        return self._book_direction_value
+
     def _direction_for_window(self, text: str, window_start: int):
         """The base direction for `window_start`'s logical line (BF-064),
         detected once per line and cached. A window starting at the line's
@@ -1377,7 +1399,7 @@ class UNITITextView(QAbstractScrollArea):
             line_end = self.document.line_end(line)
             probe_end = min(line_start + 256, line_end)
             probe = self.document.read(line_start, probe_end) if probe_end > line_start else ""
-        direction = direction_for_text(probe)
+        direction = direction_for_text(probe, self._book_direction())
         self._line_directions[line] = direction
         return direction
 
@@ -1390,7 +1412,7 @@ class UNITITextView(QAbstractScrollArea):
         ):
             preedit = (self.state.cursor - window_start, self._preedit_text)
         direction = (
-            direction_for_text(text)
+            direction_for_text(text, self._book_direction())
             if window_start is None
             else self._direction_for_window(text, window_start)
         )
@@ -1793,6 +1815,16 @@ class UNITITextView(QAbstractScrollArea):
                 x = float(text_x) + self._layout_cursor_x(
                     layout_line, utf16_positions[-1]
                 )
+                # N42: the logical end of a line is not always its reading
+                # end. A Latin tag (`\ie`, `\b`) in a right-to-left row ends
+                # at the text's right edge, so a marker placed to the left
+                # of that point lands on the tag. Use the text's own extent:
+                # past its left edge in a right-to-left row, past its right
+                # edge in a left-to-right one.
+                extent = layout_line.naturalTextRect()
+                if extent.width() > 0:
+                    edge = float(text_x) + (extent.left() if is_rtl_row else extent.right())
+                    x = min(x, edge) if is_rtl_row else max(x, edge)
                 if viewport_left <= x <= viewport_right:
                     budget.last_position = (x, x, y)
                     budget.last_rtl = is_rtl_row

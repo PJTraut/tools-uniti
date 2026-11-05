@@ -15,12 +15,13 @@ from bisect import bisect_right
 from collections import OrderedDict
 
 import regex
+from PySide6.QtCore import Qt
 
 from uniti.ui.text_layout import ShapedWindow, direction_for_text
 
 
 class HorizontalLayouts:
-    def __init__(self, document, font, tab_stop_px, *, direction_override=None):
+    def __init__(self, document, font, tab_stop_px, *, direction_override=None, default_direction=None):
         self.document, self.font, self.tab_stop_px = document, font, tab_stop_px
         self.checkpoints = {}
         self.cache = OrderedDict()
@@ -35,6 +36,8 @@ class HorizontalLayouts:
         # for invalidating/recreating this instance when it changes, the
         # same way it already does for `document.revision`.
         self.direction_override = direction_override
+        # A line with no strong letter (a tag-only line) takes this (N39).
+        self.default_direction = default_direction or Qt.LayoutDirection.LeftToRight
 
     def window(self, line, *, pixel=0.0, column=None):
         checkpoints = self.checkpoints.setdefault(line, [(0, 0.0)])
@@ -60,7 +63,7 @@ class HorizontalLayouts:
                 self.directions[line] = (
                     self.direction_override
                     if self.direction_override is not None
-                    else direction_for_text(text)
+                    else direction_for_text(text, self.default_direction)
                 )
             cached_direction = self.directions.get(line)
             if cached_direction is not None:
@@ -68,7 +71,7 @@ class HorizontalLayouts:
             elif self.direction_override is not None:
                 direction = self.direction_override
             else:
-                direction = direction_for_text(text)
+                direction = direction_for_text(text, self.default_direction)
             shaped = ShapedWindow(
                 text,
                 self.font,

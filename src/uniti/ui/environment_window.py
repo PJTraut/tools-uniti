@@ -735,20 +735,11 @@ class EnvironmentBar(QToolBar):
             tags: list[QWidget] = []
             for text, combo in (("Book", self.book), ("Chapter", self.chapter), ("Verse", self.verse)):
                 if combo is self.book:
-                    # The lock before the Book list stands for "Book" and is
-                    # Unlock Book / Lock Book: no extra button on a toolbar
-                    # that must stay short.
                     abbreviation = QLabel("BK", self)
                     abbreviation.setContentsMargins(6, 0, 3, 0)
                     abbreviation.setToolTip("Book")
                     self.addWidget(abbreviation)
                     tags.append(abbreviation)
-                    self.lock_toggle = QToolButton(self)
-                    self.lock_toggle.setDefaultAction(window._book_lock.action)
-                    self.lock_toggle.setAutoRaise(True)
-                    self.lock_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-                    self.addWidget(self.lock_toggle)
-                    tags.append(self.lock_toggle)
                 elif combo is self.chapter:
                     # "Chapter" is also the Show One Chapter toggle: no
                     # extra button on a toolbar that must stay short.
@@ -766,8 +757,8 @@ class EnvironmentBar(QToolBar):
                     tags.append(label)
                 self.addWidget(combo)
                 self.addWidget(self._make_steppers(combo))
-            # BK, CH and VS: one font, size and weight (a label, a toggle
-            # button and a lock button would otherwise each draw their own).
+            # BK, CH and VS: one font, size and weight (a label and a toggle
+            # button would otherwise each draw their own).
             tag_font = QFont(self.font())
             tag_font.setBold(False)
             for tag in tags:

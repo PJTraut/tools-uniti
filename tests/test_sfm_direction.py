@@ -373,3 +373,56 @@ def test_span_isolates_are_view_only():
 
     assert "".join(projection.text[position] for position in positions) == LRI + PDI
     assert projection.text.translate(ISOLATES) == layout_projection(INLINE, STYLES, "k", show_markers=False).text
+
+
+# --- N39: Auto reads the text when the project doesn't say right to left ---------
+
+PERSIAN = "\\id JHN\n\\c 1\n\\p\n\\v 1 در ابتدا کلمه بود و کلمه نزد خدا بود و کلمه خدا بود\n\\v 2 او در ابتدا نزد خدا بود\n"
+
+
+def test_the_dominant_direction_skips_markers_and_needs_enough_letters():
+    from uniti.core.bidi import dominant_direction
+
+    assert dominant_direction(PERSIAN) == "rtl"  # the Latin `\id JHN \c \p \v` tags don't outvote it
+    assert dominant_direction("\\id GEN\n\\p\n\\v 1 In the beginning God created the heavens\n") == "ltr"
+    assert dominant_direction("\\id GEN\n\\c 1\n") is None
+    assert dominant_direction("") is None
+
+
+def _auto_view(tmp_path, text, override="auto"):
+    from types import SimpleNamespace
+
+    path = tmp_path / "41JHN.SFM"
+    path.write_text(text, encoding="utf-8")
+
+    class _Document:
+        def __init__(self):
+            self.path = path
+
+        def iter_text(self, start=0, end=None, *, chunk_chars=65_536, **_):
+            yield 0, text[:chunk_chars]
+
+    return SimpleNamespace(text_direction_override=override, document=_Document())
+
+
+def test_auto_reads_a_persian_book_as_right_to_left_without_a_project_setting(tmp_path):
+    from uniti.ui.rich_view_controller import RichViewController
+
+    assert RichViewController.direction_for(_auto_view(tmp_path, PERSIAN)) == "rtl"
+
+
+def test_a_latin_book_stays_undirected_and_a_chosen_direction_wins(tmp_path):
+    from uniti.ui.rich_view_controller import RichViewController
+
+    latin = "\\id GEN\n\\p\n\\v 1 In the beginning God created the heavens and the earth\n"
+    assert RichViewController.direction_for(_auto_view(tmp_path, latin)) is None
+    assert RichViewController.direction_for(_auto_view(tmp_path, PERSIAN, "ltr")) == "ltr"
+    assert RichViewController.direction_for(_auto_view(tmp_path, latin, "rtl")) == "rtl"
+
+
+def test_with_a_right_to_left_direction_the_tags_of_a_persian_book_are_isolated():
+    """N40, N41: `\\c 1`, `\\id` and `\\rem` read as written once the paragraph
+    is right to left, because each tag is isolated (W4)."""
+
+    projection = layout_projection(PERSIAN + "\\rem یادداشت\n", STYLES, "k", show_markers=True, direction="rtl")
+    assert _isolates_around_every_tag(projection)
