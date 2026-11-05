@@ -1039,7 +1039,7 @@ def test_unlocking_a_project_unlocks_every_open_book_and_books_opened_after(desk
     window._book_lock.toggle(exodus)  # Lock Project
 
     assert exodus.document.locked
-    assert window._unlock_banner.isHidden()
+    assert window._unlock_banner.button.isHidden() and window._unlock_banner.label.text() == ""
 
 
 def test_a_project_reopens_locked_once_all_its_books_are_closed(desktop, tmp_path: Path):
@@ -1071,13 +1071,19 @@ def test_a_red_banner_shows_while_the_shown_project_is_unlocked(desktop, tmp_pat
     _app, service = desktop
     window, view = _usfm_window(service, _project(tmp_path / "niv"))
     banner = window._unlock_banner
-    assert banner.isHidden()
+    # N38: an environment window always shows the row, blank while locked.
+    assert not banner.isHidden() and banner.button.isHidden() and banner.label.text() == ""
 
     window._book_lock.toggle(view)
-    assert not banner.isHidden() and "NIV" in banner.label.text()
+    assert not banner.button.isHidden() and "NIV" in banner.label.text()
 
     banner.button.click()  # the banner's own Lock Project
-    assert view.document.locked and banner.isHidden()
+    assert view.document.locked and banner.button.isHidden() and banner.label.text() == ""
+
+    banner.set_message("a warning")  # the slot future functions use
+    assert banner.label.text() == "a warning"
+    banner.set_message("")
+    assert banner.label.text() == ""
 
 
 def test_find_replace_asks_to_unlock_the_project_or_aborts(desktop, tmp_path: Path, monkeypatch):

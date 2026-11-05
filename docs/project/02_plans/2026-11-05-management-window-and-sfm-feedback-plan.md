@@ -1,7 +1,7 @@
 # Management Window, MD and SFM Feedback (2026-11-05) — Plan
 
 Date: 2026-11-05
-Status: **proposed; N34, N35, N36, N37 and N39–N43 built, the rest not started.** Items are the testers' words, tidied; none is yet a confirmed decision.
+Status: **proposed; N34, N35, N36, N38, N37 and N39–N43 built, the rest not started.** Items are the testers' words, tidied; none is yet a confirmed decision.
 Origin: `@externalresources/field_test_feedback` (second 2026-11-05 round, after the MD.ENV items N27–N31 were built). IDs continue from [N27–N31](2026-11-05-markdown-environment-feedback-plan.md).
 
 ## Items
@@ -14,7 +14,7 @@ Origin: `@externalresources/field_test_feedback` (second 2026-11-05 round, after
 | N35 | MD | How do you indent list levels / nesting? | Question first: Tab / Shift+Tab (and a command) to indent and outdent list items in Preview; check what exists | **built 2026-11-05:** nothing existed (Tab typed a tab). With lines selected, **Tab** / **Shift+Tab** move every selected list item in or out one level together, in Preview and the Text view; two spaces under a bullet or task, three under a number; non-list lines, rules and code fences are left alone, and with no list item Tab types a tab as before. Commands **Indent List Item** / **Outdent List Item** in the Preview menu. Tests in `test_markdown_indent.py`; Mac check |
 | N36 | MD | Environment Settings needs a link to manage the custom CSS extensions/mods | A button in Environment Settings… opening the CSS layers (as Configuration Files… does for SFM) | **built 2026-11-05:** MD's Environment Settings has **Manage Stylesheets…**, which opens Configuration Files… (built-in, user and project CSS layers); other environments don't show it (Mac check) |
 | N37 | SFM | Remove the lock icon next to "BK" | Removed the toolbar lock button; Lock/Unlock Project stays in the USFM menu, the tab and text menus and the unlock banner | **built 2026-11-05** (offscreen tests pass; Mac check to do) |
-| N38 | SFM / all | The status line is only used for the lock. Always display it, even when blank; use it for every environment, future functions and warnings | A permanent status line in every environment window with a reserved slot | proposed |
+| N38 | SFM / all | The status line is only used for the lock. Always display it, even when blank; use it for every environment, future functions and warnings | A permanent status line in every environment window with a reserved slot | **built 2026-11-05:** the unlock banner is now a permanent row in every environment window: blank and neutral normally, red with the Lock Project button while a project is unlocked; `UnlockBanner.set_message(text)` is the slot for later warnings and function messages. Windows that aren't environment windows still show it only while unlocked. Mac check |
 | N39 | SFM, Persian | "Auto" direction did not sense right-to-left | Cause, Standard and Preview: Auto used only the project's `LeftToRight`; a Persian book with none (or `T`) got no direction, so no tag isolates. Auto now reads the text (`core/bidi.dominant_direction`, first 20,000 characters, markers skipped): mostly right-to-left letters give RTL, and the status bar says so. Documented in the stylesheet rules. Cause, Text view (where the Mac test was): a line's direction is its first strong letter, and every SFM line starts with a Latin marker, so Persian lines read left to right; markers are now skipped when judging a line (`is_rtl_paragraph`) | **built 2026-11-05, reworked the same day** (the first fix covered Standard and Preview only; the Mac test was in the Text view) |
 | N40 | SFM, Persian | `\c` and `\v` tags show the number next to the backslash: `c 1\` | Standard and Preview: the tags are isolated (W4) once the direction is known. Text view: the raw `\c 1` in a right-to-left line reordered to `c 1\`; `ShapedWindow` now puts a zero-width left-to-right mark before each marker in the layout's text only (no text or caret position changes; not while composing) | **built 2026-11-05** (Mac check in the Text view) |
 | N41 | SFM, Persian | `\id` and `\rem` tags display wrongly: `id ...text...\` | Same fix as N40 | **built 2026-11-05** with N40 (Mac check) |
@@ -23,11 +23,11 @@ Origin: `@externalresources/field_test_feedback` (second 2026-11-05 round, after
 
 N39–N42 came from one Persian test. N39–N41 share a cause (direction not detected, so no tag isolates); N42 is a separate marker-placement bug. N39–N41 were first fixed for Standard and Preview only; the Mac test showed they were in the Text view (the EOL marker only exists there), so they were fixed again there. No Persian project here: checked by layout tests, not by eye.
 
-## Open questions
+## Decisions (2026-11-05, Q&A)
 
-- **Q1 (N32):** what is "default"? Shown at start-up only, or also each time the last environment window closes? Is it a window of its own (named like the others) or the main window?
-- **Q2 (N33):** which stats? Proposed: open files, open projects per environment, memory, cache sizes, recovery/session size.
-- **Q3 (N38):** is the status line the same as the status bar, or an extra row in the environment toolbar?
+- **Q1 (N32):** the management window is a window of its own, shown at start-up and again whenever the last environment window closes.
+- **Q2 (N33):** stats: open files; open projects per environment; memory usage; cache and recovery sizes; undo caches and when they expire.
+- **Q3 (N38):** the status line is a new row in every environment window, always visible even when blank (not the bottom status bar).
 
 ## Order (proposed)
 

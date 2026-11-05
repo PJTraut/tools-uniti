@@ -232,6 +232,7 @@ class UnlockBanner(QWidget):
     def __init__(self, window, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._window = window
+        self._message = ""
         self.setObjectName("unlockBanner")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(
@@ -247,19 +248,47 @@ class UnlockBanner(QWidget):
         self.button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.button.clicked.connect(lambda _checked=False: window._book_lock.toggle(window.current_view))
         layout.addWidget(self.button)
+        # The same height with or without the button, so a permanent row doesn't jump.
+        self.setMinimumHeight(self.button.sizeHint().height() + 6)
         self.hide()
 
-    def refresh(self, view) -> None:
-        """Show for an unlocked project book, hide otherwise."""
+    _IDLE_STYLE = (
+        "#unlockBanner { background: transparent; }"
+        "#unlockBanner QLabel { color: palette(mid); font-weight: normal; }"
+    )
+    _LOCKED_STYLE = (
+        "#unlockBanner { background: #b3261e; }"
+        "#unlockBanner QLabel { color: #ffffff; font-weight: bold; }"
+        "#unlockBanner QPushButton { color: #b3261e; background: #ffffff; border: none; padding: 2px 10px; }"
+    )
 
-        show = (
+    def set_message(self, text: str) -> None:
+        """A message in the permanent status line of an environment window
+        (N38: warnings and function messages); "" blanks it. The unlock
+        notice takes the line while a project is unlocked."""
+
+        self._message = text
+        self.refresh(self._window.current_view)
+
+    def refresh(self, view) -> None:
+        """An environment window always shows this row (blank when idle, so
+        the layout never jumps); other windows show it only while a project
+        is unlocked. Unlocked: the red notice and its Lock button."""
+
+        unlocked = (
             view is not None
             and self._window._book_lock.applies_to(view)
             and not view.document.locked
             and not view.document.read_only
         )
-        if show:
+        permanent = getattr(self._window, "environment_window", None) is not None
+        if unlocked:
             self.label.setText(
                 f"UNLOCKED: {project_title(view.document.path)} can be edited, every book of it"
             )
-        self.setVisible(show)
+            self.setStyleSheet(self._LOCKED_STYLE)
+        else:
+            self.label.setText(self._message)
+            self.setStyleSheet(self._IDLE_STYLE)
+        self.button.setVisible(unlocked)
+        self.setVisible(unlocked or permanent)
