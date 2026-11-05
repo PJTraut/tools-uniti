@@ -420,6 +420,19 @@ class UNITIService:
     def most_recent_window(self) -> object | None:
         return self.windows.most_recent_window
 
+    def show_management_window(self) -> object:
+        """The management window (N32), shown and raised; made on first use."""
+
+        from uniti.ui.management_window import ManagementWindow
+
+        window = getattr(self, "_management_window", None)
+        if window is None:
+            window = self._management_window = ManagementWindow(self)
+        window.show()
+        window.raise_()
+        window.activateWindow()
+        return window
+
     def new_window(self, record=None):
         self._ensure_running()
         if self.window_count >= MAX_WINDOWS:
@@ -1843,6 +1856,11 @@ class UNITIService:
                     durability=durability,
                 )
 
+        management = getattr(self, "_management_window", None)
+        if management is not None:
+            self._management_window = None
+            management.hide()
+            management.deleteLater()
         if self.screen_layouts is not None:
             self.screen_layouts.shutdown()  # records where the windows were left
         discarded_ids = frozenset(

@@ -248,6 +248,10 @@ class DocumentRegistry:
             entry.closed_at = now
         return entry
 
+    @property
+    def closed_history_retention(self) -> timedelta:
+        return self._closed_history_retention
+
     def close_expired(self, now: datetime) -> tuple[str, ...]:
         selected_now = _datetime(now, "expiry time")
         expired = tuple(

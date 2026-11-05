@@ -5663,9 +5663,12 @@ class UNITIMainWindow(QMainWindow):
             ):
                 # Keep a visible way to open files and Quit while the service
                 # is alive; only explicit Quit tears down the last window.
+                # The management window is that way (N32): this window stays
+                # alive, hidden, for it to open files into.
                 event.ignore()
                 self._service.set_active_view(self.window_id, None)
-                self.show()
+                self.hide()
+                self._service.show_management_window()
                 try:
                     self._service.schedule_publication(clean_shutdown=False)
                 except RuntimeError:

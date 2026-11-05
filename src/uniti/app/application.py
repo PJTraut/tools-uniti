@@ -713,7 +713,11 @@ def run_desktop(
     app = context.data["qapplication"]
     window = context.data["window"]
     window.set_startup_snapshot(context.diagnostics)
-    window.show()
+    if request.files or getattr(window, "views", ()) or context.data["service"].window_count > 1:
+        window.show()
+    else:
+        # Nothing to show: the management window is the default (N32).
+        context.data["service"].show_management_window()
     try:
         return int(app.exec())
     finally:

@@ -1086,7 +1086,7 @@ def test_global_find_replace_attachment_follows_active_window_and_survives_hosts
         app.processEvents()
 
         assert service.window_count == 1
-        assert first.isVisible()
+        assert not first.isVisible() and service._management_window.isVisible()  # N32: the management window is the way in
         assert _attached_to(first)
         assert panel.placement == "attached"
 
@@ -1311,7 +1311,7 @@ def test_one_service_owns_two_windows_one_document_and_one_find_panel(
 
         assert service.window_count == 1
         assert service.most_recent_window is second
-        assert second.isVisible()
+        assert not second.isVisible() and service._management_window.isVisible()  # N32: the management window is the way in
         assert second.views == ()
         assert service.is_running is True
         assert app.quitOnLastWindowClosed() is False
@@ -1533,7 +1533,7 @@ def test_last_window_close_keeps_open_available_and_explicit_quit_exits(
         window.close()
         app.processEvents()
 
-        assert window.isVisible()
+        assert not window.isVisible() and service._management_window.isVisible()  # N32: the management window is the way in
         assert window.views == ()
         assert service.most_recent_window is window
         assert service.is_running
@@ -1576,7 +1576,7 @@ def test_failed_quit_then_window_close_retains_a_usable_window(
 
         window.close()
         app.processEvents()
-        assert window.isVisible()
+        assert not window.isVisible() and service._management_window.isVisible()  # N32: the management window is the way in
         assert service.most_recent_window is window
         path = tmp_path / "after-failure.txt"
         path.write_text("preserved", encoding="utf-8")
