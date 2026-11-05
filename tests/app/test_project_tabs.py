@@ -8,10 +8,10 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from usfm_project_fixture import ensure_project  # noqa: E402
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
-from uniti.ui.grouped_tabs import visible_tab_texts  # noqa: E402
+from uniti.ui.grouped_tabs import visible_tab_texts
 
 _GEN = "\\id GEN\n\\h Genesis\n\\c 1\n\\p\n\\v 1 In the beginning.\n\\v 2 Formless.\n"
 _EXO = "\\id EXO\n\\h Exodus\n\\c 1\n\\p\n\\v 1 These are the names.\n"
@@ -58,7 +58,7 @@ def test_a_project_has_one_open_book_in_a_tab_titled_with_its_short_name(desktop
     assert visible_tab_texts(leaf) == ["NIV"]  # one tab, the short name
     assert window.current_view is exodus
     assert leaf.tabToolTip(leaf.index_of(exodus.view_id)) == f"EXO\n{niv / '02EXO.usfm'}"
-    assert window.windowTitle().startswith("UNITI — SFM-1 — NIV")
+    assert window.windowTitle().startswith("UNITI — SFM/1 — NIV")
 
     # Another project is another tab, with its own open book.
     cars = _project(tmp_path / "cars", "CARS")

@@ -22,7 +22,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from uniti.core.environments.catalog import PROJECT_ENVIRONMENTS
-from uniti.core.environments.sfm.paratext_project import ParatextProject, project_for_file
+from uniti.core.environments.sfm.paratext_project import (
+    ParatextProject,
+    project_for_file,
+)
 
 if TYPE_CHECKING:
     from uniti.ui.main_window import UNITIMainWindow
@@ -30,7 +33,7 @@ if TYPE_CHECKING:
     from uniti.ui.text_view import UNITITextView
 
 
-def book_code(view: "UNITITextView") -> str | None:
+def book_code(view: UNITITextView) -> str | None:
     from uniti.core.environments.sfm.references import ID_PROBE_BYTES, book_header
 
     document = view.document
@@ -40,7 +43,7 @@ def book_code(view: "UNITITextView") -> str | None:
 class ProjectTabs:
     """The project tabs of one window's splits."""
 
-    def __init__(self, window: "UNITIMainWindow") -> None:
+    def __init__(self, window: UNITIMainWindow) -> None:
         self._window = window
         # (pane id, project folder) -> the project's current book there.
         self._current: dict[tuple[str, str], str] = {}
@@ -63,16 +66,16 @@ class ProjectTabs:
     # --- model --------------------------------------------------------------------
 
     @staticmethod
-    def project_of(view: "UNITITextView") -> ParatextProject | None:
+    def project_of(view: UNITITextView) -> ParatextProject | None:
         return project_for_file(view.document.path)
 
     @staticmethod
-    def _key(view: "UNITITextView") -> str:
+    def _key(view: UNITITextView) -> str:
         project = project_for_file(view.document.path)
         path = Path(view.document.path)
         return str((project.folder if project is not None else path).resolve())
 
-    def _views(self, leaf: "PaneLeaf") -> list["UNITITextView"]:
+    def _views(self, leaf: PaneLeaf) -> list[UNITITextView]:
         from uniti.ui.text_view import UNITITextView
 
         views = []
@@ -82,7 +85,7 @@ class ProjectTabs:
                 views.append(view)
         return views
 
-    def members(self, leaf: "PaneLeaf") -> dict[str, list["UNITITextView"]]:
+    def members(self, leaf: PaneLeaf) -> dict[str, list[UNITITextView]]:
         """Per project (by folder), its books open in `leaf`, in tab order."""
 
         found: dict[str, list[UNITITextView]] = {}
@@ -90,7 +93,7 @@ class ProjectTabs:
             found.setdefault(self._key(view), []).append(view)
         return found
 
-    def books_of(self, view: "UNITITextView") -> list["UNITITextView"]:
+    def books_of(self, view: UNITITextView) -> list[UNITITextView]:
         """The books open in `view`'s tab: its project's, in its split."""
 
         leaf = self._window._panes.leaf_for_view(view.view_id)
@@ -98,7 +101,7 @@ class ProjectTabs:
             return [view]
         return self.members(leaf).get(self._key(view), [view])
 
-    def book_in_tab(self, view: "UNITITextView", path: Path) -> "UNITITextView | None":
+    def book_in_tab(self, view: UNITITextView, path: Path) -> UNITITextView | None:
         """The book at `path` if it's open in `view`'s tab."""
 
         target = _resolved(path)
@@ -114,7 +117,7 @@ class ProjectTabs:
             except (KeyError, ValueError):
                 continue
 
-    def refresh_leaf(self, leaf: "PaneLeaf") -> None:
+    def refresh_leaf(self, leaf: PaneLeaf) -> None:
         """Show one tab per project in `leaf`: its current book's, at the
         project's first tab position, titled with the short name."""
 
@@ -161,7 +164,7 @@ class ProjectTabs:
         finally:
             self._refreshing = False
 
-    def _sync_spelling(self, tab: tuple[str, str], books: list["UNITITextView"]) -> None:
+    def _sync_spelling(self, tab: tuple[str, str], books: list[UNITITextView]) -> None:
         """Every book of a tab has the tab's Check Spelling setting: books
         that join take it from the tab; a tab seen first takes it from its
         books (any one on turns it on)."""
@@ -174,7 +177,7 @@ class ProjectTabs:
                 book.check_spelling = setting
             self._window._spelling.apply(book)
 
-    def set_spelling(self, view: "UNITITextView", enabled: bool) -> None:
+    def set_spelling(self, view: UNITITextView, enabled: bool) -> None:
         """Check Spelling for `view`'s whole tab."""
 
         leaf = self._window._panes.leaf_for_view(view.view_id)
@@ -190,7 +193,7 @@ class ProjectTabs:
             for key in [key for key in settings if key[0] == pane_id]:
                 del settings[key]
 
-    def _sync_hyphenation(self, tab: tuple[str, str], books: list["UNITITextView"]) -> None:
+    def _sync_hyphenation(self, tab: tuple[str, str], books: list[UNITITextView]) -> None:
         """Every book of a tab has the tab's Hyphenate Preview setting, as
         for Check Spelling."""
 
@@ -202,7 +205,7 @@ class ProjectTabs:
                 book.hyphenate_preview = setting
             self._window._hyphenation.apply(book)
 
-    def set_hyphenation(self, view: "UNITITextView", enabled: bool) -> None:
+    def set_hyphenation(self, view: UNITITextView, enabled: bool) -> None:
         """Hyphenate Preview for `view`'s whole tab."""
 
         leaf = self._window._panes.leaf_for_view(view.view_id)
@@ -213,7 +216,7 @@ class ProjectTabs:
             book.hyphenate_preview = enabled
             self._window._hyphenation.apply(book)
 
-    def _sync_note_filter(self, tab: tuple[str, str], books: list["UNITITextView"]) -> None:
+    def _sync_note_filter(self, tab: tuple[str, str], books: list[UNITITextView]) -> None:
         """Every book of a tab leaves out the tab's footnote categories:
         books that join take them from the tab; a tab seen first takes the
         union of its books' (a restored session, a moved tab)."""
@@ -228,7 +231,7 @@ class ProjectTabs:
             if pane is not None:
                 pane.set_hidden_categories(hidden)
 
-    def set_note_filter(self, view: "UNITITextView", hidden: frozenset[str]) -> None:
+    def set_note_filter(self, view: UNITITextView, hidden: frozenset[str]) -> None:
         """Leave `hidden` footnote categories out of Preview for `view`'s whole tab."""
 
         leaf = self._window._panes.leaf_for_view(view.view_id)
@@ -242,7 +245,7 @@ class ProjectTabs:
             if pane is not None:
                 pane.set_hidden_categories(hidden)
 
-    def label(self, view: "UNITITextView", books: list["UNITITextView"] | None = None) -> str:
+    def label(self, view: UNITITextView, books: list[UNITITextView] | None = None) -> str:
         """The tab's title: the project's short name, starred while any of
         its books in the tab has unsaved changes."""
 
@@ -252,7 +255,7 @@ class ProjectTabs:
         lock = "🔒 " if view.document.read_only or view.document.locked else ""  # read-only folder (T7), locked book
         return lock + name + ("*" if any(book.document.modified for book in books) else "")
 
-    def group_color(self, view: "UNITITextView") -> str | None:
+    def group_color(self, view: UNITITextView) -> str | None:
         window = self._window
         service = window._service
         entry = None if service is None else service.documents.entry_for_view(view.view_id)
@@ -261,11 +264,11 @@ class ProjectTabs:
         group = window._group_by_id(entry.group_id, window._environment.environment_key_for(view.document))
         return None if group is None else group.color
 
-    def tooltip(self, view: "UNITITextView") -> str:
+    def tooltip(self, view: UNITITextView) -> str:
         code = book_code(view)
         return f"{code}\n{view.document.path}" if code else str(view.document.path)
 
-    def note_state(self, view: "UNITITextView", leaf: "PaneLeaf") -> None:
+    def note_state(self, view: UNITITextView, leaf: PaneLeaf) -> None:
         """A book's state changed: retitle its tab when its unsaved state
         did (the star), without redoing the tabs on every caret move."""
 

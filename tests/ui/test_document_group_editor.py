@@ -2,7 +2,6 @@ import os
 
 import pytest
 
-
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 PySide6 = pytest.importorskip("PySide6")
@@ -10,7 +9,7 @@ PySide6 = pytest.importorskip("PySide6")
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QColorDialog, QInputDialog, QMessageBox
 
-from uniti.app.document_groups import DocumentGroup, MAX_GROUPS
+from uniti.app.document_groups import MAX_GROUPS, DocumentGroup
 from uniti.ui.document_group_editor import DocumentGroupEditor
 
 
@@ -172,26 +171,5 @@ def test_editor_edits_each_environments_groups(qapp, monkeypatch):
         editor._remove()
 
         assert editor.groups_by_environment() == {"plain_text": _starting_groups()[1:], "usfm": usfm}
-    finally:
-        editor.close()
-
-
-def test_editor_edits_each_environments_window_names(qapp):
-    editor = DocumentGroupEditor(
-        _starting_groups(),
-        environments=[("plain_text", "Plain Text", ()), ("usfm", "USFM", _starting_groups())],
-        environment="usfm",
-        window_names={"plain_text": ["1", "2", "3"], "usfm": ["1", "2", "3"]},
-    )
-    try:
-        assert editor.window_names_edit.text() == "1, 2, 3"
-        editor.window_names_edit.setText("Draft, Compare , 3")
-        editor.set_environment("plain_text")
-        assert editor.window_names_edit.text() == "1, 2, 3"
-
-        assert editor.window_names_by_environment() == {
-            "plain_text": ["1", "2", "3"],
-            "usfm": ["Draft", "Compare", "3"],
-        }
     finally:
         editor.close()

@@ -10,10 +10,10 @@ import pytest
 
 pytest.importorskip("PySide6")
 
-from usfm_project_fixture import ensure_project  # noqa: E402
-from test_service import _desktop_service, _stop_desktop_service  # noqa: E402
+from test_service import _desktop_service, _stop_desktop_service
+from usfm_project_fixture import ensure_project
 
-from uniti.app.editor_state import EditorStateSnapshot  # noqa: E402
+from uniti.app.editor_state import EditorStateSnapshot
 
 _GEN = "\\id GEN\n\\c 1\n\\p\n\\v 1 In the beginning.\n\\v 2 Formless.\n\\v 3 Light.\n"
 _EXO = "\\id EXO\n\\c 1\n\\p\n\\v 1 These are the names.\n"
@@ -82,7 +82,7 @@ def test_a_project_opens_in_its_group(desktop, tmp_path: Path):
 
 
 def _two_windows(service, tmp_path: Path):
-    """NIV in SFM-1, CARS in SFM-2, both in group A."""
+    """NIV in SFM/1, CARS in SFM/2, both in group A."""
 
     niv = _project(tmp_path / "niv", "NIV")
     cars = _project(tmp_path / "cars", "CARS")

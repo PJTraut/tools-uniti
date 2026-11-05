@@ -11,30 +11,30 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from usfm_project_fixture import ensure_project
 
-from usfm_project_fixture import ensure_project  # noqa: E402
-from uniti.app.recovery_manager import (
-    RecoveryCandidate,
-    RecoveryDiagnostic,
-    RecoveryHealth,
-)
 from uniti.app.dogfood import (
     CPUClass,
-    RAMClass,
     DogfoodRecorder,
     HostFacts,
     Operation,
     OSFamily,
     Outcome,
+    RAMClass,
 )
 from uniti.app.dogfood_store import ClearReport, DogfoodStore, StoreStatus
-from uniti.app.session import MAX_WINDOWS, DockReturnRecord, SessionProblem
+from uniti.app.recovery_manager import (
+    RecoveryCandidate,
+    RecoveryDiagnostic,
+    RecoveryHealth,
+)
 from uniti.app.service import QuitChoice, QuitDecision, UNITIService
+from uniti.app.session import MAX_WINDOWS, DockReturnRecord, SessionProblem
+from uniti.core.document import Document
+from uniti.core.durability import DurabilityLevel, DurabilityResult
 from uniti.core.file_identity import FileIdentity, FileMatch
 from uniti.core.history import HistorySnapshot
 from uniti.core.recovery import RecoveryLoadStatus, RecoverySession
-from uniti.core.document import Document
-from uniti.core.durability import DurabilityLevel, DurabilityResult
 from uniti.resources import ResourceManager, TaskKind, WorkPriority
 from uniti.ui.recovery_center import RecoveryAction, RecoveryDecision, RecoveryEntryKind
 
@@ -641,7 +641,7 @@ def test_group_provider_lists_documents_sharing_the_same_group(tmp_path: Path):
         _stop_desktop_service(app, service)
 
 
-def test_document_group_assignment_updates_registry_and_tab_icon(tmp_path: Path):
+def test_document_group_assignment_updates_registry_and_tab_tint(tmp_path: Path):
     from uniti.app.document_groups import DocumentGroup
 
     app, service, _recovery = _desktop_service(tmp_path)
@@ -659,12 +659,14 @@ def test_document_group_assignment_updates_registry_and_tab_icon(tmp_path: Path)
         window._set_document_group(entry.document_id, "A")
 
         assert entry.group_id == "A"
-        assert not leaf.tabs.tabIcon(index).isNull()
+        # The tab is tinted with the group's colour, no icon (N29).
+        assert leaf.tabBar().tab_tint(view.view_id) == "#e06c75"
+        assert leaf.tabs.tabIcon(index).isNull()
 
         window._set_document_group(entry.document_id, None)
 
         assert entry.group_id is None
-        assert leaf.tabs.tabIcon(index).isNull()
+        assert leaf.tabBar().tab_tint(view.view_id) is None
     finally:
         for _window_id, open_window in service.windows.items:
             open_window.close_all_documents(force=True)
@@ -2075,6 +2077,7 @@ def test_window_close_preserves_live_tabs_while_session_restore_is_pending(
     monkeypatch,
 ):
     from PySide6.QtWidgets import QMessageBox
+
     from uniti.app.session import PaneRecord, WindowRecord
 
     app, service, _recovery = _desktop_service(tmp_path)
@@ -2521,7 +2524,7 @@ def test_reassigning_an_extension_re_resolves_open_documents_environment_key(
 
         assert entry.environment_key == "plain_text"
         assert view.syntax_profile.key == "plain_text"
-        assert window._environment.menu.title() == "Plain Text"
+        assert window._environment.menu.title() == "TXT"
     finally:
         for _window_id, open_window in service.windows.items:
             open_window.close_all_documents(force=True)

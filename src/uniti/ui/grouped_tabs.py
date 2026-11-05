@@ -28,7 +28,14 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QIcon, QMouseEvent, QResizeEvent
-from PySide6.QtWidgets import QApplication, QHBoxLayout, QMenu, QTabBar, QToolButton, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QMenu,
+    QTabBar,
+    QToolButton,
+    QWidget,
+)
 
 if TYPE_CHECKING:
     from uniti.ui.main_window import UNITIMainWindow
@@ -53,7 +60,7 @@ class GroupSlotButton(QToolButton):
         self._press: QPoint | None = None
         self._dragging = False
 
-    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self._press = event.position().toPoint()
             self._dragging = False
@@ -62,7 +69,7 @@ class GroupSlotButton(QToolButton):
             return
         super().mousePressEvent(event)
 
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
         if (
             self._press is not None
             and (event.position().toPoint() - self._press).manhattanLength() >= QApplication.startDragDistance()
@@ -70,7 +77,7 @@ class GroupSlotButton(QToolButton):
             self._dragging = True
         event.accept()
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         if event.button() != Qt.MouseButton.LeftButton or self._press is None:
             super().mouseReleaseEvent(event)
             return
@@ -103,7 +110,7 @@ class GroupSlotBar(QWidget):
 
 
 class GroupedTabsController:
-    def __init__(self, window: "UNITIMainWindow") -> None:
+    def __init__(self, window: UNITIMainWindow) -> None:
         self._window = window
         self._recent: dict[str, list[str]] = {}
 
@@ -132,7 +139,7 @@ class GroupedTabsController:
         key = window._groups_and_recent_files._key_for_document(entry.document_id)
         return (key, entry.group_id) if window._group_by_id(entry.group_id, key) is not None else UNGROUPED
 
-    def slots_for(self, leaf: "PaneLeaf") -> list[tuple[tuple[str, str], list[str]]]:
+    def slots_for(self, leaf: PaneLeaf) -> list[tuple[tuple[str, str], list[str]]]:
         """[((environment key, group id) or UNGROUPED, [view ids in tab
         order])]: per environment (in first-use order), its groups in their
         order; Ungrouped last."""
@@ -151,7 +158,7 @@ class GroupedTabsController:
             ordered.append(UNGROUPED)
         return [(slot, members[slot]) for slot in ordered]
 
-    def recent_for(self, leaf: "PaneLeaf") -> list[str]:
+    def recent_for(self, leaf: PaneLeaf) -> list[str]:
         present = set(leaf.view_ids)
         recent = [view_id for view_id in self._recent.get(leaf.pane_id, []) if view_id in present]
         self._recent[leaf.pane_id] = recent
@@ -176,7 +183,7 @@ class GroupedTabsController:
         for pane_id in panes.pane_ids:
             self.refresh_leaf(panes.leaf(pane_id))
 
-    def refresh_leaf(self, leaf: "PaneLeaf") -> None:
+    def refresh_leaf(self, leaf: PaneLeaf) -> None:
         project_tabs = getattr(self._window, "_project_tabs", None)
         if project_tabs is not None and project_tabs.active:
             return  # a USFM window's tabs are its projects' (round 3 T4)
@@ -218,7 +225,7 @@ class GroupedTabsController:
         # synthetic resize makes it reserve the space.
         QApplication.sendEvent(leaf, QResizeEvent(leaf.size(), leaf.size()))
 
-    def _populate_slots(self, bar: GroupSlotBar, leaf: "PaneLeaf", selected: str | None) -> None:
+    def _populate_slots(self, bar: GroupSlotBar, leaf: PaneLeaf, selected: str | None) -> None:
         bar.clear()
         helpers = self._window._groups_and_recent_files
         slots = self.slots_for(leaf)
@@ -231,7 +238,7 @@ class GroupedTabsController:
             if group is not None and mixed:
                 from uniti.core.environments.catalog import descriptor_for_key
 
-                name = f"{name} · {descriptor_for_key(group_id[0]).label}"
+                name = f"{name} | {descriptor_for_key(group_id[0]).short_label}"
             button.setText(f"{name} ({len(view_ids)})")
             button.setToolTip(f"{name}: click to choose a file; drag off the bar to move the group to a new window")
             button.setIcon(helpers._group_bar_icon(group.color) if group is not None else QIcon())
@@ -250,7 +257,7 @@ class GroupedTabsController:
             button.show()
             bar.buttons[group_id] = button
 
-    def detach_group(self, leaf: "PaneLeaf", group_id: tuple[str, str]):
+    def detach_group(self, leaf: PaneLeaf, group_id: tuple[str, str]):
         """Move every file of `group_id` in this split into one new window."""
 
         service = self._window._service
@@ -268,9 +275,9 @@ class GroupedTabsController:
         self.note_active(view_id)
 
 
-def visible_tab_texts(leaf: "PaneLeaf") -> list[str]:
+def visible_tab_texts(leaf: PaneLeaf) -> list[str]:
     tab_bar: QTabBar = leaf.tabBar()
     return [leaf.tabText(index) for index in range(leaf.count()) if tab_bar.isTabVisible(index)]
 
 
-__all__ = ["GroupSlotBar", "GroupedTabsController", "RECENT_LIMIT", "UNGROUPED", "visible_tab_texts"]
+__all__ = ["RECENT_LIMIT", "UNGROUPED", "GroupSlotBar", "GroupedTabsController", "visible_tab_texts"]

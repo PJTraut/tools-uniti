@@ -4,7 +4,10 @@ import pytest
 
 
 def test_default_groups_are_a_b_c_and_round_trip(tmp_path):
-    from uniti.app.document_groups import DocumentGroup, DocumentGroupStore, default_groups
+    from uniti.app.document_groups import (
+        DocumentGroupStore,
+        default_groups,
+    )
 
     defaults = default_groups()
     assert [group.id for group in defaults] == ["A", "B", "C"]
@@ -18,7 +21,11 @@ def test_default_groups_are_a_b_c_and_round_trip(tmp_path):
 
 
 def test_custom_groups_can_be_added_and_persisted(tmp_path):
-    from uniti.app.document_groups import DocumentGroup, DocumentGroupStore, default_groups
+    from uniti.app.document_groups import (
+        DocumentGroup,
+        DocumentGroupStore,
+        default_groups,
+    )
 
     store = DocumentGroupStore(tmp_path / "document-groups.json")
     extra = DocumentGroup("custom-1", "Drafts", "#8888ff")
@@ -82,7 +89,10 @@ def test_oversized_file_falls_back_to_defaults(tmp_path):
 def test_saved_paths_round_trip_and_default_empty(tmp_path):
     """BF-081: a group can carry a saved, reopenable set of file paths."""
 
-    from uniti.app.document_groups import DocumentGroup, DocumentGroupStore, default_groups
+    from uniti.app.document_groups import (
+        DocumentGroupStore,
+        default_groups,
+    )
 
     defaults = default_groups()
     assert all(group.saved_paths == () for group in defaults)
@@ -158,7 +168,11 @@ def test_every_environment_starts_from_a_b_c(tmp_path):
 
 
 def test_plain_text_starts_from_the_old_app_wide_groups(tmp_path):
-    from uniti.app.document_groups import DocumentGroup, DocumentGroupStore, default_groups
+    from uniti.app.document_groups import (
+        DocumentGroup,
+        DocumentGroupStore,
+        default_groups,
+    )
 
     legacy = tmp_path / "document-groups.json"
     mine = (DocumentGroup("work", "Work", "#123456", saved_paths=("/tmp/a.txt",)),)
@@ -171,7 +185,11 @@ def test_plain_text_starts_from_the_old_app_wide_groups(tmp_path):
 
 
 def test_each_environment_saves_its_own_file_and_the_same_id_is_two_groups(tmp_path):
-    from uniti.app.document_groups import DocumentGroup, DocumentGroupStore, EnvironmentGroups
+    from uniti.app.document_groups import (
+        DocumentGroup,
+        DocumentGroupStore,
+        EnvironmentGroups,
+    )
 
     legacy = tmp_path / "document-groups.json"
     groups, root = _environment_groups(tmp_path, legacy)

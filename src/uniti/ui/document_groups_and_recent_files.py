@@ -33,7 +33,7 @@ import re
 from dataclasses import replace as dataclass_replace
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QPoint
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import QMenu, QMessageBox
 
@@ -100,9 +100,14 @@ class DocumentGroupsAndRecentFiles:
             return
         entry = owner._service.documents.entry_for_view(view_id)
         group = None if entry is None else self._group_by_id(entry.group_id, self._key_for_document(entry.document_id))
-        leaf.tabs.setTabIcon(
-            index, self._group_bar_icon(group.color) if group is not None else QIcon()
-        )
+        # Every tab, in every environment and window, is tinted with its
+        # group's colour, as an SFM project tab is (field test 2026-11-05,
+        # N29); no mark before the file name. A project tab's tint is then
+        # set again by `project_tabs` below, for the book it shows.
+        leaf.tabs.setTabIcon(index, QIcon())
+        set_tint = getattr(leaf.tabBar(), "set_tab_tint", None)
+        if callable(set_tint):
+            set_tint(view_id, None if group is None else group.color)
         grouped_tabs = getattr(owner, "_grouped_tabs", None)
         if grouped_tabs is not None and grouped_tabs.enabled:
             grouped_tabs.refresh_leaf(leaf)  # BF-082: membership changed
@@ -247,10 +252,10 @@ class DocumentGroupsAndRecentFiles:
             self._set_document_group(document_id, group.id)
         return group
 
-    def populate_group_menu(self, menu: QMenu, view_id: str, *, extras: bool = True) -> bool:
+    def populate_group_menu(self, menu: QMenu, view_id: str) -> bool:
         """The group choices for `view_id`'s document: No Group, each group
-        (its swatch, checked when current), New Group…, and with `extras`
-        the saved-group and manage entries. False when there's no document."""
+        (its swatch, checked when current), New Group…, the saved-group
+        entries and Manage Groups…. False when there's no document."""
 
         from PySide6.QtGui import QActionGroup
 
@@ -284,10 +289,6 @@ class DocumentGroupsAndRecentFiles:
         menu.addSeparator()
         new_action = menu.addAction("New Group…")
         new_action.triggered.connect(lambda _checked=False, document_id=entry.document_id: self.new_group_for(document_id))
-        if not extras:
-            manage_action = menu.addAction("Manage Groups…")
-            manage_action.triggered.connect(lambda _checked=False: self.show_document_group_editor(key))
-            return True
         openable = [group for group in groups if group.saved_paths]
         if openable:
             menu.addSeparator()
@@ -305,24 +306,6 @@ class DocumentGroupsAndRecentFiles:
         manage_action = menu.addAction("Manage Groups…")
         manage_action.triggered.connect(lambda _checked=False: self.show_document_group_editor(key))
         return True
-
-    def add_group_submenu(self, menu: QMenu, view_id: str) -> QMenu | None:
-        """A "Document Group" submenu for a right-click menu, showing the
-        current group's swatch. For a project book it's the project's group
-        (round 3 T5): "Project Group"."""
-
-        owner = self._owner
-        entry = None if owner._service is None else owner._service.documents.entry_for_view(view_id)
-        if entry is None:
-            return None
-        current = self._group_by_id(entry.group_id, self._key_for_document(entry.document_id))
-        title = "Project Group" if self._project_of_document(entry.document_id) is not None else "Document Group"
-        submenu = menu.addMenu(title)
-        if current is not None:
-            submenu.setIcon(self._group_swatch_icon(current.color))
-            submenu.setTitle(f"{title} ({current.name})")
-        self.populate_group_menu(submenu, view_id, extras=False)
-        return submenu
 
     def _group_by_id(self, group_id: str | None, environment_key: str) -> object | None:
         return self._owner._environment_groups.group(environment_key, group_id)
@@ -434,23 +417,11 @@ class DocumentGroupsAndRecentFiles:
         environments = [
             (descriptor.key, descriptor.label, owner.groups_for(descriptor.key)) for descriptor in ENVIRONMENTS
         ]
-        names = owner._environment_window_names
-        window_names = {descriptor.key: names.names(descriptor.key, self._named_slots(descriptor.key)) for descriptor in ENVIRONMENTS}
         editor = DocumentGroupEditor(
-            owner.groups_for(key), owner, environments=environments, environment=key, window_names=window_names
+            owner.groups_for(key), owner, environments=environments, environment=key
         )
         if not editor.exec():
             return
-        edited_names = getattr(editor, "window_names_by_environment", dict)()
-        for edited_key, edited in edited_names.items():
-            if edited == window_names.get(edited_key):
-                continue
-            try:
-                names.set_names(edited_key, edited)
-            except (OSError, ValueError) as exc:
-                QMessageBox.warning(owner, "Window Names", str(exc))
-                continue
-            owner._environment_window_names_changed(edited_key)
         for edited_key, groups in editor.groups_by_environment().items():
             before = owner.groups_for(edited_key)
             if tuple(groups) == tuple(before):
@@ -463,16 +434,6 @@ class DocumentGroupsAndRecentFiles:
                     for entry in self._entries_of(group_id, edited_key):
                         owner._service.documents.set_group(entry.document_id, None)
             self._publish_groups(edited_key, groups)
-
-    def _named_slots(self, environment_key: str) -> int:
-        """How many window names Manage Groups… shows: every open or
-        renamed slot, and at least three."""
-
-        owner = self._owner
-        slots = [slot for slot in owner._environment_window_names.renamed(environment_key)]
-        if owner._service is not None:
-            slots.extend(window.environment_window[1] for window in owner._service.environment_windows(environment_key))
-        return max([3] + [slot + 1 for slot in slots])
 
     def _next_group_color(self, environment_key: str) -> str:
         groups = self._owner.groups_for(environment_key)
