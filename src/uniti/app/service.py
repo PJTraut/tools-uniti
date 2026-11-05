@@ -440,6 +440,32 @@ class UNITIService:
             window.restore_window_record(record)
         return window
 
+    def unlock_project(self, document) -> None:
+        """Unlock every open book of `document`'s project (Find/Replace's
+        Unlock Project); a book in a read-only folder stays as it is."""
+
+        for book in self.open_project_documents(document):
+            if not book.read_only:
+                book.set_locked(False)
+
+    def open_project_documents(self, document) -> list:
+        """Every open book of `document`'s Paratext project, in any window,
+        `document` included: the books one project lock covers."""
+
+        project = project_for_file(document.path)
+        if project is None:
+            return [document]
+        books = [document]
+        for entry in self.documents.entries:
+            if entry.document is document or not entry.view_ids:
+                continue
+            if entry.environment_key not in PROJECT_ENVIRONMENTS:
+                continue
+            other = project_for_file(entry.document.path)
+            if other is not None and other.folder == project.folder:
+                books.append(entry.document)
+        return books
+
     def _documents_in_same_environment(self, document) -> list:
         """Every open document in `document`'s environment, `document`
         included: what "All Open Documents" searches (scopes plan D1/D5)."""
@@ -621,6 +647,7 @@ class UNITIService:
                 self.release_group_document,
                 self.save_group_document,
                 self.is_group_document_unopened,
+                self.unlock_project,
             )
             self._find_replace.set_book_stepping(self._book_stepping_available, self._step_to_book)
             self._find_replace.placementChanged.connect(

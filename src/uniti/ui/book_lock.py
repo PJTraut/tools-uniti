@@ -7,9 +7,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QMessageBox, QPushButton, QWidget
 
 from uniti.core.environments.catalog import PROJECT_ENVIRONMENTS
 from uniti.core.environments.sfm.paratext_project import project_for_file
@@ -30,12 +30,19 @@ def book_title(path: Path) -> str:
     return f"{code} ({project.name})" if code else Path(path).name
 
 
-def document_title(document: "Document") -> str:
+def document_title(document: Document) -> str:
     return book_title(document.path)
 
 
+def project_title(path: Path) -> str:
+    """The project's short name, else the file's name."""
+
+    project = project_for_file(Path(path))
+    return Path(path).name if project is None else project.name
+
+
 def locked_message(title: str) -> str:
-    return f"{title} is locked: right-click the Book list › Unlock to edit"
+    return f"{title} is locked: right-click the Book list › Unlock Project to edit"
 
 
 def ask_unlock_and_save(parent, title: str) -> bool:
@@ -43,10 +50,10 @@ def ask_unlock_and_save(parent, title: str) -> bool:
 
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Question)
-    box.setWindowTitle("Locked Book")
+    box.setWindowTitle("Locked Project")
     box.setText(f"{title} is locked.")
-    box.setInformativeText("It is unlocked to save its changes.")
-    unlock = box.addButton("Unlock and Save", QMessageBox.ButtonRole.AcceptRole)
+    box.setInformativeText("Its project is unlocked to save its changes.")
+    unlock = box.addButton("Unlock Project and Save", QMessageBox.ButtonRole.AcceptRole)
     box.addButton(QMessageBox.StandardButton.Cancel)
     box.setDefaultButton(unlock)
     box.exec()
@@ -59,9 +66,9 @@ def ask_unlock_and_save_them(parent, count: int) -> bool:
 
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Question)
-    box.setWindowTitle("Locked Books")
+    box.setWindowTitle("Locked Project")
     box.setText(f"{count} locked book{'s' if count != 1 else ''} {'have' if count != 1 else 'has'} changes.")
-    unlock = box.addButton("Unlock and Save Them", QMessageBox.ButtonRole.AcceptRole)
+    unlock = box.addButton("Unlock Project and Save Them", QMessageBox.ButtonRole.AcceptRole)
     box.addButton("Skip Them", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(unlock)
     box.exec()
@@ -76,7 +83,7 @@ def ask_save_or_discard(parent, title: str, *, locked: bool) -> bool | None:
     box.setIcon(QMessageBox.Icon.Warning)
     box.setWindowTitle("Unsaved Changes")
     box.setText(f"Changes to {title} will be lost.")
-    save = box.addButton("Unlock and Save" if locked else "Save", QMessageBox.ButtonRole.AcceptRole)
+    save = box.addButton("Unlock Project and Save Book" if locked else "Save Book", QMessageBox.ButtonRole.AcceptRole)
     discard = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
     box.addButton(QMessageBox.StandardButton.Cancel)
     box.setDefaultButton(save)
@@ -105,28 +112,29 @@ def ask_update_or_close(parent, title: str, found: str) -> bool:
 
 
 def ask_unlock_and_replace(parent, title: str) -> bool:
-    """Replace in a locked book: True for Unlock and Replace, False for Skip."""
+    """Replace in a locked book: True to unlock its project, False to abort."""
 
     box = QMessageBox(parent)
     box.setIcon(QMessageBox.Icon.Question)
-    box.setWindowTitle("Locked Book")
+    box.setWindowTitle("Locked Project")
     box.setText(f"{title} is locked.")
-    unlock = box.addButton("Unlock and Replace", QMessageBox.ButtonRole.AcceptRole)
-    box.addButton("Skip", QMessageBox.ButtonRole.RejectRole)
+    box.setInformativeText("Unlock the project to replace, or abort the replace.")
+    unlock = box.addButton("Unlock Project", QMessageBox.ButtonRole.AcceptRole)
+    box.addButton("Abort", QMessageBox.ButtonRole.RejectRole)
     box.setDefaultButton(unlock)
     box.exec()
     return box.clickedButton() is unlock
 
 
 class BookLock(QObject):
-    """One window's Unlock Book / Lock Book action. The shared `action`
-    acts on the shown book (toolbar, USFM menu, Book selector's menu);
+    """One window's Unlock Project / Lock Project action. The lock is the
+    project's: every open book of it. The shared `action` acts on the shown book's project (toolbar, USFM menu, Book selector's menu);
     `make_action` gives a menu its own, for the tab or text it opened on."""
 
     def __init__(self, window) -> None:
         super().__init__(window)
         self._window = window
-        self.action = QAction("Unlock Book", window)
+        self.action = QAction("Unlock Project", window)
         self.action.setIconText("🔒")
         self.action.triggered.connect(lambda _checked=False: self.toggle(window.current_view))
 
@@ -149,20 +157,23 @@ class BookLock(QObject):
         """The action's (text, enabled, tooltip) for `view`."""
 
         if not self.applies_to(view):
-            return "Unlock Book", False, "Only a USFM book can be locked"
+            return "Unlock Project", False, "Only a USFM project can be locked"
         locked = view.document.locked
-        text = "Unlock Book" if locked else "Lock Book"
+        text = "Unlock Project" if locked else "Lock Project"
         folder = self.read_only_folder(view)
         if folder is not None:
             return text, False, f"{folder} is a read-only folder: its books can't be unlocked"
         if locked:
-            return text, True, "Unlock this book to edit it; it locks again when it is closed"
-        return text, True, "Lock this book: editing is off until it is unlocked"
+            return text, True, "Unlock this project: every book of it can be edited until it is locked again or closed"
+        return text, True, "Lock this project: editing is off in every book of it until it is unlocked"
 
     def refresh(self) -> None:
         text, enabled, tooltip = self.describe(self._window.current_view)
+        banner = getattr(self._window, "_unlock_banner", None)
+        if banner is not None:
+            banner.refresh(self._window.current_view)
         self.action.setText(text)
-        self.action.setIconText("🔓" if text == "Lock Book" else "🔒")  # the toolbar shows only this
+        self.action.setIconText("🔓" if text == "Lock Project" else "🔒")  # the toolbar shows only this
         self.action.setEnabled(enabled)
         self.action.setToolTip(tooltip)
 
@@ -179,7 +190,12 @@ class BookLock(QObject):
 
         if view is None or not self.describe(view)[1]:
             return False if view is None else view.document.locked
-        view.document.set_locked(not view.document.locked)
+        locked = not view.document.locked
+        self._window._set_project_locked(view.document, locked)
+        if not locked:
+            self._window.statusBar().showMessage(
+                f"{project_title(view.document.path)} is unlocked: every book of it is editable", 6000
+            )
         return view.document.locked
 
 
@@ -206,3 +222,44 @@ def ask_wrap_project(parent, *, forward: bool, group: bool = False) -> bool:
     box.setDefaultButton(go)
     box.exec()
     return box.clickedButton() is go
+
+
+class UnlockBanner(QWidget):
+    """A red bar above the editor while the shown book's project is
+    unlocked: every book of it can be changed. Its button locks the
+    project again."""
+
+    def __init__(self, window, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._window = window
+        self.setObjectName("unlockBanner")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            "#unlockBanner { background: #b3261e; }"
+            "#unlockBanner QLabel { color: #ffffff; font-weight: bold; }"
+            "#unlockBanner QPushButton { color: #b3261e; background: #ffffff; border: none; padding: 2px 10px; }"
+        )
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 3, 10, 3)
+        self.label = QLabel(self)
+        layout.addWidget(self.label, 1)
+        self.button = QPushButton("Lock Project", self)
+        self.button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.button.clicked.connect(lambda _checked=False: window._book_lock.toggle(window.current_view))
+        layout.addWidget(self.button)
+        self.hide()
+
+    def refresh(self, view) -> None:
+        """Show for an unlocked project book, hide otherwise."""
+
+        show = (
+            view is not None
+            and self._window._book_lock.applies_to(view)
+            and not view.document.locked
+            and not view.document.read_only
+        )
+        if show:
+            self.label.setText(
+                f"UNLOCKED: {project_title(view.document.path)} can be edited, every book of it"
+            )
+        self.setVisible(show)

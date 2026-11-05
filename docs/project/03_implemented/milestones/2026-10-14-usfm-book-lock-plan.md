@@ -98,6 +98,17 @@ Decided 2026-10-14:
 - **D6: Update leaves the book locked.** Its conversion is saved only with Unlock and Save.
 - **D7: before L4, the single-book dialog ships with L2;** multi-file Replace All skips locked books with a count until the opt-in list replaces it.
 
+## Revision 2026-11-04: the lock is the project's
+
+Field test feedback: "move the LOCK to the project not the book". Decided with the user the same day. `Document.locked` still blocks edits and saves per document; what changed is who sets it. The old rule "unlocked is per open book" is replaced:
+
+- A project opens locked. **Unlock Project** / **Lock Project** (`BookLock`, same menus and toolbar button) sets every open book of the project, in every window (`UNITIService.open_project_documents`, `UNITIMainWindow._set_project_locked`). A book in a read-only folder stays as it is.
+- A book opened while any other book of its project is unlocked opens unlocked (`_lock_new_book`, `_lock_book_on_becoming_usfm`). When the project's last book closes, nothing remembers the state: the next open is locked. No state is stored; it is derived from the open books.
+- A red **banner** above the editor (`book_lock.UnlockBanner`) shows while the shown book's project is unlocked, with a Lock Project button.
+- Replace in a locked book asks **Unlock Project** or **Abort**; the multi-file Replace All unlocks the project of each ticked locked book.
+- A changed book leaving its tab asks **Save Book** (**Unlock Project and Save Book** when locked) or Discard.
+- The Close/Update question for a book that isn't UTF-8 with CRLF is unchanged.
+
 ## As built
 
 Implemented 2026-10-14, L1–L5 in order. Where the code differs from the plan above:

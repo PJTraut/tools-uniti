@@ -67,6 +67,12 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] One book per project: changing the book (Book list, Find stepping, File → Open) closes the previous one and asks about unsaved changes; Replace All over a Project writes the ticked books that aren't open to disk and says so in the list.
 - [ ] A book in a read-only folder can't be unlocked.
 
+### 9b. The lock is the project's (field test, 2026-11-04) — not yet checked in the live app
+- [ ] A project opens locked. **Unlock Project** (toolbar, USFM menu, Book list, tab and text menus) unlocks every open book of it; a **red banner** above the editor says the project is unlocked, with a **Lock Project** button.
+- [ ] Change the book while the project is unlocked: the new book is unlocked too, and the changed one asks **Save Book** / Discard / Cancel.
+- [ ] Close every book of the project, reopen one: locked again. Another project's lock is not touched.
+- [ ] Replace in a locked project: **Unlock Project** / **Abort**. Abort changes nothing; Unlock Project unlocks the project, banner showing.
+
 ## 10. Check Spelling (S1–S5)
 - [ ] Open a project with `SpellingStatus.xml` (usNIVv3, rnBKCv1): **USFM → Check Spelling** is on offer; for a project with neither list it's greyed with the reason.
 - [ ] Turn it on from the USFM menu and from a tab's right-click menu: wrong words and unknown words get different wavy underlines in Plain Text, Standard and Preview; hover shows the reason (and Paratext's correction).

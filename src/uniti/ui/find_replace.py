@@ -317,6 +317,7 @@ class FindReplaceWindow(QDockWidget):
         # Documents a group provider opened only for the search (a project's
         # books that weren't open), and how to keep or drop one (plan L4).
         self._group_document_save: Callable[[object], None] | None = None
+        self._project_unlocker: Callable[[object], None] | None = None
         self._group_document_unopened: Callable[[object], bool] | None = None
         self._group_document_release: Callable[[object], None] | None = None
         self._replace_documents: list = []
@@ -1362,6 +1363,7 @@ class FindReplaceWindow(QDockWidget):
         release: Callable[[object], None] | None,
         save: Callable[[object], None] | None = None,
         unopened: Callable[[object], bool] | None = None,
+        unlock_project: Callable[[object], None] | None = None,
     ) -> None:
         """A project has one open book, so a book the group provider opened
         only for the search is never left in a tab: `unopened(document)`
@@ -1371,6 +1373,7 @@ class FindReplaceWindow(QDockWidget):
         self._group_document_release = release
         self._group_document_save = save
         self._group_document_unopened = unopened
+        self._project_unlocker = unlock_project
 
     def set_project_group_provider(self, provider: Callable[[object], object] | None) -> None:
         """`provider(document)` is every book of every open project in
@@ -2494,9 +2497,11 @@ class FindReplaceWindow(QDockWidget):
         from uniti.ui import book_lock
 
         if book_lock.ask_unlock_and_replace(self, book_lock.document_title(document)):
+            if self._project_unlocker is not None:
+                self._project_unlocker(document)  # the project is unlocked, every book of it
             document.set_locked(False)
             return True
-        self.status_label.setText(f"{book_lock.document_title(document)} is locked: skipped")
+        self.status_label.setText(f"{book_lock.document_title(document)} is locked: replace aborted")
         return False
 
     def _apply_replace_all(
@@ -2613,6 +2618,8 @@ class FindReplaceWindow(QDockWidget):
             try:
                 was_locked = bool(getattr(document, "locked", False))
                 if was_locked:
+                    if self._project_unlocker is not None:
+                        self._project_unlocker(document)
                     document.set_locked(False)
                 count = document.apply_replacement_plan(
                     plan,

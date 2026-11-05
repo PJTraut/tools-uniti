@@ -123,7 +123,7 @@ def test_typing_in_a_locked_book_says_it_is_locked(desktop, tmp_path: Path):
 
     assert not view.document.modified
     assert window.statusBar().currentMessage() == (
-        "GEN (NIV) is locked: right-click the Book list › Unlock to edit"
+        "GEN (NIV) is locked: right-click the Book list › Unlock Project to edit"
     )
     window.undo_current()
     assert not view.document.modified
@@ -269,7 +269,8 @@ def test_a_changed_book_leaving_its_tab_asks_save_or_discard(desktop, tmp_path: 
     assert service.documents.find_path(path) is None
     assert path.read_bytes() == _GEN.encode()
     again = bar.open_book(path)
-    assert again.document.read(0, 4) == "\\id " and not again.document.can_undo and again.document.locked
+    assert again.document.read(0, 4) == "\\id " and not again.document.can_undo
+    assert not again.document.locked  # the project is still unlocked: Exodus is open and unlocked
 
 
 def test_save_leaving_the_tab_saves_a_locked_book(desktop, tmp_path: Path, monkeypatch):
@@ -410,7 +411,7 @@ def test_a_restored_or_adopted_book_with_no_view_yet_is_locked_when_its_view_is_
     assert view.document.locked and view.read_only
 
 
-# --- L3: Unlock Book / Lock Book ---------------------------------------------
+# --- L3: Unlock Project / Lock Project ---------------------------------------------
 
 
 def _menu_actions(menu) -> list:
@@ -434,16 +435,16 @@ def test_the_toolbar_button_unlocks_and_locks_the_shown_book(desktop, tmp_path: 
     button = window._environment_bar.lock_toggle
 
     action = window._book_lock.action
-    assert isinstance(button, QToolButton) and button.text() == "🔒" and action.text() == "Unlock Book"
+    assert isinstance(button, QToolButton) and button.text() == "🔒" and action.text() == "Unlock Project"
     assert button.isEnabled()
     button.click()
-    assert not view.document.locked and not view.read_only and action.text() == "Lock Book"
+    assert not view.document.locked and not view.read_only and action.text() == "Lock Project"
     window._rich_views.show("sfm.standard", view)
     assert window._rich_views.pane_for(view).editable is True  # Standard edits after unlocking
 
     view.document.insert(0, "\\rem edited\r\n")
     button.click()  # locking with unsaved changes is allowed
-    assert view.document.locked and view.document.modified and action.text() == "Unlock Book"
+    assert view.document.locked and view.document.modified and action.text() == "Unlock Project"
     assert window._rich_views.pane_for(view).editable is False
 
 
@@ -455,13 +456,13 @@ def test_the_usfm_menu_the_tab_menu_and_the_text_menu_have_it(desktop, tmp_path:
     assert window._book_lock.action in usfm_menu.actions()
 
     tab_menu = window.tab_menu(view.view_id)
-    tab_action = _lock_action(tab_menu, "Unlock Book")
+    tab_action = _lock_action(tab_menu, "Unlock Project")
     assert tab_action is not None and tab_action is not window._book_lock.action
     tab_action.trigger()
     assert not view.document.locked
 
     text_menu = window._editor_context_menu(view)
-    text_action = _lock_action(text_menu, "Lock Book")
+    text_action = _lock_action(text_menu, "Lock Project")
     assert text_action is not None
     text_action.trigger()
     assert view.document.locked
@@ -473,7 +474,7 @@ def test_the_book_lists_right_click_menu_has_it(desktop, tmp_path: Path):
 
     menu = window._environment_bar.book.lock_menu()
 
-    assert [action.text() for action in menu.actions()] == ["Unlock Book"]
+    assert [action.text() for action in menu.actions()] == ["Unlock Project"]
     menu.actions()[0].trigger()
     assert not view.document.locked
 
@@ -488,7 +489,7 @@ def test_a_book_in_a_read_only_folder_cant_be_unlocked(desktop, tmp_path: Path):
     assert not action.isEnabled() and "read-only folder" in action.toolTip()
     assert str(tmp_path / "Paratext") in action.toolTip()
     assert window._book_lock.toggle(view) is True or view.document.read_only
-    assert not _lock_action(window.tab_menu(view.view_id), "Unlock Book").isEnabled()
+    assert not _lock_action(window.tab_menu(view.view_id), "Unlock Project").isEnabled()
 
 
 def test_a_plain_text_view_has_no_lock_to_change(desktop, tmp_path: Path):
@@ -499,7 +500,7 @@ def test_a_plain_text_view_has_no_lock_to_change(desktop, tmp_path: Path):
     view = main.open_path(_project(tmp_path / "niv") / "01GEN.usfm", open_mode=OpenMode.PLAIN_TEXT)
 
     assert not main._book_lock.applies_to(view)
-    assert _lock_action(main._editor_context_menu(view), "Unlock Book") is None
+    assert _lock_action(main._editor_context_menu(view), "Unlock Project") is None
 
 
 def test_saving_after_locking_again_asks_to_unlock(desktop, tmp_path: Path, monkeypatch):
@@ -1022,3 +1023,83 @@ def test_wrapping_past_the_groups_last_book_asks_about_the_group(desktop, tmp_pa
 
     assert len(asked["ask_wrap_project"]) == 1
     assert panel.status_label.text() == "stopped at the end of the group"
+
+
+# --- the lock is the project's (field test, 2026-11-04) ----------------------
+
+
+def test_unlocking_a_project_unlocks_every_open_book_and_books_opened_after(desktop, tmp_path: Path):
+    _app, service = desktop
+    niv = _project(tmp_path / "niv")
+    window, genesis = _usfm_window(service, niv)
+    assert genesis.document.locked  # a project opens locked
+
+    window._book_lock.toggle(genesis)  # Unlock Project
+    exodus = window._environment_bar.open_book(niv / "02EXO.usfm")
+
+    assert not genesis.document.locked
+    assert not exodus.document.locked  # opened into an unlocked project
+
+    window._book_lock.toggle(exodus)  # Lock Project
+
+    assert exodus.document.locked
+    assert window._unlock_banner.isHidden()
+
+
+def test_a_project_reopens_locked_once_all_its_books_are_closed(desktop, tmp_path: Path):
+    _app, service = desktop
+    niv = _project(tmp_path / "niv")
+    window, genesis = _usfm_window(service, niv)
+    window._book_lock.toggle(genesis)
+    assert not genesis.document.locked
+    window.close_view_discarding(genesis)
+
+    reopened = window.open_path(niv / "01GEN.usfm")
+
+    assert reopened.document.locked
+
+
+def test_the_lock_of_one_project_does_not_touch_another(desktop, tmp_path: Path):
+    _app, service = desktop
+    niv = _project(tmp_path / "niv")
+    window, genesis = _usfm_window(service, niv)
+    other = _project(tmp_path / "other", name="OTHER")
+    elsewhere = window.open_path(other / "01GEN.usfm")
+
+    window._book_lock.toggle(genesis)
+
+    assert not genesis.document.locked and elsewhere.document.locked
+
+
+def test_a_red_banner_shows_while_the_shown_project_is_unlocked(desktop, tmp_path: Path):
+    _app, service = desktop
+    window, view = _usfm_window(service, _project(tmp_path / "niv"))
+    banner = window._unlock_banner
+    assert banner.isHidden()
+
+    window._book_lock.toggle(view)
+    assert not banner.isHidden() and "NIV" in banner.label.text()
+
+    banner.button.click()  # the banner's own Lock Project
+    assert view.document.locked and banner.isHidden()
+
+
+def test_find_replace_asks_to_unlock_the_project_or_aborts(desktop, tmp_path: Path, monkeypatch):
+    from uniti.ui import book_lock
+
+    _app, service = desktop
+    niv = _project(tmp_path / "niv")
+    window, genesis = _usfm_window(service, niv)
+    exodus = window.open_path(niv / "02EXO.usfm")  # the project is locked
+    panel = service._find_replace
+    unlocked = []
+    panel._project_unlocker = unlocked.append
+
+    monkeypatch.setattr(book_lock, "ask_unlock_and_replace", lambda parent, title: False)
+    assert panel._unlock_to_replace(genesis.document) is False
+    assert genesis.document.locked and not unlocked  # aborted: nothing unlocked
+
+    monkeypatch.setattr(book_lock, "ask_unlock_and_replace", lambda parent, title: True)
+    assert panel._unlock_to_replace(genesis.document) is True
+    assert unlocked == [genesis.document]  # the project is unlocked, not one book
+    assert not genesis.document.locked

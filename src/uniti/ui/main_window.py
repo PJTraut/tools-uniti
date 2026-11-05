@@ -70,29 +70,32 @@ from uniti.core.environments.catalog import (
     environment_available,
 )
 from uniti.core.environments.markdown_environment import MARKDOWN_PREVIEW_FEATURE
+from uniti.core.environments.sfm.paratext_project import project_for_file
 from uniti.core.environments.sfm.stylesheet_support import IMPORT_STYLESHEET_FEATURE
-from uniti.core.syntax_profiles import (
-    PROFILES,
-)
+from uniti.core.eol import EOLReport, analyze_eol
+from uniti.core.file_identity import ExternalFileChangedError, FileIdentity
 from uniti.core.index_jobs import (
     LineNavigationResult,
     build_line_index_batch,
     resolve_line_in_batch,
 )
+from uniti.core.syntax_profiles import (
+    PROFILES,
+)
 from uniti.core.text_format import (
-    EOLPolicy,
     EncodingProfile,
+    EOLPolicy,
     OutputFormat,
     encoding_profile,
     encoding_profiles,
     profile_from_codec,
 )
-from uniti.regex.replace import convert_document_eol, convert_document_tabs_to_spaces
 from uniti.core.text_inspection import (
     TextFileInspection,
     inspect_source,
     preview_source,
 )
+from uniti.regex.replace import convert_document_eol, convert_document_tabs_to_spaces
 from uniti.resources import (
     ResourceManager,
     ResourceSnapshot,
@@ -381,6 +384,8 @@ class UNITIMainWindow(QMainWindow):
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
+        self._unlock_banner = book_lock.UnlockBanner(self, central)
+        central_layout.addWidget(self._unlock_banner)
         self._central_splitter = QSplitter(Qt.Orientation.Horizontal, central)
         self._central_splitter.addWidget(self._panes)
         central_layout.addWidget(self._central_splitter, 1)
@@ -2887,8 +2892,36 @@ class UNITIMainWindow(QMainWindow):
         ) not in PROJECT_ENVIRONMENTS:
             return False
         if first_view:
-            document.set_locked(True)
+            # A project opens locked; a book opened while the project is
+            # unlocked opens unlocked, like the rest of its books.
+            siblings = [other for other in self._open_project_documents(document) if other is not document]
+            unlocked = any(not other.locked and not other.read_only for other in siblings)
+            document.set_locked(not unlocked)
         return document.locked
+
+    def _open_project_documents(self, document: Document) -> list[Document]:
+        """Every open book of `document`'s project, `document` included."""
+
+        if self._service is not None:
+            return self._service.open_project_documents(document)
+        project = project_for_file(document.path)
+        books = [document]
+        for view in self.views:
+            other = view.document
+            if other is document or any(other is book for book in books):
+                continue
+            candidate = project_for_file(other.path)
+            if project is not None and candidate is not None and candidate.folder == project.folder:
+                books.append(other)
+        return books
+
+    def _set_project_locked(self, document: Document, locked: bool) -> None:
+        """Lock or unlock every open book of `document`'s project (the lock
+        is the project's); a book in a read-only folder stays as it is."""
+
+        for book in self._open_project_documents(document):
+            if not book.read_only:
+                book.set_locked(locked)
 
     def _lock_book_on_becoming_usfm(self, view: UNITITextView) -> None:
         """A document that becomes USFM (from Plain Text) is locked, unless
@@ -2902,6 +2935,9 @@ class UNITIMainWindow(QMainWindow):
                 f"{document.path.name} has unsaved changes: it stays unlocked", 8000
             )
             return
+        siblings = [other for other in self._open_project_documents(document) if other is not document]
+        if any(not other.locked and not other.read_only for other in siblings):
+            return  # its project is unlocked: so is this book
         document.set_locked(True)
 
     def _schedule_book_format_check(self, view: UNITITextView, report: EOLReport | None) -> None:
@@ -3223,7 +3259,7 @@ class UNITIMainWindow(QMainWindow):
             return True
         if not book_lock.ask_unlock_and_save(self, book_lock.document_title(document)):
             return False
-        document.set_locked(False)
+        self._set_project_locked(document, False)
         return True
 
     def _refuse_locked(self, view: UNITITextView) -> bool:
