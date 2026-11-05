@@ -20,9 +20,21 @@ from __future__ import annotations
 
 from uniti.core.decoration import DecorationProvider, SyntaxProfileDecorationAdapter
 from uniti.core.environment import EnvironmentContext
-from uniti.core.environment_commands import EnvironmentCommand, reformat_commands, validate_command
+from uniti.core.environment_commands import (
+    EnvironmentCommand,
+    reformat_commands,
+    validate_command,
+)
 from uniti.core.environment_findings import EnvironmentFinding, FindingSeverity
 from uniti.core.syntax_profiles import JSON
+
+from .settings import FLAG, NUMBER, EnvironmentSetting
+
+JSON_SETTINGS: tuple[EnvironmentSetting, ...] = (
+    EnvironmentSetting("indent", "Indent", NUMBER, 2, "Spaces per level in Format Document.", minimum=1, maximum=8, section="Format Document"),
+    EnvironmentSetting("sort_keys", "Sort keys", FLAG, False, "Put each object's keys in alphabetical order.", section="Format Document"),
+    EnvironmentSetting("ascii", "Escape non-ASCII", FLAG, False, "Write characters beyond ASCII as \\u escapes.", section="Format Document"),
+)
 
 _CLOSERS = {"}": "{", "]": "["}
 _OPENERS = frozenset(_CLOSERS.values())
@@ -32,6 +44,10 @@ class JsonEnvironment:
     """Light environment: JSON decoration plus bracket-match validation."""
 
     key = "json"
+
+    @staticmethod
+    def settings_declarations() -> tuple[EnvironmentSetting, ...]:
+        return JSON_SETTINGS
 
     def __init__(self) -> None:
         self._decoration_provider = SyntaxProfileDecorationAdapter(JSON)

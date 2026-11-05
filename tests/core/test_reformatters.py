@@ -3,8 +3,8 @@ import pytest
 from uniti.core.reformatters import (
     JSON,
     MARKDOWN,
-    XML,
     REFORMATTERS_BY_KEY,
+    XML,
     ReformatFailure,
     reformatter_for_key,
 )

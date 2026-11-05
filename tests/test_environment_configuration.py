@@ -18,7 +18,11 @@ from uniti.core.environments.configuration import (
 )
 from uniti.core.environments.sfm.paratext_project import PARATEXT_BOOKS
 from uniti.core.environments.sfm.sty import parse_raw_stylesheet
-from uniti.core.environments.sfm.style_layers import LayeredStyleRegistry, StyleOrigin, build_layers
+from uniti.core.environments.sfm.style_layers import (
+    LayeredStyleRegistry,
+    StyleOrigin,
+    build_layers,
+)
 from uniti.core.environments.sfm.usfm_baseline import load_usfm_baseline
 from uniti.core.environments.sfm.views import presentation_attrs
 
@@ -89,7 +93,8 @@ def test_the_list_for_a_single_file(user_root: Path, tmp_path: Path):
     assert by_role["PTXprint changes"].template is None  # PTXprint's own file
     # Other environments: just the user's folder.
     assert [row.role for row in configuration_files("json", "JSON", tmp_path / "a.json")] == [
-        "Your JSON configuration folder"
+        "Your JSON configuration folder",
+        "Your settings (settings.json)",  # N31
     ]
 
 

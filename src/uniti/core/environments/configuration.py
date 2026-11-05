@@ -12,7 +12,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from .user_config import REFERENCE_FOLDER, environment_folder, usfm_user_rules_path, usfm_versification_folder
+from .user_config import (
+    REFERENCE_FOLDER,
+    environment_folder,
+    usfm_user_rules_path,
+    usfm_versification_folder,
+)
 
 BUILT_IN = "built-in"
 YOURS = "yours"
@@ -57,9 +62,63 @@ def configuration_files(environment_key: str, environment_label: str, document_p
             note="Your own files for this environment, in UNITI's user data.",
         )
     ]
+    from .settings import declarations_for, settings_path
+
+    if declarations_for(environment_key):
+        rows.append(
+            _row(
+                "Your settings (settings.json)",
+                settings_path(environment_key),
+                YOURS,
+                template="{}\n",
+                note="Only settings that differ from the defaults. Easier to change with Environment Settings….",
+            )
+        )
     if environment_key == "usfm":
         rows.extend(_usfm_rows(document_path, environment))
+    elif environment_key == "markdown":
+        rows.extend(_markdown_rows(document_path, environment))
     return tuple(rows)
+
+
+def _markdown_rows(document_path: Path | None, environment) -> list[ConfigurationFile]:
+    """Preview's stylesheet layers, in the order they apply (N27)."""
+
+    from .markdown_css import (
+        USER_STYLESHEET_TEMPLATE,
+        builtin_stylesheet_path,
+        document_stylesheet_paths,
+        front_matter_stylesheets,
+        user_stylesheet_path,
+    )
+
+    rows = [
+        _row("Built-in Preview stylesheet (markdown.css)", builtin_stylesheet_path(), BUILT_IN, note="Built in, read-only. Change it in your uniti.css."),
+        _row(
+            "Your stylesheet (every Markdown file)",
+            user_stylesheet_path(),
+            YOURS,
+            template=USER_STYLESHEET_TEMPLATE,
+            note="Applies above the built-in stylesheet and below each document's own.",
+        ),
+    ]
+    if document_path is not None:
+        source = ""
+        try:
+            with open(document_path, encoding="utf-8", errors="replace") as handle:
+                source = handle.read(16 * 1024)  # front matter is at the top
+        except OSError:
+            pass
+        named = front_matter_stylesheets(source) is not None
+        for path in document_stylesheet_paths(document_path, source):
+            role = f"Document stylesheet ({path.name})" if named else "Folder stylesheet (uniti.css)"
+            note = "Named in the document's front matter." if named else (
+                "Applies to the Markdown files in this folder whose front matter names no stylesheet."
+            )
+            rows.append(_row(role, path, PROJECT, template=USER_STYLESHEET_TEMPLATE, note=note))
+    for layer in getattr(environment, "imported_stylesheets", ()) or ():
+        rows.append(_row(f"Loaded stylesheet ({layer.name})", layer.path, LOADED, note="Loaded with Load Stylesheet… for this session."))
+    return rows
 
 
 def _usfm_rows(document_path: Path | None, environment) -> list[ConfigurationFile]:
@@ -162,10 +221,10 @@ def uniti_rules_template(purpose: str) -> str:
 __all__ = [
     "BUILT_IN",
     "CUSTOM_STY_TEMPLATE",
-    "ConfigurationFile",
     "LOADED",
     "PROJECT",
     "YOURS",
+    "ConfigurationFile",
     "configuration_files",
     "reference_copy_path",
     "uniti_rules_template",

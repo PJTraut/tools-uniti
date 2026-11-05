@@ -12,12 +12,12 @@ if importlib.util.find_spec("PySide6") is None:  # pragma: no cover
     pytest.skip("PySide6 is not installed", allow_module_level=True)
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication
+from usfm_project_fixture import in_project
 
-from usfm_project_fixture import in_project  # noqa: E402
-from uniti.app.settings import SettingsStore  # noqa: E402
-from uniti.core.environments import user_config  # noqa: E402
-from uniti.ui.main_window import UNITIMainWindow  # noqa: E402
+from uniti.app.settings import SettingsStore
+from uniti.core.environments import user_config
+from uniti.ui.main_window import UNITIMainWindow
 
 _USFM = "\\id GEN\n\\c 1\n\\p\n\\v 1 The \\nd Lord\\nd* spoke.\n"
 
@@ -110,6 +110,6 @@ def test_creating_the_project_custom_stylesheet(window, tmp_path: Path):
 def test_every_environment_lists_its_folder_and_documentation(window, tmp_path: Path):
     view = _open(window, tmp_path / "data.json", '{"a": 1}')
     dialog = window._environment.show_configuration_files(view)
-    assert [row.role for row in dialog.rows] == ["Your JSON configuration folder"]
+    assert [row.role for row in dialog.rows] == ["Your JSON configuration folder", "Your settings (settings.json)"]
     assert dialog.windowTitle() == "JSON Configuration Files"
     assert dialog.docs_button.isEnabled()

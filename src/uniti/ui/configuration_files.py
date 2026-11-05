@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QUrl, Qt
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QDialog,
@@ -30,7 +30,12 @@ from PySide6.QtWidgets import (
 )
 
 import uniti
-from uniti.core.environments.configuration import BUILT_IN, ConfigurationFile, configuration_files, reference_copy_path
+from uniti.core.environments.configuration import (
+    BUILT_IN,
+    ConfigurationFile,
+    configuration_files,
+    reference_copy_path,
+)
 
 if TYPE_CHECKING:
     from uniti.ui.main_window import UNITIMainWindow
@@ -49,7 +54,7 @@ def environment_documentation(environment_key: str) -> Path | None:
 
 
 class ConfigurationFilesDialog(QDialog):
-    def __init__(self, window: "UNITIMainWindow", view: "UNITITextView") -> None:
+    def __init__(self, window: UNITIMainWindow, view: UNITITextView) -> None:
         super().__init__(window)
         self._window = window
         self._view = view

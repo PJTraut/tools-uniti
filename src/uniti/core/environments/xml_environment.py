@@ -21,15 +21,38 @@ import xml.etree.ElementTree as ET
 
 from uniti.core.decoration import DecorationProvider, SyntaxProfileDecorationAdapter
 from uniti.core.environment import EnvironmentContext
-from uniti.core.environment_commands import EnvironmentCommand, reformat_commands, validate_command
+from uniti.core.environment_commands import (
+    EnvironmentCommand,
+    reformat_commands,
+    validate_command,
+)
 from uniti.core.environment_findings import EnvironmentFinding, FindingSeverity
 from uniti.core.syntax_profiles import XML
+
+from .settings import CHOICE, NUMBER, EnvironmentSetting
+
+XML_SETTINGS: tuple[EnvironmentSetting, ...] = (
+    EnvironmentSetting("indent", "Indent", NUMBER, 2, "Spaces per level in Format Document.", minimum=1, maximum=8, section="Format Document"),
+    EnvironmentSetting(
+        "attributes",
+        "Attributes",
+        CHOICE,
+        "one-line",
+        "An element's attributes on one line, or one per line lined up under the first.",
+        choices=(("one-line", "On one line"), ("wrapped", "One per line")),
+        section="Format Document",
+    ),
+)
 
 
 class XmlEnvironment:
     """Light environment: XML decoration plus well-formedness validation."""
 
     key = "xml"
+
+    @staticmethod
+    def settings_declarations() -> tuple[EnvironmentSetting, ...]:
+        return XML_SETTINGS
 
     def __init__(self) -> None:
         self._decoration_provider = SyntaxProfileDecorationAdapter(XML)
