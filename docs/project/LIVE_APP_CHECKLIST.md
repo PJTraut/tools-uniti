@@ -3,69 +3,70 @@
 Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything that's wrong under it. Use two Paratext projects (for example `usNIVv3` and `ruCARSv3`). Add their folder to **View › Read-Only Folders…** only in section 7, or work on copies, so nothing is changed by accident.
 
 ## 1. Project tabs (round 3 T4)
-- [ ] Open a book with **File › Open USFM Project…**: it opens in "SFM-1", in a tab titled with the project's short name only (e.g. "NIV").
-- [ ] Pick another book in the **Book** list: the same tab now shows it; no new tab.
-- [ ] Type in a book, then pick another book: "Save changes to GEN (NIV)?" appears.
+- [x] Open a book with **File › Open USFM Project…**: it opens in "SFM/1", in a tab titled with the project's short name only (e.g. "NIV").
+- [x] Pick another book in the **Book** list: the same tab now shows it; no new tab.
+- [x] Type in a book, then pick another book: "Save changes to GEN (NIV)?" appears.
   - [ ] **No**: the book changes; the edited book is marked "•" in the Book list and the tab reads "NIV*".
   - [ ] **Yes**: it saves, then changes the book.
-- [ ] Open a book of the second project: it gets its own tab ("CARS").
-- [ ] Close a project tab with unsaved books: you're asked once per modified book.
-- [ ] The full project name (`<FullName>` in `Settings.xml`) appears nowhere: tab, title, toolbar, menus.
+- [x] Open a book of the second project: it gets its own tab ("CARS").
+- [x] Close a project tab with unsaved books: you're asked once per modified book.
+- [x] The full project name (`<FullName>` in `Settings.xml`) appears nowhere: tab, title, toolbar, menus.
 
 ## 2. Windows (T3)
-- [ ] The title reads "UNITI — USFM A — NIV — 01GEN.usfm".
-- [ ] Open a second USFM window: it's "SFM-2".
-- [ ] Rename a window (click its name on the toolbar, or **Rename Window…**). Restart UNITI: the name is kept.
+- [x] The title reads "UNITI — USFM A — NIV — 01GEN.usfm".
+- [x] Open a second USFM window: it's "SFM/2".
+- [x] Rename a window (click its name on the toolbar, or **Rename Window…**). Restart UNITI: the name is kept.
 
 ## 3. Groups (T2, T5)
-- [ ] **Manage Groups…** has an environment chooser; USFM's groups are separate from Plain Text's.
-- [ ] Put a project in group A (tab right-click › Group, or the toolbar's Group list): its tab is tinted in A's colour, in every split and window.
-- [ ] Changing a group never moves a tab to another window.
+- [x] **Manage Groups…** has an environment chooser; USFM's groups are separate from Plain Text's.
+- [x] Put a project in group A (tab right-click › Group, or the toolbar's Group list): its tab is tinted in A's colour, in every split and window.
+- [x] Changing a group never moves a tab to another window.
 
 ## 4. Sync (T5, P4, P5)
-- [ ] NIV and CARS both in group A, in two windows: moving the caret in NIV moves CARS to the matching verse, mapped by versification (try Ps 51:1 → 50:3, Ps 23:1 → 22:1).
-- [ ] Move to another book: the other project's tab changes to that book, without asking about unsaved changes.
-- [ ] An ungrouped project doesn't follow.
-- [ ] **New 2026-10-13:** with NIV and ESV tabs in one split and NIV showing, sync changes NIV's book, never switching to the ESV tab.
+- [x] NIV and CARS both in group A, in two windows: moving the caret in NIV moves CARS to the matching verse, mapped by versification (try Ps 51:1 → 50:3, Ps 23:1 → 22:1).
+- [x] Move to another book: the other project's tab changes to that book, without asking about unsaved changes.
+- [x] An ungrouped project doesn't follow.
+- [x] **New 2026-10-13:** with NIV and ESV tabs in one split and NIV showing, sync changes NIV's book, never switching to the ESV tab.
 
 ## 5. The tab menu (T6)
-- [ ] Right-click a tab: **Group**, **Split**, **Window**, **Read Only**.
-- [ ] **Split › Move to New Split Right**: the tab moves with its book.
-- [ ] At most four splits. **New 2026-10-13:** with Find/Replace attached you still get four splits, and **Move to Split** never lists the Find pane.
-- [ ] **Unsplit**: the split's tabs join the neighbouring split.
-- [ ] **Window › Move to New Window**, then **Dock**: the tab goes back where it was.
+- [x] Right-click a tab: **Group**, **Split**, **Window**, **Read Only**.
+- [x] **Split › Move to New Split Right**: the tab moves with its book.
+- [x] At most four splits. **New 2026-10-13:** with Find/Replace attached you still get four splits, and **Move to Split** never lists the Find pane.
+- [x] **Unsplit**: the split's tabs join the neighbouring split.
+- [x] **Window › Move to New Window**, then **Dock**: the tab goes back where it was.
 
 ## 6. The same book in two windows (new 2026-10-13)
-- [ ] Open NIV GEN in USFM A and USFM B (Book list or File › Open in B): both windows keep it; neither loses its tab.
-- [ ] Type in A: A's views update as you type.
-- [ ] With GEN in **Preview** in B, type in A: B's Preview doesn't change yet. Click into B: it catches up at once.
-- [ ] Typing in A stays fast while B shows the book in Preview.
+- [x] Open NIV GEN in USFM A and USFM B (Book list or File › Open in B): both windows keep it; neither loses its tab.
+- [x] Type in A: A's views update as you type.
+- [x] With GEN in **Preview** in B, type in A: B's Preview doesn't change yet. Click into B: it catches up at once.
+- [x] Typing in A stays fast while B shows the book in Preview.
 
 ## 7. Read-only folders (T7)
-- [ ] Add the projects' folder in **View › Read-Only Folders…**: the tab shows 🔒 and the title "(read-only)".
-- [ ] Typing, Replace, Undo and Save are refused with a message.
-- [ ] **New 2026-10-13:** **Save As** into that folder is refused; Save As elsewhere works.
-- [ ] **New 2026-10-13:** edit a book, then turn **Read Only** on from its tab menu and close it: you're offered Discard or Cancel, not Save.
+- [x] Add the projects' folder in **View › Read-Only Folders…**: the tab shows 🔒 and the title "(read-only)".
+- [x] Typing, Replace, Undo and Save are refused with a message.
+- [x] **New 2026-10-13:** **Save As** into that folder is refused; Save As elsewhere works.
+- [x] **New 2026-10-13:** edit a book, then turn **Read Only** on from its tab menu and close it: you're offered Discard or Cancel, not Save.
 
 ## 8. Show One Chapter (C1–C4)
-- [ ] Turn on **Chapter** (toolbar) or **Show One Chapter** (USFM menu): only the caret's chapter shows, in Plain Text, Standard and Preview.
-- [ ] Arrow keys, clicks and scrolling stop at the chapter's edges; Select All selects the chapter.
-- [ ] The Chapter selector, Go to Chapter:Verse, sync and Find change the chapter.
-- [ ] Preview's notes list only that chapter's notes.
+- [x] Turn on **Chapter** (toolbar) or **Show One Chapter** (USFM menu): only the caret's chapter shows, in Plain Text, Standard and Preview.
+- [x] Arrow keys, clicks and scrolling stop at the chapter's edges; Select All selects the chapter.
+- [x] The Chapter selector, Go to Chapter:Verse, sync and Find change the chapter.
+- [x] BK, CH and VS look alike (same size and weight); in the front matter Chapter and Verse show 0 and 0, and between a `\c` and its first `\v` Verse shows 0.
+- [x] Preview's notes list only that chapter's notes.
 
 ## 9. USFM book lock (L1–L5)
-- [ ] Open a project book: the tab shows 🔒 and the title "(locked)"; typing, paste, Undo and Replace say it's locked in the status bar.
-- [ ] Unlock Book from the toolbar's lock, the USFM menu, the Book list's right-click menu, and a tab's and the text's right-click menus; Lock Book locks again.
-- [ ] Open the same book in a second split or window: both show the lock and follow it.
-- [ ] Edit an unlocked book, lock it, then Save: asked Unlock and Save or Cancel. Save with no changes: "has no changes: nothing saved".
-- [ ] Change the book with unsaved changes: Save / Discard / Cancel. Discard, then reopen: the file's text, no Undo history.
-- [ ] Open a book that's LF, mixed or not UTF-8: Close / Update. Update leaves it locked and unsaved.
-- [ ] Replace in a locked book: Unlock and Replace / Skip.
-- [ ] Project **Replace All**: the list shows files with matches, all unticked, locked ones marked; only ticked files change; Cancel changes nothing; books that weren't open and weren't ticked close again.
-- [ ] Find Next with Project steps into the next book with a match (one that wasn't open too) and asks at the end of the project.
-- [ ] Scopes follow the tab: a USFM tab offers Book, Cursor to End, Project, Group; a text or JSON tab offers Whole Document, Cursor to End, Current Group, All Open Documents (only that environment's files). Group with two projects in one group searches both, books that weren't open too, and Find Next steps into the other project's book.
-- [ ] One book per project: changing the book (Book list, Find stepping, File → Open) closes the previous one and asks about unsaved changes; Replace All over a Project writes the ticked books that aren't open to disk and says so in the list.
-- [ ] A book in a read-only folder can't be unlocked.
+- [x] Open a project book: the tab shows 🔒 and the title "(locked)"; typing, paste, Undo and Replace say it's locked in the status bar.
+- [x] Unlock Book from the toolbar's lock, the USFM menu, the Book list's right-click menu, and a tab's and the text's right-click menus; Lock Book locks again.
+- [x] Open the same book in a second split or window: both show the lock and follow it.
+- [x] Edit an unlocked book, lock it, then Save: asked Unlock and Save or Cancel. Save with no changes: "has no changes: nothing saved".
+- [x] Change the book with unsaved changes: Save / Discard / Cancel. Discard, then reopen: the file's text, no Undo history.
+- [x] Open a book that's LF, mixed or not UTF-8: Close / Update. Update leaves it locked and unsaved.
+- [x] Replace in a locked book: Unlock and Replace / Skip.
+- [x] Project **Replace All**: the list shows files with matches, all unticked, locked ones marked; only ticked files change; Cancel changes nothing; books that weren't open and weren't ticked close again.
+- [x] Find Next with Project steps into the next book with a match (one that wasn't open too) and asks at the end of the project.
+- [x] Scopes follow the tab: a USFM tab offers Book, Cursor to End, Project, Group; a text or JSON tab offers Whole Document, Cursor to End, Current Group, All Open Documents (only that environment's files). Group with two projects in one group searches both, books that weren't open too, and Find Next steps into the other project's book.
+- [x] One book per project: changing the book (Book list, Find stepping, File → Open) closes the previous one and asks about unsaved changes; Replace All over a Project writes the ticked books that aren't open to disk and says so in the list.
+- [x] A book in a read-only folder can't be unlocked.
 
 ### 9b. The lock is the project's (field test, 2026-11-04) — not yet checked in the live app
 - [ ] A project opens locked. **Unlock Project** (toolbar, USFM menu, Book list, tab and text menus) unlocks every open book of it; a **red banner** above the editor says the project is unlocked, with a **Lock Project** button.
@@ -74,19 +75,20 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 - [ ] Replace in a locked project: **Unlock Project** / **Abort**. Abort changes nothing; Unlock Project unlocks the project, banner showing.
 
 ## 10. Check Spelling (S1–S5)
-- [ ] Open a project with `SpellingStatus.xml` (usNIVv3, rnBKCv1): **USFM → Check Spelling** is on offer; for a project with neither list it's greyed with the reason.
-- [ ] Turn it on from the USFM menu and from a tab's right-click menu: wrong words and unknown words get different wavy underlines in Plain Text, Standard and Preview; hover shows the reason (and Paratext's correction).
-- [ ] Footnote text isn't underlined in Preview's notes frame; `\id`, `\rem` and verse numbers aren't underlined anywhere.
-- [ ] Change the book from the Book list and with sync: the new book is checked too. Another project's tab isn't. Quit and restore the session: it's still on.
-- [ ] Type in Plain Text and Standard: no lag, the underline of an edited word updates.
-- [ ] Change `SpellingStatus.xml` in Paratext (or by hand) and activate the window: the underlines follow.
-- [ ] Dark and light themes: both underline colours are easy to see.
+- [x] Open a project with `SpellingStatus.xml` (usNIVv3, rnBKCv1): **USFM → Check Spelling** is on offer; for a project with neither list it's greyed with the reason.
+- [x] Turn it on from the USFM menu and from a tab's right-click menu: wrong words and unknown words get different wavy underlines in Plain Text, Standard and Preview; hover shows the reason (and Paratext's correction).
+- [x] Footnote text isn't underlined in Preview's notes frame; `\id`, `\rem` and verse numbers aren't underlined anywhere.
+- [x] Change the book from the Book list and with sync: the new book is checked too. Another project's tab isn't. Quit and restore the session: it's still on.
+- [x] Type in Plain Text and Standard: no lag, the underline of an edited word updates.
+- [x] Change `SpellingStatus.xml` in Paratext (or by hand) and activate the window: the underlines follow.
+- [x] Dark and light themes: both underline colours are easy to see.
 
 ## 11. Footnote categories
-- [ ] On a book whose notes have `\cat` (`usNIVv3`): **USFM → Footnote Categories** lists the categories and **None**, all checked.
-- [ ] Uncheck one in Preview: its notes' callers and bodies go, and the remaining callers are a, b, c… Standard still shows every note.
-- [ ] Uncheck **None**: notes without `\cat` go. **Show All** brings everything back.
-- [ ] Change the book from the Book list: the filter stays on for the tab; another project's tab is unaffected. Restart: it's restored.
+- [x] On a book whose notes have `\cat` (`usNIVv3`): **USFM → Footnote Categories** lists the categories and **None**, all checked.
+- [x] Uncheck one in Preview: its notes' callers and bodies go, and the remaining callers are a, b, c… Standard still shows every note.
+- [x] Uncheck **None**: notes without `\cat` go. **Show All** brings everything back.
+- [x] Change the book from the Book list: the filter stays on for the tab; another project's tab is unaffected. Restart: it's restored.
+- [ ] **New 2026-11-02:** Preview's Footnotes title line lists every category, space-separated, plus "None": click one to toggle it; a greyed one is off. It matches the Footnote Categories menu.
 
 ## 12. Hyphenate Preview (H1–H3)
 - [ ] On a project with `hyphenatedWords.txt` (`usNIVv3`): **USFM → Hyphenate Preview** is on offer; for a project without one it's greyed with the reason.
@@ -122,15 +124,42 @@ Started: 2026-10-13, for `main` at `f3fe859`. Tick each line, and note anything 
 
 ## 16. Floating windows across screen changes (P1–P2)
 Needs a laptop and an external monitor. [Plan](02_plans/2026-10-20-window-layouts-per-screen-configuration-plan.md).
-- [ ] Open Find (detached), Character Inspector and Compare on the external monitor and maximize the main window there. Quit, unplug the monitor, launch: every window is on the laptop, the main window is scaled, and un-maximizing gives a laptop-sized window, not a screen-sized one.
-- [ ] Windows that were large on the external monitor (Compare, Whitespace Legend at a high zoom) come back smaller than the laptop screen, proportions kept, with their title bars visible.
-- [ ] Replug with UNITI running: the windows jump back to where they were on the external monitor.
-- [ ] Change the external monitor's scaled resolution: the windows adapt (the main window scales with the screen, tool windows keep their size); change it back: the first layout returns exactly.
-- [ ] Sleep and wake with the monitor attached: no window moves.
-- [ ] Unplug the monitor while a toggle window is open on it: it moves onto the laptop, and its hotkey still closes it.
-- [ ] `window-layouts.json` appears next to `settings.json`; it keeps at most eight layouts.
-- [ ] Keyboard zoom ([BF-097](BETA_FEEDBACK.md#bf-097--floating-windows-keyboard-font-zoom-acts-on-the-editor-not-the-floating-window)): with Compare, the Character Inspector, the Whitespace Legend and a detached Find/Replace open in turn, Cmd++, Cmd+=, Cmd+- and Cmd+0 zoom that window and leave the editor behind it alone; back in the editor they zoom the editor.
-- [ ] Character Inspector with a word selected (Opt+Cmd+I): opens at a sensible size, on the screen the main window is on ([BF-098](BETA_FEEDBACK.md#bf-098--character-inspector-opened-full-screen-and-did-not-resize)).
+- [x] Open Find (detached), Character Inspector and Compare on the external monitor and maximize the main window there. Quit, unplug the monitor, launch: every window is on the laptop, the main window is scaled, and un-maximizing gives a laptop-sized window, not a screen-sized one.
+- [x] Windows that were large on the external monitor (Compare, Whitespace Legend at a high zoom) come back smaller than the laptop screen, proportions kept, with their title bars visible.
+- [x] Replug with UNITI running: the windows jump back to where they were on the external monitor.
+- [x] Change the external monitor's scaled resolution: the windows adapt (the main window scales with the screen, tool windows keep their size); change it back: the first layout returns exactly.
+- [x] Sleep and wake with the monitor attached: no window moves.
+- [x] Unplug the monitor while a toggle window is open on it: it moves onto the laptop, and its hotkey still closes it.
+- [x] `window-layouts.json` appears next to `settings.json`; it keeps at most eight layouts.
+- [x] Keyboard zoom ([BF-097](BETA_FEEDBACK.md#bf-097--floating-windows-keyboard-font-zoom-acts-on-the-editor-not-the-floating-window)): with Compare, the Character Inspector, the Whitespace Legend and a detached Find/Replace open in turn, Cmd++, Cmd+=, Cmd+- and Cmd+0 zoom that window and leave the editor behind it alone; back in the editor they zoom the editor.
+- [x] Character Inspector with a word selected (Opt+Cmd+I): opens at a sensible size, on the screen the main window is on ([BF-098](BETA_FEEDBACK.md#bf-098--character-inspector-opened-full-screen-and-did-not-resize)).
+
+## 17. Groups by key and tab tint (N29, N30, 2026-11-05)
+[Plan](02_plans/2026-11-05-markdown-environment-feedback-plan.md).
+- [ ] Right-click the text, in Text, Standard and Preview (SFM) and in MD Preview: no group entry. Right-click the tab: the group choices are there.
+- [ ] In an MD window, Ctrl+Alt+1 puts the file in group A, Ctrl+Alt+2 in B, Ctrl+Alt+0 takes it out; the `[group]` button follows.
+- [ ] The same keys in an ordinary window, with a TXT file: they use TXT's groups.
+- [ ] The `[group]` pop-up shows each row's key greyed at the right (⌃⌥0, ⌃⌥1 …); Manage Groups… has none.
+- [ ] A grouped tab is tinted with its group's colour in MD, TXT, JSON and SFM, in environment and ordinary windows; no bar before the tab's name. Ungrouping removes the tint.
+
+## 18. MD Preview menu, environment settings and stylesheets (N27, N28, N31, 2026-11-05)
+[Plan](02_plans/2026-11-05-markdown-environment-feedback-plan.md).
+- [ ] MD Preview, right-click: Cut/Copy/Paste, then three blocks: Bold … Remove Formatting; Headings ▸, Quote, Bullet List, Numbered List, Task List, Check or Uncheck Task, Code Block; Insert Table…. Bold and Italic show ⌘B and ⌘I.
+- [ ] Headings ▸ ticks the caret's level (Body Text on a plain paragraph, none in a list); choosing H2 makes the line a level-2 heading.
+- [ ] Select a word: Strikethrough, Superscript and Subscript render struck, raised and lowered; the same command again removes it. Remove Formatting over a mixed line leaves plain text and its links.
+- [ ] Bullet List, Numbered List and Quote over three lines, then again: on, then off. Enter after "2. two" gives "3. ". Code Block fences the lines, and inside the block removes the fences.
+- [ ] Insert Table… "3 × 2": an aligned table after the caret's line, caret in "Column 1". Type in a cell: the columns stay lined up in Preview.
+- [ ] MD › Environment Settings…: Flavour GitHub, then Superscript writes `<sup>…</sup>`; CommonMark: Insert Table… says there are no tables, and `~~x~~` shows as text.
+- [ ] Bullet `*`, Numbered lists "Renumber", then Format Document: bullets and numbers follow. Restore Defaults, OK: `settings.json` is `{}`.
+- [ ] Opens in Preview: a newly opened `.md` file starts in Preview.
+- [ ] Configuration Files… lists `settings.json`, the built-in `markdown.css`, your `uniti.css` and the folder's `uniti.css` (or the front matter's sheets). Create your `uniti.css`, set `h1 { color: #8b0000; }`, save: open Previews follow at once.
+- [ ] A document with `stylesheet: [a.css]` front matter and an `a.css` beside it: its rules win over yours. A `.note { }` rule in it: Preview's status line notes it once.
+- [ ] Load Stylesheet… (MD menu) picks a `.css`; it applies until UNITI closes.
+- [ ] Ctrl+Alt+P does nothing in an MD tab (the side pane is retired); Hotkeys has no Preview row.
+- [ ] Task List over two lines: ☐ boxes; Check or Uncheck Task: ☑, again: ☐. Enter after a task gives a new unchecked one. CommonMark: Task List says there are none, and `- [ ]` shows as a bullet.
+- [ ] `Text[^1]` and a `[^1]: note` line: a raised 1 in both. `Term` then `: definition`: the term bold, the definition indented (Extended only).
+- [ ] A document starting with `---` front matter: Preview shows it greyed and monospace; Format Document leaves it exactly as written.
+- [ ] JSON: Indent 4, Sort keys, Format. XML: Attributes one per line, Format. YAML: an odd indent gets a warning from Check Indentation. CSV: Delimiter `;`, Check Column Counts counts by it. TXT: Environment Settings… says there are none.
 
 ## Results
 

@@ -24,3 +24,4 @@ The third-party Python package `regex==2026.5.9` is authoritative for pattern co
 - [Current Architecture](../01_current/ARCHITECTURE.md)
 - [Implemented Regex Core Plan](../03_implemented/milestones/2026-08-31-uniti-v0.001a6-regex-core.md)
 - `pyproject.toml`
+- [Architecture Deviations](../ARCHITECTURE_DEVIATIONS.md): AD-001, UNITI-implemented replacement case escapes (`\U \L \E \u \l`), open

@@ -4,12 +4,12 @@ Every file UNITI opens lives in an **environment**: a set of tools, views, check
 
 | Environment | Extensions (default) | Page |
 |---|---|---|
-| Plain Text | anything not listed below | [plain-text.md](plain-text.md) |
-| Markdown | `.md`, `.markdown` | [markdown.md](markdown.md) |
+| TXT (plain text) | anything not listed below | [plain-text.md](plain-text.md) |
+| MD (Markdown) | `.md`, `.markdown` | [markdown.md](markdown.md) |
 | XML | `.xml` | [xml.md](xml.md) |
 | JSON | `.json` | [json.md](json.md) |
 | YAML | `.yaml`, `.yml` | [yaml.md](yaml.md) |
-| USFM | `.usfm`, `.sfm` | [usfm.md](usfm.md) |
+| SFM (USFM) | `.usfm`, `.sfm` | [usfm.md](usfm.md) |
 | CSV | `.csv` | [csv.md](csv.md) |
 | TSV | `.tsv` | [tsv.md](tsv.md) |
 
@@ -17,10 +17,10 @@ Extensions are matched without regard to case: `.SFM`, `.sfm` and `.Sfm` are the
 
 ## Opening a file
 
-When you open a file whose extension belongs to an environment other than Plain Text, UNITI asks how to open it:
+When you open a file whose extension belongs to an environment other than TXT, UNITI asks how to open it:
 
 - **Open in <Environment> Environment** (the default): the file goes to that environment's window, with all its tools.
-- **Open as Plain Text**: the file stays in the window you opened it from, in the Plain Text environment. That means **no extended features** while you work on it: no environment commands, views, checks or sync. Choose **Assign Environment → By Extension** to give it its environment back.
+- **Open as Plain Text**: the file stays in the window you opened it from, in the TXT environment. That means **no extended features** while you work on it: no environment commands, views, checks or sync. Choose **Assign Environment → By Extension** to give it its environment back.
 - **Cancel**: nothing opens.
 
 Some opens don't ask:
@@ -31,9 +31,9 @@ Some opens don't ask:
 
 ## Environment windows
 
-An environment window is an ordinary UNITI window for **one environment**, named "SFM-1", "SFM-2", "MD-1", "TXT-1" and so on (SFM is USFM's short label; at most nine per environment). It has tabs, splits, Find/Replace and saving like any window, plus a toolbar across the top. The toolbar holds the window's name, the current file's group, the view-mode buttons (Text and Preview in every environment; USFM adds Standard; an environment without a rich view shows Preview greyed out) and the environment's own controls (for USFM: Book, Chapter, Verse and Sync).
+An environment window is an ordinary UNITI window for **one environment**, named "SFM/1", "SFM/2", "MD/1", "TXT/1" and so on (SFM is USFM's short label; at most nine per environment). It has tabs, splits, Find/Replace and saving like any window, plus a toolbar across the top. The toolbar holds the window's name, the current file's group, the view-mode buttons (Text and Preview in every environment; USFM adds Standard; an environment without a rich view shows Preview greyed out) and the environment's own controls (for USFM: Book, Chapter, Verse and Sync).
 
-**Names.** An environment's first window is "A", its second "B", and so on; a new window takes the first free letter. To rename a window, click its name on the toolbar or use **Rename Window…** in the environment menu. **Manage Groups…** also edits each environment's window names, as a comma-separated list. A name belongs to its place in that order: rename the first USFM window "Draft" and it stays "Draft" after a restart. Each environment has its own names, saved in `windows.json` in its configuration folder.
+**Names.** An environment's windows are numbered 1 to 9 after its short label ("SFM/1", "SFM/2", "MD/1"); a new window takes the first free number. Windows can't be renamed. A name you gave a window in an earlier version still applies to its place in that order, and stays saved in `windows.json` in the environment's configuration folder.
 
 **Which window a file goes to:** the window that already shows a book of the same Paratext project; otherwise the environment's most recently used window; otherwise a new one.
 
@@ -52,12 +52,13 @@ Environment windows come back when UNITI restarts.
 
 ## Groups
 
-**Each environment has its own groups**, starting from A, B and C. USFM's group A and Plain Text's group A are two different groups, each with its own name, colour and saved files.
-- A file's group menu (right-click its tab or its text → **Document Group**) lists the groups of the file's environment.
+**Each environment has its own groups**, starting from A, B and C. SFM's group A and TXT's group A are two different groups, each with its own name, colour and saved files.
+- **Setting a file's group:** right-click its tab; in an environment window, the toolbar's `[group]` button; in any window, **Ctrl+Alt+1…9** for the first nine groups and **Ctrl+Alt+0** for Ungrouped. Each lists or counts the groups of the file's environment. The text's own right-click menu has no group entry.
+- **A grouped file's tab is tinted** with the group's colour, in every environment and window.
 - **Manage Groups…** edits one environment's groups at a time. Choose the environment at the top; it starts at the current window's or file's.
 - Choosing another environment for a file (**Assign Environment**) takes it out of its group.
 - In USFM a group belongs to a project, not a single book, and binds its projects for sync across windows (see [usfm.md](usfm.md#groups-and-side-by-side-sync)).
-- The groups you had before environments had their own are Plain Text's groups now.
+- The groups you had before environments had their own are TXT's groups now.
 - Each environment's groups are saved in `groups.json` in its configuration folder (see [Configuration](#configuration)).
 
 In a USFM window each tab is a Paratext project, showing one of its books at a time (see [usfm.md](usfm.md#project-tabs)). Files of any group can share an environment window.
@@ -65,9 +66,9 @@ In a USFM window each tab is a Paratext project, showing one of its books at a t
 **Right-click a tab** in an environment window for:
 - **Group:** the tab's group, as anywhere (for USFM, the project's).
 - **Split:** **Move to New Split Right / Down** moves the tab into a new split beside its own; **Move to Split 1 … 4** moves it into another split (numbered left to right, top to bottom); **Unsplit** closes the tab's split, and its tabs join the neighbouring one. An environment window has at most **four splits**, also for the split buttons above each split. Each split has its own tabs, and texts in different splits can be in different groups.
-- **Window:** **Move to New Window** opens the next window of the environment ("SFM-2") with the tab; **Move to SFM-1** (each other window of the environment) moves it there, joining that window's tab of the same project if it has one; **Dock** takes it back where it came from.
+- **Window:** **Move to New Window** opens the next window of the environment ("SFM/2") with the tab; **Move to SFM/1** (each other window of the environment) moves it there, joining that window's tab of the same project if it has one; **Dock** takes it back where it came from.
 
-A USFM tab moves with its book. The toolbar's **Group** button shows and sets the current file's group, and its list has **New Group…** and **Manage Groups…**. Giving a file another group (there, or by right-clicking its tab or text → **Document Group**) doesn't move it.
+A USFM tab moves with its book. The toolbar's group button, in brackets beside the window's name (for example `[A]`), shows and sets the current file's group; its list shows each group's key (Ctrl+Alt+0 for Ungrouped, Ctrl+Alt+1…9 for the first nine groups) and ends with **Manage Groups…**. Giving a file another group (there, with the keys, or by right-clicking its tab) doesn't move it.
 
 ## Read-only folders
 
@@ -89,6 +90,7 @@ The menu between **View** and **Tools** is named after the active tab's environm
 - **View As:** the view modes, when the environment has any;
 - **Move to Environment Window**;
 - **Configuration Files…**;
+- **Environment Settings…**;
 - **Plain Text Mode**;
 - **Assign Environment**;
 - **Assign by File Type…**
@@ -101,7 +103,6 @@ Commands shared by several environments keep one shortcut, and you can rebind th
 | Minify Document | — | the environment's minifier (JSON, XML) |
 | Validate | Ctrl+Alt+V | the environment's main check |
 | Go To | Ctrl+Alt+G | Go to Chapter:Verse… (USFM) |
-| Preview | Ctrl+Alt+P | Markdown Preview |
 | Plain Text Mode | Ctrl+Alt+T | this tab without environment features, until turned off |
 | Inspect | Ctrl+Alt+S | Inspect Marker at Cursor (USFM) |
 
@@ -122,7 +123,23 @@ Each environment has configuration files. **Configuration Files…** in the envi
 - **Show in Folder**;
 - open this documentation.
 
-Saving a stylesheet (`.sty`), a versification file (`.vrs`), `Settings.xml` or `BookNames.xml` reloads the environment's configuration everywhere, so Standard and Preview update straight away.
+Saving a stylesheet (`.sty` or `.css`), a versification file (`.vrs`), an environment's `settings.json`, `Settings.xml` or `BookNames.xml` reloads the environment's configuration everywhere, so Standard and Preview update straight away.
+
+## Environment settings
+
+**Environment Settings…** in the environment menu opens a dialog of the environment's own settings, grouped by what they affect, each with a one-line description. **Restore Defaults** resets them all. A change applies at once: Preview re-renders, and the next Format Document or check uses it.
+
+| Environment | Settings |
+|---|---|
+| MD | Flavour, Opens in, and Format Document's bullet, emphasis, bold, numbered lists, blank lines and table alignment ([markdown.md](markdown.md#settings)) |
+| JSON | Indent, Sort keys, Escape non-ASCII ([json.md](json.md#settings)) |
+| XML | Indent, Attributes on one line or one per line ([xml.md](xml.md#settings)) |
+| YAML | Indent width, for Check Indentation ([yaml.md](yaml.md#settings)) |
+| CSV | Delimiter, Quote character, First row is a header ([csv.md](csv.md#settings)) |
+| TSV | First row is a header ([tsv.md](tsv.md#settings)) |
+| TXT, SFM | none; the dialog says so. SFM's stylesheets and rules stay in Configuration Files… |
+
+They're saved in `settings.json` in the environment's configuration folder, only the values that differ from the defaults. Configuration Files… lists it, so it can also be edited as JSON. An unknown key or a bad value is ignored, with a note in the status bar; it never stops the environment loading.
 
 **Your configuration folder** holds your own files for each environment, next to UNITI's settings:
 
@@ -132,6 +149,6 @@ Saving a stylesheet (`.sty`), a versification file (`.vrs`), `Settings.xml` or `
 | Windows | `%LOCALAPPDATA%\UNITI\Environments\<Environment>\` |
 | Linux | `$XDG_CONFIG_HOME/uniti/Environments/<Environment>/` (usually `~/.config/uniti/…`) |
 
-Every environment keeps its groups there (`groups.json`). USFM also reads your `uniti.sty` and your `Versification/*.vrs` files. See [usfm.md](usfm.md#configuration-files).
+Every environment keeps its groups there (`groups.json`) and its settings (`settings.json`). MD also reads your `uniti.css`; USFM reads your `uniti.sty` and your `Versification/*.vrs` files. See [usfm.md](usfm.md#configuration-files).
 
 UNITI writes into a project's folder only when you ask it to: **Create** in Configuration Files…, or saving a file you opened. It never writes there by itself (ADR-0018).

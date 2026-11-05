@@ -13,6 +13,16 @@ Comma-separated values. See the [overview](README.md) and [TSV](tsv.md).
 
 Fields are counted with Python's `csv` module, so quoted commas and quoted line breaks are handled correctly. At most 500 findings are listed.
 
+## Settings
+
+**Environment Settings…** (saved in `settings.json`), used by Check Column Counts:
+
+| Setting | Values | Default |
+|---|---|---|
+| Delimiter | `,` `;` `\|` or Tab | `,` |
+| Quote character | `"` or `'` | `"` |
+| First row is a header | on: the report names the header as the row the others must match | on |
+
 ## Configuration
 
-Your configuration folder is `…/Environments/CSV/`; nothing reads from it yet.
+Your configuration folder is `…/Environments/CSV/`. It holds `settings.json` and `groups.json`.

@@ -56,7 +56,7 @@ The environment window's toolbar has **Book**, **Chapter** and **Verse** at its 
 - **Book** lists the project's books.
 
   Each book shows its `\id` code and its `\h` line, e.g. "GEN Genesis". UNITI looks for `\h` in the book's first 10 lines; a book without one shows just its code. Choosing a book shows it in the current tab (see [Project tabs](#project-tabs)), in the current book's mode and group.
-- **Chapter** and **Verse** jump to that place and follow the caret as it moves.
+- **Chapter** and **Verse** jump to that place and follow the caret as it moves. As in Paratext, chapter **0** and verse **0** are the front matter (before the first `\c`), and verse **0** is also a chapter's heading, between its `\c` and its first `\v`.
 
 Jumping, here or with **Go to Chapter:Verse…** (Ctrl+Alt+G), puts the verse a third of the way down and highlights it in every mode. The highlight clears when the caret leaves the verse.
 
@@ -154,7 +154,7 @@ The two below work the same way for Project and Group.
 
 ## Groups and side-by-side sync
 
-**A project belongs to a group**, not each book: give any of its books a group (the toolbar's **Group**, or right-click the tab or the text → **Project Group**) and every book of the project is in it, including books you open later. The project's tab is tinted with the group's colour. UNITI keeps the assignment in `projects.json` in your USFM configuration folder; it writes nothing into the project.
+**A project belongs to a group**, not each book: give any of its books a group (the toolbar's `[group]` button, Ctrl+Alt+0…9, or right-click the tab → **Group**) and every book of the project is in it, including books you open later. The project's tab is tinted with the group's colour. UNITI keeps the assignment in `projects.json` in your USFM configuration folder; it writes nothing into the project.
 
 **A group binds its projects across windows.** When splits, in any USFM window, show texts of the same group, moving the caret in one moves the others to the same chapter and verse, and highlights the verse in all of them.
 - **Versification:** the reference is mapped into each text's own versification, so English Ps 51:1 lands on 51:3 in a text numbered like the original.
@@ -183,7 +183,7 @@ When a mapping lands on a verse the text doesn't have, sync uses the same refere
 
 **File → Open USFM Project…** opens a Paratext project folder: one with a `Settings.xml`.
 - **Book:** UNITI opens one book, the one you were last in (otherwise the first), and the Book list opens the rest.
-- **Window and group:** the book opens in the USFM window that already shows the project, otherwise the most recently used USFM window, otherwise a new "SFM-1". It gets the group the project was left in.
+- **Window and group:** the book opens in the USFM window that already shows the project, otherwise the most recently used USFM window, otherwise a new "SFM/1". It gets the group the project was left in.
 - **Recent Projects:** **File → Recent Projects** remembers each project's book, chapter:verse and group.
 - **From `Settings.xml`,** UNITI reads the name, the book-file naming, the encoding (books open in it), the versification, and the stylesheet to use in place of `usfm.sty`.
 - **Books opened as files:** a file opened with Open File inside a project folder counts as that project's book, whatever its extension. A file outside any project opens as plain text.

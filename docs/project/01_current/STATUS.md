@@ -36,7 +36,7 @@ A separate engineering track alongside B4. It doesn't gate B4's qualification. I
 
 What it does:
 - Every file lives in an environment. Opening asks "Open in <Environment> Environment / Open as Plain Text". USFM assumes a Paratext project: a USFM file outside one is plain text.
-- Environment windows are named per environment ("SFM-1", "SFM-2", renameable) and have a toolbar: the window's name, the current file's group, the Text / Preview mode switch (USFM: Text / Standard / Preview) and, for USFM, a Book/Chapter/Verse selector. Standard and Preview are shown in place, styled entirely from layered `.sty` stylesheets plus `uniti.sty` presentation rules, and Preview has a notes frame.
+- Environment windows are named per environment ("SFM/1", "SFM/2", renameable) and have a toolbar: the window's name, the current file's group, the Text / Preview mode switch (USFM: Text / Standard / Preview) and, for USFM, a Book/Chapter/Verse selector. Standard and Preview are shown in place, styled entirely from layered `.sty` stylesheets plus `uniti.sty` presentation rules, and Preview has a notes frame.
 - In a USFM window a tab is a project, titled with its short name; a project has one open book at a time (2026-10-22): changing the book closes the old one, asking before leaving unsaved changes. A tab's menu moves it between up to four splits and between windows.
 - Each environment has its own groups. In USFM a group belongs to a project, colours its tab, and binds projects for side-by-side sync across windows, mapped by versification and across books.
 - USFM covers `.sfm` and `.usfm`, nested `\+` markers, milestones and `\cat`.
@@ -73,6 +73,8 @@ Spec check of round 3 and Show One Chapter, 2026-10-13, against the field-test f
 - **T6: the Find/Replace pane counts as a split.** With Find attached only 3 editor splits are allowed, and the tab menu's Move to Split and Unsplit could target Find's pane. Only panes holding documents now count (`_editor_pane_ids`).
 - **T7: Save As writes into a read-only folder.** Neither Save As path checked the destination; both now refuse with a message (`_refuse_read_only_destination`).
 - **T7 (minor):** Format/Minify on a read-only file raised an uncaught `DocumentReadOnlyError`; it now shows the read-only message. Closing a modified read-only file offered Save, which then failed; it now offers Discard or Cancel and points to Save As (`_ask_save_changes`).
+
+- **MD environment feedback (roadmap row 30), N27, N28 and N31 built 2026-11-05** (uncommitted): full suite 3,103 passed, 6 platform skips, offscreen, nothing deselected. The 2 failures were assertions that didn't list the new `settings.json` Configuration Files row; they were updated and their two files pass (12 tests). Re-run the same day, uncommitted tree: **3,105 passed, 6 platform skips** in 312 s, offscreen, nothing deselected. Then the Flavour's remaining forms (front matter, task lists with Task List / Check or Uncheck Task, footnotes, definition lists; plan step 7): **3,118 passed, 6 platform skips**, offscreen, nothing deselected. The Mac checks ([checklist](../LIVE_APP_CHECKLIST.md) sections 17–18) are not yet done.
 
 Find's multi-document scopes are being redesigned per environment (scopes plan, S1–S2 built 2026-10-22); a session saved with more than 4 splits isn't capped on restore.
 
