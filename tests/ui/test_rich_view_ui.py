@@ -642,9 +642,10 @@ def test_markdown_preview_menu_is_grouped_by_type(window, tmp_path: Path):
     menu = pane.editor.context_menu()
     entries = ["-" if action.isSeparator() else action.text() for action in menu.actions()]
     commands = entries[entries.index("-") :]
-    assert commands[:18] == [
+    assert commands[:20] == [
         "-", "Bold", "Italic", "Strikethrough", "Superscript", "Subscript", "Code", "Remove Formatting",
-        "-", "Headings", "Quote", "Bullet List", "Numbered List", "Task List", "Check or Uncheck Task", "Code Block",
+        "-", "Headings", "Quote", "Bullet List", "Numbered List", "Task List", "Check or Uncheck Task",
+        "Indent List Item", "Outdent List Item", "Code Block",
         "-", "Insert Table…",
     ]
     assert "Document Group" not in entries

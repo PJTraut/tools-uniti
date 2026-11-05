@@ -176,7 +176,8 @@ def test_commands_are_grouped_for_the_menu():
         "Bold", "Italic", "Strikethrough", "Superscript", "Subscript", "Code", "Remove Formatting",
     ]
     assert [label for group, label in groups if group == "paragraph"] == [
-        "Headings", "Quote", "Bullet List", "Numbered List", "Task List", "Check or Uncheck Task", "Code Block",
+        "Headings", "Quote", "Bullet List", "Numbered List", "Task List", "Check or Uncheck Task",
+        "Indent List Item", "Outdent List Item", "Code Block",
     ]
     assert [label for group, label in groups if group == "insert"] == ["Insert Table…"]
     headings = next(command for command in commands if command.command_id == "heading")

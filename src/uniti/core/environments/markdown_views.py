@@ -463,6 +463,10 @@ class MarkdownRenderedView:
             ViewCommand("numbered_list", "Numbered List", paragraph("numbered"), group="paragraph"),
             ViewCommand("task_list", "Task List", paragraph("task"), group="paragraph"),
             ViewCommand("check_task", "Check or Uncheck Task", check_task, group="paragraph"),
+            ViewCommand("indent_list", "Indent List Item", lambda s, a, b, _x: indent_list_lines(s, a, b), group="paragraph"),
+            ViewCommand(
+                "outdent_list", "Outdent List Item", lambda s, a, b, _x: indent_list_lines(s, a, b, True), group="paragraph"
+            ),
             ViewCommand("code_block", "Code Block", code_block, group="paragraph"),
             ViewCommand(
                 "insert_table",
@@ -681,6 +685,47 @@ def set_paragraph(source: str, start: int, end: int, kind: str) -> EditPlan:
         elif a <= end:  # the caret was in the old prefix: it lands after the new one
             shift += len(new) - (end - a)
     return EditPlan(tuple(replacements), end + shift)
+
+
+def indent_list_lines(source: str, start: int, end: int, outdent: bool = False) -> EditPlan:
+    """Move every list item on the selected lines one level in (Tab) or out
+    (Shift+Tab), together. A level is two spaces under a bullet or task, three
+    under a number, the width of its marker, so the item nests under its
+    parent. Lines that aren't list items are left alone; no list item at all
+    is rejected."""
+
+    first, _ = _line_bounds(source, start)
+    _, last = _line_bounds(source, end)
+    replacements: list[tuple[int, int, str]] = []
+    shift = 0  # how far the caret (at `end`) moves
+    items = 0
+    for a, b in _lines(source):
+        if not first <= a <= last:
+            continue
+        line = source[a:b]
+        if _is_rule(line) or _in_fence(source, a):
+            continue
+        numbered = _NUMBERED_RE.match(line)
+        if not (_BULLET_RE.match(line) or numbered):
+            continue
+        items += 1
+        width = 3 if numbered else 2
+        leading = len(line) - len(line.lstrip(" \t"))
+        if not outdent:
+            replacements.append((a, a, " " * width))
+            change = width
+        else:
+            indent = line[:leading]
+            cut = 1 if indent.startswith("\t") else min(width, len(indent) - len(indent.lstrip(" ")))
+            if cut == 0:
+                continue
+            replacements.append((a, a + cut, ""))
+            change = -cut
+        if a <= end:
+            shift += change
+    if not items:
+        raise EditRejected("no list item here")
+    return EditPlan(tuple(replacements), max(first, end + shift))
 
 
 def toggle_task_done(source: str, start: int, end: int) -> EditPlan:

@@ -583,6 +583,16 @@ class _RichEditor(QTextEdit):
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             owner.enter()
             return
+        if key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab) and any(
+            c.command_id == "indent_list" for c in owner.commands
+        ):
+            # A selection of list items moves in or out together (N35).
+            outdent = key == Qt.Key.Key_Backtab or bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            view_start, view_end = owner._selection()
+            if view_start != view_end and owner.run_view_command("outdent_list" if outdent else "indent_list"):
+                return
+            if outdent:
+                return
         text = event.text()
         # Option/AltGr compose real characters; only Ctrl/Cmd/Meta chords are
         # shortcuts rather than typing.

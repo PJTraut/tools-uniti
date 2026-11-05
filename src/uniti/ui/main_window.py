@@ -2801,6 +2801,7 @@ class UNITIMainWindow(QMainWindow):
         view.set_progressive_navigation(True)
         view.line_window_provider = self._chapter_view.line_window
         view.format_shortcut_handler = self._format_shortcut
+        view.block_indent_handler = self._block_indent
         view.stateChanged.connect(lambda view=view: self._on_view_state_changed(view))
         view.cursorPositionChanged.connect(self._status.update_cursor)
         view.zoomChanged.connect(
@@ -3660,6 +3661,39 @@ class UNITIMainWindow(QMainWindow):
         view.state.move_to(caret)
         if inner:
             view.state.move_to(caret + len(inner), selecting=True)
+        view._state_changed()
+        return True
+
+    def _block_indent(self, view, outdent: bool) -> bool:
+        """Tab / Shift+Tab over a selection in a Markdown file's text view:
+        the selected list items move one level in or out together (N35).
+        False (Tab then types a tab) when there is no list item."""
+
+        from uniti.core.environments.markdown_views import indent_list_lines
+        from uniti.core.rich_views.editing import EditRejected
+
+        if self._environment.environment_key_for(view.document) != "markdown" or self._environment.is_plain_mode(view):
+            return False
+        low, high = sorted((view.state.anchor, view.state.cursor))
+        document = view.document
+        first = document.line_start(document.line_for_char(low))
+        last = document.line_end(document.line_for_char(max(low, high - 1) if high > low else high))
+        block = document.read(first, last)
+        try:
+            plan = indent_list_lines(block, 0, len(block), outdent)
+        except EditRejected:
+            return False
+        out, position = [], 0
+        for a, b, text in plan.replacements:
+            out.append(block[position:a])
+            out.append(text)
+            position = b
+        out.append(block[position:])
+        new = "".join(out)
+        if not view.replace_range(first, last, new):
+            return True
+        view.state.move_to(first)
+        view.state.move_to(first + len(new), selecting=True)
         view._state_changed()
         return True
 

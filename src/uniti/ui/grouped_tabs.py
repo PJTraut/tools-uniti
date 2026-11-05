@@ -188,7 +188,10 @@ class GroupedTabsController:
         if project_tabs is not None and project_tabs.active:
             return  # a USFM window's tabs are its projects' (round 3 T4)
         tab_bar = leaf.tabBar()
-        if not self.enabled:
+        environment = getattr(self._window, "environment_window", None)
+        # An environment window shows its group beside the environment name,
+        # so the tab row's group dropdown is redundant there (N34).
+        if not self.enabled or environment is not None:
             for index in range(leaf.count()):
                 tab_bar.setTabVisible(index, True)
             bar = leaf.cornerWidget(Qt.Corner.TopLeftCorner)

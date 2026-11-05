@@ -260,6 +260,10 @@ class UNITITextView(QAbstractScrollArea):
         # when the view's environment formats them (Markdown); it returns
         # whether it did, and the key is otherwise left alone.
         self.format_shortcut_handler: Callable[[UNITITextView, str], bool] | None = None
+        # Tab / Shift+Tab over a selection: the window's handler (True = outdent)
+        # moves the selected Markdown list items in or out together; it returns
+        # whether it did, and Tab otherwise inserts a tab character.
+        self.block_indent_handler: Callable[[UNITITextView, bool], bool] | None = None
         self._applied_line_window: tuple[int, int] | None = None
         self._syntax_colors = self._theme_tokens.syntax
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -2705,9 +2709,19 @@ class UNITITextView(QAbstractScrollArea):
                 return
             self.state.insert_newline()
             editing = True
-        elif key == Qt.Key.Key_Tab and not primary:
+        elif key in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab) and not primary:
             if self._read_only:
                 self.editRefused.emit()
+                event.accept()
+                return
+            if (
+                self.block_indent_handler is not None
+                and self.state.anchor != self.state.cursor
+                and self.block_indent_handler(self, key == Qt.Key.Key_Backtab)
+            ):
+                event.accept()
+                return
+            if key == Qt.Key.Key_Backtab:
                 event.accept()
                 return
             self.state.insert_text("\t")

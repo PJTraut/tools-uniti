@@ -1,7 +1,7 @@
 # Management Window, MD and SFM Feedback (2026-11-05) — Plan
 
 Date: 2026-11-05
-Status: **proposed; N36, N37 and N39–N43 built, the rest not started.** Items are the testers' words, tidied; none is yet a confirmed decision.
+Status: **proposed; N34, N35, N36, N37 and N39–N43 built, the rest not started.** Items are the testers' words, tidied; none is yet a confirmed decision.
 Origin: `@externalresources/field_test_feedback` (second 2026-11-05 round, after the MD.ENV items N27–N31 were built). IDs continue from [N27–N31](2026-11-05-markdown-environment-feedback-plan.md).
 
 ## Items
@@ -10,8 +10,8 @@ Origin: `@externalresources/field_test_feedback` (second 2026-11-05 round, after
 |---|---|---|---|---|
 | N32 | Management window | A "management" window as the default; it opens when all environment panels are closed. Everything opens in an environment, even if only TXT | A default window shown when no environment window is open. Opening any file lands in an environment (TXT at least) | proposed |
 | N33 | Management window | The window shows stats of the UNITI ecosystem: open files/projects, memory usage, cache sizes, etc. | Read-only stats panel; the list of stats needs agreeing | proposed |
-| N34 | MD | The Group dropdown is still on the text panel; redundant, since the group shows next to the environment | Remove it from the text panel (the right-click entry went in N30; this is the remaining dropdown). Group hotkeys are good, keep them | proposed |
-| N35 | MD | How do you indent list levels / nesting? | Question first: Tab / Shift+Tab (and a command) to indent and outdent list items in Preview; check what exists | question |
+| N34 | MD | The Group dropdown is still on the text panel; redundant, since the group shows next to the environment | Remove it from the text panel (the right-click entry went in N30; this is the remaining dropdown). Group hotkeys are good, keep them | **built 2026-11-05:** the control was the grouped-tabs dropdown at the left of the tab row; it is no longer shown in any environment window (the toolbar's group button stays). No automated test; Mac-checked by the user 2026-11-05 |
+| N35 | MD | How do you indent list levels / nesting? | Question first: Tab / Shift+Tab (and a command) to indent and outdent list items in Preview; check what exists | **built 2026-11-05:** nothing existed (Tab typed a tab). With lines selected, **Tab** / **Shift+Tab** move every selected list item in or out one level together, in Preview and the Text view; two spaces under a bullet or task, three under a number; non-list lines, rules and code fences are left alone, and with no list item Tab types a tab as before. Commands **Indent List Item** / **Outdent List Item** in the Preview menu. Tests in `test_markdown_indent.py`; Mac check |
 | N36 | MD | Environment Settings needs a link to manage the custom CSS extensions/mods | A button in Environment Settings… opening the CSS layers (as Configuration Files… does for SFM) | **built 2026-11-05:** MD's Environment Settings has **Manage Stylesheets…**, which opens Configuration Files… (built-in, user and project CSS layers); other environments don't show it (Mac check) |
 | N37 | SFM | Remove the lock icon next to "BK" | Removed the toolbar lock button; Lock/Unlock Project stays in the USFM menu, the tab and text menus and the unlock banner | **built 2026-11-05** (offscreen tests pass; Mac check to do) |
 | N38 | SFM / all | The status line is only used for the lock. Always display it, even when blank; use it for every environment, future functions and warnings | A permanent status line in every environment window with a reserved slot | proposed |
