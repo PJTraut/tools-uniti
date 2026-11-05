@@ -12,11 +12,11 @@ B4 Compare, Character Inspector & Per-View Settings Beta is the active source-de
 | — | [`v0.001b3` — Find/Replace Rework & Editor Refinement Beta](v0.001b3-find-replace-and-editor-refinement-beta.md) | superseded as active; own evidence queued | BF-017, BF-019 (pre-B4 re-confirmation), BF-025, and every carried-forward B2 item's native-host and hosted-CI confirmation remains open, tracked per item in the feedback log. |
 | — | [`v0.001b2` — Feedback Refinement Beta](v0.001b2-feedback-refinement-beta.md) | superseded as active; own evidence queued | BF-001–BF-010 native-host and hosted-CI confirmation remains open, tracked per item in the feedback log. |
 | 2 | [`v0.001a22` — Dogfood / Performance Alpha](v0.001a22-dogfood-performance-alpha.md) | queued qualification | Record the seven required distinct real-use days; implemented performance infrastructure remains in use. |
-| 3 | [`v0.001a23` — Executable Health & Recovery Alpha](v0.001a23-executable-health-recovery-alpha.md) | queued | Deliver and qualify native executable startup, health, and recovery. |
-| 4 | [`v0.001a24` — Beta Candidate](v0.001a24-beta-candidate.md) | queued | Satisfy the complete executable stabilization gate. |
-| 5 | [`v0.001b1` — Real-World Feedback Beta](v0.001b1-real-world-feedback-beta.md) | queued qualification | Complete qualified private executable feedback over fourteen calendar days with three independent testers covering macOS, Windows, and Linux. |
+| — | [`v0.001a23` — Executable Health & Recovery Alpha](v0.001a23-executable-health-recovery-alpha.md) | **deferred** ([ADR-0020](../05_decisions/ADR-0020-drop-executable-from-beta-line.md)) | Native executable dropped from the beta line; kept as the record of what an executable release would need. |
+| — | [`v0.001a24` — Beta Candidate](v0.001a24-beta-candidate.md) | **deferred** ([ADR-0020](../05_decisions/ADR-0020-drop-executable-from-beta-line.md)) | As A23. |
+| — | [`v0.001b1` — Real-World Feedback Beta](v0.001b1-real-world-feedback-beta.md) | **deferred** ([ADR-0020](../05_decisions/ADR-0020-drop-executable-from-beta-line.md)) | As A23. |
 
-The historical milestone names remain stable links to their acceptance requirements. They are not future version downgrades. Outstanding qualification follows rows 2–5 (plus B2's and B3's own carried-forward evidence) before qualified executable release; advancing the source label does not mark any of them passed.
+The historical milestone names remain stable links to their acceptance requirements. They are not future version downgrades. [ADR-0020](../05_decisions/ADR-0020-drop-executable-from-beta-line.md) (2026-11-04) dropped the native executable from the beta line: A23, A24 and B1 are deferred, not passed, and gate nothing. Outstanding qualification is now row 2 (A22's seven real-use days) plus B2's and B3's own carried-forward evidence and the per-item native-host and hosted-CI checks; advancing the source label does not mark any of them passed.
 
 ## Current work
 

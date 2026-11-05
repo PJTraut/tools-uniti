@@ -18,6 +18,8 @@ Date: 2026-10-22
 
 The user directed the project to move beyond A22 after the beta feedback work was implemented, then beyond B2, then beyond B3 after this further batch. [ADR-0007](../05_decisions/ADR-0007-beta-source-version-and-qualification.md) advanced the source identity and activated B2; [ADR-0008](../05_decisions/ADR-0008-b3-version-and-qualification.md) advanced it to B3; [ADR-0012](../05_decisions/ADR-0012-b4-version-and-qualification.md) advances it again to B4, in each case while preserving unfinished release qualification. A22 real-use days, A23 executable health/recovery delivery, A24 stabilization, and B1 independent executable feedback remain open, as does B2's own BF-001–BF-010 and B3's own outstanding native-host and hosted-CI evidence. Those historical milestone names and the B2/B3 labels identify outstanding requirements, not the currently installed source version.
 
+**2026-11-04: the native executable is dropped from the beta line ([ADR-0020](../05_decisions/ADR-0020-drop-executable-from-beta-line.md)).** A23, A24 and B1 are deferred, not passed, and gate nothing; beta is delivered from source. A22's seven real-use days, BF-002 affected-host confirmation, physical IME qualification, same-commit hosted validation and the live-app checklist stay open. Where this page says A23, A24 or B1 remain open, read it with ADR-0020.
+
 The critical BF-002 affected-host confirmation, physical Chinese/Korean IME qualification, and same-commit hosted validation also remain open. Source integration and version advancement do not supply those results. The [Roadmap](../02_plans/ROADMAP.md) records the revised development and qualification order.
 
 ## Environment track (2026-09-29 → 2026-10-09)
